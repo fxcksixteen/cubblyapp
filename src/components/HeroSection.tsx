@@ -37,7 +37,7 @@ const HeroSection = () => {
       {/* Video Background — no overlay, uncropped */}
       <video
         ref={videoRef}
-        className="absolute inset-0 w-full h-full object-contain"
+        className="absolute inset-0 w-full h-full object-cover"
         muted
         playsInline
         preload="auto"
@@ -47,7 +47,7 @@ const HeroSection = () => {
 
       {/* Content — positioned toward top */}
       <div className="relative z-10 flex flex-col items-center pt-24 gap-6 px-4">
-        <h1 className="font-display text-7xl md:text-8xl lg:text-9xl tracking-tight text-foreground drop-shadow-2xl select-none text-center">
+        <h1 className="font-display text-5xl md:text-6xl lg:text-7xl tracking-tight text-foreground drop-shadow-2xl select-none text-center">
           Your cozy corner<br />of the internet.
         </h1>
 
