@@ -16,12 +16,13 @@ const SearchBar = ({ onOpenDM }: SearchBarProps) => {
   const { friends } = useFriends();
 
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
+    const handler = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) {
         setOpen(false);
         setQuery("");
       }
     };
+
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
@@ -32,78 +33,110 @@ const SearchBar = ({ onOpenDM }: SearchBarProps) => {
   };
 
   const q = query.toLowerCase();
-  const filteredConvs = conversations.filter(c =>
-    c.participant.display_name.toLowerCase().includes(q) ||
-    c.participant.username.toLowerCase().includes(q)
-  );
-  const filteredFriends = friends.filter(f =>
-    !conversations.some(c => c.participant.user_id === f.profile.user_id) &&
-    (f.profile.display_name.toLowerCase().includes(q) ||
-     f.profile.username.toLowerCase().includes(q))
+  const filteredConversations = conversations.filter(
+    (conversation) =>
+      conversation.participant.display_name.toLowerCase().includes(q) ||
+      conversation.participant.username.toLowerCase().includes(q),
   );
 
+  const filteredFriends = friends.filter(
+    (friend) =>
+      !conversations.some((conversation) => conversation.participant.user_id === friend.profile.user_id) &&
+      (friend.profile.display_name.toLowerCase().includes(q) || friend.profile.username.toLowerCase().includes(q)),
+  );
+
+  const shellStyle = {
+    backgroundColor: "var(--app-input)",
+    borderColor: "var(--app-border)",
+  } as const;
+
   return (
-    <div ref={ref} className="relative mx-2 mt-2">
+    <div ref={ref} className="relative mx-3 mt-3">
       {!open ? (
         <button
           onClick={handleOpen}
-          className="flex h-9 w-full items-center gap-2 rounded bg-[#1e1f22] px-3 text-sm text-[#949ba4] hover:bg-[#1a1b1e] transition-colors"
+          className="flex h-11 w-full items-center gap-3 rounded-full border px-4 text-sm font-medium transition-colors hover:opacity-95"
+          style={{ ...shellStyle, color: "var(--app-text-secondary)" }}
         >
           <span className="flex-1 text-left">Find or start a conversation</span>
-          <img src={searchIcon} alt="" className="h-4 w-4 invert opacity-50" />
+          <img src={searchIcon} alt="" className="h-5 w-5 invert opacity-50" />
         </button>
       ) : (
         <div>
-          <div className="flex h-9 items-center gap-2 rounded bg-[#1e1f22] px-3">
-            <img src={searchIcon} alt="" className="h-4 w-4 invert opacity-50" />
+          <div className="flex h-11 items-center gap-3 rounded-full border px-4" style={shellStyle}>
+            <img src={searchIcon} alt="" className="h-5 w-5 invert opacity-50" />
             <input
               ref={inputRef}
               type="text"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(event) => setQuery(event.target.value)}
               placeholder="Find or start a conversation"
-              className="flex-1 bg-transparent text-sm text-[#dbdee1] outline-none placeholder:text-[#6d6f78]"
+              className="flex-1 bg-transparent text-sm outline-none placeholder:text-[#6d6f78]"
+              style={{ color: "var(--app-text-primary)" }}
             />
           </div>
 
-          {/* Dropdown */}
-          <div className="absolute left-0 right-0 top-8 z-50 max-h-[300px] overflow-y-auto rounded-lg bg-[#111214] border border-[#2b2d31] shadow-xl">
-            {filteredConvs.length === 0 && filteredFriends.length === 0 ? (
-              <p className="px-3 py-4 text-center text-xs text-[#949ba4]">No results found</p>
+          <div
+            className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-50 max-h-[320px] overflow-y-auto rounded-2xl border shadow-xl"
+            style={{ backgroundColor: "var(--app-bg-tertiary)", borderColor: "var(--app-border)" }}
+          >
+            {filteredConversations.length === 0 && filteredFriends.length === 0 ? (
+              <p className="px-3 py-4 text-center text-xs" style={{ color: "var(--app-text-secondary)" }}>
+                No results found
+              </p>
             ) : (
               <div className="p-1.5">
-                {filteredConvs.length > 0 && (
+                {filteredConversations.length > 0 && (
                   <>
-                    <p className="px-2 py-1 text-[10px] font-bold uppercase text-[#949ba4]">Recent</p>
-                    {filteredConvs.map(c => (
+                    <p className="px-2 py-1 text-[10px] font-bold uppercase" style={{ color: "var(--app-text-secondary)" }}>
+                      Recent
+                    </p>
+                    {filteredConversations.map((conversation) => (
                       <button
-                        key={c.id}
-                        onClick={() => { onOpenDM(c.participant.user_id); setOpen(false); setQuery(""); }}
-                        className="flex w-full items-center gap-2.5 rounded px-2 py-1.5 text-sm text-[#dbdee1] hover:bg-[#35373c]"
+                        key={conversation.id}
+                        onClick={() => {
+                          onOpenDM(conversation.participant.user_id);
+                          setOpen(false);
+                          setQuery("");
+                        }}
+                        className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm hover:bg-[#35373c]"
+                        style={{ color: "var(--app-text-primary)" }}
                       >
-                        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#5865f2] text-xs font-bold text-white">
-                          {c.participant.display_name.charAt(0).toUpperCase()}
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#5865f2] text-xs font-bold text-white">
+                          {conversation.participant.display_name.charAt(0).toUpperCase()}
                         </div>
-                        <span>{c.participant.display_name}</span>
-                        <span className="ml-auto text-[11px] text-[#949ba4]">{c.participant.username}</span>
+                        <span>{conversation.participant.display_name}</span>
+                        <span className="ml-auto text-[11px]" style={{ color: "var(--app-text-secondary)" }}>
+                          {conversation.participant.username}
+                        </span>
                       </button>
                     ))}
                   </>
                 )}
+
                 {filteredFriends.length > 0 && (
                   <>
-                    <p className="px-2 py-1 text-[10px] font-bold uppercase text-[#949ba4]">Friends</p>
-                    {filteredFriends.map(f => (
+                    <p className="px-2 py-1 text-[10px] font-bold uppercase" style={{ color: "var(--app-text-secondary)" }}>
+                      Friends
+                    </p>
+                    {filteredFriends.map((friend) => (
                       <button
-                        key={f.id}
-                        onClick={() => { onOpenDM(f.profile.user_id); setOpen(false); setQuery(""); }}
-                        className="flex w-full items-center gap-2.5 rounded px-2 py-1.5 text-sm text-[#dbdee1] hover:bg-[#35373c]"
+                        key={friend.id}
+                        onClick={() => {
+                          onOpenDM(friend.profile.user_id);
+                          setOpen(false);
+                          setQuery("");
+                        }}
+                        className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm hover:bg-[#35373c]"
+                        style={{ color: "var(--app-text-primary)" }}
                       >
-                        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#5865f2] text-xs font-bold text-white">
-                          {f.profile.display_name.charAt(0).toUpperCase()}
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#5865f2] text-xs font-bold text-white">
+                          {friend.profile.display_name.charAt(0).toUpperCase()}
                         </div>
-                        <span>{f.profile.display_name}</span>
-                        <span className="ml-auto text-[11px] text-[#949ba4]">{f.profile.username}</span>
+                        <span>{friend.profile.display_name}</span>
+                        <span className="ml-auto text-[11px]" style={{ color: "var(--app-text-secondary)" }}>
+                          {friend.profile.username}
+                        </span>
                       </button>
                     ))}
                   </>

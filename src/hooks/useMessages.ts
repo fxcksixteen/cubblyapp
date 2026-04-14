@@ -4,17 +4,6 @@ import { useAuth } from "@/contexts/AuthContext";
 
 const BOT_USER_ID = "00000000-0000-0000-0000-000000000001";
 
-const botReplies = [
-  "Hey there! 👋 How's it going?",
-  "That's interesting! Tell me more.",
-  "I'm just a bot, but I'm here to help you test! 🤖",
-  "Nice message! Everything seems to be working great.",
-  "Beep boop! Message received loud and clear! 📬",
-  "Thanks for chatting with me! I'm CubblyBot, your friendly test companion.",
-  "Wow, great conversation! Keep it coming! 😄",
-  "I can confirm: your messages are being sent and delivered perfectly! ✅",
-];
-
 export type MessageStatus = "sending" | "sent" | "delivered";
 
 export interface Message {
@@ -27,6 +16,11 @@ export interface Message {
   status?: MessageStatus;
 }
 
+const getSenderName = (senderId: string, displayName?: string | null) => {
+  if (senderId === BOT_USER_ID) return "CubblyBot";
+  return displayName || "Unknown";
+};
+
 export function useMessages(conversationId: string | null) {
   const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -34,32 +28,50 @@ export function useMessages(conversationId: string | null) {
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   const fetchMessages = useCallback(async () => {
-    if (!conversationId) { setMessages([]); return; }
+    if (!conversationId) {
+      setMessages([]);
+      return;
+    }
+
     setLoading(true);
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("messages")
       .select("*")
       .eq("conversation_id", conversationId)
       .order("created_at", { ascending: true });
 
+    if (error) {
+      console.error("Failed to fetch messages:", error);
+      setMessages([]);
+      setLoading(false);
+      return;
+    }
+
     if (data && data.length > 0) {
-      const senderIds = [...new Set(data.map(m => m.sender_id))];
-      const { data: profiles } = await supabase
+      const senderIds = [...new Set(data.map((message) => message.sender_id))];
+      const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
         .select("user_id, display_name")
         .in("user_id", senderIds);
 
-      const nameMap = new Map((profiles || []).map(p => [p.user_id, p.display_name]));
+      if (profilesError) {
+        console.error("Failed to fetch sender profiles:", profilesError);
+      }
 
-      setMessages(data.map(m => ({
-        ...m,
-        sender_name: nameMap.get(m.sender_id) || "Unknown",
-        status: "delivered" as MessageStatus,
-      })));
+      const nameMap = new Map((profiles || []).map((profile) => [profile.user_id, profile.display_name]));
+
+      setMessages(
+        data.map((message) => ({
+          ...message,
+          sender_name: getSenderName(message.sender_id, nameMap.get(message.sender_id)),
+          status: "delivered" as MessageStatus,
+        })),
+      );
     } else {
       setMessages([]);
     }
+
     setLoading(false);
   }, [conversationId]);
 
@@ -73,25 +85,57 @@ export function useMessages(conversationId: string | null) {
           "postgres_changes",
           { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` },
           async (payload) => {
-            const newMsg = payload.new as Message;
-            const { data: profile } = await supabase
+            const newMessage = payload.new as Message;
+            const { data: profile, error: profileError } = await supabase
               .from("profiles")
               .select("display_name")
-              .eq("user_id", newMsg.sender_id)
+              .eq("user_id", newMessage.sender_id)
               .maybeSingle();
 
-            setMessages(prev => {
-              // Update optimistic message to delivered, or add new
-              const optimisticIdx = prev.findIndex(m => m.id.startsWith("temp-") && m.content === newMsg.content && m.sender_id === newMsg.sender_id);
-              if (optimisticIdx >= 0) {
-                const updated = [...prev];
-                updated[optimisticIdx] = { ...newMsg, sender_name: profile?.display_name || "Unknown", status: "delivered" };
+            if (profileError) {
+              console.error("Failed to fetch realtime sender profile:", profileError);
+            }
+
+            setMessages((previous) => {
+              const optimisticIndex = previous.findIndex(
+                (message) =>
+                  message.id.startsWith("temp-") &&
+                  message.content === newMessage.content &&
+                  message.sender_id === newMessage.sender_id,
+              );
+
+              if (optimisticIndex >= 0) {
+                const updated = [...previous];
+                updated[optimisticIndex] = {
+                  ...newMessage,
+                  sender_name: getSenderName(newMessage.sender_id, profile?.display_name),
+                  status: "delivered",
+                };
                 return updated;
               }
-              if (prev.some(m => m.id === newMsg.id)) return prev;
-              return [...prev, { ...newMsg, sender_name: profile?.display_name || "Unknown", status: "delivered" }];
+
+              const existingIndex = previous.findIndex((message) => message.id === newMessage.id);
+              if (existingIndex >= 0) {
+                const updated = [...previous];
+                updated[existingIndex] = {
+                  ...updated[existingIndex],
+                  ...newMessage,
+                  sender_name: getSenderName(newMessage.sender_id, profile?.display_name ?? updated[existingIndex].sender_name),
+                  status: "delivered",
+                };
+                return updated;
+              }
+
+              return [
+                ...previous,
+                {
+                  ...newMessage,
+                  sender_name: getSenderName(newMessage.sender_id, profile?.display_name),
+                  status: "delivered",
+                },
+              ];
             });
-          }
+          },
         )
         .subscribe();
     }
@@ -105,63 +149,73 @@ export function useMessages(conversationId: string | null) {
   }, [conversationId, fetchMessages]);
 
   const sendMessage = async (content: string) => {
-    if (!user || !conversationId || !content.trim()) return;
+    if (!user || !conversationId || !content.trim()) return false;
 
+    const trimmedContent = content.trim();
     const tempId = `temp-${Date.now()}`;
     const optimistic: Message = {
       id: tempId,
       conversation_id: conversationId,
       sender_id: user.id,
-      content: content.trim(),
+      content: trimmedContent,
       created_at: new Date().toISOString(),
       sender_name: user.user_metadata?.display_name || "You",
       status: "sending",
     };
 
-    setMessages(prev => [...prev, optimistic]);
+    setMessages((previous) => [...previous, optimistic]);
 
-    const { error } = await supabase.from("messages").insert({
-      conversation_id: conversationId,
-      sender_id: user.id,
-      content: content.trim(),
-    });
+    const { data: insertedMessage, error } = await supabase
+      .from("messages")
+      .insert({
+        conversation_id: conversationId,
+        sender_id: user.id,
+        content: trimmedContent,
+      })
+      .select("*")
+      .single();
 
-    if (error) {
+    if (error || !insertedMessage) {
       console.error("Failed to send message:", error);
-      setMessages(prev => prev.filter(m => m.id !== tempId));
-      return;
+      setMessages((previous) => previous.filter((message) => message.id !== tempId));
+      return false;
     }
 
-    // Mark as sent
-    setMessages(prev =>
-      prev.map(m => m.id === tempId ? { ...m, status: "sent" as MessageStatus } : m)
+    setMessages((previous) =>
+      previous.map((message) =>
+        message.id === tempId
+          ? {
+              ...(insertedMessage as Message),
+              sender_name: optimistic.sender_name,
+              status: "sent" as MessageStatus,
+            }
+          : message,
+      ),
     );
 
-    // Check if the conversation is with the bot — send auto-reply
-    const { data: participants } = await supabase
+    const { data: participants, error: participantsError } = await supabase
       .from("conversation_participants")
       .select("user_id")
       .eq("conversation_id", conversationId);
 
-    const isBotConversation = participants?.some(p => p.user_id === BOT_USER_ID);
+    if (participantsError) {
+      console.error("Failed to load conversation participants:", participantsError);
+      return true;
+    }
+
+    const isBotConversation = participants?.some((participant) => participant.user_id === BOT_USER_ID);
 
     if (isBotConversation) {
-      setTimeout(async () => {
-        const reply = botReplies[Math.floor(Math.random() * botReplies.length)];
-        // Insert as bot using an edge function or direct insert (bot messages bypass RLS via the bot's "sender")
-        // Since we can't insert as bot client-side, we'll simulate it locally
-        const botMsg: Message = {
-          id: `bot-${Date.now()}`,
-          conversation_id: conversationId,
-          sender_id: BOT_USER_ID,
-          content: reply,
-          created_at: new Date().toISOString(),
-          sender_name: "CubblyBot",
-          status: "delivered",
-        };
-        setMessages(prev => [...prev, botMsg]);
-      }, 1000 + Math.random() * 2000);
+      const { error: botReplyError } = await (supabase as any).rpc("send_test_bot_reply", {
+        _conversation_id: conversationId,
+      });
+
+      if (botReplyError) {
+        console.error("Failed to generate bot reply:", botReplyError);
+      }
     }
+
+    return true;
   };
 
   return { messages, loading, sendMessage };

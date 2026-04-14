@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X, Check } from "lucide-react";
+import { X, Check, LogOut } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme, ThemeName } from "@/contexts/ThemeContext";
 
@@ -31,9 +31,7 @@ const settingsSections = [
   },
   {
     label: "Activity Settings",
-    items: [
-      { id: "activity-privacy" as SettingsCategory, label: "Activity Privacy" },
-    ],
+    items: [{ id: "activity-privacy" as SettingsCategory, label: "Activity Privacy" }],
   },
 ];
 
@@ -54,10 +52,13 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
   const { user, signOut } = useAuth();
   const { theme, setTheme } = useTheme();
 
-  // ESC key handler
   useEffect(() => {
     if (!isOpen) return;
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+
+    const handler = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
   }, [isOpen, onClose]);
@@ -66,6 +67,9 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
 
   const displayName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "User";
   const username = user?.user_metadata?.username || displayName.toLowerCase();
+  const activeLabel = settingsSections.flatMap((section) => section.items).find((item) => item.id === activeCategory)?.label;
+  const panelStyle = { backgroundColor: "var(--app-bg-secondary)", borderColor: "var(--app-border)" } as const;
+  const cardStyle = { backgroundColor: "var(--app-bg-tertiary)", borderColor: "var(--app-border)" } as const;
 
   const handleLogout = async () => {
     await signOut();
@@ -76,170 +80,195 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
     switch (activeCategory) {
       case "my-account":
         return (
-          <div>
-            <h2 className="text-xl font-bold text-white mb-5">My Account</h2>
-            <div className="rounded-lg bg-[#1e1f22] overflow-hidden">
-              {/* Banner */}
-              <div className="h-[100px] bg-gradient-to-r from-[#5865f2] to-[#7289da] rounded-t-lg" />
-              {/* Profile area */}
-              <div className="px-4 pb-4">
-                <div className="flex items-end gap-4 -mt-10">
-                  <div className="flex h-[80px] w-[80px] items-center justify-center rounded-full bg-[#5865f2] border-[6px] border-[#1e1f22] text-2xl font-bold text-white shrink-0">
+          <div className="space-y-6">
+            <div className="overflow-hidden rounded-[28px] border" style={panelStyle}>
+              <div className="h-36 bg-gradient-to-r from-[#5865f2] via-[#6a73f7] to-[#f59e0b]" />
+              <div className="px-6 pb-6">
+                <div className="-mt-11 flex items-end gap-4">
+                  <div className="flex h-[88px] w-[88px] items-center justify-center rounded-full border-[6px] text-3xl font-bold text-white shrink-0" style={{ backgroundColor: "#5865f2", borderColor: "var(--app-bg-secondary)" }}>
                     {displayName.charAt(0).toUpperCase()}
                   </div>
-                  <div className="pb-2">
-                    <p className="font-bold text-white text-lg leading-tight">{displayName}</p>
-                    <p className="text-sm text-[#949ba4]">{username}</p>
+                  <div className="pb-3">
+                    <p className="text-2xl font-bold leading-tight" style={{ color: "var(--app-text-primary)" }}>{displayName}</p>
+                    <p className="text-sm" style={{ color: "var(--app-text-secondary)" }}>@{username}</p>
                   </div>
                 </div>
 
-                {/* Info card */}
-                <div className="mt-4 rounded-lg bg-[#2b2d31] p-4">
-                  <div className="space-y-5">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-[11px] font-bold uppercase tracking-wider text-[#949ba4] mb-0.5">Display Name</p>
-                        <p className="text-sm text-[#dbdee1]">{displayName}</p>
-                      </div>
-                      <button className="rounded bg-[#4e5058] px-4 py-1.5 text-sm font-medium text-white hover:bg-[#6d6f78] transition-colors">Edit</button>
+                <div className="mt-5 grid gap-4 md:grid-cols-3">
+                  {[
+                    { label: "Display Name", value: displayName },
+                    { label: "Username", value: username },
+                    { label: "Email", value: user?.email || "—" },
+                  ].map((item) => (
+                    <div key={item.label} className="rounded-[22px] border p-4" style={cardStyle}>
+                      <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: "var(--app-text-secondary)" }}>{item.label}</p>
+                      <p className="mt-2 text-sm font-semibold break-words" style={{ color: "var(--app-text-primary)" }}>{item.value}</p>
                     </div>
-                    <div className="h-px bg-[#3f4147]" />
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-[11px] font-bold uppercase tracking-wider text-[#949ba4] mb-0.5">Username</p>
-                        <p className="text-sm text-[#dbdee1]">{username}</p>
-                      </div>
-                      <button className="rounded bg-[#4e5058] px-4 py-1.5 text-sm font-medium text-white hover:bg-[#6d6f78] transition-colors">Edit</button>
-                    </div>
-                    <div className="h-px bg-[#3f4147]" />
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-[11px] font-bold uppercase tracking-wider text-[#949ba4] mb-0.5">Email</p>
-                        <p className="text-sm text-[#dbdee1]">{user?.email}</p>
-                      </div>
-                      <button className="rounded bg-[#4e5058] px-4 py-1.5 text-sm font-medium text-white hover:bg-[#6d6f78] transition-colors">Edit</button>
-                    </div>
-                  </div>
+                  ))}
                 </div>
               </div>
+            </div>
+
+            <div className="rounded-[24px] border p-5" style={cardStyle}>
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: "var(--app-text-secondary)" }}>Account Notes</p>
+              <p className="mt-3 text-sm leading-6" style={{ color: "var(--app-text-secondary)" }}>
+                This stays a popup now, and your theme choice is reflected inside this modal instead of keeping a separate hardcoded look.
+              </p>
             </div>
           </div>
         );
 
       case "appearance":
         return (
-          <div>
-            <h2 className="text-xl font-bold text-white mb-5">Appearance</h2>
-            <p className="text-sm text-[#949ba4] mb-6">Choose how Cubbly looks to you. Select a theme below.</p>
-            
-            <h3 className="text-[11px] font-bold uppercase tracking-wider text-[#949ba4] mb-3">Theme</h3>
-            <div className="grid grid-cols-2 gap-4">
-              {themes.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => setTheme(t.id)}
-                  className={`group relative rounded-xl border-2 p-0 overflow-hidden text-left transition-all ${
-                    theme === t.id
-                      ? "border-[#5865f2] ring-2 ring-[#5865f2]/30"
-                      : "border-[#3f4147] hover:border-[#5865f2]/50"
-                  }`}
-                >
-                  {/* Mini preview */}
-                  <div className="flex h-[80px]">
-                    <div className="w-[14px] shrink-0" style={{ backgroundColor: t.colors.tertiary }} />
-                    <div className="w-[40px] shrink-0" style={{ backgroundColor: t.colors.secondary }} />
-                    <div className="flex-1 p-2" style={{ backgroundColor: t.colors.primary }}>
-                      <div className="h-1.5 w-10 rounded-full mb-1.5" style={{ backgroundColor: t.colors.secondary }} />
-                      <div className="h-1.5 w-16 rounded-full mb-1" style={{ backgroundColor: t.colors.secondary }} />
-                      <div className="h-1.5 w-12 rounded-full" style={{ backgroundColor: t.colors.secondary }} />
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-2xl font-bold" style={{ color: "var(--app-text-primary)" }}>Appearance</h2>
+              <p className="mt-2 text-sm" style={{ color: "var(--app-text-secondary)" }}>Pick a theme and the entire popup updates live with the rest of the app.</p>
+            </div>
+
+            <div className="grid gap-6 xl:grid-cols-[1.15fr,0.85fr]">
+              <div className="grid gap-4 sm:grid-cols-2">
+                {themes.map((themeOption) => (
+                  <button
+                    key={themeOption.id}
+                    onClick={() => setTheme(themeOption.id)}
+                    className="group relative overflow-hidden rounded-[22px] border text-left transition-all duration-200 hover:-translate-y-0.5"
+                    style={{
+                      backgroundColor: "var(--app-bg-secondary)",
+                      borderColor: theme === themeOption.id ? "#5865f2" : "var(--app-border)",
+                      boxShadow: theme === themeOption.id ? "0 0 0 2px rgba(88, 101, 242, 0.22)" : "none",
+                    }}
+                  >
+                    <div className="flex h-[96px]">
+                      <div className="w-[14px] shrink-0" style={{ backgroundColor: themeOption.colors.tertiary }} />
+                      <div className="w-[40px] shrink-0" style={{ backgroundColor: themeOption.colors.secondary }} />
+                      <div className="flex flex-1 flex-col gap-2 p-3" style={{ backgroundColor: themeOption.colors.primary }}>
+                        <div className="h-2 w-10 rounded-full" style={{ backgroundColor: themeOption.colors.secondary }} />
+                        <div className="h-2 w-16 rounded-full" style={{ backgroundColor: themeOption.colors.secondary }} />
+                        <div className="mt-auto h-9 rounded-2xl" style={{ backgroundColor: themeOption.colors.secondary }} />
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 px-4 py-3" style={{ backgroundColor: "var(--app-bg-tertiary)" }}>
+                      <div className={`flex h-5 w-5 items-center justify-center rounded-full border-2 ${
+                        theme === themeOption.id ? "border-[#5865f2] bg-[#5865f2]" : "border-[#72767d]"
+                      }`}>
+                        {theme === themeOption.id && <Check className="h-3 w-3 text-white" />}
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold leading-tight" style={{ color: "var(--app-text-primary)" }}>{themeOption.label}</p>
+                        <p className="text-[11px]" style={{ color: "var(--app-text-secondary)" }}>{themeOption.description}</p>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              <div className="rounded-[24px] border p-4" style={cardStyle}>
+                <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: "var(--app-text-secondary)" }}>Live Preview</p>
+                <div className="mt-4 overflow-hidden rounded-[22px] border" style={panelStyle}>
+                  <div className="flex h-[260px]">
+                    <div className="w-16" style={{ backgroundColor: "var(--app-bg-tertiary)" }} />
+                    <div className="w-24 border-r p-3" style={{ backgroundColor: "var(--app-bg-secondary)", borderColor: "var(--app-border)" }}>
+                      <div className="h-3 w-14 rounded-full" style={{ backgroundColor: "var(--app-active)" }} />
+                      <div className="mt-4 space-y-2">
+                        <div className="h-2 rounded-full" style={{ backgroundColor: "var(--app-hover)" }} />
+                        <div className="h-2 rounded-full" style={{ backgroundColor: "var(--app-hover)" }} />
+                        <div className="h-2 w-3/4 rounded-full" style={{ backgroundColor: "var(--app-hover)" }} />
+                      </div>
+                    </div>
+                    <div className="flex-1 p-4" style={{ backgroundColor: "var(--app-bg-primary)" }}>
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 rounded-full bg-[#5865f2]" />
+                        <div className="space-y-2">
+                          <div className="h-3 w-28 rounded-full" style={{ backgroundColor: "var(--app-active)" }} />
+                          <div className="h-2 w-16 rounded-full" style={{ backgroundColor: "var(--app-hover)" }} />
+                        </div>
+                      </div>
+                      <div className="mt-6 space-y-3">
+                        <div className="h-3 rounded-full" style={{ backgroundColor: "var(--app-active)" }} />
+                        <div className="h-3 w-4/5 rounded-full" style={{ backgroundColor: "var(--app-hover)" }} />
+                        <div className="h-14 rounded-[18px]" style={{ backgroundColor: "var(--app-input)" }} />
+                      </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 px-3 py-2.5 bg-[#1e1f22]">
-                    <div className={`flex h-5 w-5 items-center justify-center rounded-full border-2 ${
-                      theme === t.id ? "border-[#5865f2] bg-[#5865f2]" : "border-[#72767d]"
-                    }`}>
-                      {theme === t.id && <Check className="h-3 w-3 text-white" />}
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-white leading-tight">{t.label}</p>
-                      <p className="text-[11px] text-[#949ba4]">{t.description}</p>
-                    </div>
-                  </div>
-                </button>
-              ))}
+                </div>
+              </div>
             </div>
           </div>
         );
 
       default:
         return (
-          <div>
-            <h2 className="text-xl font-bold text-white mb-5">
-              {settingsSections.flatMap(s => s.items).find(i => i.id === activeCategory)?.label}
-            </h2>
-            <p className="text-sm text-[#949ba4]">Coming soon.</p>
+          <div className="rounded-[24px] border p-5" style={cardStyle}>
+            <h2 className="text-xl font-bold" style={{ color: "var(--app-text-primary)" }}>{activeLabel}</h2>
+            <p className="mt-3 text-sm" style={{ color: "var(--app-text-secondary)" }}>This section is scaffolded and keeps the popup layout consistent.</p>
           </div>
         );
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex bg-[#313338]">
-      <div className="flex w-full h-full">
-        {/* Sidebar */}
-        <div className="flex flex-1 justify-end bg-[#2b2d31] overflow-hidden">
-          <nav className="w-[218px] overflow-y-auto py-[60px] pr-2 pl-5 scrollbar-thin">
+    <div className="app-themed fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onMouseDown={onClose}>
+      <div
+        className="flex h-[min(86vh,800px)] w-full max-w-[1160px] overflow-hidden rounded-[30px] border shadow-[0_32px_90px_rgba(0,0,0,0.45)]"
+        style={{ backgroundColor: "var(--app-bg-primary)", borderColor: "var(--app-border)" }}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <aside className="flex w-[280px] flex-shrink-0 flex-col border-r px-4 py-5" style={{ backgroundColor: "var(--app-bg-secondary)", borderColor: "var(--app-border)" }}>
+          <div className="flex-1 overflow-y-auto pr-1">
             {settingsSections.map((section) => (
-              <div key={section.label} className="mb-1">
-                <p className="px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-wide text-[#949ba4]">
+              <div key={section.label} className="mb-4">
+                <p className="px-3 pb-2 text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: "var(--app-text-secondary)" }}>
                   {section.label}
                 </p>
                 {section.items.map((item) => (
                   <button
                     key={item.id}
                     onClick={() => setActiveCategory(item.id)}
-                    className={`flex w-full rounded-[4px] px-2.5 py-[6px] mb-[1px] text-[15px] font-medium transition-colors ${
-                      activeCategory === item.id
-                        ? "bg-[#404249] text-white"
-                        : "text-[#949ba4] hover:bg-[#35373c] hover:text-[#dbdee1]"
-                    }`}
+                    className="mb-1 flex w-full rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors"
+                    style={activeCategory === item.id
+                      ? { backgroundColor: "var(--app-active)", color: "var(--app-text-primary)" }
+                      : { color: "var(--app-text-secondary)" }}
                   >
                     {item.label}
                   </button>
                 ))}
               </div>
             ))}
+          </div>
 
-            <div className="my-2 h-px bg-[#3f4147] mx-2" />
-
+          <div className="rounded-[24px] border p-3" style={cardStyle}>
             <button
               onClick={handleLogout}
-              className="flex w-full items-center rounded-[4px] px-2.5 py-[6px] text-[15px] font-medium text-[#f23f42] hover:bg-[#35373c] transition-colors"
+              className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-semibold text-[#f87171] transition-colors hover:bg-white/5"
             >
               Log Out
+              <LogOut className="h-4 w-4" />
             </button>
 
-            <div className="mt-6 px-2.5 text-[11px] text-[#4e5058]">
+            <div className="mt-3 px-3 text-[11px]" style={{ color: "var(--app-text-secondary)" }}>
               Cubbly v{APP_VERSION}
             </div>
-          </nav>
-        </div>
-
-        {/* Content */}
-        <div className="flex flex-[1.5] bg-[#313338]">
-          <div className="w-full max-w-[740px] overflow-y-auto py-[60px] px-10">
-            {renderContent()}
           </div>
-          {/* Close button area */}
-          <div className="flex flex-col items-center pt-[60px] px-4">
+        </aside>
+
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex items-center justify-between border-b px-6 py-5" style={{ borderColor: "var(--app-border)" }}>
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: "var(--app-text-secondary)" }}>User Settings</p>
+              <h1 className="mt-1 text-2xl font-bold" style={{ color: "var(--app-text-primary)" }}>{activeLabel}</h1>
+            </div>
+
             <button
               onClick={onClose}
-              className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-[#72767d] text-[#72767d] hover:border-[#dbdee1] hover:text-[#dbdee1] transition-colors"
+              className="flex h-10 w-10 items-center justify-center rounded-full border transition-colors hover:bg-white/5"
+              style={{ borderColor: "var(--app-border)", color: "var(--app-text-secondary)" }}
             >
               <X className="h-4 w-4" />
             </button>
-            <p className="mt-1.5 text-[11px] font-medium text-[#72767d]">ESC</p>
           </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">{renderContent()}</div>
         </div>
       </div>
     </div>
