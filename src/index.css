@@ -71,3 +71,50 @@
     font-family: 'Nunito', sans-serif;
   }
 }
+
+/* Button fill hover effect */
+.btn-fill::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: hsl(var(--foreground));
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.35s ease;
+  border-radius: inherit;
+}
+
+.btn-fill:hover::before {
+  transform: scaleX(1);
+}
+
+.btn-fill:hover span {
+  color: hsl(var(--background));
+}
+
+.btn-fill span {
+  transition: color 0.35s ease;
+}
+
+.btn-fill-dark::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: hsl(var(--primary));
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.35s ease;
+  border-radius: inherit;
+}
+
+.btn-fill-dark:hover::before {
+  transform: scaleX(1);
+}
+
+.btn-fill-dark:hover span {
+  color: hsl(var(--foreground));
+}
+
+.btn-fill-dark span {
+  transition: color 0.35s ease;
+}
