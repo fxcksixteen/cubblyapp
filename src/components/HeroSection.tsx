@@ -33,11 +33,11 @@ const HeroSection = () => {
   }, []);
 
   return (
-    <section className="relative w-full h-screen overflow-hidden">
-      {/* Video Background — no overlay */}
+    <section className="relative w-full h-screen overflow-hidden bg-background">
+      {/* Video Background — no overlay, uncropped */}
       <video
         ref={videoRef}
-        className="absolute inset-0 w-full h-full object-cover"
+        className="absolute inset-0 w-full h-full object-contain"
         muted
         playsInline
         preload="auto"
@@ -45,8 +45,8 @@ const HeroSection = () => {
         <source src="/hero-bg.webm" type="video/webm" />
       </video>
 
-      {/* Content — positioned toward top center */}
-      <div className="relative z-10 flex flex-col items-center pt-36 gap-8 px-4">
+      {/* Content — positioned toward top */}
+      <div className="relative z-10 flex flex-col items-center pt-24 gap-6 px-4">
         <h1 className="font-display text-7xl md:text-8xl lg:text-9xl tracking-tight text-foreground drop-shadow-2xl select-none text-center">
           Your cozy corner<br />of the internet.
         </h1>
