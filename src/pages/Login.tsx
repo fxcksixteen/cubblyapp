@@ -23,56 +23,62 @@ const Login = () => {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#5865f2]">
-      <div className="w-full max-w-[480px] rounded-md bg-[#313338] p-8 shadow-lg">
-        <div className="mb-5 text-center">
-          <h1 className="text-2xl font-semibold text-white">Welcome back!</h1>
-          <p className="mt-1 text-base text-[#b5bac1]">We're so excited to see you again!</p>
+    <div className="flex min-h-screen items-center justify-center bg-background px-4 font-body">
+      <div className="w-full max-w-[420px] rounded-3xl bg-card p-8 shadow-2xl">
+        <div className="mb-6 text-center">
+          <h1 className="font-display text-2xl font-extrabold tracking-tight text-foreground">
+            Welcome back!
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            We're so excited to see you again!
+          </p>
         </div>
 
-        <form onSubmit={handleLogin} className="flex flex-col gap-5">
+        <form onSubmit={handleLogin} className="flex flex-col gap-4">
           <div>
-            <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-[#b5bac1]">
-              Email or Phone Number <span className="text-[#f23f42]">*</span>
+            <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-muted-foreground">
+              Email
             </label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full rounded-[3px] border-none bg-[#1e1f22] px-3 py-2.5 text-base text-white outline-none placeholder:text-[#87898c] focus:ring-0"
+              className="w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary font-body"
+              placeholder="bear@cubbly.app"
             />
           </div>
 
           <div>
-            <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-[#b5bac1]">
-              Password <span className="text-[#f23f42]">*</span>
+            <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-muted-foreground">
+              Password
             </label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="w-full rounded-[3px] border-none bg-[#1e1f22] px-3 py-2.5 text-base text-white outline-none placeholder:text-[#87898c] focus:ring-0"
+              className="w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary font-body"
+              placeholder="••••••••"
             />
-            <button type="button" className="mt-1 text-sm font-medium text-[#00a8fc] hover:underline">
+            <button type="button" className="mt-1.5 text-xs font-semibold text-primary hover:underline">
               Forgot your password?
             </button>
           </div>
 
-          {error && <p className="text-sm text-[#f23f42]">{error}</p>}
+          {error && <p className="text-sm text-destructive">{error}</p>}
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-[3px] bg-[#5865f2] py-2.5 text-base font-medium text-white transition-colors hover:bg-[#4752c4] disabled:opacity-50"
+            className="w-full rounded-xl bg-primary py-2.5 text-sm font-bold text-primary-foreground transition-all hover:brightness-110 disabled:opacity-50 font-body"
           >
             {loading ? "Logging in..." : "Log In"}
           </button>
 
-          <p className="text-sm text-[#949ba4]">
+          <p className="text-sm text-muted-foreground">
             Need an account?{" "}
-            <Link to="/register" className="font-medium text-[#00a8fc] hover:underline">
+            <Link to="/register" className="font-semibold text-primary hover:underline">
               Register
             </Link>
           </p>
