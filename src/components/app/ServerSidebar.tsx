@@ -3,33 +3,37 @@ import cubblyWordmark from "@/assets/cubbly-wordmark-white.png";
 import cubblyLogo from "@/assets/cubbly-logo.png";
 
 interface ServerSidebarProps {
+  isActive?: boolean;
   onHomeClick: () => void;
 }
 
-const ServerSidebar = ({ onHomeClick }: ServerSidebarProps) => {
+const ServerSidebar = ({ onHomeClick, isActive = false }: ServerSidebarProps) => {
   return (
-    <div className="flex w-[72px] flex-shrink-0 flex-col items-center gap-2 py-3 sidebar-tertiary" style={{ backgroundColor: 'var(--app-bg-tertiary)' }}>
-      {/* Cubbly wordmark */}
+    <div className="flex w-[84px] flex-shrink-0 flex-col items-center gap-3 py-4 sidebar-tertiary" style={{ backgroundColor: "var(--app-bg-tertiary)" }}>
       <div className="mb-1">
-        <img src={cubblyWordmark} alt="Cubbly" className="h-7 w-auto" />
+        <img src={cubblyWordmark} alt="Cubbly" className="h-8 w-auto" />
       </div>
 
       <div className="mx-auto h-[2px] w-8 rounded-full bg-[#35363c]" />
 
-      {/* Home / DM button with Cubbly logo */}
       <button
-        onClick={onHomeClick}
-        className="group relative flex h-12 w-12 items-center justify-center transition-all duration-200 overflow-hidden"
+        onClick={() => {
+          if (!isActive) onHomeClick();
+        }}
+        className="group relative flex h-14 w-14 items-center justify-center overflow-visible transition-transform duration-200 hover:scale-[1.03]"
+        aria-current={isActive ? "page" : undefined}
       >
-        <img src={cubblyLogo} alt="Home" className="h-12 w-12 rounded-full object-cover transition-all duration-200 group-hover:rounded-[16px]" />
-        <div className="absolute left-0 h-0 w-1 rounded-r-full bg-white transition-all group-hover:h-5" />
+        <div className={`absolute -left-4 w-1 rounded-r-full bg-white transition-all ${isActive ? "h-8 opacity-100" : "h-0 opacity-0 group-hover:h-6 group-hover:opacity-100"}`} />
+        <img src={cubblyLogo} alt="Home" className="h-14 w-14 rounded-full object-cover shadow-[0_10px_20px_rgba(0,0,0,0.24)]" />
       </button>
 
       <div className="mx-auto h-[2px] w-8 rounded-full bg-[#35363c]" />
 
-      {/* Add server */}
-      <button className="group flex h-12 w-12 items-center justify-center rounded-[24px] bg-[#313338] text-[#3ba55c] transition-all hover:rounded-[16px] hover:bg-[#3ba55c] hover:text-white">
-        <Plus className="h-5 w-5" />
+      <button
+        className="group flex h-14 w-14 items-center justify-center rounded-full text-[#3ba55c] transition-all hover:bg-[#3ba55c] hover:text-white"
+        style={{ backgroundColor: "var(--app-bg-primary)" }}
+      >
+        <Plus className="h-6 w-6" />
       </button>
     </div>
   );
