@@ -7,8 +7,8 @@ const Navbar = () => {
       <div className="flex items-center justify-between rounded-full bg-[hsl(var(--navbar-bg))] px-4 py-2.5 shadow-lg shadow-black/10 backdrop-blur-sm">
         {/* Logo + Wordmark */}
         <a href="/" className="flex items-center gap-0 select-none">
-          <img src={cubblyLogo} alt="Cubbly" className="h-14 w-14 object-contain" />
-          <img src={cubblyWordmark} alt="Cubbly" className="h-12 object-contain" />
+          <img src={cubblyLogo} alt="Cubbly" className="h-16 w-16 object-contain" />
+          <img src={cubblyWordmark} alt="Cubbly" className="h-16 object-contain" />
         </a>
 
         {/* CTA */}
