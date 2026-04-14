@@ -59,6 +59,7 @@ const AppLayout = () => {
         activeView={activeView}
         setActiveView={setActiveView}
         onCloseConversation={handleCloseConversation}
+        onOpenDM={handleOpenDM}
       />
 
       {/* Main content */}
