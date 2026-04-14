@@ -2,8 +2,9 @@ import { useState } from "react";
 import { useFriends, Friendship } from "@/hooks/useFriends";
 import { useAuth } from "@/contexts/AuthContext";
 import {
-  MessageSquare, MoreVertical, Check, X, UserPlus, Search, UserX, UserMinus
+  MoreVertical, Check, X, UserPlus, Search, UserX, UserMinus
 } from "lucide-react";
+import messagesIcon from "@/assets/icons/messages.svg";
 
 type FriendTab = "online" | "all" | "pending" | "blocked" | "add";
 
@@ -103,7 +104,7 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM }: FriendsViewProps) =>
           className="flex h-9 w-9 items-center justify-center rounded-full bg-[#2b2d31] text-[#b5bac1] hover:text-[#dbdee1]"
           title="Message"
         >
-          <MessageSquare className="h-4 w-4" />
+          <img src={messagesIcon} alt="Message" className="h-4 w-4 invert opacity-80" />
         </button>
         <button
           onClick={() => removeFriend(friendship.id)}

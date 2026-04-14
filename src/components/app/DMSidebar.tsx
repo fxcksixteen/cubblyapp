@@ -135,35 +135,35 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
         <div className="flex items-center gap-1 shrink-0">
           <button
             onClick={() => setMuted(!muted)}
-            className="rounded p-1.5 hover:bg-[#35373c] transition-colors"
+            className="rounded p-2 hover:bg-[#35373c] transition-colors"
             title={muted ? "Unmute" : "Mute"}
           >
             <img
               src={muted ? micMuteIcon : micIcon}
               alt={muted ? "Muted" : "Microphone"}
-              className="h-[18px] w-[18px] invert opacity-70 hover:opacity-100 transition-opacity"
+              className="h-5 w-5 invert opacity-70 hover:opacity-100 transition-opacity"
             />
           </button>
           <button
             onClick={() => setDeafened(!deafened)}
-            className="rounded p-1.5 hover:bg-[#35373c] transition-colors"
+            className="rounded p-2 hover:bg-[#35373c] transition-colors"
             title={deafened ? "Undeafen" : "Deafen"}
           >
             <img
               src={deafened ? headphoneDeafenIcon : headphoneIcon}
               alt={deafened ? "Deafened" : "Headphones"}
-              className="h-[18px] w-[18px] invert opacity-70 hover:opacity-100 transition-opacity"
+              className="h-5 w-5 invert opacity-70 hover:opacity-100 transition-opacity"
             />
           </button>
           <button
             onClick={() => setSettingsOpen(true)}
-            className="rounded p-1.5 hover:bg-[#35373c] transition-colors"
+            className="rounded p-2 hover:bg-[#35373c] transition-colors"
             title="User Settings"
           >
             <img
               src={settingsIcon}
               alt="Settings"
-              className="h-[18px] w-[18px] invert opacity-70 hover:opacity-100 transition-opacity"
+              className="h-5 w-5 invert opacity-70 hover:opacity-100 transition-opacity"
             />
           </button>
         </div>
