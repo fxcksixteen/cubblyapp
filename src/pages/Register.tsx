@@ -37,101 +37,128 @@ const Register = () => {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#5865f2]">
-      <div className="w-full max-w-[480px] rounded-md bg-[#313338] p-8 shadow-lg">
-        <div className="mb-5 text-center">
-          <h1 className="text-2xl font-semibold text-white">Create an account</h1>
+    <div className="flex min-h-screen items-center justify-center bg-background px-4 font-body">
+      {/* 16:9 landscape card */}
+      <div className="flex w-full max-w-[960px] overflow-hidden rounded-3xl shadow-2xl" style={{ aspectRatio: "16/9" }}>
+        {/* Left half — image placeholder */}
+        <div className="hidden md:flex w-1/2 items-center justify-center bg-gradient-to-br from-primary/30 via-primary/10 to-background relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-[hsl(32,80%,50%)]/20 via-[hsl(32,80%,35%)]/10 to-transparent" />
+          <div className="relative z-10 flex flex-col items-center gap-4 px-8 text-center">
+            <div className="text-6xl">🧸</div>
+            <h2 className="font-display text-3xl font-extrabold text-foreground">
+              Your <span style={{ color: "hsl(32, 80%, 42%)" }}>cozy</span> corner
+            </h2>
+            <p className="text-sm text-muted-foreground font-body">Image or animation coming soon</p>
+          </div>
         </div>
 
-        <form onSubmit={handleRegister} className="flex flex-col gap-4">
-          <div>
-            <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-[#b5bac1]">
-              Email <span className="text-[#f23f42]">*</span>
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="w-full rounded-[3px] border-none bg-[#1e1f22] px-3 py-2.5 text-base text-white outline-none placeholder:text-[#87898c] focus:ring-0"
-            />
+        {/* Right half — form */}
+        <div className="flex w-full md:w-1/2 flex-col justify-center bg-card px-8 py-6 lg:px-12">
+          <div className="mb-5">
+            <h1 className="font-display text-2xl font-extrabold tracking-tight text-foreground">
+              Create an account
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Join the coziest place on the internet.
+            </p>
           </div>
 
-          <div>
-            <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-[#b5bac1]">
-              Display Name <span className="text-[#f23f42]">*</span>
-            </label>
-            <input
-              type="text"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              required
-              className="w-full rounded-[3px] border-none bg-[#1e1f22] px-3 py-2.5 text-base text-white outline-none placeholder:text-[#87898c] focus:ring-0"
-            />
-          </div>
+          <form onSubmit={handleRegister} className="flex flex-col gap-3.5">
+            <div>
+              <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                Email
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary font-body"
+                placeholder="bear@cubbly.app"
+              />
+            </div>
 
-          <div>
-            <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-[#b5bac1]">
-              Username <span className="text-[#f23f42]">*</span>
-            </label>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              required
-              className="w-full rounded-[3px] border-none bg-[#1e1f22] px-3 py-2.5 text-base text-white outline-none placeholder:text-[#87898c] focus:ring-0"
-            />
-          </div>
+            <div>
+              <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                Display Name
+              </label>
+              <input
+                type="text"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                required
+                className="w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary font-body"
+                placeholder="Cozy Bear"
+              />
+            </div>
 
-          <div>
-            <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-[#b5bac1]">
-              Password <span className="text-[#f23f42]">*</span>
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              minLength={6}
-              className="w-full rounded-[3px] border-none bg-[#1e1f22] px-3 py-2.5 text-base text-white outline-none placeholder:text-[#87898c] focus:ring-0"
-            />
-          </div>
+            <div>
+              <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                Username
+              </label>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+                className="w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary font-body"
+                placeholder="cozybear"
+              />
+            </div>
 
-          <div>
-            <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-[#b5bac1]">
-              Date of Birth <span className="text-[#f23f42]">*</span>
-            </label>
-            <input
-              type="date"
-              value={dob}
-              onChange={(e) => setDob(e.target.value)}
-              required
-              className="w-full rounded-[3px] border-none bg-[#1e1f22] px-3 py-2.5 text-base text-white outline-none placeholder:text-[#87898c] focus:ring-0 [color-scheme:dark]"
-            />
-          </div>
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                  Password
+                </label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  minLength={6}
+                  className="w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary font-body"
+                  placeholder="••••••••"
+                />
+              </div>
+              <div className="w-[140px]">
+                <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                  Birthday
+                </label>
+                <input
+                  type="date"
+                  value={dob}
+                  onChange={(e) => setDob(e.target.value)}
+                  required
+                  className="w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary font-body [color-scheme:dark]"
+                />
+              </div>
+            </div>
 
-          {error && <p className="text-sm text-[#f23f42]">{error}</p>}
+            {error && <p className="text-sm text-destructive">{error}</p>}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="mt-1 w-full rounded-[3px] bg-[#5865f2] py-2.5 text-base font-medium text-white transition-colors hover:bg-[#4752c4] disabled:opacity-50"
-          >
-            {loading ? "Creating..." : "Continue"}
-          </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="mt-1 w-full rounded-xl bg-primary py-2.5 text-sm font-bold text-primary-foreground transition-all hover:brightness-110 disabled:opacity-50 font-body"
+            >
+              {loading ? "Creating..." : "Continue"}
+            </button>
 
-          <p className="text-xs text-[#949ba4]">
-            By registering, you agree to Cubbly's{" "}
-            <a href="#" className="text-[#00a8fc] hover:underline">Terms of Service</a> and{" "}
-            <a href="#" className="text-[#00a8fc] hover:underline">Privacy Policy</a>.
-          </p>
+            <p className="text-xs text-muted-foreground">
+              By registering, you agree to Cubbly's{" "}
+              <a href="#" className="text-primary hover:underline">Terms of Service</a> and{" "}
+              <a href="#" className="text-primary hover:underline">Privacy Policy</a>.
+            </p>
 
-          <p className="text-sm text-[#949ba4]">
-            <Link to="/login" className="font-medium text-[#00a8fc] hover:underline">
-              Already have an account?
-            </Link>
-          </p>
-        </form>
+            <p className="text-sm text-muted-foreground">
+              Already have an account?{" "}
+              <Link to="/login" className="font-semibold text-primary hover:underline">
+                Log in
+              </Link>
+            </p>
+          </form>
+        </div>
       </div>
     </div>
   );
