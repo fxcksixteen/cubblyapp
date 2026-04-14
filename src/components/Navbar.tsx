@@ -14,7 +14,7 @@ const Navbar = () => {
         {/* CTA */}
         <a
           href="https://web.cubbly.app"
-          className="rounded-full bg-[hsl(var(--navbar-foreground))] px-5 py-2 text-sm font-bold text-[hsl(var(--navbar-bg))] transition-all hover:opacity-90 font-body"
+          className="rounded-full bg-[hsl(var(--navbar-foreground))] px-8 py-2.5 text-sm font-bold text-[hsl(var(--navbar-bg))] transition-all hover:opacity-90 font-body"
         >
           Open Cubbly
         </a>
