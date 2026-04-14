@@ -33,7 +33,7 @@ const AppLayout = () => {
 
   // Derive activeView from URL
   const activeView = chatIdFromUrl ? `dm:${chatIdFromUrl}` : 
-    (urlTab === "shop" ? "shop" : "friends");
+    (pathParts[1] === "shop" ? "shop" : "friends");
 
   const setFriendTab = (tab: FriendTab) => {
     navigate(`/@me/${tab}`, { replace: true });
