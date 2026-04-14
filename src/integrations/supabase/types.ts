@@ -172,6 +172,23 @@ export type Database = {
         Args: { _conversation_id: string; _user_id: string }
         Returns: boolean
       }
+      send_test_bot_reply: {
+        Args: { _conversation_id: string }
+        Returns: {
+          content: string
+          conversation_id: string
+          created_at: string
+          id: string
+          sender_id: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "messages"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
     }
     Enums: {
       [_ in never]: never
