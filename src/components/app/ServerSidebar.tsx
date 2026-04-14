@@ -1,5 +1,6 @@
-import { MessageSquare, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import cubblyWordmark from "@/assets/cubbly-wordmark-white.png";
+import cubblyLogo from "@/assets/cubbly-logo.png";
 
 interface ServerSidebarProps {
   onHomeClick: () => void;
@@ -15,12 +16,12 @@ const ServerSidebar = ({ onHomeClick }: ServerSidebarProps) => {
 
       <div className="mx-auto h-[2px] w-8 rounded-full bg-[#35363c]" />
 
-      {/* Home / DM button */}
+      {/* Home / DM button with Cubbly logo */}
       <button
         onClick={onHomeClick}
-        className="group relative flex h-12 w-12 items-center justify-center rounded-[24px] bg-[#313338] transition-all duration-200 hover:rounded-[16px] hover:bg-[#5865f2]"
+        className="group relative flex h-12 w-12 items-center justify-center rounded-[24px] bg-[#313338] transition-all duration-200 hover:rounded-[16px] hover:bg-[#5865f2] overflow-hidden"
       >
-        <MessageSquare className="h-5 w-5 text-[#dbdee1]" />
+        <img src={cubblyLogo} alt="Home" className="h-8 w-8 object-contain" />
         <div className="absolute left-0 h-0 w-1 rounded-r-full bg-white transition-all group-hover:h-5" />
       </button>
 

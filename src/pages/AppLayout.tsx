@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useConversations } from "@/hooks/useConversations";
@@ -18,30 +18,50 @@ const AppLayout = () => {
   const location = useLocation();
 
   const pathParts = location.pathname.split("/").filter(Boolean);
+  
+  // Parse route: /@me/chat/:id or /@me/:tab
+  const isChatRoute = pathParts[1] === "chat" && pathParts[2];
+  const chatIdFromUrl = isChatRoute ? pathParts[2] : null;
   const urlTab = pathParts[1] as FriendTab | undefined;
   const validTabs: FriendTab[] = ["online", "all", "pending", "blocked", "add"];
   const friendTab: FriendTab = urlTab && validTabs.includes(urlTab) ? urlTab : "online";
 
   const { conversations, openOrCreateConversation, closeConversation, refetch: refetchConvs } = useConversations();
-  const [activeView, setActiveView] = useState<string>("friends");
+  
+  // Temporary DMs that haven't been messaged yet (shown in sidebar but can be closed)
+  const [tempDMs, setTempDMs] = useState<string[]>([]);
+
+  // Derive activeView from URL
+  const activeView = chatIdFromUrl ? `dm:${chatIdFromUrl}` : 
+    (urlTab === "shop" ? "shop" : "friends");
 
   const setFriendTab = (tab: FriendTab) => {
     navigate(`/@me/${tab}`, { replace: true });
-    setActiveView("friends");
   };
 
   const handleOpenDM = async (userId: string) => {
     const convId = await openOrCreateConversation(userId);
     if (convId) {
-      setActiveView(`dm:${convId}`);
+      // Add to temp DMs so it shows in sidebar immediately
+      setTempDMs(prev => prev.includes(convId) ? prev : [...prev, convId]);
+      navigate(`/@me/chat/${convId}`, { replace: true });
       await refetchConvs();
     }
   };
 
   const handleCloseConversation = (convId: string) => {
-    closeConversation(convId);
-    if (activeView === `dm:${convId}`) {
-      setActiveView("friends");
+    // Only allow closing if no messages exist, otherwise just remove from temp
+    const conv = conversations.find(c => c.id === convId);
+    if (conv && !conv.lastMessage) {
+      // No messages - remove entirely
+      closeConversation(convId);
+      setTempDMs(prev => prev.filter(id => id !== convId));
+    } else {
+      // Has messages - still close from sidebar view
+      closeConversation(convId);
+    }
+    if (chatIdFromUrl === convId) {
+      navigate("/@me", { replace: true });
     }
   };
 
@@ -49,6 +69,11 @@ const AppLayout = () => {
   const isShop = activeView === "shop";
   const activeConvId = isDM ? activeView.replace("dm:", "") : null;
   const activeConv = conversations.find(c => c.id === activeConvId);
+
+  // Merge conversations: show all with messages + temp DMs without messages
+  const visibleConversations = conversations.filter(c => 
+    c.lastMessage || tempDMs.includes(c.id)
+  );
 
   const renderHeader = () => {
     if (isDM && activeConv) {
@@ -122,12 +147,21 @@ const AppLayout = () => {
 
   return (
     <div className="app-themed flex h-screen w-full overflow-hidden bg-[#313338] text-[#dbdee1] font-body">
-      <ServerSidebar onHomeClick={() => { setActiveView("friends"); navigate("/@me", { replace: true }); }} />
+      <ServerSidebar onHomeClick={() => navigate("/@me", { replace: true })} />
 
       <DMSidebar
-        conversations={conversations}
+        conversations={visibleConversations}
         activeView={activeView}
-        setActiveView={setActiveView}
+        setActiveView={(view) => {
+          if (view.startsWith("dm:")) {
+            const convId = view.replace("dm:", "");
+            navigate(`/@me/chat/${convId}`, { replace: true });
+          } else if (view === "shop") {
+            navigate("/@me/shop", { replace: true });
+          } else {
+            navigate("/@me", { replace: true });
+          }
+        }}
         onCloseConversation={handleCloseConversation}
         onOpenDM={handleOpenDM}
       />
