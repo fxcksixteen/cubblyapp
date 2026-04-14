@@ -57,10 +57,10 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
       {/* Clickable avatar */}
       <button
         onClick={() => setOpen(!open)}
-        className="relative flex h-8 w-8 items-center justify-center rounded-full bg-[#5865f2] text-xs font-bold text-white hover:opacity-80 transition-opacity"
+        className="relative flex h-9 w-9 items-center justify-center rounded-full bg-[#5865f2] text-sm font-bold text-white hover:opacity-80 transition-opacity cursor-pointer"
       >
         {displayName.charAt(0).toUpperCase()}
-        <div className={`absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-[3px] border-[#232428] ${currentStatusObj.dotClass}`} />
+        <div className={`absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-[3px] border-[var(--app-bg-accent,#232428)] ${currentStatusObj.dotClass}`} />
       </button>
 
       {open && (

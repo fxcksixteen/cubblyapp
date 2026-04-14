@@ -122,20 +122,20 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
       </div>
 
       {/* User panel */}
-      <div className="flex items-center gap-2 px-2 py-1 user-panel" style={{ backgroundColor: 'var(--app-bg-accent)' }}>
+      <div className="flex items-center gap-2.5 px-2 py-2 user-panel" style={{ backgroundColor: 'var(--app-bg-accent)' }}>
         <ProfilePopup
           currentStatus={userStatus}
           onStatusChange={setUserStatus}
           onOpenSettings={() => setSettingsOpen(true)}
         />
-        <div className="flex-1 overflow-hidden">
-          <p className="truncate text-sm font-semibold text-white leading-tight">{displayName}</p>
-          <p className="truncate text-[11px] text-[#949ba4] leading-tight">{username}</p>
+        <div className="flex-1 overflow-hidden min-w-0">
+          <p className="truncate text-[13px] font-semibold text-white leading-snug">{displayName}</p>
+          <p className="truncate text-[11px] text-[#949ba4] leading-snug">{username}</p>
         </div>
-        <div className="flex items-center gap-0.5">
+        <div className="flex items-center gap-1 shrink-0">
           <button
             onClick={() => setMuted(!muted)}
-            className="rounded p-1 hover:bg-[#35373c]"
+            className="rounded p-1.5 hover:bg-[#35373c] transition-colors"
             title={muted ? "Unmute" : "Mute"}
           >
             <img
@@ -146,7 +146,7 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
           </button>
           <button
             onClick={() => setDeafened(!deafened)}
-            className="rounded p-1 hover:bg-[#35373c]"
+            className="rounded p-1.5 hover:bg-[#35373c] transition-colors"
             title={deafened ? "Undeafen" : "Deafen"}
           >
             <img
@@ -157,7 +157,7 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
           </button>
           <button
             onClick={() => setSettingsOpen(true)}
-            className="rounded p-1 hover:bg-[#35373c]"
+            className="rounded p-1.5 hover:bg-[#35373c] transition-colors"
             title="User Settings"
           >
             <img
