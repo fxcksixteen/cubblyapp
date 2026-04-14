@@ -2,6 +2,20 @@ import { useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { Eye, EyeOff, ChevronDown } from "lucide-react";
+
+const months = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+const currentYear = new Date().getFullYear();
+const years = Array.from({ length: 100 }, (_, i) => currentYear - i);
+
+const getDaysInMonth = (month: number, year: number) => {
+  if (!month || !year) return 31;
+  return new Date(year, month, 0).getDate();
+};
 
 const Register = () => {
   const { session } = useAuth();
@@ -9,16 +23,29 @@ const Register = () => {
   const [displayName, setDisplayName] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [dob, setDob] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [dobMonth, setDobMonth] = useState("");
+  const [dobDay, setDobDay] = useState("");
+  const [dobYear, setDobYear] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   if (session) return <Navigate to="/@me" replace />;
 
+  const daysCount = getDaysInMonth(Number(dobMonth), Number(dobYear));
+  const days = Array.from({ length: daysCount }, (_, i) => i + 1);
+
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+
+    if (!dobMonth || !dobDay || !dobYear) {
+      setError("Please select your full date of birth.");
+      return;
+    }
+
     setLoading(true);
+    const dob = `${dobYear}-${dobMonth.padStart(2, "0")}-${dobDay.padStart(2, "0")}`;
 
     const { error } = await supabase.auth.signUp({
       email,
@@ -36,9 +63,11 @@ const Register = () => {
     setLoading(false);
   };
 
+  const selectClass =
+    "w-full appearance-none rounded-xl border border-border bg-background px-3 py-2.5 pr-8 text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary font-body cursor-pointer";
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4 font-body">
-      {/* 16:9 landscape card */}
       <div className="flex w-full max-w-[960px] overflow-hidden rounded-3xl shadow-2xl" style={{ aspectRatio: "16/9" }}>
         {/* Left half — image placeholder */}
         <div className="hidden md:flex w-1/2 items-center justify-center bg-gradient-to-br from-primary/30 via-primary/10 to-background relative overflow-hidden">
@@ -106,32 +135,76 @@ const Register = () => {
               />
             </div>
 
-            <div className="flex gap-3">
-              <div className="flex-1">
-                <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                  Password
-                </label>
+            <div>
+              <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                Password
+              </label>
+              <div className="relative">
                 <input
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   minLength={6}
-                  className="w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary font-body"
+                  className="w-full rounded-xl border border-border bg-background px-3.5 py-2.5 pr-10 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary font-body"
                   placeholder="••••••••"
                 />
+                {password.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                )}
               </div>
-              <div className="w-[140px]">
-                <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                  Birthday
-                </label>
-                <input
-                  type="date"
-                  value={dob}
-                  onChange={(e) => setDob(e.target.value)}
-                  required
-                  className="w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary font-body [color-scheme:dark]"
-                />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                Date of Birth
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="relative">
+                  <select
+                    value={dobMonth}
+                    onChange={(e) => setDobMonth(e.target.value)}
+                    className={selectClass}
+                  >
+                    <option value="" disabled>Month</option>
+                    {months.map((m, i) => (
+                      <option key={m} value={String(i + 1)}>{m}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                </div>
+                <div className="relative">
+                  <select
+                    value={dobDay}
+                    onChange={(e) => setDobDay(e.target.value)}
+                    className={selectClass}
+                  >
+                    <option value="" disabled>Day</option>
+                    {days.map((d) => (
+                      <option key={d} value={String(d)}>{d}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                </div>
+                <div className="relative">
+                  <select
+                    value={dobYear}
+                    onChange={(e) => setDobYear(e.target.value)}
+                    className={selectClass}
+                  >
+                    <option value="" disabled>Year</option>
+                    {years.map((y) => (
+                      <option key={y} value={String(y)}>{y}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                </div>
               </div>
             </div>
 
