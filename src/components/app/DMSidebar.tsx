@@ -61,7 +61,7 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
   ];
 
   return (
-    <div className="flex w-60 flex-shrink-0 flex-col bg-[#2b2d31]">
+    <div className="flex w-60 flex-shrink-0 flex-col sidebar-primary" style={{ backgroundColor: 'var(--app-bg-secondary)' }}>
       {/* Search bar */}
       <SearchBar onOpenDM={onOpenDM} />
 
@@ -122,7 +122,7 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
       </div>
 
       {/* User panel */}
-      <div className="flex items-center gap-2 bg-[#232428] px-2 py-1">
+      <div className="flex items-center gap-2 px-2 py-1 user-panel" style={{ backgroundColor: 'var(--app-bg-accent)' }}>
         <ProfilePopup
           currentStatus={userStatus}
           onStatusChange={setUserStatus}

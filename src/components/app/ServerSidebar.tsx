@@ -7,7 +7,7 @@ interface ServerSidebarProps {
 
 const ServerSidebar = ({ onHomeClick }: ServerSidebarProps) => {
   return (
-    <div className="flex w-[72px] flex-shrink-0 flex-col items-center gap-2 bg-[#1e1f22] py-3">
+    <div className="flex w-[72px] flex-shrink-0 flex-col items-center gap-2 py-3 sidebar-tertiary" style={{ backgroundColor: 'var(--app-bg-tertiary)' }}>
       {/* Cubbly wordmark */}
       <div className="mb-1">
         <img src={cubblyWordmark} alt="Cubbly" className="h-7 w-auto" />
