@@ -103,46 +103,14 @@ export function useConversations() {
   const openOrCreateConversation = async (otherUserId: string): Promise<string | null> => {
     if (!user) return null;
 
-    // Check if conversation already exists
-    const { data: myConvs } = await supabase
-      .from("conversation_participants")
-      .select("conversation_id")
-      .eq("user_id", user.id);
+    const { data, error } = await supabase.rpc("create_dm_conversation", {
+      other_user_id: otherUserId,
+    });
 
-    if (myConvs && myConvs.length > 0) {
-      const convIds = myConvs.map(c => c.conversation_id);
-      const { data: otherConvs } = await supabase
-        .from("conversation_participants")
-        .select("conversation_id")
-        .eq("user_id", otherUserId)
-        .in("conversation_id", convIds);
+    if (error || !data) return null;
 
-      if (otherConvs && otherConvs.length > 0) {
-        await fetchConversations();
-        return otherConvs[0].conversation_id;
-      }
-    }
-
-    // Create new conversation
-    const { data: newConv } = await supabase
-      .from("conversations")
-      .insert({})
-      .select("id")
-      .single();
-
-    if (!newConv) return null;
-
-    // Add both participants - need to add self first, then other
-    await supabase.from("conversation_participants").insert({ conversation_id: newConv.id, user_id: user.id });
-    
-    // For the other user, we need a server function or they need to add themselves
-    // Since our RLS requires auth.uid() = user_id, we'll use a database function
-    // For now, let's use a workaround: the other user gets added when they accept
-    // Actually, let's create an edge function or use a db function for this
-    // TEMPORARY: We'll need to fix this with a db function
-    
     await fetchConversations();
-    return newConv.id;
+    return data as string;
   };
 
   const closeConversation = (convId: string) => {
