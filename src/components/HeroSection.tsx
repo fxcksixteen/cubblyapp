@@ -4,24 +4,11 @@ import { Monitor, Apple, Download } from "lucide-react";
 const HeroSection = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  // Play once then pause near end (bear eyes open)
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-
-    const handleTimeUpdate = () => {
-      // Pause a bit before the end so bear's eyes are open
-      if (video.duration && video.currentTime >= video.duration - 0.5) {
-        video.pause();
-        video.removeEventListener("timeupdate", handleTimeUpdate);
-      }
-    };
-
-    video.addEventListener("timeupdate", handleTimeUpdate);
-    video.playbackRate = 1;
+    video.loop = true;
     video.play().catch(() => {});
-
-    return () => video.removeEventListener("timeupdate", handleTimeUpdate);
   }, []);
 
   const osInfo = useMemo(() => {
@@ -46,7 +33,7 @@ const HeroSection = () => {
       </video>
 
       {/* Content — positioned toward top */}
-      <div className="relative z-10 flex flex-col items-center pt-32 gap-6 px-4">
+      <div className="relative z-10 flex flex-col items-center pt-40 gap-6 px-4">
         <h1 className="font-display text-5xl md:text-6xl lg:text-7xl tracking-tight text-foreground drop-shadow-2xl select-none text-center">
           Your cozy corner<br />of the internet.
         </h1>
