@@ -25,7 +25,7 @@ const App = () => (
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route
-              path="/@me"
+              path="/@me/*"
               element={
                 <ProtectedRoute>
                   <AppLayout />
