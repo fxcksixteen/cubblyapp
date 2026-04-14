@@ -41,13 +41,18 @@ const HeroSection = () => {
         </h1>
 
         <div className="flex flex-col sm:flex-row items-center gap-4">
-          <a
-            href="#"
-            className="flex items-center gap-2.5 rounded-full bg-foreground px-7 py-3.5 text-base font-semibold text-background transition-all hover:scale-105 hover:shadow-xl hover:shadow-[hsl(var(--hero-glow)/0.3)] font-body"
-          >
-            {osInfo.icon}
-            Download for {osInfo.name}
-          </a>
+          <div className="flex flex-col items-center gap-1.5">
+            <a
+              href="#"
+              className="flex items-center gap-2.5 rounded-full bg-foreground px-7 py-3.5 text-base font-semibold text-background transition-all hover:scale-105 hover:shadow-xl hover:shadow-[hsl(var(--hero-glow)/0.3)] font-body"
+            >
+              {osInfo.icon}
+              Download for {osInfo.name}
+            </a>
+            <p className="text-xs opacity-30 font-light tracking-wide select-none" style={{ fontFamily: "'Poppins', sans-serif" }}>
+              v{APP_VERSION} · pre-alpha
+            </p>
+          </div>
           <a
             href="https://web.cubbly.app"
             className="btn-fill relative flex items-center gap-2 rounded-full border border-foreground/30 bg-foreground/10 px-7 py-3.5 text-base font-semibold text-foreground backdrop-blur-sm transition-all overflow-hidden font-body"
@@ -55,10 +60,6 @@ const HeroSection = () => {
             <span className="relative z-10">Open in Browser</span>
           </a>
         </div>
-
-        <p className="text-xs opacity-30 font-light tracking-wide select-none" style={{ fontFamily: "'Poppins', sans-serif" }}>
-          v{APP_VERSION} · pre-alpha
-        </p>
       </div>
     </section>
   );
