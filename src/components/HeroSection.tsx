@@ -33,8 +33,8 @@ const HeroSection = () => {
       </video>
 
       {/* Content — positioned toward top */}
-      <div className="relative z-10 flex flex-col items-center pt-40 gap-6 px-4">
-        <h1 className="font-display text-5xl md:text-6xl lg:text-7xl tracking-tight text-foreground drop-shadow-2xl select-none text-center">
+      <div className="relative z-10 flex flex-col items-center pt-56 gap-6 px-4">
+        <h1 className="font-display text-5xl md:text-6xl lg:text-7xl font-extrabold tracking-tight text-foreground drop-shadow-2xl select-none text-center">
           Your cozy corner<br />of the internet.
         </h1>
 
@@ -48,9 +48,9 @@ const HeroSection = () => {
           </a>
           <a
             href="https://web.cubbly.app"
-            className="flex items-center gap-2 rounded-full border border-foreground/30 bg-foreground/10 px-7 py-3.5 text-base font-semibold text-foreground backdrop-blur-sm transition-all hover:bg-foreground/20 hover:scale-105 font-body"
+            className="btn-fill relative flex items-center gap-2 rounded-full border border-foreground/30 bg-foreground/10 px-7 py-3.5 text-base font-semibold text-foreground backdrop-blur-sm transition-all overflow-hidden font-body"
           >
-            Open in Browser
+            <span className="relative z-10">Open in Browser</span>
           </a>
         </div>
       </div>
