@@ -47,22 +47,22 @@ const SearchBar = ({ onOpenDM }: SearchBarProps) => {
       {!open ? (
         <button
           onClick={handleOpen}
-          className="flex h-7 w-full items-center gap-2 rounded-full bg-[#1e1f22] px-3 text-xs text-[#949ba4] hover:bg-[#1a1b1e] transition-colors"
+          className="flex h-9 w-full items-center gap-2 rounded bg-[#1e1f22] px-3 text-sm text-[#949ba4] hover:bg-[#1a1b1e] transition-colors"
         >
           <span className="flex-1 text-left">Find or start a conversation</span>
-          <img src={searchIcon} alt="" className="h-3.5 w-3.5 invert opacity-50" />
+          <img src={searchIcon} alt="" className="h-4 w-4 invert opacity-50" />
         </button>
       ) : (
         <div>
-          <div className="flex h-7 items-center gap-2 rounded-full bg-[#1e1f22] px-3">
-            <img src={searchIcon} alt="" className="h-3.5 w-3.5 invert opacity-50" />
+          <div className="flex h-9 items-center gap-2 rounded bg-[#1e1f22] px-3">
+            <img src={searchIcon} alt="" className="h-4 w-4 invert opacity-50" />
             <input
               ref={inputRef}
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Find or start a conversation"
-              className="flex-1 bg-transparent text-xs text-[#dbdee1] outline-none placeholder:text-[#6d6f78]"
+              className="flex-1 bg-transparent text-sm text-[#dbdee1] outline-none placeholder:text-[#6d6f78]"
             />
           </div>
 

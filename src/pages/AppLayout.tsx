@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useConversations } from "@/hooks/useConversations";
-import { Inbox } from "lucide-react";
+import { Inbox, Phone, Video } from "lucide-react";
 import ServerSidebar from "@/components/app/ServerSidebar";
 import DMSidebar from "@/components/app/DMSidebar";
 import FriendsView from "@/components/app/FriendsView";
@@ -77,12 +77,7 @@ const AppLayout = () => {
 
   const renderHeader = () => {
     if (isDM && activeConv) {
-      return (
-        <div className="flex items-center gap-2">
-          <span className="text-[#80848e]">@</span>
-          <span className="font-semibold text-white">{activeConv.participant.display_name}</span>
-        </div>
-      );
+      return null; // DM header is rendered separately below
     }
     if (isShop) {
       return <span className="font-semibold text-white">Shop</span>;
@@ -169,12 +164,41 @@ const AppLayout = () => {
       <div className="flex flex-1 flex-col">
         {/* Header */}
         <div className="flex h-12 items-center justify-between border-b border-[#1f2023] px-4 shadow-sm">
-          <div className="flex items-center gap-4">
-            {renderHeader()}
-          </div>
-          <div className="flex items-center gap-4 text-[#b5bac1]">
-            <Inbox className="h-5 w-5 cursor-pointer hover:text-[#dbdee1]" />
-          </div>
+          {isDM && activeConv ? (
+            <>
+              <div className="flex items-center gap-2.5">
+                <div className="relative">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#5865f2] text-xs font-bold text-white">
+                    {activeConv.participant.display_name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-[#313338] ${
+                    activeConv.participant.status === "online" ? "bg-[#3ba55c]" :
+                    activeConv.participant.status === "idle" ? "bg-[#faa61a]" :
+                    activeConv.participant.status === "dnd" ? "bg-[#ed4245]" : "bg-[#747f8d]"
+                  }`} />
+                </div>
+                <span className="font-semibold text-white text-sm">{activeConv.participant.display_name}</span>
+              </div>
+              <div className="flex items-center gap-3 text-[#b5bac1]">
+                <button className="hover:text-[#dbdee1] transition-colors" title="Start Voice Call">
+                  <Phone className="h-5 w-5" />
+                </button>
+                <button className="hover:text-[#dbdee1] transition-colors" title="Start Video Call">
+                  <Video className="h-5 w-5" />
+                </button>
+                <Inbox className="h-5 w-5 cursor-pointer hover:text-[#dbdee1]" />
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-4">
+                {renderHeader()}
+              </div>
+              <div className="flex items-center gap-4 text-[#b5bac1]">
+                <Inbox className="h-5 w-5 cursor-pointer hover:text-[#dbdee1]" />
+              </div>
+            </>
+          )}
         </div>
 
         {renderContent()}

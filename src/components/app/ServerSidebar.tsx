@@ -19,9 +19,9 @@ const ServerSidebar = ({ onHomeClick }: ServerSidebarProps) => {
       {/* Home / DM button with Cubbly logo */}
       <button
         onClick={onHomeClick}
-        className="group relative flex h-12 w-12 items-center justify-center rounded-[24px] bg-[#313338] transition-all duration-200 hover:rounded-[16px] hover:bg-[#5865f2] overflow-hidden"
+        className="group relative flex h-12 w-12 items-center justify-center transition-all duration-200 overflow-hidden"
       >
-        <img src={cubblyLogo} alt="Home" className="h-8 w-8 object-contain" />
+        <img src={cubblyLogo} alt="Home" className="h-12 w-12 rounded-full object-cover transition-all duration-200 group-hover:rounded-[16px]" />
         <div className="absolute left-0 h-0 w-1 rounded-r-full bg-white transition-all group-hover:h-5" />
       </button>
 

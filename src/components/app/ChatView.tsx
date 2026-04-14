@@ -6,6 +6,10 @@ import { X } from "lucide-react";
 import sendIcon from "@/assets/icons/send.svg";
 import folderFileIcon from "@/assets/icons/folder-file.svg";
 
+// Preload icons to prevent lag
+const preloadIcons = [sendIcon, folderFileIcon];
+preloadIcons.forEach(src => { const img = new Image(); img.src = src; });
+
 interface ChatViewProps {
   conversationId: string;
   recipientName: string;

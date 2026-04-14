@@ -127,7 +127,7 @@ export function useMessages(conversationId: string | null) {
     });
 
     if (error) {
-      // Remove failed message
+      console.error("Failed to send message:", error);
       setMessages(prev => prev.filter(m => m.id !== tempId));
       return;
     }
