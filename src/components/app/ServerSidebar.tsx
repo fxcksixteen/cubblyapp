@@ -1,5 +1,5 @@
-import { MessageSquare, Plus } from "lucide-react";
-import cubblyWordmark from "@/assets/cubbly-wordmark.png";
+import { MessageSquare } from "lucide-react";
+import cubblyWordmark from "@/assets/cubbly-wordmark-white.png";
 
 interface ServerSidebarProps {
   onHomeClick: () => void;
@@ -10,7 +10,7 @@ const ServerSidebar = ({ onHomeClick }: ServerSidebarProps) => {
     <div className="flex w-[72px] flex-shrink-0 flex-col items-center gap-2 bg-[#1e1f22] py-3">
       {/* Cubbly wordmark */}
       <div className="mb-1">
-        <img src={cubblyWordmark} alt="Cubbly" className="h-6 w-auto opacity-80" />
+        <img src={cubblyWordmark} alt="Cubbly" className="h-7 w-auto" />
       </div>
 
       <div className="mx-auto h-[2px] w-8 rounded-full bg-[#35363c]" />
@@ -25,11 +25,6 @@ const ServerSidebar = ({ onHomeClick }: ServerSidebarProps) => {
       </button>
 
       <div className="mx-auto h-[2px] w-8 rounded-full bg-[#35363c]" />
-
-      {/* Add server */}
-      <button className="group flex h-12 w-12 items-center justify-center rounded-[24px] bg-[#313338] text-[#3ba55c] transition-all hover:rounded-[16px] hover:bg-[#3ba55c] hover:text-white">
-        <Plus className="h-5 w-5" />
-      </button>
     </div>
   );
 };

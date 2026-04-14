@@ -1,7 +1,15 @@
+import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Conversation } from "@/hooks/useConversations";
-import { Plus, X, Users, ShoppingBag, Mic, Headphones, LogOut } from "lucide-react";
-import cubblyWordmark from "@/assets/cubbly-wordmark.png";
+import { supabase } from "@/integrations/supabase/client";
+import { Plus, X, Users, ShoppingBag } from "lucide-react";
+import StatusSelector from "./StatusSelector";
+import SettingsModal from "./SettingsModal";
+import micIcon from "@/assets/icons/microphone.svg";
+import micMuteIcon from "@/assets/icons/microphone-mute.svg";
+import headphoneIcon from "@/assets/icons/headphone.svg";
+import headphoneDeafenIcon from "@/assets/icons/headphone-deafen.svg";
+import settingsIcon from "@/assets/icons/settings.svg";
 
 interface DMSidebarProps {
   conversations: Conversation[];
@@ -14,13 +22,32 @@ const statusColors: Record<string, string> = {
   online: "bg-[#3ba55c]",
   idle: "bg-[#faa61a]",
   dnd: "bg-[#ed4245]",
+  invisible: "bg-[#747f8d]",
   offline: "bg-[#747f8d]",
 };
 
 const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversation }: DMSidebarProps) => {
-  const { user, signOut } = useAuth();
+  const { user } = useAuth();
   const displayName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "User";
   const username = user?.user_metadata?.username || displayName.toLowerCase();
+
+  const [muted, setMuted] = useState(false);
+  const [deafened, setDeafened] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [userStatus, setUserStatus] = useState("online");
+
+  // Fetch initial status
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("profiles")
+      .select("status")
+      .eq("user_id", user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.status) setUserStatus(data.status);
+      });
+  }, [user]);
 
   const navItems = [
     { id: "friends", icon: Users, label: "Friends" },
@@ -86,24 +113,61 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
         </div>
       </div>
 
+      {/* Status selector popup area */}
+      <div className="px-2 pb-1">
+        <StatusSelector currentStatus={userStatus} onStatusChange={setUserStatus} />
+      </div>
+
       {/* User panel */}
       <div className="flex items-center gap-2 bg-[#232428] px-2 py-1">
         <div className="relative">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#5865f2] text-xs font-bold text-white">
             {displayName.charAt(0).toUpperCase()}
           </div>
-          <div className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-[3px] border-[#232428] bg-[#3ba55c]" />
+          <div className={`absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-[3px] border-[#232428] ${statusColors[userStatus]}`} />
         </div>
         <div className="flex-1 overflow-hidden">
           <p className="truncate text-sm font-semibold text-white leading-tight">{displayName}</p>
           <p className="truncate text-[11px] text-[#949ba4] leading-tight">{username}</p>
         </div>
-        <div className="flex items-center gap-1">
-          <button className="rounded p-1 text-[#b5bac1] hover:bg-[#35373c]"><Mic className="h-4 w-4" /></button>
-          <button className="rounded p-1 text-[#b5bac1] hover:bg-[#35373c]"><Headphones className="h-4 w-4" /></button>
-          <button onClick={signOut} className="rounded p-1 text-[#b5bac1] hover:bg-[#35373c]" title="Log out"><LogOut className="h-4 w-4" /></button>
+        <div className="flex items-center gap-0.5">
+          <button
+            onClick={() => setMuted(!muted)}
+            className="rounded p-1 hover:bg-[#35373c]"
+            title={muted ? "Unmute" : "Mute"}
+          >
+            <img
+              src={muted ? micMuteIcon : micIcon}
+              alt={muted ? "Muted" : "Microphone"}
+              className="h-[18px] w-[18px] invert opacity-70 hover:opacity-100"
+            />
+          </button>
+          <button
+            onClick={() => setDeafened(!deafened)}
+            className="rounded p-1 hover:bg-[#35373c]"
+            title={deafened ? "Undeafen" : "Deafen"}
+          >
+            <img
+              src={deafened ? headphoneDeafenIcon : headphoneIcon}
+              alt={deafened ? "Deafened" : "Headphones"}
+              className="h-[18px] w-[18px] invert opacity-70 hover:opacity-100"
+            />
+          </button>
+          <button
+            onClick={() => setSettingsOpen(true)}
+            className="rounded p-1 hover:bg-[#35373c]"
+            title="User Settings"
+          >
+            <img
+              src={settingsIcon}
+              alt="Settings"
+              className="h-[18px] w-[18px] invert opacity-70 hover:opacity-100"
+            />
+          </button>
         </div>
       </div>
+
+      <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
 };
