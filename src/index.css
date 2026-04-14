@@ -118,3 +118,10 @@
 .btn-fill-dark span {
   transition: color 0.35s ease;
 }
+
+/* ===== App Theme Overrides ===== */
+/* Default (Discord-like) - these are applied via data-theme attribute on app pages */
+[data-theme="default"] .app-themed { --app-bg-primary: #313338; --app-bg-secondary: #2b2d31; --app-bg-tertiary: #1e1f22; --app-bg-accent: #232428; --app-text-primary: #dbdee1; --app-text-secondary: #949ba4; --app-text-muted: #72767d; --app-border: #1f2023; --app-hover: #35373c; --app-active: #404249; }
+[data-theme="onyx"] .app-themed { --app-bg-primary: #0a0a0a; --app-bg-secondary: #111111; --app-bg-tertiary: #000000; --app-bg-accent: #0d0d0d; --app-text-primary: #e0e0e0; --app-text-secondary: #888888; --app-text-muted: #555555; --app-border: #1a1a1a; --app-hover: #1a1a1a; --app-active: #222222; }
+[data-theme="white"] .app-themed { --app-bg-primary: #ffffff; --app-bg-secondary: #f2f3f5; --app-bg-tertiary: #e3e5e8; --app-bg-accent: #ebedef; --app-text-primary: #060607; --app-text-secondary: #4e5058; --app-text-muted: #80848e; --app-border: #e3e5e8; --app-hover: #ebedef; --app-active: #e3e5e8; }
+[data-theme="cubbly"] .app-themed { --app-bg-primary: #2a1f14; --app-bg-secondary: #1e1610; --app-bg-tertiary: #140e08; --app-bg-accent: #241a10; --app-text-primary: #e8ddd0; --app-text-secondary: #a08b72; --app-text-muted: #6b5a45; --app-border: #3d2a18; --app-hover: #3d2a18; --app-active: #4a3420; }

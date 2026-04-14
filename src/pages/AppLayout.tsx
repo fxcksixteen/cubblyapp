@@ -49,7 +49,7 @@ const AppLayout = () => {
   const activeConv = conversations.find(c => c.id === activeConvId);
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-[#313338] text-[#dbdee1] font-body">
+    <div className="app-themed flex h-screen w-full overflow-hidden bg-[#313338] text-[#dbdee1] font-body">
       {/* Server sidebar */}
       <ServerSidebar onHomeClick={() => { setActiveView("friends"); navigate("/@me", { replace: true }); }} />
 
