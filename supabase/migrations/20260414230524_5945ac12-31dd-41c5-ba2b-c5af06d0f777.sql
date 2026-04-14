@@ -1,0 +1,1 @@
+DROP POLICY IF EXISTS "Bot can send messages to its conversations" ON public.messages;
