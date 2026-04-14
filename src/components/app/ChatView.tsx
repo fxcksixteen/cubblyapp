@@ -1,13 +1,20 @@
 import { useState, useRef, useEffect } from "react";
-import { useMessages, Message } from "@/hooks/useMessages";
+import { useMessages, Message, MessageStatus } from "@/hooks/useMessages";
 import { useAuth } from "@/contexts/AuthContext";
-import { Plus, SmilePlus, Send } from "lucide-react";
+import { Plus, SmilePlus, Send, Check, CheckCheck } from "lucide-react";
 
 interface ChatViewProps {
   conversationId: string;
   recipientName: string;
   recipientAvatar?: string;
 }
+
+const StatusIcon = ({ status }: { status?: MessageStatus }) => {
+  if (!status) return null;
+  if (status === "sending") return <div className="h-3 w-3 animate-pulse rounded-full bg-[#949ba4]/40" />;
+  if (status === "sent") return <Check className="h-3 w-3 text-[#949ba4]" />;
+  return <CheckCheck className="h-3 w-3 text-[#3ba55c]" />;
+};
 
 const ChatView = ({ conversationId, recipientName }: ChatViewProps) => {
   const { user } = useAuth();
@@ -77,7 +84,16 @@ const ChatView = ({ conversationId, recipientName }: ChatViewProps) => {
                   <span className="text-[11px] text-[#949ba4]">{formatTime(group.messages[0].created_at)}</span>
                 </div>
                 {group.messages.map((msg) => (
-                  <p key={msg.id} className="text-sm text-[#dbdee1] leading-relaxed">{msg.content}</p>
+                  <div key={msg.id} className="flex items-end gap-1.5">
+                    <p className={`text-sm leading-relaxed ${msg.status === "sending" ? "text-[#949ba4]" : "text-[#dbdee1]"}`}>
+                      {msg.content}
+                    </p>
+                    {msg.sender_id === user?.id && (
+                      <span className="shrink-0 mb-0.5">
+                        <StatusIcon status={msg.status} />
+                      </span>
+                    )}
+                  </div>
                 ))}
               </div>
             </div>
