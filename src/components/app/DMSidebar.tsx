@@ -57,7 +57,7 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
 
   const navItems = [
     { id: "friends", icon: friendsIcon, label: "Friends", isSvg: true },
-    { id: "shop", icon: ShoppingBag, label: "Shop", isSvg: false },
+    { id: "shop", icon: ShoppingBag, label: "Shop", isSvg: false as const },
   ];
 
   return (
