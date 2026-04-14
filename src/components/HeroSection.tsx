@@ -1,6 +1,8 @@
 import { useEffect, useRef, useMemo } from "react";
 import { Monitor, Apple, Download } from "lucide-react";
 
+const APP_VERSION = "0.1.0";
+
 const HeroSection = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -35,7 +37,7 @@ const HeroSection = () => {
       {/* Content — positioned toward top */}
       <div className="relative z-10 flex flex-col items-center pt-56 gap-6 px-4">
         <h1 className="font-display text-5xl md:text-6xl lg:text-7xl font-extrabold tracking-tight text-foreground drop-shadow-2xl select-none text-center">
-          Your <span className="text-primary drop-shadow-[0_0_12px_hsl(var(--primary)/0.6)]" style={{ color: 'hsl(32, 80%, 42%)' }}>cozy</span> corner<br />of the internet.
+          Your <span style={{ color: 'hsl(32, 80%, 42%)', textShadow: '2px 2px 0px hsl(32, 80%, 25%)' }}>cozy</span> corner<br />of the internet.
         </h1>
 
         <div className="flex flex-col sm:flex-row items-center gap-4">
@@ -53,6 +55,10 @@ const HeroSection = () => {
             <span className="relative z-10">Open in Browser</span>
           </a>
         </div>
+
+        <p className="text-xs opacity-30 font-light tracking-wide select-none" style={{ fontFamily: "'Poppins', sans-serif" }}>
+          v{APP_VERSION} · pre-alpha
+        </p>
       </div>
     </section>
   );
