@@ -42,11 +42,11 @@ const HeroSection = () => {
         playsInline
         preload="auto"
       >
-        <source src="/hero-bg.webm" type="video/webm" />
+        <source src="/hero-bg-new.webm" type="video/webm" />
       </video>
 
       {/* Content — positioned toward top */}
-      <div className="relative z-10 flex flex-col items-center pt-24 gap-6 px-4">
+      <div className="relative z-10 flex flex-col items-center pt-32 gap-6 px-4">
         <h1 className="font-display text-5xl md:text-6xl lg:text-7xl tracking-tight text-foreground drop-shadow-2xl select-none text-center">
           Your cozy corner<br />of the internet.
         </h1>
