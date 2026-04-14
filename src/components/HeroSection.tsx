@@ -1,6 +1,8 @@
 import { useEffect, useRef, useMemo } from "react";
 import { Monitor, Apple, Download } from "lucide-react";
 
+const APP_VERSION = "0.1.0";
+
 const HeroSection = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -53,6 +55,10 @@ const HeroSection = () => {
             <span className="relative z-10">Open in Browser</span>
           </a>
         </div>
+
+        <p className="text-xs opacity-30 font-light tracking-wide select-none" style={{ fontFamily: "'Poppins', sans-serif" }}>
+          v{APP_VERSION} · pre-alpha
+        </p>
       </div>
     </section>
   );
