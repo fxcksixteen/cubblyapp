@@ -7,6 +7,8 @@ import {
 import { getProfileColor } from "@/lib/profileColors";
 import messagesIcon from "@/assets/icons/messages.svg";
 import searchIcon from "@/assets/icons/search.svg";
+import emptyPendingIcon from "@/assets/icons/empty-pending.svg";
+import emptyBlockedIcon from "@/assets/icons/empty-blocked.svg";
 
 type FriendTab = "online" | "all" | "pending" | "blocked" | "add";
 
@@ -182,15 +184,26 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM }: FriendsViewProps) =>
 
             {displayList.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-center">
-                <div className="text-5xl mb-3">
-                  {activeTab === "pending" ? "📬" : activeTab === "blocked" ? "🚫" : activeTab === "online" ? "😴" : "👋"}
-                </div>
-                <p className="text-sm text-[#949ba4]">
-                  {activeTab === "pending" ? "There are no pending friend requests."
-                    : activeTab === "blocked" ? "You haven't blocked anyone."
-                    : activeTab === "online" ? "No friends are online right now."
-                    : "You don't have any friends yet. Add some!"}
-                </p>
+                {activeTab === "pending" ? (
+                  <>
+                    <img src={emptyPendingIcon} alt="" className="h-14 w-14 invert opacity-30 mb-3" />
+                    <p className="text-sm text-[#949ba4]">No friend requests right now — but good things come to those who wait! 🧸</p>
+                  </>
+                ) : activeTab === "blocked" ? (
+                  <>
+                    <img src={emptyBlockedIcon} alt="" className="h-14 w-14 invert opacity-30 mb-3" />
+                    <p className="text-sm text-[#949ba4]">Your block list is squeaky clean — everyone's welcome in your cozy corner! 🌿</p>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-5xl mb-3">
+                      {activeTab === "online" ? "😴" : "👋"}
+                    </div>
+                    <p className="text-sm text-[#949ba4]">
+                      {activeTab === "online" ? "No friends are online right now." : "You don't have any friends yet. Add some!"}
+                    </p>
+                  </>
+                )}
               </div>
             ) : (
               <div className="flex flex-col">

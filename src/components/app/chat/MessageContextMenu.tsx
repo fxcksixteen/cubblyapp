@@ -5,9 +5,11 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { Reply, Smile, Copy, Trash2 } from "lucide-react";
+import { Reply, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import emojiReactIcon from "@/assets/icons/emoji-react.svg";
+import copyIcon from "@/assets/icons/copy.svg";
 
 interface MessageContextMenuProps {
   children: React.ReactNode;
@@ -47,14 +49,14 @@ const MessageContextMenu = ({ children, messageId, messageContent, isOwnMessage,
         <ContextMenuItem
           className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer"
         >
-          <Smile className="h-4 w-4" />
+          <img src={emojiReactIcon} alt="" className="h-4 w-4 invert opacity-80" />
           Add Reaction
         </ContextMenuItem>
         <ContextMenuItem
           onClick={handleCopy}
           className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer"
         >
-          <Copy className="h-4 w-4" />
+          <img src={copyIcon} alt="" className="h-4 w-4 invert opacity-80" />
           Copy Text
         </ContextMenuItem>
         {isOwnMessage && (

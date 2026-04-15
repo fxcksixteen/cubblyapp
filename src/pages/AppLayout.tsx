@@ -4,8 +4,9 @@ import { useConversations } from "@/hooks/useConversations";
 import { useVoice } from "@/contexts/VoiceContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { Inbox, Phone, PhoneOff, Video } from "lucide-react";
+import { Phone, PhoneOff, Video } from "lucide-react";
 import { getProfileColor } from "@/lib/profileColors";
+import messagesInboxIcon from "@/assets/icons/messages.svg";
 import ServerSidebar from "@/components/app/ServerSidebar";
 import DMSidebar from "@/components/app/DMSidebar";
 import FriendsView from "@/components/app/FriendsView";
@@ -249,7 +250,7 @@ const AppLayout = () => {
             <>
               <div className="flex items-center gap-4">{renderHeader()}</div>
               <div className="flex items-center gap-4" style={{ color: "var(--app-text-secondary)" }}>
-                <Inbox className="h-5 w-5 cursor-pointer hover:text-[#dbdee1]" />
+                <img src={messagesInboxIcon} alt="Inbox" className="h-5 w-5 cursor-pointer invert opacity-60 hover:opacity-100 transition-opacity" />
               </div>
             </>
           )}
