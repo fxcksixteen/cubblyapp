@@ -383,11 +383,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   }, [settings.inputDeviceId, settings.echoCancellation, settings.noiseSuppression, settings.autoGainControl]);
 
   const createPeerConnection = useCallback(() => {
+    console.log("[Voice] 🔧 Creating RTCPeerConnection with", iceServersRef.current.length, "ICE servers");
     const pc = new RTCPeerConnection({ iceServers: iceServersRef.current, iceTransportPolicy: "all" });
 
     pc.ontrack = (event) => {
       const remote = event.streams[0];
       const isVideo = event.track.kind === "video";
+      console.log(`[Voice] 🎵 ontrack: kind=${event.track.kind}, label=${event.track.label}, enabled=${event.track.enabled}`);
       
       if (isVideo) {
         setRemoteScreenStream(remote);
