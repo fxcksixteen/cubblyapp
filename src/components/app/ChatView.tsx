@@ -445,7 +445,12 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
           </>
         )}
         <TypingIndicator
-          typingUsers={botTyping ? [{ id: BOT_USER_ID, name: recipientName }] : []}
+          typingUsers={[
+            ...(botTyping ? [{ id: BOT_USER_ID, name: recipientName }] : []),
+            ...(peerTyping && recipientUserId && recipientUserId !== BOT_USER_ID
+              ? [{ id: recipientUserId, name: recipientName }]
+              : []),
+          ]}
         />
         <div ref={bottomRef} />
       </div>
