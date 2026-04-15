@@ -88,6 +88,36 @@ export type Database = {
         }
         Relationships: []
       }
+      gif_favorites: {
+        Row: {
+          created_at: string
+          gif_id: string
+          gif_preview_url: string
+          gif_url: string
+          id: string
+          title: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          gif_id: string
+          gif_preview_url: string
+          gif_url: string
+          id?: string
+          title?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          gif_id?: string
+          gif_preview_url?: string
+          gif_url?: string
+          id?: string
+          title?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       messages: {
         Row: {
           content: string

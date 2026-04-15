@@ -110,9 +110,15 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
             onClick={() => setActiveView(item.id)}
             className={`flex w-full items-center gap-3 rounded-[4px] px-3 py-2 text-[15px] font-medium transition-colors cubbly-3d-nav ${
               activeView === item.id
-                ? "bg-[#404249] text-white"
-                : "text-[#949ba4] hover:bg-[#35373c] hover:text-[#dbdee1]"
+                ? "text-white"
+                : "hover:text-[#dbdee1]"
             }`}
+            style={{
+              backgroundColor: activeView === item.id ? "var(--app-active, #404249)" : undefined,
+              color: activeView !== item.id ? "var(--app-text-secondary, #949ba4)" : undefined,
+            }}
+            onMouseEnter={e => { if (activeView !== item.id) e.currentTarget.style.backgroundColor = "var(--app-hover, #35373c)"; }}
+            onMouseLeave={e => { if (activeView !== item.id) e.currentTarget.style.backgroundColor = ""; }}
           >
             <img src={item.icon} alt="" className="h-5 w-5 shrink-0 invert opacity-80" />
             {item.label}
@@ -121,26 +127,31 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
 
         {/* DM header */}
         <div className="mt-4 flex items-center justify-between px-1">
-          <span className="text-[11px] font-bold uppercase tracking-wide text-[#949ba4]">
+          <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--app-text-secondary, #949ba4)" }}>
             Direct Messages
           </span>
-          <Plus className="h-4 w-4 cursor-pointer text-[#949ba4] hover:text-[#dbdee1]" />
+          <Plus className="h-4 w-4 cursor-pointer" style={{ color: "var(--app-text-secondary, #949ba4)" }} />
         </div>
 
         {/* DM list */}
         <div className="mt-1 flex flex-col gap-0.5">
           {conversations.map((conv) => {
             const color = getProfileColor(conv.participant.user_id);
+            const isActive = activeView === `dm:${conv.id}`;
             return (
               <ContextMenu key={conv.id}>
                 <ContextMenuTrigger asChild>
                   <button
                     onClick={() => setActiveView(`dm:${conv.id}`)}
                     className={`group flex w-full items-center gap-3 rounded-[4px] px-2 py-1.5 transition-colors cubbly-3d-nav ${
-                      activeView === `dm:${conv.id}`
-                        ? "bg-[#404249] text-white"
-                        : "text-[#949ba4] hover:bg-[#35373c] hover:text-[#dbdee1]"
+                      isActive ? "text-white" : ""
                     }`}
+                    style={{
+                      backgroundColor: isActive ? "var(--app-active, #404249)" : undefined,
+                      color: !isActive ? "var(--app-text-secondary, #949ba4)" : undefined,
+                    }}
+                    onMouseEnter={e => { if (!isActive) e.currentTarget.style.backgroundColor = "var(--app-hover, #35373c)"; }}
+                    onMouseLeave={e => { if (!isActive) e.currentTarget.style.backgroundColor = ""; }}
                   >
                     <div className="relative">
                       {conv.participant.avatar_url ? (
@@ -154,19 +165,20 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                         </div>
                       )}
                       <div className="absolute -bottom-0.5 -right-0.5">
-                        <StatusIndicator status={conv.participant.status} size="sm" borderColor="#2b2d31" />
+                        <StatusIndicator status={conv.participant.status} size="sm" borderColor="var(--app-bg-secondary, #2b2d31)" />
                       </div>
                     </div>
                     <span className="truncate text-sm font-medium">{conv.participant.display_name}</span>
                     <X
                       onClick={(e) => { e.stopPropagation(); onCloseConversation(conv.id); }}
-                      className="ml-auto h-4 w-4 shrink-0 opacity-0 group-hover:opacity-100 text-[#949ba4] hover:text-[#dbdee1]"
+                      className="ml-auto h-4 w-4 shrink-0 opacity-0 group-hover:opacity-100"
+                      style={{ color: "var(--app-text-secondary, #949ba4)" }}
                     />
                   </button>
                 </ContextMenuTrigger>
                 <ContextMenuContent
                   className="w-52 rounded-xl border p-1.5 shadow-xl"
-                  style={{ backgroundColor: "#111214", borderColor: "#2b2d31" }}
+                  style={{ backgroundColor: "#111214", borderColor: "var(--app-border, #2b2d31)" }}
                 >
                   <ContextMenuItem
                     onClick={() => setActiveView(`dm:${conv.id}`)}
@@ -189,7 +201,7 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                     <X className="h-4 w-4" />
                     Close DM
                   </ContextMenuItem>
-                  <ContextMenuSeparator className="my-1 bg-[#2b2d31]" />
+                  <ContextMenuSeparator className="my-1" style={{ backgroundColor: "var(--app-border, #2b2d31)" }} />
                   <ContextMenuItem
                     onClick={() => handleBlockUser(conv.participant.user_id)}
                     className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#ed4245] hover:bg-[#ed4245] hover:text-white cursor-pointer"
@@ -197,7 +209,7 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                     <img src={blockUserIcon} alt="" className="h-4 w-4" style={{ filter: "invert(36%) sepia(93%) saturate(7471%) hue-rotate(348deg) brightness(101%) contrast(88%)" }} />
                     Block
                   </ContextMenuItem>
-                  <ContextMenuSeparator className="my-1 bg-[#2b2d31]" />
+                  <ContextMenuSeparator className="my-1" style={{ backgroundColor: "var(--app-border, #2b2d31)" }} />
                   <ContextMenuItem
                     onClick={() => handleCopyUserId(conv.participant.user_id)}
                     className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer"
@@ -221,14 +233,17 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
         />
         <div className="flex-1 overflow-hidden min-w-0">
           <p className="truncate text-[15px] font-bold text-white leading-snug">{displayName}</p>
-          <p className="truncate text-[11px] text-[#949ba4] leading-snug">{username}</p>
+          <p className="truncate text-[11px] leading-snug" style={{ color: "var(--app-text-secondary, #949ba4)" }}>{username}</p>
         </div>
         <div className="flex items-center gap-0.5 shrink-0">
           <button
             onClick={() => {
               if (activeCall) { toggleMute(); } else { setLocalMuted(!localMuted); }
             }}
-            className={`rounded p-1.5 transition-colors ${(activeCall ? activeCall.isMuted : localMuted) ? "bg-[#ed4245]/20" : "hover:bg-[#35373c]"}`}
+            className="rounded p-1.5 transition-colors"
+            style={{ backgroundColor: (activeCall ? activeCall.isMuted : localMuted) ? "rgba(237,66,69,0.2)" : undefined }}
+            onMouseEnter={e => { if (!(activeCall ? activeCall.isMuted : localMuted)) e.currentTarget.style.backgroundColor = "var(--app-hover, #35373c)"; }}
+            onMouseLeave={e => { if (!(activeCall ? activeCall.isMuted : localMuted)) e.currentTarget.style.backgroundColor = ""; }}
             title={(activeCall ? activeCall.isMuted : localMuted) ? "Unmute" : "Mute"}
           >
             <img
@@ -242,7 +257,10 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
             onClick={() => {
               if (activeCall) { toggleDeafen(); } else { setLocalDeafened(!localDeafened); }
             }}
-            className={`rounded p-1.5 transition-colors ${(activeCall ? activeCall.isDeafened : localDeafened) ? "bg-[#ed4245]/20" : "hover:bg-[#35373c]"}`}
+            className="rounded p-1.5 transition-colors"
+            style={{ backgroundColor: (activeCall ? activeCall.isDeafened : localDeafened) ? "rgba(237,66,69,0.2)" : undefined }}
+            onMouseEnter={e => { if (!(activeCall ? activeCall.isDeafened : localDeafened)) e.currentTarget.style.backgroundColor = "var(--app-hover, #35373c)"; }}
+            onMouseLeave={e => { if (!(activeCall ? activeCall.isDeafened : localDeafened)) e.currentTarget.style.backgroundColor = ""; }}
             title={(activeCall ? activeCall.isDeafened : localDeafened) ? "Undeafen" : "Deafen"}
           >
             <img
@@ -254,7 +272,9 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
           </button>
           <button
             onClick={() => setSettingsOpen(true)}
-            className="rounded p-1.5 hover:bg-[#35373c] transition-colors"
+            className="rounded p-1.5 transition-colors"
+            onMouseEnter={e => { e.currentTarget.style.backgroundColor = "var(--app-hover, #35373c)"; }}
+            onMouseLeave={e => { e.currentTarget.style.backgroundColor = ""; }}
             title="User Settings"
           >
             <img

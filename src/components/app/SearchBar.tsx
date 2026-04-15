@@ -100,8 +100,10 @@ const SearchBar = ({ onOpenDM }: SearchBarProps) => {
                           setOpen(false);
                           setQuery("");
                         }}
-                        className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm hover:bg-[#35373c]"
+                        className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm transition-colors"
                         style={{ color: "var(--app-text-primary)" }}
+                        onMouseEnter={e => { e.currentTarget.style.backgroundColor = "var(--app-hover, #35373c)"; }}
+                        onMouseLeave={e => { e.currentTarget.style.backgroundColor = ""; }}
                       >
                         {conversation.participant.avatar_url ? (
                           <img src={conversation.participant.avatar_url} alt="" className="h-8 w-8 rounded-full object-cover" />
@@ -135,8 +137,10 @@ const SearchBar = ({ onOpenDM }: SearchBarProps) => {
                           setOpen(false);
                           setQuery("");
                         }}
-                        className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm hover:bg-[#35373c]"
+                        className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm transition-colors"
                         style={{ color: "var(--app-text-primary)" }}
+                        onMouseEnter={e => { e.currentTarget.style.backgroundColor = "var(--app-hover, #35373c)"; }}
+                        onMouseLeave={e => { e.currentTarget.style.backgroundColor = ""; }}
                       >
                         {friend.profile.avatar_url ? (
                           <img src={friend.profile.avatar_url} alt="" className="h-8 w-8 rounded-full object-cover" />

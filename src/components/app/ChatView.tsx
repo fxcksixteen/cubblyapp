@@ -70,6 +70,9 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
   const [profileCard, setProfileCard] = useState<{ userId: string; name: string; x: number; y: number } | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const userHasScrolledUpRef = useRef(false);
+  const prevMessageCountRef = useRef(0);
 
   const isBotConversation = recipientUserId === BOT_USER_ID;
 
@@ -82,9 +85,29 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
 
   const conversationCallEvents = callEvents.filter(e => e.conversationId === conversationId);
 
+  // Track if user scrolled up
+  const handleScroll = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    const threshold = 100;
+    const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+    userHasScrolledUpRef.current = !isAtBottom;
+  }, []);
+
+  // Only auto-scroll when new messages arrive and user hasn't scrolled up
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, conversationCallEvents, botTyping]);
+    if (messages.length > prevMessageCountRef.current && !userHasScrolledUpRef.current) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+    prevMessageCountRef.current = messages.length;
+  }, [messages.length]);
+
+  // Auto-scroll when botTyping changes
+  useEffect(() => {
+    if (botTyping && !userHasScrolledUpRef.current) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [botTyping]);
 
   const handleSend = async () => {
     if (!input.trim() && pendingFiles.length === 0) return;
@@ -118,6 +141,8 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
       if (isBotConversation) {
         setBotTyping(true);
       }
+      // Reset scroll flag so auto-scroll works for own messages
+      userHasScrolledUpRef.current = false;
       await sendMessage(content);
     }
 
@@ -126,6 +151,7 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
 
   const handleGifSelect = async (gifUrl: string) => {
     if (isBotConversation) setBotTyping(true);
+    userHasScrolledUpRef.current = false;
     await sendMessage(gifUrl);
   };
 
@@ -208,7 +234,12 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4" style={{ minHeight: 0 }}>
+      <div
+        ref={messagesContainerRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto px-4 py-4"
+        style={{ minHeight: 0 }}
+      >
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#5865f2] border-t-transparent" />
@@ -222,7 +253,7 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
               {recipientName.charAt(0).toUpperCase()}
             </div>
             <h3 className="text-xl font-bold text-white">{recipientName}</h3>
-            <p className="mt-1 text-sm text-[#949ba4]">
+            <p className="mt-1 text-sm" style={{ color: "var(--app-text-secondary, #949ba4)" }}>
               This is the beginning of your direct message history with <strong className="text-white">{recipientName}</strong>.
             </p>
           </div>
@@ -232,9 +263,9 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
               if (item.type === "divider") {
                 return (
                   <div key={`divider-${idx}`} className="my-4 flex items-center gap-2">
-                    <div className="flex-1 h-px bg-[#3f4147]" />
-                    <span className="text-[11px] font-semibold text-[#949ba4] px-2 whitespace-nowrap">{item.label}</span>
-                    <div className="flex-1 h-px bg-[#3f4147]" />
+                    <div className="flex-1 h-px" style={{ backgroundColor: "var(--app-border, #3f4147)" }} />
+                    <span className="text-[11px] font-semibold px-2 whitespace-nowrap" style={{ color: "var(--app-text-secondary, #949ba4)" }}>{item.label}</span>
+                    <div className="flex-1 h-px" style={{ backgroundColor: "var(--app-border, #3f4147)" }} />
                   </div>
                 );
               }
@@ -251,7 +282,7 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
               }
 
               return (
-                <div key={idx} className="mt-4 first:mt-0 flex gap-3 hover:bg-[#2e3035] rounded px-2 py-1 relative group">
+                <div key={idx} className="mt-4 first:mt-0 flex gap-3 rounded px-2 py-1 relative group" style={{ transition: "background-color 0.15s" }} onMouseEnter={e => (e.currentTarget.style.backgroundColor = "var(--app-hover, #2e3035)")} onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}>
                   {item.sender_avatar_url ? (
                     <img
                       src={item.sender_avatar_url}
@@ -276,7 +307,7 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
                       >
                         {item.sender_name}
                       </span>
-                      <span className="text-[11px] text-[#949ba4]">{formatTime(item.messages[0].created_at)}</span>
+                      <span className="text-[11px]" style={{ color: "var(--app-text-secondary, #949ba4)" }}>{formatTime(item.messages[0].created_at)}</span>
                     </div>
                     {item.messages.map((msg) => {
                       const { text, attachments } = parseContent(msg.content);
@@ -302,7 +333,7 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
                               /^https?:\/\/.*\.(gif|giphy)/i.test(text) ? (
                                 <img src={text} alt="GIF" className="max-h-[200px] rounded-lg mt-1" loading="lazy" />
                               ) : (
-                                <p className={`text-[15px] leading-relaxed ${msg.status === "sending" ? "text-[#949ba4]/50" : "text-[#dbdee1]"}`}>
+                                <p className={`text-[15px] leading-relaxed ${msg.status === "sending" ? "opacity-50" : ""}`} style={{ color: "var(--app-text-primary, #dbdee1)" }}>
                                   {text}
                                 </p>
                               )
@@ -313,7 +344,13 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
                                 href={att.url}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="mt-1 flex items-center gap-2 rounded-lg border border-[#1e1f22] bg-[#2b2d31] p-3 max-w-sm hover:bg-[#32353b] transition-colors"
+                                className="mt-1 flex items-center gap-2 rounded-lg border p-3 max-w-sm transition-colors"
+                                style={{
+                                  borderColor: "var(--app-border, #1e1f22)",
+                                  backgroundColor: "var(--app-bg-secondary, #2b2d31)",
+                                }}
+                                onMouseEnter={e => (e.currentTarget.style.backgroundColor = "var(--app-hover, #32353b)")}
+                                onMouseLeave={e => (e.currentTarget.style.backgroundColor = "var(--app-bg-secondary, #2b2d31)")}
                               >
                                 {att.type.startsWith("image/") ? (
                                   <img src={att.url} alt={att.name} className="max-h-[200px] max-w-full rounded" />
@@ -322,7 +359,7 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
                                     <img src={folderFileIcon} alt="" className="h-8 w-8 invert opacity-60 shrink-0" />
                                     <div className="min-w-0">
                                       <p className="text-sm font-medium text-[#00a8fc] truncate">{att.name}</p>
-                                      <p className="text-[11px] text-[#949ba4]">{formatFileSize(att.size)}</p>
+                                      <p className="text-[11px]" style={{ color: "var(--app-text-secondary, #949ba4)" }}>{formatFileSize(att.size)}</p>
                                     </div>
                                   </>
                                 )}
@@ -346,14 +383,14 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
 
       {/* Pending files preview */}
       {pendingFiles.length > 0 && (
-        <div className="border-t border-[#1e1f22] bg-[#2b2d31] px-4 py-2">
+        <div className="border-t px-4 py-2" style={{ borderColor: "var(--app-border, #1e1f22)", backgroundColor: "var(--app-bg-secondary, #2b2d31)" }}>
           <div className="flex flex-wrap gap-2">
             {pendingFiles.map((pf) => (
-              <div key={pf.id} className="flex items-center gap-2 rounded-lg bg-[#383a40] px-3 py-2 text-sm">
+              <div key={pf.id} className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: "var(--app-input, #383a40)" }}>
                 <img src={folderFileIcon} alt="" className="h-5 w-5 invert opacity-60 shrink-0" />
                 <div className="min-w-0">
-                  <p className="text-[#dbdee1] text-xs font-medium truncate max-w-[150px]">{pf.file.name}</p>
-                  <p className="text-[10px] text-[#949ba4]">{formatFileSize(pf.file.size)}</p>
+                  <p className="text-xs font-medium truncate max-w-[150px]" style={{ color: "var(--app-text-primary, #dbdee1)" }}>{pf.file.name}</p>
+                  <p className="text-[10px]" style={{ color: "var(--app-text-secondary, #949ba4)" }}>{formatFileSize(pf.file.size)}</p>
                 </div>
                 <button onClick={() => removePendingFile(pf.id)} className="text-[#949ba4] hover:text-[#ed4245]">
                   <X className="h-3.5 w-3.5" />
@@ -366,12 +403,12 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
 
       {/* Input */}
       <div className="px-4 pb-4">
-        <div className="flex items-center gap-2 rounded-lg bg-[#383a40] px-4 py-2.5 relative">
+        <div className="flex items-center gap-2 rounded-lg px-4 py-2.5 relative" style={{ backgroundColor: "var(--app-input, #383a40)" }}>
           <div className="relative">
             <button
               onClick={() => setAttachMenuOpen(!attachMenuOpen)}
-              className="flex h-6 w-6 shrink-0 items-center justify-center text-[#b5bac1] hover:text-[#dbdee1] transition-transform"
-              style={{ transform: attachMenuOpen ? "rotate(45deg)" : "rotate(0deg)" }}
+              className="flex h-5 w-5 shrink-0 items-center justify-center transition-transform"
+              style={{ color: "var(--app-text-secondary, #b5bac1)", transform: attachMenuOpen ? "rotate(45deg)" : "rotate(0deg)" }}
             >
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <line x1="12" y1="5" x2="12" y2="19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -380,10 +417,11 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
             </button>
 
             {attachMenuOpen && (
-              <div className="absolute bottom-full left-0 mb-2 w-52 rounded-lg bg-[#111214] p-1.5 shadow-xl border border-[#1e1f22]">
+              <div className="absolute bottom-full left-0 mb-2 w-52 rounded-lg p-1.5 shadow-xl border" style={{ backgroundColor: "var(--app-bg-tertiary, #111214)", borderColor: "var(--app-border, #1e1f22)" }}>
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white transition-colors"
+                  className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm hover:bg-[#5865f2] hover:text-white transition-colors"
+                  style={{ color: "var(--app-text-primary, #dbdee1)" }}
                 >
                   <img src={folderFileIcon} alt="" className="h-5 w-5 invert opacity-80" />
                   Upload a File
@@ -398,15 +436,16 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
             placeholder={`Message @${recipientName}`}
-            className="flex-1 bg-transparent text-sm text-[#dbdee1] outline-none placeholder:text-[#6d6f78]"
+            className="flex-1 bg-transparent text-sm outline-none placeholder:text-[#6d6f78]"
+            style={{ color: "var(--app-text-primary, #dbdee1)" }}
           />
 
-          <div className="relative">
+          <div className="relative flex items-center">
             <button
               onClick={() => setGifPickerOpen(!gifPickerOpen)}
-              className="text-[#b5bac1] hover:text-[#dbdee1] transition-opacity"
+              className="flex items-center justify-center"
             >
-              <img src={gifIcon} alt="GIF" className="h-6 w-6 invert opacity-60 hover:opacity-100 transition-opacity" />
+              <img src={gifIcon} alt="GIF" className="h-5 w-5 invert opacity-60 hover:opacity-100 transition-opacity" />
             </button>
             <GifPicker
               isOpen={gifPickerOpen}
@@ -418,7 +457,7 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
           <button
             onClick={handleSend}
             disabled={uploading || (!input.trim() && pendingFiles.length === 0)}
-            className="text-[#b5bac1] hover:text-[#dbdee1] disabled:opacity-30 transition-opacity"
+            className="flex items-center justify-center disabled:opacity-30 transition-opacity"
           >
             <img src={sendIcon} alt="Send" className="h-5 w-5 invert opacity-80" />
           </button>
