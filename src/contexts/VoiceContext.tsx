@@ -971,7 +971,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     stopScreenShare();
     setRemoteScreenStream(null);
 
-    if (channelRef.current && user) {
+    // Only broadcast hangup if WE initiated it (not a remote hangup)
+    if (!isRemoteHangup.current && channelRef.current && user) {
       channelRef.current.send({
         type: "broadcast",
         event: "voice-signal",
@@ -982,7 +983,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     pcRef.current?.close();
     pcRef.current = null;
 
-    // Use ref to always have current stream
     localStreamRef.current?.getTracks().forEach(t => t.stop());
     localStreamRef.current = null;
     setLocalStream(null);
@@ -994,6 +994,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     remoteAnalyserRef.current = null;
     setRemoteAudioLevel(0);
 
+    // Reset ICE queues
+    incomingCandidateQueue.current = [];
+    outgoingCandidateBuffer.current = [];
+    remoteDescriptionSet.current = false;
+    pendingOfferRef.current = null;
+
     document.querySelectorAll("audio").forEach((el: any) => {
       if (el.__cubblyRemote) { el.pause(); el.srcObject = null; el.remove(); }
     });
@@ -1002,7 +1008,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       supabase.removeChannel(channelRef.current);
       channelRef.current = null;
     }
-    pendingOfferRef.current = null;
   }, [user, stopAudioLevelMonitor, stopScreenShare]);
 
   // Keep endCall ref always current
