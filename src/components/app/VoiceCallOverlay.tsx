@@ -258,6 +258,15 @@ export const CallPanel = ({ conversationId, recipientName, recipientUserId }: {
           <PhoneOff className="h-4 w-4" />
         </button>
       </div>
+
+      <ScreenSharePicker
+        isOpen={showScreenSharePicker}
+        onClose={() => setShowScreenSharePicker(false)}
+        onSelect={(type: ScreenShareType) => {
+          setShowScreenSharePicker(false);
+          startScreenShare(type);
+        }}
+      />
     </div>
   );
 };
