@@ -3,8 +3,9 @@ import { useMessages, Message, MessageStatus } from "@/hooks/useMessages";
 import { useAuth } from "@/contexts/AuthContext";
 import { useVoice } from "@/contexts/VoiceContext";
 import { supabase } from "@/integrations/supabase/client";
-import { X, Phone, PhoneOff } from "lucide-react";
+import { X } from "lucide-react";
 import { defaultProfileColor, getProfileColor } from "@/lib/profileColors";
+import { CallPanel, CallEventMessage } from "./VoiceCallOverlay";
 import sendIcon from "@/assets/icons/send.svg";
 import folderFileIcon from "@/assets/icons/folder-file.svg";
 
@@ -22,6 +23,13 @@ interface ChatViewProps {
 interface PendingFile {
   file: File;
   id: string;
+}
+
+interface CallEvent {
+  id: string;
+  state: "ongoing" | "ended" | "missed";
+  startedAt: string;
+  endedAt?: string;
 }
 
 const formatFileSize = (bytes: number) => {
@@ -57,12 +65,37 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [callEvents, setCallEvents] = useState<CallEvent[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const prevCallRef = useRef<string | null>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, callEvents]);
+
+  // Track call events
+  const isInCall = activeCall?.conversationId === conversationId;
+
+  useEffect(() => {
+    if (isInCall && activeCall?.state === "connected" && !prevCallRef.current) {
+      // Call just started
+      const callId = `call-${Date.now()}`;
+      prevCallRef.current = callId;
+      setCallEvents(prev => [...prev, {
+        id: callId,
+        state: "ongoing",
+        startedAt: new Date().toISOString(),
+      }]);
+    } else if (!isInCall && prevCallRef.current) {
+      // Call just ended
+      const endedCallId = prevCallRef.current;
+      prevCallRef.current = null;
+      setCallEvents(prev => prev.map(e =>
+        e.id === endedCallId ? { ...e, state: "ended" as const, endedAt: new Date().toISOString() } : e
+      ));
+    }
+  }, [isInCall, activeCall?.state]);
 
   const handleSend = async () => {
     if (!input.trim() && pendingFiles.length === 0) return;
@@ -121,16 +154,6 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
     return getProfileColor(senderId).bg;
   };
 
-  const handleVoiceCall = () => {
-    if (activeCall?.conversationId === conversationId) {
-      endCall();
-    } else if (recipientUserId) {
-      startCall(conversationId, recipientUserId, recipientName);
-    }
-  };
-
-  const isInCall = activeCall?.conversationId === conversationId;
-
   // Build grouped messages with time dividers
   const items: ({ type: "messages"; sender_id: string; sender_name: string; messages: Message[] } | { type: "divider"; label: string })[] = [];
 
@@ -151,13 +174,20 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
+      {/* Discord-style call panel */}
+      <CallPanel
+        conversationId={conversationId}
+        recipientName={recipientName}
+        recipientUserId={recipientUserId}
+      />
+
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-4">
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#5865f2] border-t-transparent" />
           </div>
-        ) : messages.length === 0 ? (
+        ) : messages.length === 0 && callEvents.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <div
               className="mb-3 flex h-16 w-16 items-center justify-center rounded-full text-2xl font-bold text-white"
@@ -171,69 +201,82 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
             </p>
           </div>
         ) : (
-          items.map((item, idx) => {
-            if (item.type === "divider") {
+          <>
+            {items.map((item, idx) => {
+              if (item.type === "divider") {
+                return (
+                  <div key={`divider-${idx}`} className="my-4 flex items-center gap-2">
+                    <div className="flex-1 h-px bg-[#3f4147]" />
+                    <span className="text-[11px] font-semibold text-[#949ba4] px-2 whitespace-nowrap">{item.label}</span>
+                    <div className="flex-1 h-px bg-[#3f4147]" />
+                  </div>
+                );
+              }
+
               return (
-                <div key={`divider-${idx}`} className="my-4 flex items-center gap-2">
-                  <div className="flex-1 h-px bg-[#3f4147]" />
-                  <span className="text-[11px] font-semibold text-[#949ba4] px-2 whitespace-nowrap">{item.label}</span>
-                  <div className="flex-1 h-px bg-[#3f4147]" />
+                <div key={idx} className="mt-4 first:mt-0 flex gap-3 hover:bg-[#2e3035] rounded px-2 py-1">
+                  <div
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white"
+                    style={{ backgroundColor: getAvatarColor(item.sender_id) }}
+                  >
+                    {item.sender_name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-baseline gap-2">
+                      <span className="font-semibold text-white text-sm">
+                        {item.sender_id === user?.id ? "You" : item.sender_name}
+                      </span>
+                      <span className="text-[11px] text-[#949ba4]">{formatTime(item.messages[0].created_at)}</span>
+                    </div>
+                    {item.messages.map((msg) => {
+                      const { text, attachments } = parseContent(msg.content);
+                      return (
+                        <div key={msg.id}>
+                          {text && (
+                            <p className={`text-sm leading-relaxed ${msg.status === "sending" ? "text-[#949ba4]/50" : "text-[#dbdee1]"}`}>
+                              {text}
+                            </p>
+                          )}
+                          {attachments.map((att, ai) => (
+                            <a
+                              key={ai}
+                              href={att.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="mt-1 flex items-center gap-2 rounded-lg border border-[#1e1f22] bg-[#2b2d31] p-3 max-w-sm hover:bg-[#32353b] transition-colors"
+                            >
+                              {att.type.startsWith("image/") ? (
+                                <img src={att.url} alt={att.name} className="max-h-[200px] max-w-full rounded" />
+                              ) : (
+                                <>
+                                  <img src={folderFileIcon} alt="" className="h-8 w-8 invert opacity-60 shrink-0" />
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-medium text-[#00a8fc] truncate">{att.name}</p>
+                                    <p className="text-[11px] text-[#949ba4]">{formatFileSize(att.size)}</p>
+                                  </div>
+                                </>
+                              )}
+                            </a>
+                          ))}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               );
-            }
+            })}
 
-            return (
-              <div key={idx} className="mt-4 first:mt-0 flex gap-3 hover:bg-[#2e3035] rounded px-2 py-1">
-                <div
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white"
-                  style={{ backgroundColor: getAvatarColor(item.sender_id) }}
-                >
-                  {item.sender_name.charAt(0).toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-baseline gap-2">
-                    <span className="font-semibold text-white text-sm">
-                      {item.sender_id === user?.id ? "You" : item.sender_name}
-                    </span>
-                    <span className="text-[11px] text-[#949ba4]">{formatTime(item.messages[0].created_at)}</span>
-                  </div>
-                  {item.messages.map((msg) => {
-                    const { text, attachments } = parseContent(msg.content);
-                    return (
-                      <div key={msg.id}>
-                        {text && (
-                          <p className={`text-sm leading-relaxed ${msg.status === "sending" ? "text-[#949ba4]/50" : "text-[#dbdee1]"}`}>
-                            {text}
-                          </p>
-                        )}
-                        {attachments.map((att, ai) => (
-                          <a
-                            key={ai}
-                            href={att.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="mt-1 flex items-center gap-2 rounded-lg border border-[#1e1f22] bg-[#2b2d31] p-3 max-w-sm hover:bg-[#32353b] transition-colors"
-                          >
-                            {att.type.startsWith("image/") ? (
-                              <img src={att.url} alt={att.name} className="max-h-[200px] max-w-full rounded" />
-                            ) : (
-                              <>
-                                <img src={folderFileIcon} alt="" className="h-8 w-8 invert opacity-60 shrink-0" />
-                                <div className="min-w-0">
-                                  <p className="text-sm font-medium text-[#00a8fc] truncate">{att.name}</p>
-                                  <p className="text-[11px] text-[#949ba4]">{formatFileSize(att.size)}</p>
-                                </div>
-                              </>
-                            )}
-                          </a>
-                        ))}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })
+            {/* Call events at the bottom of chat */}
+            {callEvents.map((evt) => (
+              <CallEventMessage
+                key={evt.id}
+                state={evt.state}
+                startedAt={evt.startedAt}
+                endedAt={evt.endedAt}
+                onJoin={evt.state === "ongoing" ? undefined : undefined}
+              />
+            ))}
+          </>
         )}
         <div ref={bottomRef} />
       </div>
