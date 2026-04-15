@@ -153,7 +153,9 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                           {conv.participant.display_name.charAt(0).toUpperCase()}
                         </div>
                       )}
-                      <div className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-[2.5px] border-[#2b2d31] ${statusColors[conv.participant.status]}`} />
+                      <div className="absolute -bottom-0.5 -right-0.5">
+                        <StatusIndicator status={conv.participant.status} size="sm" borderColor="#2b2d31" />
+                      </div>
                     </div>
                     <span className="truncate text-sm font-medium">{conv.participant.display_name}</span>
                     <X
