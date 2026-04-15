@@ -68,11 +68,14 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
   const [botTyping, setBotTyping] = useState(false);
   const [gifPickerOpen, setGifPickerOpen] = useState(false);
   const [profileCard, setProfileCard] = useState<{ userId: string; name: string; x: number; y: number } | null>(null);
+  const [peerTyping, setPeerTyping] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const userHasScrolledUpRef = useRef(false);
   const prevMessageCountRef = useRef(0);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastTypingBroadcast = useRef(0);
 
   const isBotConversation = recipientUserId === BOT_USER_ID;
 
