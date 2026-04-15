@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useVoice } from "@/contexts/VoiceContext";
 import { Conversation } from "@/hooks/useConversations";
 import { supabase } from "@/integrations/supabase/client";
 import { Plus, X, ShoppingBag } from "lucide-react";
@@ -36,11 +37,13 @@ const statusColors: Record<string, string> = {
 
 const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversation, onOpenDM }: DMSidebarProps) => {
   const { user } = useAuth();
+  const { activeCall, toggleMute, toggleDeafen } = useVoice();
   const displayName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "User";
   const username = user?.user_metadata?.username || displayName.toLowerCase();
 
-  const [muted, setMuted] = useState(false);
-  const [deafened, setDeafened] = useState(false);
+  // Local mute/deafen for when NOT in a call (pre-call preference)
+  const [localMuted, setLocalMuted] = useState(false);
+  const [localDeafened, setLocalDeafened] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [userStatus, setUserStatus] = useState("online");
 
