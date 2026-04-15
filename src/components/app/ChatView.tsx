@@ -12,6 +12,8 @@ import MessageContextMenu from "./chat/MessageContextMenu";
 import UserProfileCard from "./chat/UserProfileCard";
 import sendIcon from "@/assets/icons/send.svg";
 import folderFileIcon from "@/assets/icons/folder-file.svg";
+import gifIcon from "@/assets/icons/gif.svg";
+import GifPicker from "./GifPicker";
 
 const BOT_USER_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -64,6 +66,7 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [botTyping, setBotTyping] = useState(false);
+  const [gifPickerOpen, setGifPickerOpen] = useState(false);
   const [profileCard, setProfileCard] = useState<{ userId: string; name: string; x: number; y: number } | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
