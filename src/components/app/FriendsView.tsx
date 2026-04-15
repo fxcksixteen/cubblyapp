@@ -2,9 +2,10 @@ import { useState } from "react";
 import { useFriends, Friendship } from "@/hooks/useFriends";
 import { useAuth } from "@/contexts/AuthContext";
 import {
-  MoreVertical, Check, X, UserPlus, Search, UserX, UserMinus
+  Check, X, UserX, UserMinus
 } from "lucide-react";
 import messagesIcon from "@/assets/icons/messages.svg";
+import searchIcon from "@/assets/icons/search.svg";
 
 type FriendTab = "online" | "all" | "pending" | "blocked" | "add";
 
@@ -58,6 +59,11 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM }: FriendsViewProps) =>
 
   const displayList = getDisplayList();
 
+  const placeholderText = activeTab === "online" ? "Search online friends"
+    : activeTab === "all" ? "Search all friends"
+    : activeTab === "pending" ? "Search pending requests"
+    : "Search blocked users";
+
   const renderFriendActions = (friendship: Friendship) => {
     if (activeTab === "pending") {
       const isIncoming = friendship.addressee_id === user?.id;
@@ -66,7 +72,7 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM }: FriendsViewProps) =>
           {isIncoming && (
             <button
               onClick={() => acceptRequest(friendship.id)}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-[#2b2d31] text-[#3ba55c] hover:text-white"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-[#2b2d31] text-[#3ba55c] hover:text-white cubbly-3d-circle"
               title="Accept"
             >
               <Check className="h-4 w-4" />
@@ -74,7 +80,7 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM }: FriendsViewProps) =>
           )}
           <button
             onClick={() => declineRequest(friendship.id)}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-[#2b2d31] text-[#ed4245] hover:text-white"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-[#2b2d31] text-[#ed4245] hover:text-white cubbly-3d-circle"
             title={isIncoming ? "Decline" : "Cancel"}
           >
             <X className="h-4 w-4" />
@@ -88,7 +94,7 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM }: FriendsViewProps) =>
         <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100">
           <button
             onClick={() => unblockUser(friendship.id)}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-[#2b2d31] text-[#b5bac1] hover:text-[#dbdee1]"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-[#2b2d31] text-[#b5bac1] hover:text-[#dbdee1] cubbly-3d-circle"
             title="Unblock"
           >
             <UserX className="h-4 w-4" />
@@ -101,14 +107,14 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM }: FriendsViewProps) =>
       <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100">
         <button
           onClick={() => onOpenDM(friendship.profile.user_id)}
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-[#2b2d31] text-[#b5bac1] hover:text-[#dbdee1]"
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-[#2b2d31] text-[#b5bac1] hover:text-[#dbdee1] cubbly-3d-circle"
           title="Message"
         >
-          <img src={messagesIcon} alt="Message" className="h-4 w-4 invert opacity-80" />
+          <img src={messagesIcon} alt="Message" className="h-5 w-5 invert opacity-80" />
         </button>
         <button
           onClick={() => removeFriend(friendship.id)}
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-[#2b2d31] text-[#b5bac1] hover:text-[#ed4245]"
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-[#2b2d31] text-[#b5bac1] hover:text-[#ed4245] cubbly-3d-circle"
           title="Remove Friend"
         >
           <UserMinus className="h-4 w-4" />
@@ -150,15 +156,19 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM }: FriendsViewProps) =>
         ) : (
           <>
             <div className="mb-3">
-              <div className="flex items-center rounded-[4px] bg-[#1e1f22] px-2 py-1.5">
+              <div
+                className="flex h-8 items-center gap-2 rounded-full border px-3 cubbly-3d-pill"
+                style={{ backgroundColor: "var(--app-input)", borderColor: "var(--app-border)" }}
+              >
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search"
-                  className="flex-1 bg-transparent text-sm text-[#dbdee1] outline-none placeholder:text-[#6d6f78]"
+                  placeholder={placeholderText}
+                  className="flex-1 bg-transparent text-xs outline-none placeholder:text-[#6d6f78]"
+                  style={{ color: "var(--app-text-primary)" }}
                 />
-                <Search className="h-4 w-4 text-[#949ba4]" />
+                <img src={searchIcon} alt="" className="h-4 w-4 shrink-0 invert opacity-50" />
               </div>
             </div>
 

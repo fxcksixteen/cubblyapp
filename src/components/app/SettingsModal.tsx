@@ -112,7 +112,7 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
             <div className="rounded-[24px] border p-5" style={cardStyle}>
               <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: "var(--app-text-secondary)" }}>Account Notes</p>
               <p className="mt-3 text-sm leading-6" style={{ color: "var(--app-text-secondary)" }}>
-                This stays a popup now, and your theme choice is reflected inside this modal instead of keeping a separate hardcoded look.
+                Your theme choice is reflected inside this modal and across the entire app.
               </p>
             </div>
           </div>
@@ -123,7 +123,7 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
           <div className="space-y-6">
             <div>
               <h2 className="text-2xl font-bold" style={{ color: "var(--app-text-primary)" }}>Appearance</h2>
-              <p className="mt-2 text-sm" style={{ color: "var(--app-text-secondary)" }}>Pick a theme and the entire popup updates live with the rest of the app.</p>
+              <p className="mt-2 text-sm" style={{ color: "var(--app-text-secondary)" }}>Pick a theme and the entire app updates live.</p>
             </div>
 
             <div className="grid gap-6 xl:grid-cols-[1.15fr,0.85fr]">
@@ -208,7 +208,11 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
   };
 
   return (
-    <div className="app-themed fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onMouseDown={onClose}>
+    <div
+      className="app-themed fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: "rgba(0, 0, 0, 0.6)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" }}
+      onMouseDown={onClose}
+    >
       <div
         className="flex h-[min(86vh,800px)] w-full max-w-[1160px] overflow-hidden rounded-[30px] border shadow-[0_32px_90px_rgba(0,0,0,0.45)]"
         style={{ backgroundColor: "var(--app-bg-primary)", borderColor: "var(--app-border)" }}
