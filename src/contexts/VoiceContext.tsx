@@ -90,7 +90,7 @@ interface VoiceContextType {
   startCall: (conversationId: string, peerId: string, peerName: string) => void;
   acceptCall: () => void;
   endCall: () => void;
-  incomingCall: { conversationId: string; callerId: string; callerName: string; offer: RTCSessionDescriptionInit; callEventId?: string } | null;
+  incomingCall: { conversationId: string; callerId: string; callerName: string; callerAvatarUrl?: string; offer: RTCSessionDescriptionInit; callEventId?: string } | null;
   toggleMute: () => void;
   toggleDeafen: () => void;
   localStream: MediaStream | null;
@@ -188,6 +188,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const remoteAnimFrameRef = useRef<number>(0);
   // Track pre-deafen mute state so undeafen restores it
   const preMuteStateRef = useRef<boolean>(false);
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const endCallRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     detectBestRegion().then(setDetectedRegion);
@@ -303,8 +305,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
   // Apply voice processing constraints in real-time when settings change during a call
   useEffect(() => {
-    if (!localStream) return;
-    const tracks = localStream.getAudioTracks();
+    const stream = localStreamRef.current;
+    if (!stream) return;
+    const tracks = stream.getAudioTracks();
     tracks.forEach(track => {
       track.applyConstraints({
         echoCancellation: settings.echoCancellation,
@@ -417,21 +420,34 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     pc.oniceconnectionstatechange = () => {
       console.log("[Voice] ICE state:", pc.iceConnectionState);
       if (pc.iceConnectionState === "connected") {
-        // Ensure local audio tracks are enabled when connected
+        // Ensure ALL local audio tracks are enabled when connected
         const senders = pc.getSenders();
         senders.forEach(s => {
-          if (s.track?.kind === "audio" && !s.track.enabled) {
-            // Only re-enable if not manually muted
-            const call = activeCall;
-            if (call && !call.isMuted && !call.isDeafened) {
-              s.track.enabled = true;
-            }
+          if (s.track?.kind === "audio") {
+            // Always enable on connect — mute state is applied separately
+            s.track.enabled = true;
+            console.log("[Voice] Audio track enabled on ICE connected");
           }
         });
       }
       if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed") {
         console.warn("[Voice] ICE connection failed/disconnected");
-        endCall();
+        // Use a timeout to avoid acting on transient disconnects
+        setTimeout(() => {
+          if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed") {
+            console.error("[Voice] ICE permanently failed, ending call");
+            // Clean up directly to avoid stale closure issues
+            pc.close();
+            pcRef.current = null;
+            setActiveCall(null);
+            setIncomingCall(null);
+            setRemoteStream(null);
+            setRemoteAudioLevel(0);
+            document.querySelectorAll("audio").forEach((el: any) => {
+              if (el.__cubblyRemote) { el.pause(); el.srcObject = null; el.remove(); }
+            });
+          }
+        }, 3000);
       }
     };
 
@@ -500,7 +516,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         }
 
         if (payload.type === "hangup") {
-          endCall();
+          endCallRef.current();
         }
 
         if (payload.type === "screen-offer") {
@@ -573,6 +589,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     try {
       const stream = await getUserMedia();
       setLocalStream(stream);
+      localStreamRef.current = stream;
       startAudioLevelMonitor(stream);
 
       const pc = createPeerConnection();
@@ -670,6 +687,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     try {
       const stream = await getUserMedia();
       setLocalStream(stream);
+      localStreamRef.current = stream;
       startAudioLevelMonitor(stream);
 
       const pc = createPeerConnection();
@@ -905,7 +923,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     pcRef.current?.close();
     pcRef.current = null;
 
-    localStream?.getTracks().forEach(t => t.stop());
+    // Use ref to always have current stream
+    localStreamRef.current?.getTracks().forEach(t => t.stop());
+    localStreamRef.current = null;
     setLocalStream(null);
     setRemoteStream(null);
     setActiveCall(null);
@@ -923,14 +943,19 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       supabase.removeChannel(channelRef.current);
       channelRef.current = null;
     }
-  }, [localStream, user, stopAudioLevelMonitor, stopScreenShare]);
+    pendingOfferRef.current = null;
+  }, [user, stopAudioLevelMonitor, stopScreenShare]);
+
+  // Keep endCall ref always current
+  useEffect(() => { endCallRef.current = endCall; }, [endCall]);
 
   const toggleMute = useCallback(() => {
-    if (localStream) {
-      localStream.getAudioTracks().forEach(track => { track.enabled = !track.enabled; });
+    const stream = localStreamRef.current;
+    if (stream) {
+      stream.getAudioTracks().forEach(track => { track.enabled = !track.enabled; });
       setActiveCall(prev => prev ? { ...prev, isMuted: !prev.isMuted } : null);
     }
-  }, [localStream]);
+  }, []);
 
   const toggleDeafen = useCallback(() => {
     setActiveCall(prev => {
@@ -944,20 +969,20 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       if (newDeafened) {
         // Save current mute state before deafening, then mute mic
         preMuteStateRef.current = prev.isMuted;
-        if (localStream) {
-          localStream.getAudioTracks().forEach(track => { track.enabled = false; });
+        if (localStreamRef.current) {
+          localStreamRef.current.getAudioTracks().forEach(track => { track.enabled = false; });
         }
         return { ...prev, isDeafened: true, isMuted: true };
       } else {
         // Restore pre-deafen mute state
         const restoreMuted = preMuteStateRef.current;
-        if (localStream) {
-          localStream.getAudioTracks().forEach(track => { track.enabled = !restoreMuted; });
+        if (localStreamRef.current) {
+          localStreamRef.current.getAudioTracks().forEach(track => { track.enabled = !restoreMuted; });
         }
         return { ...prev, isDeafened: false, isMuted: restoreMuted };
       }
     });
-  }, [localStream]);
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -968,15 +993,16 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         try {
           const sigChannel = await setupSignaling(payload.conversationId);
           
-          // Fetch caller profile to show incoming call UI
+          // Fetch caller profile (name + avatar) to show incoming call UI
           supabase
             .from("profiles")
-            .select("display_name")
+            .select("display_name, avatar_url")
             .eq("user_id", payload.callerId)
             .maybeSingle()
             .then(({ data }) => {
               const callerName = data?.display_name || payload.callerName || "Unknown";
-              setIncomingCall(prev => prev ? { ...prev, callerName } : prev);
+              const callerAvatarUrl = data?.avatar_url || undefined;
+              setIncomingCall(prev => prev ? { ...prev, callerName, callerAvatarUrl } : prev);
             });
 
           // Now that we're subscribed, send ready signal so caller re-sends offer

@@ -57,7 +57,7 @@ const shouldShowTimeDivider = (prevDate: string, currDate: string): boolean => {
   return curr - prev >= 2 * 60 * 60 * 1000;
 };
 
-const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewProps) => {
+const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUserId }: ChatViewProps) => {
   const { user } = useAuth();
   const { activeCall, callEvents } = useVoice();
   const { messages, loading, sendMessage } = useMessages(conversationId);
@@ -76,6 +76,8 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
   const prevMessageCountRef = useRef(0);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTypingBroadcast = useRef(0);
+  const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const typingChannelReadyRef = useRef(false);
 
   const isBotConversation = recipientUserId === BOT_USER_ID;
 
@@ -135,20 +137,29 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
   // ---- Realtime typing indicator ----
   useEffect(() => {
     if (!user || !conversationId) return;
-    const channel = supabase.channel(`typing:${conversationId}`);
-    channel.on("broadcast", { event: "typing" }, ({ payload }) => {
-      if (payload.userId === user.id) return;
-      setPeerTyping(true);
-      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-      typingTimeoutRef.current = setTimeout(() => setPeerTyping(false), 3000);
+    typingChannelReadyRef.current = false;
+    const channel = supabase.channel(`typing:${conversationId}`, {
+      config: { broadcast: { self: false } },
     });
-    channel.on("broadcast", { event: "stop-typing" }, ({ payload }) => {
-      if (payload.userId === user.id) return;
-      setPeerTyping(false);
-      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-    });
-    channel.subscribe();
+    typingChannelRef.current = channel;
+    channel
+      .on("broadcast", { event: "typing" }, ({ payload }) => {
+        if (payload.userId === user.id) return;
+        setPeerTyping(true);
+        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = setTimeout(() => setPeerTyping(false), 3000);
+      })
+      .on("broadcast", { event: "stop-typing" }, ({ payload }) => {
+        if (payload.userId === user.id) return;
+        setPeerTyping(false);
+        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      })
+      .subscribe((status) => {
+        typingChannelReadyRef.current = status === "SUBSCRIBED";
+      });
     return () => {
+      typingChannelReadyRef.current = false;
+      typingChannelRef.current = null;
       supabase.removeChannel(channel);
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
       setPeerTyping(false);
@@ -165,26 +176,20 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
   const broadcastTyping = useCallback(() => {
     if (!user || !conversationId) return;
     const now = Date.now();
-    if (now - lastTypingBroadcast.current < 2000) return;
+    if (now - lastTypingBroadcast.current < 1500) return;
     lastTypingBroadcast.current = now;
-    const ch = supabase.channel(`typing:${conversationId}`);
-    ch.subscribe((s) => {
-      if (s === "SUBSCRIBED") {
-        ch.send({ type: "broadcast", event: "typing", payload: { userId: user.id } });
-        setTimeout(() => supabase.removeChannel(ch), 500);
-      }
-    });
+    const ch = typingChannelRef.current;
+    if (ch && typingChannelReadyRef.current) {
+      ch.send({ type: "broadcast", event: "typing", payload: { userId: user.id } });
+    }
   }, [user, conversationId]);
 
   const broadcastStopTyping = useCallback(() => {
     if (!user || !conversationId) return;
-    const ch = supabase.channel(`typing:${conversationId}`);
-    ch.subscribe((s) => {
-      if (s === "SUBSCRIBED") {
-        ch.send({ type: "broadcast", event: "stop-typing", payload: { userId: user.id } });
-        setTimeout(() => supabase.removeChannel(ch), 500);
-      }
-    });
+    const ch = typingChannelRef.current;
+    if (ch && typingChannelReadyRef.current) {
+      ch.send({ type: "broadcast", event: "stop-typing", payload: { userId: user.id } });
+    }
   }, [user, conversationId]);
 
   const handleSend = async () => {
@@ -310,6 +315,7 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
         <CallPanel
           conversationId={conversationId}
           recipientName={recipientName}
+          recipientAvatar={recipientAvatar}
           recipientUserId={recipientUserId}
         />
       </div>
@@ -521,9 +527,12 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
             type="text"
             value={input}
             onChange={(e) => {
-              setInput(e.target.value);
-              if (e.target.value.trim()) broadcastTyping();
+              const v = e.target.value;
+              setInput(v);
+              if (v.trim()) broadcastTyping();
+              else broadcastStopTyping();
             }}
+            onBlur={broadcastStopTyping}
             onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
             placeholder={`Message @${recipientName}`}
             className="flex-1 bg-transparent text-sm outline-none placeholder:text-[#6d6f78]"
