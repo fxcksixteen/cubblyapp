@@ -90,6 +90,10 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
       streamRef.current?.getTracks().forEach(t => t.stop());
       audioCtxRef.current?.close();
       cancelAnimationFrame(animRef.current);
+      // Remove mic test audio element
+      document.querySelectorAll("audio").forEach((el: any) => {
+        if (el.__cubblyMicTest) { el.pause(); el.srcObject = null; el.remove(); }
+      });
       streamRef.current = null;
       audioCtxRef.current = null;
       analyserRef.current = null;
@@ -113,7 +117,7 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
 
-      // Analyser-only path for level monitoring — NO routing to destination (prevents echo)
+      // Create audio context for level monitoring
       const ctx = new AudioContext();
       audioCtxRef.current = ctx;
       const source = ctx.createMediaStreamSource(stream);
@@ -122,6 +126,17 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
       analyser.smoothingTimeConstant = 0.5;
       source.connect(analyser);
       analyserRef.current = analyser;
+
+      // Play mic audio back through speakers so user can hear themselves
+      const audioEl = document.createElement("audio");
+      audioEl.srcObject = stream;
+      audioEl.autoplay = true;
+      (audioEl as any).__cubblyMicTest = true;
+      // Set output device if specified
+      if (settings.outputDeviceId !== "default" && (audioEl as any).setSinkId) {
+        (audioEl as any).setSinkId(settings.outputDeviceId).catch(console.error);
+      }
+      document.body.appendChild(audioEl);
 
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
       const tick = () => {
