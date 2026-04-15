@@ -112,7 +112,7 @@ interface VoiceContextType {
   isScreenSharing: boolean;
   screenStream: MediaStream | null;
   remoteScreenStream: MediaStream | null;
-  startScreenShare: (type?: "screen" | "window" | "tab") => Promise<void>;
+  startScreenShare: (type?: "screen" | "window" | "tab", options?: { audio?: boolean; fps?: number; quality?: string }) => Promise<void>;
   stopScreenShare: () => void;
 }
 
@@ -558,25 +558,28 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   }, [incomingCall, user, getUserMedia, createPeerConnection, setupSignaling, startAudioLevelMonitor]);
 
   // Screen sharing
-  const startScreenShare = useCallback(async (type?: "screen" | "window" | "tab") => {
+  const startScreenShare = useCallback(async (type?: "screen" | "window" | "tab", options?: { audio?: boolean; fps?: number; quality?: string }) => {
     if (!user || !activeCall || !channelRef.current) return;
 
+    const effectiveAudio = options?.audio ?? screenShareSettings.audioShare;
+    const effectiveFps = options?.fps ?? screenShareSettings.frameRate;
+    const effectiveQuality = options?.quality ?? screenShareSettings.resolution;
+
     const resolutionMap: Record<string, { width: number; height: number } | undefined> = {
+      "480p": { width: 854, height: 480 },
       "720p": { width: 1280, height: 720 },
       "1080p": { width: 1920, height: 1080 },
       "1440p": { width: 2560, height: 1440 },
     };
 
-    const res = resolutionMap[screenShareSettings.resolution];
+    const res = resolutionMap[effectiveQuality];
     
-    // Build display media constraints based on type
     const videoConstraints: any = {
       cursor: screenShareSettings.showCursor ? "always" : "never",
-      frameRate: { ideal: screenShareSettings.frameRate },
+      frameRate: { ideal: effectiveFps },
       ...(res ? { width: { ideal: res.width }, height: { ideal: res.height } } : {}),
     };
 
-    // Chrome/Edge support displaySurface to hint at the picker
     if (type === "tab") {
       videoConstraints.displaySurface = "browser";
     } else if (type === "window") {
@@ -587,7 +590,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
     const displayConstraints: DisplayMediaStreamOptions = {
       video: videoConstraints,
-      audio: screenShareSettings.audioShare,
+      audio: effectiveAudio,
     };
 
     try {
