@@ -424,106 +424,119 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     return pc;
   }, [settings.outputVolume, settings.outputDeviceId]);
 
-  const setupSignaling = useCallback((conversationId: string) => {
-    if (!user) return;
+  const setupSignaling = useCallback((conversationId: string): Promise<ReturnType<typeof supabase.channel>> => {
+    return new Promise((resolve, reject) => {
+      if (!user) { reject(new Error("No user")); return; }
 
-    const channelName = `voice-call:${conversationId}`;
-    const channel = supabase.channel(channelName);
-
-    channel.on("broadcast", { event: "voice-signal" }, async ({ payload }) => {
-      if (payload.senderId === user.id) return;
-      const pc = pcRef.current;
-
-      if (payload.type === "offer") {
-        setIncomingCall({
-          conversationId,
-          callerId: payload.senderId,
-          callerName: payload.senderName || "Unknown",
-          offer: payload.sdp,
-          callEventId: payload.callEventId,
-        });
+      // If already subscribed to this conversation, reuse
+      if (channelRef.current) {
+        resolve(channelRef.current);
+        return;
       }
 
-      // Recipient joined and is ready — re-send the offer
-      if (payload.type === "ready" && pc && pendingOfferRef.current?.conversationId === conversationId) {
-        channel.send({
-          type: "broadcast",
-          event: "voice-signal",
-          payload: {
-            type: "offer",
-            sdp: pendingOfferRef.current.offer,
-            senderId: user.id,
-            senderName: user.user_metadata?.display_name || "User",
-            callEventId: pendingOfferRef.current.callEventId,
-          },
-        });
-      }
+      const channelName = `voice-call:${conversationId}`;
+      const channel = supabase.channel(channelName);
 
-      if (payload.type === "answer" && pc) {
-        await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
-        pendingOfferRef.current = null;
-        setActiveCall(prev => prev ? { ...prev, state: "connected", startedAt: Date.now() } : null);
-      }
+      channel.on("broadcast", { event: "voice-signal" }, async ({ payload }) => {
+        if (payload.senderId === user.id) return;
+        const pc = pcRef.current;
 
-      if (payload.type === "ice-candidate" && pc) {
-        try {
-          await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
-        } catch (e) {
-          console.error("Failed to add ICE candidate:", e);
+        if (payload.type === "offer") {
+          setIncomingCall({
+            conversationId,
+            callerId: payload.senderId,
+            callerName: payload.senderName || "Unknown",
+            offer: payload.sdp,
+            callEventId: payload.callEventId,
+          });
         }
-      }
 
-      if (payload.type === "hangup") {
-        endCall();
-      }
+        // Recipient joined and is ready — re-send the offer
+        if (payload.type === "ready" && pc && pendingOfferRef.current?.conversationId === conversationId) {
+          channel.send({
+            type: "broadcast",
+            event: "voice-signal",
+            payload: {
+              type: "offer",
+              sdp: pendingOfferRef.current.offer,
+              senderId: user.id,
+              senderName: user.user_metadata?.display_name || "User",
+              callEventId: pendingOfferRef.current.callEventId,
+            },
+          });
+        }
 
-      if (payload.type === "screen-offer") {
-        const screenPc = new RTCPeerConnection({ iceServers: iceServersRef.current });
-        screenPc.ontrack = (event) => {
-          setRemoteScreenStream(event.streams[0]);
-        };
-        screenPc.onicecandidate = (event) => {
-          if (event.candidate) {
-            channel.send({
-              type: "broadcast",
-              event: "voice-signal",
-              payload: { type: "screen-ice-candidate", candidate: event.candidate, senderId: user.id },
-            });
+        if (payload.type === "answer" && pc) {
+          await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+          pendingOfferRef.current = null;
+          setActiveCall(prev => prev ? { ...prev, state: "connected", startedAt: Date.now() } : null);
+        }
+
+        if (payload.type === "ice-candidate" && pc) {
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
+          } catch (e) {
+            console.error("Failed to add ICE candidate:", e);
           }
-        };
-        screenPcRef.current = screenPc;
-        await screenPc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
-        const answer = await screenPc.createAnswer();
-        await screenPc.setLocalDescription(answer);
-        channel.send({
-          type: "broadcast",
-          event: "voice-signal",
-          payload: { type: "screen-answer", sdp: answer, senderId: user.id },
-        });
-      }
-
-      if (payload.type === "screen-answer" && screenPcRef.current) {
-        await screenPcRef.current.setRemoteDescription(new RTCSessionDescription(payload.sdp));
-      }
-
-      if (payload.type === "screen-ice-candidate" && screenPcRef.current) {
-        try {
-          await screenPcRef.current.addIceCandidate(new RTCIceCandidate(payload.candidate));
-        } catch (e) {
-          console.error("Failed to add screen ICE candidate:", e);
         }
-      }
 
-      if (payload.type === "screen-stop") {
-        setRemoteScreenStream(null);
-        screenPcRef.current?.close();
-        screenPcRef.current = null;
-      }
+        if (payload.type === "hangup") {
+          endCall();
+        }
+
+        if (payload.type === "screen-offer") {
+          const screenPc = new RTCPeerConnection({ iceServers: iceServersRef.current });
+          screenPc.ontrack = (event) => {
+            setRemoteScreenStream(event.streams[0]);
+          };
+          screenPc.onicecandidate = (event) => {
+            if (event.candidate) {
+              channel.send({
+                type: "broadcast",
+                event: "voice-signal",
+                payload: { type: "screen-ice-candidate", candidate: event.candidate, senderId: user.id },
+              });
+            }
+          };
+          screenPcRef.current = screenPc;
+          await screenPc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+          const answer = await screenPc.createAnswer();
+          await screenPc.setLocalDescription(answer);
+          channel.send({
+            type: "broadcast",
+            event: "voice-signal",
+            payload: { type: "screen-answer", sdp: answer, senderId: user.id },
+          });
+        }
+
+        if (payload.type === "screen-answer" && screenPcRef.current) {
+          await screenPcRef.current.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+        }
+
+        if (payload.type === "screen-ice-candidate" && screenPcRef.current) {
+          try {
+            await screenPcRef.current.addIceCandidate(new RTCIceCandidate(payload.candidate));
+          } catch (e) {
+            console.error("Failed to add screen ICE candidate:", e);
+          }
+        }
+
+        if (payload.type === "screen-stop") {
+          setRemoteScreenStream(null);
+          screenPcRef.current?.close();
+          screenPcRef.current = null;
+        }
+      });
+
+      channel.subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          channelRef.current = channel;
+          resolve(channel);
+        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          reject(new Error(`Channel subscription failed: ${status}`));
+        }
+      });
     });
-
-    channel.subscribe();
-    channelRef.current = channel;
-    return channel;
   }, [user]);
 
   const setHighQualityOpus = (sdp: string): string => {
@@ -546,12 +559,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       const pc = createPeerConnection();
       stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
-      const channel = setupSignaling(conversationId);
+      const channel = await setupSignaling(conversationId);
       const callEventId = crypto.randomUUID();
 
       pc.onicecandidate = (event) => {
         if (event.candidate) {
-          channel?.send({
+          channel.send({
             type: "broadcast",
             event: "voice-signal",
             payload: { type: "ice-candidate", candidate: event.candidate, senderId: user.id },
@@ -569,7 +582,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       pendingOfferRef.current = { offer, conversationId, callEventId };
 
       // Send offer on the conversation signaling channel
-      channel?.send({
+      channel.send({
         type: "broadcast",
         event: "voice-signal",
         payload: {
@@ -643,11 +656,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       const pc = createPeerConnection();
       stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
-      const channel = setupSignaling(incomingCall.conversationId);
+      const channel = await setupSignaling(incomingCall.conversationId);
 
       pc.onicecandidate = (event) => {
         if (event.candidate) {
-          channel?.send({
+          channel.send({
             type: "broadcast",
             event: "voice-signal",
             payload: { type: "ice-candidate", candidate: event.candidate, senderId: user.id },
@@ -662,7 +675,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       answer.sdp = sdp;
       await pc.setLocalDescription(answer);
 
-      channel?.send({
+      channel.send({
         type: "broadcast",
         event: "voice-signal",
         payload: { type: "answer", sdp: answer, senderId: user.id },
@@ -930,31 +943,32 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     if (!user) return;
     const globalChannel = supabase.channel(`voice-global:${user.id}`);
-    globalChannel.on("broadcast", { event: "incoming-call" }, ({ payload }) => {
+    globalChannel.on("broadcast", { event: "incoming-call" }, async ({ payload }) => {
       if (payload.targetId === user.id && !activeCall) {
-        // Join the signaling channel for this conversation
-        const sigChannel = setupSignaling(payload.conversationId);
-        
-        // Fetch caller profile to show incoming call UI
-        supabase
-          .from("profiles")
-          .select("display_name")
-          .eq("user_id", payload.callerId)
-          .maybeSingle()
-          .then(({ data }) => {
-            const callerName = data?.display_name || payload.callerName || "Unknown";
-            setIncomingCall(prev => prev ? { ...prev, callerName } : prev);
-          });
+        // Join the signaling channel and WAIT for subscription before sending ready
+        try {
+          const sigChannel = await setupSignaling(payload.conversationId);
+          
+          // Fetch caller profile to show incoming call UI
+          supabase
+            .from("profiles")
+            .select("display_name")
+            .eq("user_id", payload.callerId)
+            .maybeSingle()
+            .then(({ data }) => {
+              const callerName = data?.display_name || payload.callerName || "Unknown";
+              setIncomingCall(prev => prev ? { ...prev, callerName } : prev);
+            });
 
-        // Send a "ready" signal so the caller re-sends the offer
-        // Small delay to ensure we're subscribed to the signaling channel first
-        setTimeout(() => {
-          sigChannel?.send({
+          // Now that we're subscribed, send ready signal so caller re-sends offer
+          sigChannel.send({
             type: "broadcast",
             event: "voice-signal",
             payload: { type: "ready", senderId: user.id },
           });
-        }, 500);
+        } catch (e) {
+          console.error("Failed to setup signaling for incoming call:", e);
+        }
       }
     });
     globalChannel.subscribe();
