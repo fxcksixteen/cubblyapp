@@ -73,7 +73,7 @@ const Login = () => {
               onChange={(e) => setIdentifier(e.target.value)}
               required
               className="w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary font-body"
-              placeholder="bear@cubbly.app or username"
+              placeholder="bear@cubbly.app"
             />
           </div>
 
