@@ -167,7 +167,7 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
           style={{ backgroundColor: "var(--app-bg-secondary, #2b2d31)", color: "var(--app-text-secondary, #b5bac1)" }}
           title="Message"
         >
-          <img src={messagesHoverIcon} alt="Message" className="h-5 w-5 opacity-80" />
+          <img src={messagesHoverIcon} alt="Message" className="h-5 w-5 invert opacity-70 transition-opacity group-hover:opacity-100" />
         </button>
         <button
           onClick={() => removeFriend(friendship.id)}
