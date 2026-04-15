@@ -417,21 +417,34 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     pc.oniceconnectionstatechange = () => {
       console.log("[Voice] ICE state:", pc.iceConnectionState);
       if (pc.iceConnectionState === "connected") {
-        // Ensure local audio tracks are enabled when connected
+        // Ensure ALL local audio tracks are enabled when connected
         const senders = pc.getSenders();
         senders.forEach(s => {
-          if (s.track?.kind === "audio" && !s.track.enabled) {
-            // Only re-enable if not manually muted
-            const call = activeCall;
-            if (call && !call.isMuted && !call.isDeafened) {
-              s.track.enabled = true;
-            }
+          if (s.track?.kind === "audio") {
+            // Always enable on connect — mute state is applied separately
+            s.track.enabled = true;
+            console.log("[Voice] Audio track enabled on ICE connected");
           }
         });
       }
       if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed") {
         console.warn("[Voice] ICE connection failed/disconnected");
-        endCall();
+        // Use a timeout to avoid acting on transient disconnects
+        setTimeout(() => {
+          if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed") {
+            console.error("[Voice] ICE permanently failed, ending call");
+            // Clean up directly to avoid stale closure issues
+            pc.close();
+            pcRef.current = null;
+            setActiveCall(null);
+            setIncomingCall(null);
+            setRemoteStream(null);
+            setRemoteAudioLevel(0);
+            document.querySelectorAll("audio").forEach((el: any) => {
+              if (el.__cubblyRemote) { el.pause(); el.srcObject = null; el.remove(); }
+            });
+          }
+        }, 3000);
       }
     };
 
