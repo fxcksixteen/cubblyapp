@@ -134,12 +134,21 @@ export function useConversations() {
   useEffect(() => {
     if (!user) return;
 
-    const channelName = `conversation-updates:${user.id}:${Date.now()}`;
-    const channel = supabase
-      .channel(channelName)
-      .on("postgres_changes", { event: "*", schema: "public", table: "conversation_participants" }, () => fetchRef.current())
-      .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, () => fetchRef.current())
-      .subscribe();
+    const uniqueSuffix =
+      globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const channel = supabase.channel(`conversation-updates:${user.id}:${uniqueSuffix}`);
+
+    channel.on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "conversation_participants" },
+      () => fetchRef.current(),
+    );
+    channel.on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "messages" },
+      () => fetchRef.current(),
+    );
+    channel.subscribe();
 
     return () => {
       supabase.removeChannel(channel);
