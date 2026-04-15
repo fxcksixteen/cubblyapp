@@ -104,7 +104,7 @@ interface VoiceContextType {
   isScreenSharing: boolean;
   screenStream: MediaStream | null;
   remoteScreenStream: MediaStream | null;
-  startScreenShare: (type?: "screen" | "window" | "tab", options?: { audio?: boolean; fps?: number; quality?: string }) => Promise<void>;
+  startScreenShare: (type?: "screen" | "window" | "tab", options?: { audio?: boolean; fps?: number; quality?: string; sourceId?: string }) => Promise<void>;
   stopScreenShare: () => void;
 }
 
@@ -619,7 +619,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   }, [incomingCall, user, getUserMedia, createPeerConnection, setupSignaling, startAudioLevelMonitor]);
 
   // Screen sharing
-  const startScreenShare = useCallback(async (type?: "screen" | "window" | "tab", options?: { audio?: boolean; fps?: number; quality?: string }) => {
+  const startScreenShare = useCallback(async (type?: "screen" | "window" | "tab", options?: { audio?: boolean; fps?: number; quality?: string; sourceId?: string }) => {
     if (!user || !activeCall || !channelRef.current) return;
 
     const effectiveAudio = options?.audio ?? screenShareSettings.audioShare;
@@ -639,9 +639,30 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       let stream: MediaStream;
 
       // Electron path: use desktopCapturer via preload
-      if (isElectron && (window as any).electronAPI?.getDesktopSources) {
+      if (isElectron && options?.sourceId) {
+        const selectedSourceId = options.sourceId;
+
+        const videoConstraints: any = {
+          mandatory: {
+            chromeMediaSource: "desktop",
+            chromeMediaSourceId: selectedSourceId,
+            ...(res ? { maxWidth: res.width, maxHeight: res.height } : {}),
+            maxFrameRate: effectiveFps,
+          },
+        };
+
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: effectiveAudio ? {
+            mandatory: {
+              chromeMediaSource: "desktop",
+              chromeMediaSourceId: selectedSourceId,
+            },
+          } as any : false,
+          video: videoConstraints,
+        });
+      } else if (isElectron && (window as any).electronAPI?.getDesktopSources) {
+        // Electron fallback without sourceId — pick first matching
         const sources = await (window as any).electronAPI.getDesktopSources();
-        // Pick first source matching type, or first available
         let selectedSource = sources[0];
         if (type === "screen") {
           selectedSource = sources.find((s: any) => s.id.startsWith("screen:")) || selectedSource;

@@ -90,6 +90,10 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
       streamRef.current?.getTracks().forEach(t => t.stop());
       audioCtxRef.current?.close();
       cancelAnimationFrame(animRef.current);
+      // Remove mic test audio element
+      document.querySelectorAll("audio").forEach((el: any) => {
+        if (el.__cubblyMicTest) { el.pause(); el.srcObject = null; el.remove(); }
+      });
       streamRef.current = null;
       audioCtxRef.current = null;
       analyserRef.current = null;
@@ -113,7 +117,7 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
 
-      // Analyser-only path for level monitoring — NO routing to destination (prevents echo)
+      // Create audio context for level monitoring
       const ctx = new AudioContext();
       audioCtxRef.current = ctx;
       const source = ctx.createMediaStreamSource(stream);
@@ -122,6 +126,17 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
       analyser.smoothingTimeConstant = 0.5;
       source.connect(analyser);
       analyserRef.current = analyser;
+
+      // Play mic audio back through speakers so user can hear themselves
+      const audioEl = document.createElement("audio");
+      audioEl.srcObject = stream;
+      audioEl.autoplay = true;
+      (audioEl as any).__cubblyMicTest = true;
+      // Set output device if specified
+      if (settings.outputDeviceId !== "default" && (audioEl as any).setSinkId) {
+        (audioEl as any).setSinkId(settings.outputDeviceId).catch(console.error);
+      }
+      document.body.appendChild(audioEl);
 
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
       const tick = () => {
@@ -156,6 +171,9 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
       streamRef.current?.getTracks().forEach(t => t.stop());
       audioCtxRef.current?.close();
       cancelAnimationFrame(animRef.current);
+      document.querySelectorAll("audio").forEach((el: any) => {
+        if (el.__cubblyMicTest) { el.pause(); el.srcObject = null; el.remove(); }
+      });
     };
   }, []);
 
@@ -214,20 +232,22 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
             <SelectValue />
           </SelectTrigger>
           <SelectContent
-            className="rounded-xl border shadow-xl"
+            className="rounded-xl border shadow-xl z-[9999]"
             style={{ backgroundColor: "var(--app-bg-secondary)", borderColor: "var(--app-border)" }}
           >
             <SelectItem value="default" className="rounded-lg text-sm cursor-pointer" style={{ color: "var(--app-text-primary)" }}>
               Default
             </SelectItem>
-            {availableDevices.inputs.map((d: MediaDeviceInfo) => (
+            {availableDevices.inputs
+              .filter((d: MediaDeviceInfo) => d.deviceId !== "default" && d.deviceId !== "communications")
+              .map((d: MediaDeviceInfo) => (
               <SelectItem
                 key={d.deviceId}
                 value={d.deviceId}
                 className="rounded-lg text-sm cursor-pointer"
                 style={{ color: "var(--app-text-primary)" }}
               >
-                {d.label || `Microphone (${d.deviceId.slice(0, 8)})`}
+                {(d.label || `Microphone (${d.deviceId.slice(0, 8)})`).replace(/^Default\s*-\s*/, "")}
               </SelectItem>
             ))}
           </SelectContent>
@@ -273,7 +293,7 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
           </div>
           {micTesting && (
             <p className="mt-1.5 text-[11px]" style={{ color: "var(--app-text-secondary)" }}>
-              🎤 Speak now — the level bar shows your mic input
+              Speak now — the level bar shows your mic input
             </p>
           )}
         </div>
@@ -292,20 +312,22 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
             <SelectValue />
           </SelectTrigger>
           <SelectContent
-            className="rounded-xl border shadow-xl"
+            className="rounded-xl border shadow-xl z-[9999]"
             style={{ backgroundColor: "var(--app-bg-secondary)", borderColor: "var(--app-border)" }}
           >
             <SelectItem value="default" className="rounded-lg text-sm cursor-pointer" style={{ color: "var(--app-text-primary)" }}>
               Default
             </SelectItem>
-            {availableDevices.outputs.map((d: MediaDeviceInfo) => (
+            {availableDevices.outputs
+              .filter((d: MediaDeviceInfo) => d.deviceId !== "default" && d.deviceId !== "communications")
+              .map((d: MediaDeviceInfo) => (
               <SelectItem
                 key={d.deviceId}
                 value={d.deviceId}
                 className="rounded-lg text-sm cursor-pointer"
                 style={{ color: "var(--app-text-primary)" }}
               >
-                {d.label || `Speaker (${d.deviceId.slice(0, 8)})`}
+                {(d.label || `Speaker (${d.deviceId.slice(0, 8)})`).replace(/^Default\s*-\s*/, "")}
               </SelectItem>
             ))}
           </SelectContent>
