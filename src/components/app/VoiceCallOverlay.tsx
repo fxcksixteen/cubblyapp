@@ -1,8 +1,12 @@
 import { useState, useEffect } from "react";
-import { Phone, PhoneOff, Mic, MicOff, Volume2, VolumeX, Monitor, Video } from "lucide-react";
+import { Phone, PhoneOff, Monitor, Video } from "lucide-react";
 import { useVoice, CallEvent } from "@/contexts/VoiceContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { defaultProfileColor, getProfileColor } from "@/lib/profileColors";
+import micIcon from "@/assets/icons/microphone.svg";
+import micMuteIcon from "@/assets/icons/microphone-mute.svg";
+import headphoneIcon from "@/assets/icons/headphone.svg";
+import headphoneDeafenIcon from "@/assets/icons/headphone-deafen.svg";
 
 const formatDuration = (ms: number) => {
   const secs = Math.floor(ms / 1000);
@@ -20,7 +24,7 @@ export const CallPanel = ({ conversationId, recipientName, recipientUserId }: {
   recipientUserId?: string;
 }) => {
   const { user } = useAuth();
-  const { activeCall, endCall, toggleMute, toggleDeafen, audioLevel } = useVoice();
+  const { activeCall, endCall, toggleMute, toggleDeafen, audioLevel, remoteAudioLevel } = useVoice();
   const [elapsed, setElapsed] = useState(0);
 
   const isThisCall = activeCall?.conversationId === conversationId;
@@ -71,7 +75,7 @@ export const CallPanel = ({ conversationId, recipientName, recipientUserId }: {
             </div>
             {activeCall.isMuted && (
               <div className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-[#ed4245] border-2" style={{ borderColor: "var(--app-bg-tertiary)" }}>
-                <MicOff className="h-3 w-3 text-white" />
+                <img src={micMuteIcon} alt="Muted" className="h-3 w-3" style={{ filter: "brightness(0) invert(1)" }} />
               </div>
             )}
           </div>
@@ -88,6 +92,9 @@ export const CallPanel = ({ conversationId, recipientName, recipientUserId }: {
               style={{
                 backgroundColor: recipientColor.bg,
                 filter: isWaiting ? "grayscale(0.3)" : "none",
+                boxShadow: !isWaiting && activeCall.state === "connected" && remoteAudioLevel > 8
+                  ? `0 0 0 ${3 + remoteAudioLevel * 0.05}px rgba(59, 165, 92, ${0.4 + remoteAudioLevel * 0.006})`
+                  : "0 0 0 0px transparent",
               }}
             >
               {recipientName.charAt(0).toUpperCase()}
@@ -122,10 +129,14 @@ export const CallPanel = ({ conversationId, recipientName, recipientUserId }: {
           className={`flex h-10 w-10 items-center justify-center rounded-full transition-all duration-150 ${
             activeCall.isMuted ? "bg-white/15 ring-2 ring-[#ed4245]/50" : "bg-white/10 hover:bg-white/20"
           }`}
-          style={{ color: activeCall.isMuted ? "#ed4245" : "var(--app-text-primary)" }}
           title={activeCall.isMuted ? "Unmute" : "Mute"}
         >
-          {activeCall.isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+          <img
+            src={activeCall.isMuted ? micMuteIcon : micIcon}
+            alt={activeCall.isMuted ? "Unmute" : "Mute"}
+            className="h-5 w-5"
+            style={{ filter: activeCall.isMuted ? "brightness(0) saturate(100%) invert(29%) sepia(98%) saturate(2052%) hue-rotate(337deg) brightness(95%) contrast(92%)" : "brightness(0) invert(1)" }}
+          />
         </button>
 
         <button
@@ -133,10 +144,14 @@ export const CallPanel = ({ conversationId, recipientName, recipientUserId }: {
           className={`flex h-10 w-10 items-center justify-center rounded-full transition-all duration-150 ${
             activeCall.isDeafened ? "bg-white/15 ring-2 ring-[#ed4245]/50" : "bg-white/10 hover:bg-white/20"
           }`}
-          style={{ color: activeCall.isDeafened ? "#ed4245" : "var(--app-text-primary)" }}
           title={activeCall.isDeafened ? "Undeafen" : "Deafen"}
         >
-          {activeCall.isDeafened ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
+          <img
+            src={activeCall.isDeafened ? headphoneDeafenIcon : headphoneIcon}
+            alt={activeCall.isDeafened ? "Undeafen" : "Deafen"}
+            className="h-5 w-5"
+            style={{ filter: activeCall.isDeafened ? "brightness(0) saturate(100%) invert(29%) sepia(98%) saturate(2052%) hue-rotate(337deg) brightness(95%) contrast(92%)" : "brightness(0) invert(1)" }}
+          />
         </button>
 
         <button
