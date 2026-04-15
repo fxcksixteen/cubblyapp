@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Copy, Pencil, User, Check } from "lucide-react";
 import { toast } from "sonner";
-import { getProfileColor } from "@/lib/profileColors";
+import { defaultProfileColor } from "@/lib/profileColors";
 
 const statuses = [
   { value: "online", label: "Online", color: "bg-[#3ba55c]", dotClass: "bg-[#3ba55c]" },
@@ -26,7 +26,7 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
 
   const displayName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "User";
   const username = user?.user_metadata?.username || displayName.toLowerCase();
-  const profileColor = getProfileColor(user?.id || "default");
+  const profileColor = defaultProfileColor;
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
