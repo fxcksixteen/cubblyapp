@@ -1086,6 +1086,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     outgoingCandidateBuffer.current = [];
     remoteDescriptionSet.current = false;
     pendingOfferRef.current = null;
+    acceptedIncomingCallRef.current = null;
+    outgoingCallMetaRef.current = null;
 
     document.querySelectorAll("audio").forEach((el: any) => {
       if (el.__cubblyRemote) { el.pause(); el.srcObject = null; el.remove(); }
@@ -1140,27 +1142,14 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     const globalChannel = supabase.channel(`voice-global:${user.id}`);
     globalChannel.on("broadcast", { event: "incoming-call" }, async ({ payload }) => {
       if (payload.targetId === user.id && !activeCall) {
-        // Join the signaling channel and WAIT for subscription before sending ready
         try {
-          const sigChannel = await setupSignaling(payload.conversationId);
-          
-          // Fetch caller profile (name + avatar) to show incoming call UI
-          supabase
-            .from("profiles")
-            .select("display_name, avatar_url")
-            .eq("user_id", payload.callerId)
-            .maybeSingle()
-            .then(({ data }) => {
-              const callerName = data?.display_name || payload.callerName || "Unknown";
-              const callerAvatarUrl = data?.avatar_url || undefined;
-              setIncomingCall(prev => prev ? { ...prev, callerName, callerAvatarUrl } : prev);
-            });
-
-          // Now that we're subscribed, send ready signal so caller re-sends offer
-          sigChannel.send({
-            type: "broadcast",
-            event: "voice-signal",
-            payload: { type: "ready", senderId: user.id },
+          await setupSignaling(payload.conversationId);
+          setIncomingCall({
+            conversationId: payload.conversationId,
+            callerId: payload.callerId,
+            callerName: payload.callerName || "Unknown",
+            callerAvatarUrl: payload.callerAvatarUrl,
+            callEventId: payload.callEventId,
           });
         } catch (e) {
           console.error("Failed to setup signaling for incoming call:", e);
