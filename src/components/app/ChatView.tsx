@@ -299,9 +299,13 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
                               />
                             </div>
                             {text && (
-                              <p className={`text-[15px] leading-relaxed ${msg.status === "sending" ? "text-[#949ba4]/50" : "text-[#dbdee1]"}`}>
-                                {text}
-                              </p>
+                              /^https?:\/\/.*\.(gif|giphy)/i.test(text) ? (
+                                <img src={text} alt="GIF" className="max-h-[200px] rounded-lg mt-1" loading="lazy" />
+                              ) : (
+                                <p className={`text-[15px] leading-relaxed ${msg.status === "sending" ? "text-[#949ba4]/50" : "text-[#dbdee1]"}`}>
+                                  {text}
+                                </p>
+                              )
                             )}
                             {attachments.map((att, ai) => (
                               <a
