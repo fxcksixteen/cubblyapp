@@ -66,6 +66,14 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
 
   const isBotConversation = recipientUserId === BOT_USER_ID;
 
+  // Stop bot typing when a new bot message arrives
+  const lastMsgSenderId = messages.length > 0 ? messages[messages.length - 1].sender_id : null;
+  useEffect(() => {
+    if (lastMsgSenderId === BOT_USER_ID) {
+      setBotTyping(false);
+    }
+  }, [lastMsgSenderId, messages.length]);
+
   // Filter call events for this conversation
   const conversationCallEvents = callEvents.filter(e => e.conversationId === conversationId);
 
