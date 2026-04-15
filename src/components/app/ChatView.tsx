@@ -156,6 +156,10 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
       })
       .subscribe((status) => {
         typingChannelReadyRef.current = status === "SUBSCRIBED";
+        // If user was already typing when channel became ready, broadcast immediately
+        if (status === "SUBSCRIBED" && document.querySelector<HTMLTextAreaElement>('[data-typing-input]')?.value) {
+          channel.send({ type: "broadcast", event: "typing", payload: { userId: user.id } });
+        }
       });
     return () => {
       typingChannelReadyRef.current = false;
@@ -536,6 +540,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
             onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
             placeholder={`Message @${recipientName}`}
             className="flex-1 bg-transparent text-sm outline-none placeholder:text-[#6d6f78]"
+            data-typing-input
             style={{ color: "var(--app-text-primary, #dbdee1)" }}
           />
 
