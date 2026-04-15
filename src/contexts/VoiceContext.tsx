@@ -2,6 +2,9 @@ import { createContext, useContext, useState, useCallback, useRef, useEffect, Re
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 
+// Add supabase import for profile queries in overlay
+const profileImported = true; // marker to avoid duplicate imports
+
 export interface VoiceSettings {
   inputDeviceId: string;
   outputDeviceId: string;
@@ -90,7 +93,7 @@ interface VoiceContextType {
   startCall: (conversationId: string, peerId: string, peerName: string) => void;
   acceptCall: () => void;
   endCall: () => void;
-  incomingCall: { conversationId: string; callerId: string; callerName: string; offer: RTCSessionDescriptionInit; callEventId?: string } | null;
+  incomingCall: { conversationId: string; callerId: string; callerName: string; callerAvatarUrl?: string; offer: RTCSessionDescriptionInit; callEventId?: string } | null;
   toggleMute: () => void;
   toggleDeafen: () => void;
   localStream: MediaStream | null;
@@ -968,15 +971,16 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         try {
           const sigChannel = await setupSignaling(payload.conversationId);
           
-          // Fetch caller profile to show incoming call UI
+          // Fetch caller profile (name + avatar) to show incoming call UI
           supabase
             .from("profiles")
-            .select("display_name")
+            .select("display_name, avatar_url")
             .eq("user_id", payload.callerId)
             .maybeSingle()
             .then(({ data }) => {
               const callerName = data?.display_name || payload.callerName || "Unknown";
-              setIncomingCall(prev => prev ? { ...prev, callerName } : prev);
+              const callerAvatarUrl = data?.avatar_url || undefined;
+              setIncomingCall(prev => prev ? { ...prev, callerName, callerAvatarUrl } : prev);
             });
 
           // Now that we're subscribed, send ready signal so caller re-sends offer

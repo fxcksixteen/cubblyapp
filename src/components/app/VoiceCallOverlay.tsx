@@ -27,11 +27,13 @@ const speakingRingShadow = (level: number) =>
   `0 0 0 ${6 + level * 0.25}px rgba(59, 165, 92, ${0.7 + level * 0.003}), 0 0 ${16 + level * 0.6}px rgba(59, 165, 92, ${0.4 + level * 0.006})`;
 
 /** Discord-style call panel that renders inside the chat area */
-export const CallPanel = ({ conversationId, recipientName, recipientUserId }: {
+export const CallPanel = ({ conversationId, recipientName, recipientAvatar, recipientUserId }: {
   conversationId: string;
   recipientName: string;
+  recipientAvatar?: string;
   recipientUserId?: string;
 }) => {
+  const [callerAvatarUrl, setCallerAvatarUrl] = useState<string | null>(null);
   const { user } = useAuth();
   const {
     activeCall, endCall, toggleMute, toggleDeafen,
@@ -44,6 +46,17 @@ export const CallPanel = ({ conversationId, recipientName, recipientUserId }: {
   const [showScreenSharePicker, setShowScreenSharePicker] = useState(false);
   const screenVideoRef = useRef<HTMLVideoElement>(null);
   const remoteScreenVideoRef = useRef<HTMLVideoElement>(null);
+
+  // Fetch current user's avatar
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("profiles")
+      .select("avatar_url")
+      .eq("user_id", user.id)
+      .maybeSingle()
+      .then(({ data }) => setCallerAvatarUrl(data?.avatar_url || null));
+  }, [user]);
 
   const isThisCall = activeCall?.conversationId === conversationId;
 
@@ -143,7 +156,11 @@ export const CallPanel = ({ conversationId, recipientName, recipientUserId }: {
                   : "0 0 0 0px transparent",
               }}
             >
-              {displayName.charAt(0).toUpperCase()}
+              {callerAvatarUrl ? (
+                <img src={callerAvatarUrl} alt={displayName} className="h-full w-full rounded-full object-cover" />
+              ) : (
+                displayName.charAt(0).toUpperCase()
+              )}
             </div>
             {/* Deafen badge (priority) */}
             {showDeafenBadge && (
@@ -174,7 +191,11 @@ export const CallPanel = ({ conversationId, recipientName, recipientUserId }: {
                   : "0 0 0 0px transparent",
               }}
             >
-              {recipientName.charAt(0).toUpperCase()}
+              {recipientAvatar ? (
+                <img src={recipientAvatar} alt={recipientName} className="h-full w-full rounded-full object-cover" />
+              ) : (
+                recipientName.charAt(0).toUpperCase()
+              )}
             </div>
             {isRinging && (
               <>
@@ -351,17 +372,32 @@ export const CallEventMessage = ({ state, startedAt, endedAt }: {
 /** Incoming call notification overlay */
 const VoiceCallOverlay = () => {
   const { incomingCall, activeCall, acceptCall, endCall } = useVoice();
+  const [callerAvatar, setCallerAvatar] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!incomingCall) { setCallerAvatar(null); return; }
+    supabase
+      .from("profiles")
+      .select("avatar_url")
+      .eq("user_id", incomingCall.callerId)
+      .maybeSingle()
+      .then(({ data }) => setCallerAvatar(data?.avatar_url || null));
+  }, [incomingCall?.callerId]);
 
   if (incomingCall && !activeCall) {
     return (
       <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-4 rounded-2xl border px-6 py-4 shadow-2xl animate-fade-in"
         style={{ backgroundColor: "var(--app-bg-secondary)", borderColor: "var(--app-border)" }}>
-        <div
-          className="flex h-12 w-12 items-center justify-center rounded-full text-lg font-bold text-white animate-pulse"
-          style={{ backgroundColor: getProfileColor(incomingCall.callerId).bg }}
-        >
-          {incomingCall.callerName.charAt(0).toUpperCase()}
-        </div>
+        {callerAvatar ? (
+          <img src={callerAvatar} alt={incomingCall.callerName} className="h-12 w-12 rounded-full object-cover animate-pulse" />
+        ) : (
+          <div
+            className="flex h-12 w-12 items-center justify-center rounded-full text-lg font-bold text-white animate-pulse"
+            style={{ backgroundColor: getProfileColor(incomingCall.callerId).bg }}
+          >
+            {incomingCall.callerName.charAt(0).toUpperCase()}
+          </div>
+        )}
         <div>
           <p className="text-sm font-semibold" style={{ color: "var(--app-text-primary)" }}>
             {incomingCall.callerName}
