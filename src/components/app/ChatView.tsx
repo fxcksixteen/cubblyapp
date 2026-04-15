@@ -124,6 +124,11 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
     setUploading(false);
   };
 
+  const handleGifSelect = async (gifUrl: string) => {
+    if (isBotConversation) setBotTyping(true);
+    await sendMessage(gifUrl);
+  };
+
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
