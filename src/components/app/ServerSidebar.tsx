@@ -24,13 +24,13 @@ const ServerSidebar = ({ onHomeClick, isActive = false }: ServerSidebarProps) =>
         aria-current={isActive ? "page" : undefined}
       >
         <div className={`absolute -left-4 w-1 rounded-r-full bg-white transition-all ${isActive ? "h-8 opacity-100" : "h-0 opacity-0 group-hover:h-6 group-hover:opacity-100"}`} />
-        <img src={cubblyLogo} alt="Home" className="h-14 w-14 rounded-full object-cover shadow-[0_10px_20px_rgba(0,0,0,0.24)]" />
+        <img src={cubblyLogo} alt="Home" className="h-14 w-14 rounded-full object-cover shadow-[0_10px_20px_rgba(0,0,0,0.24)] cubbly-3d-circle" />
       </button>
 
       <div className="mx-auto h-[2px] w-8 rounded-full bg-[#35363c]" />
 
       <button
-        className="group flex h-14 w-14 items-center justify-center rounded-full text-[#3ba55c] transition-all hover:bg-[#3ba55c] hover:text-white"
+        className="group flex h-14 w-14 items-center justify-center rounded-full text-[#3ba55c] transition-all hover:bg-[#3ba55c] hover:text-white cubbly-3d-circle"
         style={{ backgroundColor: "var(--app-bg-primary)" }}
       >
         <Plus className="h-6 w-6" />
