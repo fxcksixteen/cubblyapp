@@ -1,5 +1,8 @@
-const { app, BrowserWindow, shell } = require("electron");
+const { app, BrowserWindow, shell, Menu } = require("electron");
 const path = require("path");
+
+// Set app name
+app.name = "Cubbly";
 
 let mainWindow;
 
@@ -10,14 +13,8 @@ function createWindow() {
     minWidth: 940,
     minHeight: 600,
     title: "Cubbly",
-    icon: path.join(__dirname, "..", "public", "favicon.ico"),
-    frame: false,
-    titleBarStyle: "hidden",
-    titleBarOverlay: {
-      color: "#1e1610",
-      symbolColor: "#f5e6d3",
-      height: 32,
-    },
+    icon: path.join(__dirname, "..", "dist", "favicon.ico"),
+    autoHideMenuBar: true,
     backgroundColor: "#1e1610",
     webPreferences: {
       contextIsolation: true,
@@ -25,13 +22,19 @@ function createWindow() {
     },
   });
 
+  // Remove the default menu bar entirely
+  Menu.setApplicationMenu(null);
+
   // Load the built app
   mainWindow.loadFile(path.join(__dirname, "..", "dist", "index.html"));
 
   // Open external links in the default browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
-    return { action: "deny" };
+    if (url.startsWith("http")) {
+      shell.openExternal(url);
+      return { action: "deny" };
+    }
+    return { action: "allow" };
   });
 
   mainWindow.on("closed", () => {
