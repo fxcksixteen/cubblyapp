@@ -224,7 +224,13 @@ export const CallPanel = ({ conversationId, recipientName, recipientUserId }: {
         </button>
 
         <button
-          onClick={isScreenSharing ? stopScreenShare : startScreenShare}
+          onClick={() => {
+            if (isScreenSharing) {
+              stopScreenShare();
+            } else {
+              setShowScreenSharePicker(true);
+            }
+          }}
           className={`flex h-10 w-10 items-center justify-center rounded-full transition-all duration-150 ${
             isScreenSharing ? "bg-[#3ba55c] hover:bg-[#2d8b4e]" : "bg-white/10 hover:bg-white/20"
           }`}
