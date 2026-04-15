@@ -18,8 +18,9 @@ const TitleBar = () => {
       className="flex h-8 items-center justify-between select-none shrink-0"
       style={{
         backgroundColor: "var(--app-bg-tertiary, #1e1f22)",
-        WebkitAppRegion: "drag" as any,
-      }}
+        // @ts-ignore — Electron-specific CSS property
+        WebkitAppRegion: "drag",
+      } as React.CSSProperties}
     >
       {/* App title */}
       <div className="flex items-center gap-2 pl-3">
@@ -29,7 +30,8 @@ const TitleBar = () => {
       </div>
 
       {/* Window controls */}
-      <div className="flex h-full" style={{ WebkitAppRegion: "no-drag" as any }}>
+      {/* @ts-ignore */}
+      <div className="flex h-full" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
         <button
           onClick={() => api.minimize()}
           className="flex h-full w-11 items-center justify-center transition-colors hover:bg-white/10"
