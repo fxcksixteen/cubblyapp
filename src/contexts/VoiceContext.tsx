@@ -686,6 +686,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     remoteAnalyserRef.current = null;
     setRemoteAudioLevel(0);
 
+    // Clean up remote audio elements
+    document.querySelectorAll("audio").forEach((el: any) => {
+      if (el.__cubblyRemote) { el.pause(); el.srcObject = null; el.remove(); }
+    });
+
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
       channelRef.current = null;
