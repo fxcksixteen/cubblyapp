@@ -11,6 +11,7 @@ import callIcon from "@/assets/icons/call.svg";
 import callEndIcon from "@/assets/icons/call-end.svg";
 import videoIcon from "@/assets/icons/video-camera.svg";
 import addUserIcon from "@/assets/icons/add-user.svg";
+import StatusIndicator from "@/components/app/StatusIndicator";
 import ServerSidebar from "@/components/app/ServerSidebar";
 import DMSidebar from "@/components/app/DMSidebar";
 import FriendsView from "@/components/app/FriendsView";
@@ -22,11 +23,11 @@ import friendsIcon from "@/assets/icons/friends.svg";
 type FriendTab = "online" | "all" | "pending" | "blocked" | "add";
 
 const statusColors: Record<string, string> = {
-  online: "bg-[#3ba55c]",
-  idle: "bg-[#faa61a]",
-  dnd: "bg-[#ed4245]",
-  invisible: "bg-[#747f8d]",
-  offline: "bg-[#747f8d]",
+  online: "online",
+  idle: "idle",
+  dnd: "dnd",
+  invisible: "invisible",
+  offline: "offline",
 };
 
 const BOT_USER_ID = "00000000-0000-0000-0000-000000000001";
@@ -225,10 +226,9 @@ const AppLayout = () => {
                       {(activeParticipant?.display_name || "User").charAt(0).toUpperCase()}
                     </div>
                   )}
-                  <div
-                    className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 ${statusColors[activeParticipant?.status || "offline"]}`}
-                    style={{ borderColor: "var(--app-bg-primary)" }}
-                  />
+                  <div className="absolute -bottom-0.5 -right-0.5">
+                    <StatusIndicator status={activeParticipant?.status || "offline"} size="sm" borderColor="var(--app-bg-primary)" />
+                  </div>
                 </div>
                 <span className="text-[15px] font-semibold" style={{ color: "var(--app-text-primary)" }}>
                   {activeParticipant?.display_name || "Conversation"}
