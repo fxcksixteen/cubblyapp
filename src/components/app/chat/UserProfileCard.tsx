@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { getProfileColor } from "@/lib/profileColors";
+import { getEffectivePresenceStatus } from "@/lib/presence";
 import { toast } from "sonner";
 import { X } from "lucide-react";
 import messagesIcon from "@/assets/icons/messages.svg";
@@ -27,7 +28,7 @@ interface ProfileData {
 }
 
 const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage }: UserProfileCardProps) => {
-  const { user } = useAuth();
+  const { user, onlineUserIds } = useAuth();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [friendshipStatus, setFriendshipStatus] = useState<string | null>(null);
   const [friendshipId, setFriendshipId] = useState<string | null>(null);
@@ -35,6 +36,7 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
   const ref = useRef<HTMLDivElement>(null);
   const color = getProfileColor(userId);
   const isOwnProfile = userId === user?.id;
+  const effectiveStatus = getEffectivePresenceStatus(userId, profile?.status, onlineUserIds);
 
   useEffect(() => {
     supabase
@@ -68,6 +70,31 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [onClose]);
+
+  useEffect(() => {
+    const uniqueSuffix = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const channel = supabase
+      .channel(`profile-card:${userId}:${uniqueSuffix}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "profiles", filter: `user_id=eq.${userId}` },
+        (payload) => {
+          const next = payload.new as ProfileData & { banner_url?: string | null };
+          setProfile({
+            avatar_url: next.avatar_url,
+            username: next.username,
+            bio: next.bio,
+            status: next.status,
+            banner_url: next.banner_url || null,
+          });
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userId]);
 
   const handleAddFriend = async () => {
     if (!user) return;
@@ -138,7 +165,7 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
                 </div>
               )}
               <div className="absolute -bottom-1 -right-1">
-                <StatusIndicator status={profile?.status || "offline"} size="lg" borderColor="#111214" />
+                <StatusIndicator status={effectiveStatus} size="lg" borderColor="#111214" />
               </div>
             </div>
           </div>
@@ -219,7 +246,7 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
             </div>
           )}
           <div className="absolute -bottom-0.5 -right-0.5">
-            <StatusIndicator status={profile?.status || "offline"} size="md" borderColor="#111214" />
+            <StatusIndicator status={effectiveStatus} size="md" borderColor="#111214" />
           </div>
         </div>
       </div>

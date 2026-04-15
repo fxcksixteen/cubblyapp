@@ -3,7 +3,7 @@ import { useFriends, Friendship } from "@/hooks/useFriends";
 import { useAuth } from "@/contexts/AuthContext";
 import { Check, X } from "lucide-react";
 import { getProfileColor } from "@/lib/profileColors";
-import messagesIcon from "@/assets/icons/messages.svg";
+import messagesHoverIcon from "@/assets/icons/messages-3.svg";
 import searchIcon from "@/assets/icons/search.svg";
 import emptyPendingIcon from "@/assets/icons/empty-pending.svg";
 import emptyBlockedIcon from "@/assets/icons/empty-blocked.svg";
@@ -167,7 +167,7 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
           style={{ backgroundColor: "var(--app-bg-secondary, #2b2d31)", color: "var(--app-text-secondary, #b5bac1)" }}
           title="Message"
         >
-          <img src={messagesIcon} alt="Message" className="h-5 w-5 invert opacity-80" />
+          <img src={messagesHoverIcon} alt="Message" className="h-5 w-5 opacity-80" />
         </button>
         <button
           onClick={() => removeFriend(friendship.id)}
