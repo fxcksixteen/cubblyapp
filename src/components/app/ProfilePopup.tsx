@@ -66,7 +66,9 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
         style={{ backgroundColor: profileColor.bg }}
       >
         {displayName.charAt(0).toUpperCase()}
-        <div className={`absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-[3px] border-[var(--app-bg-accent,#232428)] ${currentStatusObj.dotClass}`} />
+        <div className="absolute -bottom-0.5 -right-0.5">
+          <StatusIndicator status={currentStatus} size="md" borderColor="var(--app-bg-accent, #232428)" />
+        </div>
       </button>
 
       {open && (
@@ -103,7 +105,13 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
                   currentStatus === s.value ? "bg-[#404249] text-white" : "text-[#dbdee1] hover:bg-[#35373c]"
                 }`}
               >
-                <div className={`h-2.5 w-2.5 rounded-full ${s.color}`} />
+                {s.value === "online" ? (
+                  <div className="h-2.5 w-2.5 rounded-full bg-[#3ba55c]" />
+                ) : s.icon ? (
+                  <img src={s.icon} alt="" className="h-2.5 w-2.5" style={{ filter: s.filter }} />
+                ) : (
+                  <div className="h-2.5 w-2.5 rounded-full bg-[#747f8d]" />
+                )}
                 {s.label}
               </button>
             ))}
