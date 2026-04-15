@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import StatusIndicator from "@/components/app/StatusIndicator";
 import { useAuth } from "@/contexts/AuthContext";
 import { useVoice } from "@/contexts/VoiceContext";
 import { Conversation } from "@/hooks/useConversations";
@@ -38,13 +39,6 @@ interface DMSidebarProps {
   onOpenDM: (userId: string) => void;
 }
 
-const statusColors: Record<string, string> = {
-  online: "bg-[#3ba55c]",
-  idle: "bg-[#faa61a]",
-  dnd: "bg-[#ed4245]",
-  invisible: "bg-[#747f8d]",
-  offline: "bg-[#747f8d]",
-};
 
 const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversation, onOpenDM }: DMSidebarProps) => {
   const { user } = useAuth();
@@ -159,7 +153,9 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                           {conv.participant.display_name.charAt(0).toUpperCase()}
                         </div>
                       )}
-                      <div className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-[2.5px] border-[#2b2d31] ${statusColors[conv.participant.status]}`} />
+                      <div className="absolute -bottom-0.5 -right-0.5">
+                        <StatusIndicator status={conv.participant.status} size="sm" borderColor="#2b2d31" />
+                      </div>
                     </div>
                     <span className="truncate text-sm font-medium">{conv.participant.display_name}</span>
                     <X

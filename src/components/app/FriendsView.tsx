@@ -11,6 +11,7 @@ import addUserIcon from "@/assets/icons/add-user.svg";
 import removeUserIcon from "@/assets/icons/remove-user.svg";
 import blockUserIcon from "@/assets/icons/block-user.svg";
 import activityIcon from "@/assets/icons/activity.svg";
+import StatusIndicator from "@/components/app/StatusIndicator";
 
 type FriendTab = "online" | "all" | "pending" | "blocked" | "add";
 
@@ -18,14 +19,10 @@ interface FriendsViewProps {
   activeTab: FriendTab;
   setActiveTab: (tab: FriendTab) => void;
   onOpenDM: (userId: string) => void;
+  activeNowOpen: boolean;
+  setActiveNowOpen: (open: boolean) => void;
 }
 
-const statusColors: Record<string, string> = {
-  online: "bg-[#3ba55c]",
-  idle: "bg-[#faa61a]",
-  dnd: "bg-[#ed4245]",
-  offline: "bg-[#747f8d]",
-};
 
 const emptyMessages: Record<string, string[]> = {
   online: [
@@ -54,13 +51,12 @@ const emptyMessages: Record<string, string[]> = {
   ],
 };
 
-const FriendsView = ({ activeTab, setActiveTab, onOpenDM }: FriendsViewProps) => {
+const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActiveNowOpen }: FriendsViewProps) => {
   const { user } = useAuth();
   const { friends, pending, blocked, sendFriendRequest, acceptRequest, declineRequest, unblockUser, removeFriend } = useFriends();
   const [addInput, setAddInput] = useState("");
   const [addStatus, setAddStatus] = useState<{ type: "success" | "error"; msg: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeNowOpen, setActiveNowOpen] = useState(true);
 
   const randomMessage = useMemo(() => {
     const msgs = emptyMessages[activeTab] || emptyMessages.online;
@@ -241,7 +237,9 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM }: FriendsViewProps) =>
                       >
                         {friendship.profile.display_name.charAt(0).toUpperCase()}
                       </div>
-                      <div className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-[2.5px] border-[#313338] group-hover:border-[#404249] ${statusColors[friendship.profile.status]}`} />
+                      <div className="absolute -bottom-0.5 -right-0.5">
+                        <StatusIndicator status={friendship.profile.status} size="sm" borderColor="#313338" />
+                      </div>
                     </div>
                     <div className="flex-1 overflow-hidden">
                       <p className="text-sm font-semibold text-white leading-tight">{friendship.profile.display_name}</p>
@@ -263,9 +261,13 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM }: FriendsViewProps) =>
         )}
       </div>
 
-      {/* Active Now sidebar - collapsible */}
-      {activeNowOpen ? (
-        <div className="hidden xl:flex w-[340px] flex-shrink-0 flex-col border-l border-[#3f4147] px-4 py-4 animate-slide-in-right">
+      {/* Active Now sidebar - collapsible with animation */}
+      <div
+        className={`hidden xl:flex flex-shrink-0 flex-col border-l border-[#3f4147] transition-all duration-300 ease-in-out overflow-hidden ${
+          activeNowOpen ? "w-[340px] px-4 py-4 opacity-100" : "w-0 px-0 py-0 opacity-0 border-l-0"
+        }`}
+      >
+        <div className="min-w-[308px]">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-xl font-bold text-white">Active Now</h3>
             <button
@@ -283,7 +285,7 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM }: FriendsViewProps) =>
             </p>
           </div>
         </div>
-      ) : null}
+      </div>
     </div>
   );
 };

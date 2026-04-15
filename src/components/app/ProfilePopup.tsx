@@ -4,12 +4,16 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Copy, Pencil, User, Check } from "lucide-react";
 import { toast } from "sonner";
 import { defaultProfileColor } from "@/lib/profileColors";
+import StatusIndicator from "@/components/app/StatusIndicator";
+import statusIdleIcon from "@/assets/icons/status-idle.svg";
+import statusDndIcon from "@/assets/icons/status-dnd.svg";
+import statusInvisibleIcon from "@/assets/icons/status-invisible.svg";
 
 const statuses = [
-  { value: "online", label: "Online", color: "bg-[#3ba55c]", dotClass: "bg-[#3ba55c]" },
-  { value: "idle", label: "Idle", color: "bg-[#faa61a]", dotClass: "bg-[#faa61a]" },
-  { value: "dnd", label: "Do Not Disturb", color: "bg-[#ed4245]", dotClass: "bg-[#ed4245]" },
-  { value: "invisible", label: "Invisible", color: "bg-[#747f8d]", dotClass: "bg-[#747f8d]" },
+  { value: "online", label: "Online", icon: null, dotClass: "bg-[#3ba55c]" },
+  { value: "idle", label: "Idle", icon: statusIdleIcon, filter: "brightness(0) saturate(100%) invert(72%) sepia(58%) saturate(1000%) hue-rotate(357deg) brightness(101%) contrast(96%)" },
+  { value: "dnd", label: "Do Not Disturb", icon: statusDndIcon, filter: "brightness(0) saturate(100%) invert(36%) sepia(71%) saturate(5500%) hue-rotate(345deg) brightness(94%) contrast(92%)" },
+  { value: "invisible", label: "Invisible", icon: statusInvisibleIcon, filter: "brightness(0) saturate(100%) invert(55%) sepia(7%) saturate(500%) hue-rotate(182deg) brightness(92%) contrast(87%)" },
 ] as const;
 
 interface ProfilePopupProps {
@@ -62,7 +66,9 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
         style={{ backgroundColor: profileColor.bg }}
       >
         {displayName.charAt(0).toUpperCase()}
-        <div className={`absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-[3px] border-[var(--app-bg-accent,#232428)] ${currentStatusObj.dotClass}`} />
+        <div className="absolute -bottom-0.5 -right-0.5">
+          <StatusIndicator status={currentStatus} size="md" borderColor="var(--app-bg-accent, #232428)" />
+        </div>
       </button>
 
       {open && (
@@ -99,7 +105,13 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
                   currentStatus === s.value ? "bg-[#404249] text-white" : "text-[#dbdee1] hover:bg-[#35373c]"
                 }`}
               >
-                <div className={`h-2.5 w-2.5 rounded-full ${s.color}`} />
+                {s.value === "online" ? (
+                  <div className="h-2.5 w-2.5 rounded-full bg-[#3ba55c]" />
+                ) : s.icon ? (
+                  <img src={s.icon} alt="" className="h-2.5 w-2.5" style={{ filter: s.filter }} />
+                ) : (
+                  <div className="h-2.5 w-2.5 rounded-full bg-[#747f8d]" />
+                )}
                 {s.label}
               </button>
             ))}

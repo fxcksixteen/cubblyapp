@@ -3,8 +3,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { getProfileColor } from "@/lib/profileColors";
 import { toast } from "sonner";
-import { UserPlus, UserMinus, Ban, X } from "lucide-react";
+import { X } from "lucide-react";
 import messagesIcon from "@/assets/icons/messages.svg";
+import addUserIcon from "@/assets/icons/add-user.svg";
+import removeUserIcon from "@/assets/icons/remove-user.svg";
+import blockUserIcon from "@/assets/icons/block-user.svg";
+import StatusIndicator from "@/components/app/StatusIndicator";
 
 interface UserProfileCardProps {
   userId: string;
@@ -18,6 +22,7 @@ interface ProfileData {
   avatar_url: string | null;
   username: string;
   bio: string | null;
+  status: string;
 }
 
 const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage }: UserProfileCardProps) => {
@@ -33,7 +38,7 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
   useEffect(() => {
     supabase
       .from("profiles")
-      .select("avatar_url, username, bio")
+      .select("avatar_url, username, bio, status")
       .eq("user_id", userId)
       .maybeSingle()
       .then(({ data }) => {
@@ -115,21 +120,26 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
           className="w-[440px] rounded-2xl overflow-hidden shadow-2xl border border-[#2b2d31] bg-[#111214] animate-in fade-in-0 zoom-in-95 duration-200"
         >
           {/* Banner */}
-          <div className="h-[100px] relative" style={{ background: color.banner }}>
+           <div className="h-[100px] relative" style={{ background: color.banner }}>
             <button onClick={onClose} className="absolute top-3 right-3 flex h-7 w-7 items-center justify-center rounded-full bg-black/40 text-white hover:bg-black/60 transition-colors">
               <X className="h-4 w-4" />
             </button>
           </div>
 
-          {/* Avatar */}
-          <div className="px-5 -mt-10">
-            {profile?.avatar_url ? (
-              <img src={profile.avatar_url} alt={displayName} className="h-[80px] w-[80px] rounded-full border-[6px] border-[#111214] object-cover" />
-            ) : (
-              <div className="flex h-[80px] w-[80px] items-center justify-center rounded-full border-[6px] border-[#111214] text-2xl font-bold text-white" style={{ backgroundColor: color.bg }}>
-                {displayName.charAt(0).toUpperCase()}
+          {/* Avatar - with z-index above banner */}
+          <div className="px-5 -mt-10 relative z-10">
+            <div className="relative inline-block">
+              {profile?.avatar_url ? (
+                <img src={profile.avatar_url} alt={displayName} className="h-[80px] w-[80px] rounded-full border-[6px] border-[#111214] object-cover" />
+              ) : (
+                <div className="flex h-[80px] w-[80px] items-center justify-center rounded-full border-[6px] border-[#111214] text-2xl font-bold text-white" style={{ backgroundColor: color.bg }}>
+                  {displayName.charAt(0).toUpperCase()}
+                </div>
+              )}
+              <div className="absolute -bottom-1 -right-1">
+                <StatusIndicator status={profile?.status || "offline"} size="lg" borderColor="#111214" />
               </div>
-            )}
+            </div>
           </div>
 
           {/* Info */}
@@ -157,21 +167,21 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
                   </button>
                 )}
                 {friendshipStatus === "accepted" ? (
-                  <button onClick={handleRemoveFriend} className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 hover:bg-[#ed4245]/20 text-[#949ba4] hover:text-[#ed4245] transition-colors" title="Remove Friend">
-                    <UserMinus className="h-4 w-4" />
+                  <button onClick={handleRemoveFriend} className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 hover:bg-[#ed4245]/20 transition-colors" title="Remove Friend">
+                    <img src={removeUserIcon} alt="Remove" className="h-4 w-4 invert opacity-70 hover:opacity-100" />
                   </button>
                 ) : friendshipStatus === "pending" ? (
                   <button disabled className="flex h-10 px-4 items-center justify-center rounded-full bg-white/5 text-[#949ba4] text-sm cursor-default">
                     Pending
                   </button>
                 ) : friendshipStatus !== "blocked" ? (
-                  <button onClick={handleAddFriend} className="flex h-10 w-10 items-center justify-center rounded-full bg-[#3ba55c] hover:bg-[#2d8b4e] text-white transition-colors" title="Add Friend">
-                    <UserPlus className="h-4 w-4" />
+                  <button onClick={handleAddFriend} className="flex h-10 w-10 items-center justify-center rounded-full bg-[#3ba55c] hover:bg-[#2d8b4e] transition-colors" title="Add Friend">
+                    <img src={addUserIcon} alt="Add" className="h-4 w-4 invert" />
                   </button>
                 ) : null}
                 {friendshipStatus !== "blocked" && (
-                  <button onClick={handleBlock} className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 hover:bg-[#ed4245]/20 text-[#949ba4] hover:text-[#ed4245] transition-colors" title="Block">
-                    <Ban className="h-4 w-4" />
+                  <button onClick={handleBlock} className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 hover:bg-[#ed4245]/20 transition-colors" title="Block">
+                    <img src={blockUserIcon} alt="Block" className="h-4 w-4 invert opacity-70 hover:opacity-100" />
                   </button>
                 )}
               </div>
@@ -189,23 +199,28 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
       <div className="h-[60px]" style={{ background: color.banner }} />
 
       {/* Avatar - clickable to open full profile */}
-      <div className="px-4 -mt-6">
-        {profile?.avatar_url ? (
-          <img
-            src={profile.avatar_url}
-            alt={displayName}
-            className="h-[52px] w-[52px] rounded-full border-[4px] border-[#111214] object-cover cursor-pointer hover:opacity-80 transition-opacity"
-            onClick={() => setShowFullProfile(true)}
-          />
-        ) : (
-          <div
-            className="flex h-[52px] w-[52px] items-center justify-center rounded-full border-[4px] border-[#111214] text-lg font-bold text-white cursor-pointer hover:opacity-80 transition-opacity"
-            style={{ backgroundColor: color.bg }}
-            onClick={() => setShowFullProfile(true)}
-          >
-            {displayName.charAt(0).toUpperCase()}
+      <div className="px-4 -mt-6 relative z-10">
+        <div className="relative inline-block">
+          {profile?.avatar_url ? (
+            <img
+              src={profile.avatar_url}
+              alt={displayName}
+              className="h-[52px] w-[52px] rounded-full border-[4px] border-[#111214] object-cover cursor-pointer hover:opacity-80 transition-opacity"
+              onClick={() => setShowFullProfile(true)}
+            />
+          ) : (
+            <div
+              className="flex h-[52px] w-[52px] items-center justify-center rounded-full border-[4px] border-[#111214] text-lg font-bold text-white cursor-pointer hover:opacity-80 transition-opacity"
+              style={{ backgroundColor: color.bg }}
+              onClick={() => setShowFullProfile(true)}
+            >
+              {displayName.charAt(0).toUpperCase()}
+            </div>
+          )}
+          <div className="absolute -bottom-0.5 -right-0.5">
+            <StatusIndicator status={profile?.status || "offline"} size="md" borderColor="#111214" />
           </div>
-        )}
+        </div>
       </div>
 
       {/* Info */}
@@ -230,14 +245,14 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
             </button>
           )}
           {friendshipStatus === "accepted" ? (
-            <button onClick={handleRemoveFriend} className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 hover:bg-[#ed4245]/20 text-[#949ba4] hover:text-[#ed4245] transition-colors" title="Remove Friend">
-              <UserMinus className="h-3.5 w-3.5" />
+            <button onClick={handleRemoveFriend} className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 hover:bg-[#ed4245]/20 transition-colors" title="Remove Friend">
+              <img src={removeUserIcon} alt="Remove" className="h-3.5 w-3.5 invert opacity-70" />
             </button>
           ) : friendshipStatus === "pending" ? (
             <span className="text-xs text-[#949ba4]">Pending</span>
           ) : friendshipStatus !== "blocked" ? (
-            <button onClick={handleAddFriend} className="flex h-9 w-9 items-center justify-center rounded-full bg-[#3ba55c] hover:bg-[#2d8b4e] text-white transition-colors" title="Add Friend">
-              <UserPlus className="h-3.5 w-3.5" />
+            <button onClick={handleAddFriend} className="flex h-9 w-9 items-center justify-center rounded-full bg-[#3ba55c] hover:bg-[#2d8b4e] transition-colors" title="Add Friend">
+              <img src={addUserIcon} alt="Add" className="h-3.5 w-3.5 invert" />
             </button>
           ) : null}
         </div>
