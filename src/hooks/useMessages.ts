@@ -26,7 +26,29 @@ export function useMessages(conversationId: string | null) {
   const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
+  const [currentUserAvatarUrl, setCurrentUserAvatarUrl] = useState<string | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+
+  useEffect(() => {
+    if (!user) {
+      setCurrentUserAvatarUrl(null);
+      return;
+    }
+
+    supabase
+      .from("profiles")
+      .select("avatar_url")
+      .eq("user_id", user.id)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (error) {
+          console.error("Failed to fetch current user avatar:", error);
+          return;
+        }
+
+        setCurrentUserAvatarUrl(data?.avatar_url || null);
+      });
+  }, [user]);
 
   const fetchMessages = useCallback(async () => {
     if (!conversationId) {
@@ -125,6 +147,7 @@ export function useMessages(conversationId: string | null) {
                   ...updated[existingIndex],
                   ...newMessage,
                   sender_name: getSenderName(newMessage.sender_id, profile?.display_name ?? updated[existingIndex].sender_name),
+                  sender_avatar_url: profile?.avatar_url ?? updated[existingIndex].sender_avatar_url ?? null,
                   status: "delivered",
                 };
                 return updated;
@@ -175,6 +198,7 @@ export function useMessages(conversationId: string | null) {
       content: trimmedContent,
       created_at: new Date().toISOString(),
       sender_name: user.user_metadata?.display_name || user.email?.split("@")[0] || "Unknown",
+      sender_avatar_url: currentUserAvatarUrl,
       status: "sending",
     };
 
@@ -202,6 +226,7 @@ export function useMessages(conversationId: string | null) {
           ? {
               ...(insertedMessage as Message),
               sender_name: optimistic.sender_name,
+              sender_avatar_url: optimistic.sender_avatar_url,
               status: "sent" as MessageStatus,
             }
           : message,
