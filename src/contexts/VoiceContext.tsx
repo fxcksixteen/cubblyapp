@@ -90,7 +90,7 @@ interface VoiceContextType {
   startCall: (conversationId: string, peerId: string, peerName: string) => void;
   acceptCall: () => void;
   endCall: () => void;
-  incomingCall: { conversationId: string; callerId: string; callerName: string; offer: RTCSessionDescriptionInit } | null;
+  incomingCall: { conversationId: string; callerId: string; callerName: string; offer: RTCSessionDescriptionInit; callEventId?: string } | null;
   toggleMute: () => void;
   toggleDeafen: () => void;
   localStream: MediaStream | null;
@@ -404,6 +404,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           callerId: payload.senderId,
           callerName: payload.senderName || "Unknown",
           offer: payload.sdp,
+          callEventId: payload.callEventId,
         });
       }
 
@@ -417,6 +418,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             sdp: pendingOfferRef.current.offer,
             senderId: user.id,
             senderName: user.user_metadata?.display_name || "User",
+            callEventId: pendingOfferRef.current.callEventId,
           },
         });
       }
@@ -496,7 +498,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   };
 
   // Store pending offer so we can re-send when recipient signals ready
-  const pendingOfferRef = useRef<{ offer: RTCSessionDescriptionInit; conversationId: string } | null>(null);
+  const pendingOfferRef = useRef<{ offer: RTCSessionDescriptionInit; conversationId: string; callEventId: string } | null>(null);
 
   const startCall = useCallback(async (conversationId: string, peerId: string, peerName: string) => {
     if (!user) return;
@@ -509,6 +511,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
       const channel = setupSignaling(conversationId);
+      const callEventId = crypto.randomUUID();
 
       pc.onicecandidate = (event) => {
         if (event.candidate) {
@@ -527,7 +530,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       await pc.setLocalDescription(offer);
 
       // Store offer for re-sending when recipient is ready
-      pendingOfferRef.current = { offer, conversationId };
+      pendingOfferRef.current = { offer, conversationId, callEventId };
 
       // Send offer on the conversation signaling channel
       channel?.send({
@@ -538,11 +541,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           sdp: offer,
           senderId: user.id,
           senderName: user.user_metadata?.display_name || "User",
+          callEventId,
         },
       });
 
       // CRITICAL: Notify the recipient via their global channel so they join signaling
-      const recipientGlobalChannel = supabase.channel(`voice-global:${peerId}:notify`);
+      const recipientGlobalChannel = supabase.channel(`voice-global:${peerId}`);
       recipientGlobalChannel.subscribe(async (status) => {
         if (status === "SUBSCRIBED") {
           recipientGlobalChannel.send({
@@ -553,6 +557,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               conversationId,
               callerId: user.id,
               callerName: user.user_metadata?.display_name || "User",
+              callEventId,
             },
           });
           // Keep channel alive briefly so the message goes through, then clean up
@@ -574,7 +579,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         isDeafened: false,
       });
 
-      const callEventId = crypto.randomUUID();
       setCallEvents(prev => [...prev, {
         id: callEventId,
         conversationId,
@@ -640,15 +644,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       setIncomingCall(null);
 
       setCallEvents(prev => {
-        const hasOngoing = prev.some(e => e.conversationId === incomingCall.conversationId && e.state === "ongoing");
+        const callEventId = incomingCall.callEventId || crypto.randomUUID();
+        const hasOngoing = prev.some(
+          e => e.id === callEventId || (e.conversationId === incomingCall.conversationId && e.state === "ongoing")
+        );
         if (hasOngoing) return prev;
-        const callEventId = crypto.randomUUID();
-        supabase.from("call_events").insert({
-          id: callEventId,
-          conversation_id: incomingCall.conversationId,
-          caller_id: user.id,
-          state: "ongoing",
-        } as any).then(() => {});
         return [...prev, {
           id: callEventId,
           conversationId: incomingCall.conversationId,
