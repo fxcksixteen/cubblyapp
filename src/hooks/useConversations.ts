@@ -134,8 +134,9 @@ export function useConversations() {
   useEffect(() => {
     if (!user) return;
 
+    const channelName = `conversation-updates:${user.id}:${Date.now()}`;
     const channel = supabase
-      .channel(`conversation-updates:${user.id}`)
+      .channel(channelName)
       .on("postgres_changes", { event: "*", schema: "public", table: "conversation_participants" }, () => fetchRef.current())
       .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, () => fetchRef.current())
       .subscribe();
