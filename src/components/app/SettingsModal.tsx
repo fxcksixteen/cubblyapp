@@ -53,8 +53,25 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
   const [activeCategory, setActiveCategory] = useState<SettingsCategory>("my-account");
   const { user, signOut } = useAuth();
   const { theme, setTheme } = useTheme();
+  const [visible, setVisible] = useState(false);
+  const [animating, setAnimating] = useState(false);
+  const backdropRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const profileColor = defaultProfileColor;
+
+  useEffect(() => {
+    if (isOpen) {
+      setVisible(true);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => setAnimating(true));
+      });
+    } else {
+      setAnimating(false);
+      const timer = setTimeout(() => setVisible(false), 250);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -65,7 +82,7 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
     return () => document.removeEventListener("keydown", handler);
   }, [isOpen, onClose]);
 
-  if (!isOpen) return null;
+  if (!visible) return null;
 
   const displayName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "User";
   const username = user?.user_metadata?.username || displayName.toLowerCase();
