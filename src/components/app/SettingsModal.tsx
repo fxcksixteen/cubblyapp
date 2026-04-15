@@ -228,7 +228,7 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
       }
 
       // Update profiles table
-      const profileUpdates: Record<string, string> = {};
+      const profileUpdates: { display_name?: string; username?: string; bio?: string; avatar_url?: string } = {};
       if (pendingChanges.display_name) profileUpdates.display_name = pendingChanges.display_name;
       if (pendingChanges.username) profileUpdates.username = pendingChanges.username;
       if (pendingChanges.bio !== undefined) profileUpdates.bio = pendingChanges.bio;
