@@ -13,7 +13,7 @@ export const profileColors = [
 
 export type ProfileColorId = typeof profileColors[number]["id"];
 
-/** Default color (blue) — used for current user until color preferences are stored */
+/** Default color (blue) — used for the current logged-in user's own display */
 export const defaultProfileColor = profileColors[0];
 
 /** Deterministically pick a color from a user ID string (for other users' avatars) */
