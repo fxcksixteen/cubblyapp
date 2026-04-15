@@ -214,20 +214,22 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
             <SelectValue />
           </SelectTrigger>
           <SelectContent
-            className="rounded-xl border shadow-xl"
+            className="rounded-xl border shadow-xl z-[9999]"
             style={{ backgroundColor: "var(--app-bg-secondary)", borderColor: "var(--app-border)" }}
           >
             <SelectItem value="default" className="rounded-lg text-sm cursor-pointer" style={{ color: "var(--app-text-primary)" }}>
               Default
             </SelectItem>
-            {availableDevices.inputs.map((d: MediaDeviceInfo) => (
+            {availableDevices.inputs
+              .filter((d: MediaDeviceInfo) => d.deviceId !== "default" && d.deviceId !== "communications")
+              .map((d: MediaDeviceInfo) => (
               <SelectItem
                 key={d.deviceId}
                 value={d.deviceId}
                 className="rounded-lg text-sm cursor-pointer"
                 style={{ color: "var(--app-text-primary)" }}
               >
-                {d.label || `Microphone (${d.deviceId.slice(0, 8)})`}
+                {(d.label || `Microphone (${d.deviceId.slice(0, 8)})`).replace(/^Default\s*-\s*/, "")}
               </SelectItem>
             ))}
           </SelectContent>
@@ -273,7 +275,7 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
           </div>
           {micTesting && (
             <p className="mt-1.5 text-[11px]" style={{ color: "var(--app-text-secondary)" }}>
-              🎤 Speak now — the level bar shows your mic input
+              Speak now — the level bar shows your mic input
             </p>
           )}
         </div>
@@ -292,20 +294,22 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
             <SelectValue />
           </SelectTrigger>
           <SelectContent
-            className="rounded-xl border shadow-xl"
+            className="rounded-xl border shadow-xl z-[9999]"
             style={{ backgroundColor: "var(--app-bg-secondary)", borderColor: "var(--app-border)" }}
           >
             <SelectItem value="default" className="rounded-lg text-sm cursor-pointer" style={{ color: "var(--app-text-primary)" }}>
               Default
             </SelectItem>
-            {availableDevices.outputs.map((d: MediaDeviceInfo) => (
+            {availableDevices.outputs
+              .filter((d: MediaDeviceInfo) => d.deviceId !== "default" && d.deviceId !== "communications")
+              .map((d: MediaDeviceInfo) => (
               <SelectItem
                 key={d.deviceId}
                 value={d.deviceId}
                 className="rounded-lg text-sm cursor-pointer"
                 style={{ color: "var(--app-text-primary)" }}
               >
-                {d.label || `Speaker (${d.deviceId.slice(0, 8)})`}
+                {(d.label || `Speaker (${d.deviceId.slice(0, 8)})`).replace(/^Default\s*-\s*/, "")}
               </SelectItem>
             ))}
           </SelectContent>
