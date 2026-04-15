@@ -1233,6 +1233,16 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     screenStream?.getTracks().forEach(t => t.stop());
     setScreenStream(null);
     setIsScreenSharing(false);
+    setRemoteScreenStream(null);
+
+    // Clean up screen loopback peers
+    if (screenLoopbackPcRef.current) {
+      console.log("[Voice][Loopback] Cleaning up screenshare loopback peers");
+      screenLoopbackPcRef.current.local.close();
+      screenLoopbackPcRef.current.remote.close();
+      screenLoopbackPcRef.current = null;
+    }
+
     screenPcRef.current?.close();
     screenPcRef.current = null;
 
