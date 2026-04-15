@@ -708,12 +708,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   }, [localStream]);
 
   const toggleDeafen = useCallback(() => {
-    if (remoteStream) {
-      const audioElements = document.querySelectorAll("audio");
-      audioElements.forEach(el => { if (el.srcObject) el.muted = !el.muted; });
-      setActiveCall(prev => prev ? { ...prev, isDeafened: !prev.isDeafened } : null);
-    }
-  }, [remoteStream]);
+    // For bot calls or when there's no remote stream, still toggle the state
+    const audioElements = document.querySelectorAll("audio");
+    audioElements.forEach((el: any) => { if (el.__cubblyRemote) el.muted = !el.muted; });
+    setActiveCall(prev => prev ? { ...prev, isDeafened: !prev.isDeafened } : null);
+  }, []);
 
   useEffect(() => {
     if (!user) return;
