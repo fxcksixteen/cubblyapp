@@ -754,7 +754,16 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         }
       };
 
+      // Set remote description (the offer) — this enables ICE candidate processing
+      remoteDescriptionSet.current = true;
       await pc.setRemoteDescription(new RTCSessionDescription(incomingCall.offer));
+
+      // Flush any queued incoming ICE candidates that arrived before we had the pc + remote desc
+      for (const candidate of incomingCandidateQueue.current) {
+        try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch (e) { console.warn("[Voice] Flush queued candidate failed:", e); }
+      }
+      incomingCandidateQueue.current = [];
+
       const answer = await pc.createAnswer();
       let sdp = answer.sdp || "";
       sdp = setHighQualityOpus(sdp);
@@ -767,12 +776,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         payload: { type: "answer", sdp: answer, senderId: user.id },
       });
 
+      // Don't set "connected" here — wait for ICE connection state change
       setActiveCall({
         conversationId: incomingCall.conversationId,
         peerId: incomingCall.callerId,
         peerName: incomingCall.callerName,
-        state: "connected",
-        startedAt: Date.now(),
+        state: "calling",
+        startedAt: undefined,
         isMuted: false,
         isDeafened: false,
       });
