@@ -174,6 +174,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const [remoteScreenStream, setRemoteScreenStream] = useState<MediaStream | null>(null);
 
+  const iceServersRef = useRef<RTCIceServer[]>(STUN_ONLY_SERVERS);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const screenPcRef = useRef<RTCPeerConnection | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
@@ -188,6 +189,16 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     detectBestRegion().then(setDetectedRegion);
   }, []);
+
+  // Fetch TURN credentials on mount
+  useEffect(() => {
+    if (!user) return;
+    supabase.functions.invoke("get-turn-credentials").then(({ data, error }) => {
+      if (!error && data?.iceServers) {
+        iceServersRef.current = data.iceServers;
+      }
+    });
+  }, [user]);
 
   // Load persisted call events from DB
   useEffect(() => {
@@ -298,7 +309,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   }, [settings.inputDeviceId, settings.echoCancellation, settings.noiseSuppression, settings.autoGainControl]);
 
   const createPeerConnection = useCallback(() => {
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS, iceTransportPolicy: "all" });
+    const pc = new RTCPeerConnection({ iceServers: iceServersRef.current, iceTransportPolicy: "all" });
 
     pc.ontrack = (event) => {
       const remote = event.streams[0];
@@ -394,7 +405,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
       // Screen share signaling
       if (payload.type === "screen-offer") {
-        const screenPc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+        const screenPc = new RTCPeerConnection({ iceServers: iceServersRef.current });
         screenPc.ontrack = (event) => {
           setRemoteScreenStream(event.streams[0]);
         };
@@ -631,7 +642,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       setIsScreenSharing(true);
 
       // Create a separate peer connection for screen sharing
-      const screenPc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+      const screenPc = new RTCPeerConnection({ iceServers: iceServersRef.current });
       screenPcRef.current = screenPc;
 
       stream.getTracks().forEach(track => {
