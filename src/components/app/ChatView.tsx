@@ -90,9 +90,12 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
 
   // ---- Auto-scroll ----
   const scrollToBottom = useCallback(() => {
+    // Double rAF ensures DOM has painted before we measure scrollHeight
     requestAnimationFrame(() => {
-      const container = messagesContainerRef.current;
-      if (container) container.scrollTop = container.scrollHeight;
+      requestAnimationFrame(() => {
+        const container = messagesContainerRef.current;
+        if (container) container.scrollTop = container.scrollHeight;
+      });
     });
   }, []);
 
@@ -113,8 +116,16 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
     prevMessageCountRef.current = n;
   }, [messages.length, messages, user?.id, scrollToBottom]);
 
+  // Scroll to bottom on initial load and conversation switch
   useEffect(() => {
-    if (!loading && messages.length > 0) scrollToBottom();
+    if (!loading && messages.length > 0) {
+      // Reset scroll-up flag on conversation switch
+      userHasScrolledUpRef.current = false;
+      scrollToBottom();
+      // Extra delayed scroll for long conversations where DOM takes time to render
+      const t = setTimeout(() => scrollToBottom(), 200);
+      return () => clearTimeout(t);
+    }
   }, [loading, conversationId, scrollToBottom]);
 
   useEffect(() => {
