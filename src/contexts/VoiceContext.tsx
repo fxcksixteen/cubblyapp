@@ -496,18 +496,26 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
   const initializeOutgoingConnection = useCallback(async (channel: ReturnType<typeof supabase.channel>, conversationId: string) => {
     if (!user) return;
-    if (pcRef.current || pendingOfferRef.current) return;
+    if (pcRef.current || pendingOfferRef.current) {
+      console.log("[Voice] ⚠️ initializeOutgoingConnection skipped — PC or pending offer already exists");
+      return;
+    }
 
     const outgoingCallMeta = outgoingCallMetaRef.current;
     if (!outgoingCallMeta || outgoingCallMeta.conversationId !== conversationId) return;
 
+    console.log("[Voice] 📤 Initializing outgoing connection...");
     const stream = await getUserMedia();
+    console.log("[Voice] ✅ Got media stream, tracks:", stream.getTracks().map(t => `${t.kind}:${t.label}:enabled=${t.enabled}`));
     setLocalStream(stream);
     localStreamRef.current = stream;
     startAudioLevelMonitor(stream);
 
     const pc = createPeerConnection();
-    stream.getTracks().forEach(track => pc.addTrack(track, stream));
+    stream.getTracks().forEach(track => {
+      pc.addTrack(track, stream);
+      console.log("[Voice] ➕ Added track to PC:", track.kind, track.label);
+    });
 
     outgoingCandidateBuffer.current = [];
     incomingCandidateQueue.current = [];
@@ -516,12 +524,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     pc.onicecandidate = (event) => {
       if (event.candidate) {
         const candidate = event.candidate.toJSON();
+        console.log("[Voice] 🧊 Outgoing ICE candidate:", event.candidate.type, event.candidate.protocol, event.candidate.address);
         outgoingCandidateBuffer.current.push(candidate);
         channel.send({
           type: "broadcast",
           event: "voice-signal",
           payload: { type: "ice-candidate", candidate, senderId: user.id },
         });
+      } else {
+        console.log("[Voice] 🧊 ICE gathering complete (null candidate)");
       }
     };
 
@@ -530,6 +541,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     sdp = setHighQualityOpus(sdp);
     offer.sdp = sdp;
     await pc.setLocalDescription(offer);
+    console.log("[Voice] 📤 Offer created and set as local description");
 
     pendingOfferRef.current = {
       offer,
@@ -549,6 +561,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         callEventId: outgoingCallMeta.callEventId,
       },
     });
+    console.log("[Voice] 📡 Offer sent to callee via broadcast");
 
     setActiveCall(prev => prev && prev.conversationId === conversationId ? { ...prev, state: "ringing" } : prev);
   }, [user, getUserMedia, createPeerConnection, startAudioLevelMonitor]);
