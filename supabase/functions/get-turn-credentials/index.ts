@@ -40,21 +40,23 @@ serve(async (req) => {
     const turnUsername = Deno.env.get("TURN_USERNAME");
     const turnCredential = Deno.env.get("TURN_CREDENTIAL");
 
-    if (!turnUsername || !turnCredential) {
-      return new Response(JSON.stringify({ error: "TURN not configured" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     const iceServers = [
       { urls: "stun:stun.l.google.com:19302" },
       { urls: "stun:stun1.l.google.com:19302" },
-      { urls: "turn:a.relay.metered.ca:80", username: turnUsername, credential: turnCredential },
-      { urls: "turn:a.relay.metered.ca:80?transport=tcp", username: turnUsername, credential: turnCredential },
-      { urls: "turn:a.relay.metered.ca:443", username: turnUsername, credential: turnCredential },
-      { urls: "turns:a.relay.metered.ca:443?transport=tcp", username: turnUsername, credential: turnCredential },
+      { urls: "stun:stun2.l.google.com:19302" },
+      { urls: "stun:stun3.l.google.com:19302" },
+      { urls: "stun:stun4.l.google.com:19302" },
     ];
+
+    // Add TURN servers only if credentials are configured
+    if (turnUsername && turnCredential) {
+      iceServers.push(
+        { urls: "turn:a.relay.metered.ca:80", username: turnUsername, credential: turnCredential },
+        { urls: "turn:a.relay.metered.ca:80?transport=tcp", username: turnUsername, credential: turnCredential },
+        { urls: "turn:a.relay.metered.ca:443", username: turnUsername, credential: turnCredential },
+        { urls: "turns:a.relay.metered.ca:443?transport=tcp", username: turnUsername, credential: turnCredential },
+      );
+    }
 
     return new Response(JSON.stringify({ iceServers }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
