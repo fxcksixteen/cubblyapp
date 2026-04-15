@@ -112,7 +112,7 @@ interface VoiceContextType {
   isScreenSharing: boolean;
   screenStream: MediaStream | null;
   remoteScreenStream: MediaStream | null;
-  startScreenShare: () => Promise<void>;
+  startScreenShare: (type?: "screen" | "window" | "tab") => Promise<void>;
   stopScreenShare: () => void;
 }
 
@@ -558,7 +558,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   }, [incomingCall, user, getUserMedia, createPeerConnection, setupSignaling, startAudioLevelMonitor]);
 
   // Screen sharing
-  const startScreenShare = useCallback(async () => {
+  const startScreenShare = useCallback(async (type?: "screen" | "window" | "tab") => {
     if (!user || !activeCall || !channelRef.current) return;
 
     const resolutionMap: Record<string, { width: number; height: number } | undefined> = {
@@ -568,12 +568,25 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     };
 
     const res = resolutionMap[screenShareSettings.resolution];
+    
+    // Build display media constraints based on type
+    const videoConstraints: any = {
+      cursor: screenShareSettings.showCursor ? "always" : "never",
+      frameRate: { ideal: screenShareSettings.frameRate },
+      ...(res ? { width: { ideal: res.width }, height: { ideal: res.height } } : {}),
+    };
+
+    // Chrome/Edge support displaySurface to hint at the picker
+    if (type === "tab") {
+      videoConstraints.displaySurface = "browser";
+    } else if (type === "window") {
+      videoConstraints.displaySurface = "window";
+    } else if (type === "screen") {
+      videoConstraints.displaySurface = "monitor";
+    }
+
     const displayConstraints: DisplayMediaStreamOptions = {
-      video: {
-        cursor: screenShareSettings.showCursor ? "always" : "never",
-        frameRate: { ideal: screenShareSettings.frameRate },
-        ...(res ? { width: { ideal: res.width }, height: { ideal: res.height } } : {}),
-      } as any,
+      video: videoConstraints,
       audio: screenShareSettings.audioShare,
     };
 
