@@ -191,6 +191,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const localStreamRef = useRef<MediaStream | null>(null);
   const endCallRef = useRef<() => void>(() => {});
 
+  // ICE candidate queues to fix race conditions
+  const incomingCandidateQueue = useRef<RTCIceCandidateInit[]>([]);
+  const outgoingCandidateBuffer = useRef<RTCIceCandidateInit[]>([]);
+  const remoteDescriptionSet = useRef<boolean>(false);
+  // Flag to prevent re-broadcasting hangup when receiving one
+  const isRemoteHangup = useRef<boolean>(false);
+
   useEffect(() => {
     detectBestRegion().then(setDetectedRegion);
   }, []);
@@ -419,12 +426,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
     pc.oniceconnectionstatechange = () => {
       console.log("[Voice] ICE state:", pc.iceConnectionState);
-      if (pc.iceConnectionState === "connected") {
+      if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+        // Mark call as truly connected only when ICE transport is up
+        setActiveCall(prev => prev && prev.state !== "connected" ? { ...prev, state: "connected", startedAt: prev.startedAt || Date.now() } : prev);
         // Ensure ALL local audio tracks are enabled when connected
         const senders = pc.getSenders();
         senders.forEach(s => {
           if (s.track?.kind === "audio") {
-            // Always enable on connect — mute state is applied separately
             s.track.enabled = true;
             console.log("[Voice] Audio track enabled on ICE connected");
           }
@@ -432,11 +440,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       }
       if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed") {
         console.warn("[Voice] ICE connection failed/disconnected");
-        // Use a timeout to avoid acting on transient disconnects
         setTimeout(() => {
           if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed") {
             console.error("[Voice] ICE permanently failed, ending call");
-            // Clean up directly to avoid stale closure issues
             pc.close();
             pcRef.current = null;
             setActiveCall(null);
