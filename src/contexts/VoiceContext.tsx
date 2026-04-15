@@ -415,9 +415,28 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     };
 
     pc.oniceconnectionstatechange = () => {
+      console.log("[Voice] ICE state:", pc.iceConnectionState);
+      if (pc.iceConnectionState === "connected") {
+        // Ensure local audio tracks are enabled when connected
+        const senders = pc.getSenders();
+        senders.forEach(s => {
+          if (s.track?.kind === "audio" && !s.track.enabled) {
+            // Only re-enable if not manually muted
+            const call = activeCall;
+            if (call && !call.isMuted && !call.isDeafened) {
+              s.track.enabled = true;
+            }
+          }
+        });
+      }
       if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed") {
+        console.warn("[Voice] ICE connection failed/disconnected");
         endCall();
       }
+    };
+
+    pc.onconnectionstatechange = () => {
+      console.log("[Voice] Connection state:", pc.connectionState);
     };
 
     pcRef.current = pc;
