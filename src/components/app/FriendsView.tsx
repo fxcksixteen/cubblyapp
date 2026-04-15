@@ -23,6 +23,7 @@ interface FriendsViewProps {
   setActiveNowOpen: (open: boolean) => void;
 }
 
+const CUBBLY_BOT_ID = "00000000-0000-0000-0000-000000000001";
 
 const emptyMessages: Record<string, string[]> = {
   online: [
@@ -63,6 +64,24 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
     return msgs[Math.floor(Math.random() * msgs.length)];
   }, [activeTab]);
 
+  const isActuallyOnline = (userId: string) => {
+    return userId === CUBBLY_BOT_ID || onlineUserIds.has(userId);
+  };
+
+  const getEffectiveStatus = (friendship: Friendship) => {
+    if (!isActuallyOnline(friendship.profile.user_id)) return "offline";
+    return friendship.profile.status === "invisible" ? "online" : friendship.profile.status;
+  };
+
+  const getStatusLabel = (friendship: Friendship) => {
+    const status = getEffectiveStatus(friendship);
+
+    if (status === "idle") return "Idle";
+    if (status === "dnd") return "Do Not Disturb";
+    if (status === "online") return "Online";
+    return "Offline";
+  };
+
   const handleSendRequest = async () => {
     if (!addInput.trim()) return;
     setAddStatus(null);
@@ -77,7 +96,7 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
 
   const getDisplayList = (): Friendship[] => {
     let list: Friendship[] = [];
-    if (activeTab === "online") list = friends.filter(f => onlineUserIds.has(f.profile.user_id));
+    if (activeTab === "online") list = friends.filter((f) => isActuallyOnline(f.profile.user_id));
     else if (activeTab === "all") list = friends;
     else if (activeTab === "pending") list = pending;
     else if (activeTab === "blocked") list = blocked;
@@ -226,7 +245,7 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
 
             {displayList.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-center">
-                <img src={emptyIcon} alt="" className="h-14 w-14 invert opacity-30 mb-3" />
+                <img src={emptyIcon} alt="" className="mb-3 h-14 w-14 invert opacity-30" />
                 <p className="text-sm" style={{ color: "var(--app-text-secondary, #949ba4)" }}>{randomMessage}</p>
               </div>
             ) : (
@@ -256,23 +275,18 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
                       )}
                       <div className="absolute -bottom-0.5 -right-0.5">
                         <StatusIndicator
-                          status={onlineUserIds.has(friendship.profile.user_id)
-                            ? (friendship.profile.status === "invisible" ? "online" : friendship.profile.status)
-                            : "offline"}
+                          status={getEffectiveStatus(friendship)}
                           size="sm"
                           borderColor="var(--app-bg-primary, #313338)"
                         />
                       </div>
                     </div>
                     <div className="flex-1 overflow-hidden">
-                      <p className="text-sm font-semibold text-white leading-tight">{friendship.profile.display_name}</p>
+                      <p className="text-sm font-semibold leading-tight text-white">{friendship.profile.display_name}</p>
                       <p className="truncate text-xs leading-tight" style={{ color: "var(--app-text-secondary, #949ba4)" }}>
                         {activeTab === "pending"
                           ? (friendship.addressee_id === user?.id ? "Incoming Friend Request" : "Outgoing Friend Request")
-                          : !onlineUserIds.has(friendship.profile.user_id) ? "Offline"
-                          : friendship.profile.status === "idle" ? "Idle"
-                          : friendship.profile.status === "dnd" ? "Do Not Disturb"
-                          : "Online"}
+                          : getStatusLabel(friendship)}
                       </p>
                     </div>
                     {renderFriendActions(friendship)}
@@ -284,7 +298,6 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
         )}
       </div>
 
-      {/* Active Now sidebar - collapsible with animation */}
       <div
         className={`hidden xl:flex flex-shrink-0 flex-col border-l transition-all duration-300 ease-in-out overflow-hidden ${
           activeNowOpen ? "w-[340px] px-4 py-4 opacity-100" : "w-0 px-0 py-0 opacity-0 border-l-0"
@@ -292,7 +305,7 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
         style={{ borderColor: "var(--app-border, #3f4147)" }}
       >
         <div className="min-w-[308px]">
-          <div className="flex items-center justify-between mb-4">
+          <div className="mb-4 flex items-center justify-between">
             <h3 className="text-xl font-bold text-white">Active Now</h3>
             <button
               onClick={() => setActiveNowOpen(false)}
