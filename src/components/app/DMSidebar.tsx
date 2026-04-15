@@ -41,7 +41,7 @@ interface DMSidebarProps {
 
 
 const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversation, onOpenDM }: DMSidebarProps) => {
-  const { user } = useAuth();
+  const { user, onlineUserIds } = useAuth();
   const { activeCall, toggleMute, toggleDeafen } = useVoice();
   const displayName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "User";
   const username = user?.user_metadata?.username || displayName.toLowerCase();
@@ -165,7 +165,17 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                         </div>
                       )}
                       <div className="absolute -bottom-0.5 -right-0.5">
-                        <StatusIndicator status={conv.participant.status} size="sm" borderColor="var(--app-bg-secondary, #2b2d31)" />
+                        <StatusIndicator
+                          status={
+                            conv.participant.user_id === "00000000-0000-0000-0000-000000000001"
+                              ? "online"
+                              : onlineUserIds.has(conv.participant.user_id)
+                                ? (conv.participant.status === "invisible" ? "online" : conv.participant.status)
+                                : "offline"
+                          }
+                          size="sm"
+                          borderColor="var(--app-bg-secondary, #2b2d31)"
+                        />
                       </div>
                     </div>
                     <span className="truncate text-sm font-medium">{conv.participant.display_name}</span>
