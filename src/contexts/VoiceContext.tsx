@@ -559,12 +559,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       const pc = createPeerConnection();
       stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
-      const channel = setupSignaling(conversationId);
+      const channel = await setupSignaling(conversationId);
       const callEventId = crypto.randomUUID();
 
       pc.onicecandidate = (event) => {
         if (event.candidate) {
-          channel?.send({
+          channel.send({
             type: "broadcast",
             event: "voice-signal",
             payload: { type: "ice-candidate", candidate: event.candidate, senderId: user.id },
@@ -582,7 +582,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       pendingOfferRef.current = { offer, conversationId, callEventId };
 
       // Send offer on the conversation signaling channel
-      channel?.send({
+      channel.send({
         type: "broadcast",
         event: "voice-signal",
         payload: {
@@ -656,11 +656,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       const pc = createPeerConnection();
       stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
-      const channel = setupSignaling(incomingCall.conversationId);
+      const channel = await setupSignaling(incomingCall.conversationId);
 
       pc.onicecandidate = (event) => {
         if (event.candidate) {
-          channel?.send({
+          channel.send({
             type: "broadcast",
             event: "voice-signal",
             payload: { type: "ice-candidate", candidate: event.candidate, senderId: user.id },
@@ -675,7 +675,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       answer.sdp = sdp;
       await pc.setLocalDescription(answer);
 
-      channel?.send({
+      channel.send({
         type: "broadcast",
         event: "voice-signal",
         payload: { type: "answer", sdp: answer, senderId: user.id },
@@ -943,31 +943,32 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     if (!user) return;
     const globalChannel = supabase.channel(`voice-global:${user.id}`);
-    globalChannel.on("broadcast", { event: "incoming-call" }, ({ payload }) => {
+    globalChannel.on("broadcast", { event: "incoming-call" }, async ({ payload }) => {
       if (payload.targetId === user.id && !activeCall) {
-        // Join the signaling channel for this conversation
-        const sigChannel = setupSignaling(payload.conversationId);
-        
-        // Fetch caller profile to show incoming call UI
-        supabase
-          .from("profiles")
-          .select("display_name")
-          .eq("user_id", payload.callerId)
-          .maybeSingle()
-          .then(({ data }) => {
-            const callerName = data?.display_name || payload.callerName || "Unknown";
-            setIncomingCall(prev => prev ? { ...prev, callerName } : prev);
-          });
+        // Join the signaling channel and WAIT for subscription before sending ready
+        try {
+          const sigChannel = await setupSignaling(payload.conversationId);
+          
+          // Fetch caller profile to show incoming call UI
+          supabase
+            .from("profiles")
+            .select("display_name")
+            .eq("user_id", payload.callerId)
+            .maybeSingle()
+            .then(({ data }) => {
+              const callerName = data?.display_name || payload.callerName || "Unknown";
+              setIncomingCall(prev => prev ? { ...prev, callerName } : prev);
+            });
 
-        // Send a "ready" signal so the caller re-sends the offer
-        // Small delay to ensure we're subscribed to the signaling channel first
-        setTimeout(() => {
-          sigChannel?.send({
+          // Now that we're subscribed, send ready signal so caller re-sends offer
+          sigChannel.send({
             type: "broadcast",
             event: "voice-signal",
             payload: { type: "ready", senderId: user.id },
           });
-        }, 500);
+        } catch (e) {
+          console.error("Failed to setup signaling for incoming call:", e);
+        }
       }
     });
     globalChannel.subscribe();
