@@ -47,6 +47,7 @@ const AppLayout = () => {
 
   const { conversations, openOrCreateConversation, closeConversation, refetch: refetchConvs } = useConversations();
   const [tempDMs, setTempDMs] = useState<string[]>([]);
+  const [activeNowOpen, setActiveNowOpen] = useState(true);
 
   useEffect(() => {
     if (location.pathname === "/@me" || location.pathname === "/@me/") {
@@ -184,7 +185,7 @@ const AppLayout = () => {
       return <ShopView />;
     }
 
-    return <FriendsView activeTab={friendTab} setActiveTab={setFriendTab} onOpenDM={handleOpenDM} />;
+    return <FriendsView activeTab={friendTab} setActiveTab={setFriendTab} onOpenDM={handleOpenDM} activeNowOpen={activeNowOpen} setActiveNowOpen={setActiveNowOpen} />;
   };
 
   const participantColor = activeParticipant ? getProfileColor(activeParticipant.user_id) : null;
@@ -260,6 +261,15 @@ const AppLayout = () => {
             <>
               <div className="flex items-center gap-4">{renderHeader()}</div>
               <div className="flex items-center gap-3" style={{ color: "var(--app-text-secondary)" }}>
+                {!activeNowOpen && !isDM && !isShop && (
+                  <button
+                    onClick={() => setActiveNowOpen(true)}
+                    className="transition-opacity duration-200 animate-fade-in"
+                    title="Show Active Now"
+                  >
+                    <img src={activityIcon} alt="Activity" className="h-5 w-5 invert opacity-60 hover:opacity-100 transition-opacity cursor-pointer" />
+                  </button>
+                )}
                 <img src={messagesInboxIcon} alt="Inbox" className="h-5 w-5 cursor-pointer invert opacity-60 hover:opacity-100 transition-opacity" />
               </div>
             </>
