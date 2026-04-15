@@ -3,8 +3,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { getProfileColor } from "@/lib/profileColors";
 import { toast } from "sonner";
-import { UserPlus, UserMinus, Ban, X } from "lucide-react";
+import { X } from "lucide-react";
 import messagesIcon from "@/assets/icons/messages.svg";
+import addUserIcon from "@/assets/icons/add-user.svg";
+import removeUserIcon from "@/assets/icons/remove-user.svg";
+import blockUserIcon from "@/assets/icons/block-user.svg";
+import StatusIndicator from "@/components/app/StatusIndicator";
 
 interface UserProfileCardProps {
   userId: string;
