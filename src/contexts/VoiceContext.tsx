@@ -632,8 +632,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       const channel = await setupSignaling(conversationId);
       const callEventId = crypto.randomUUID();
 
+      // Reset outgoing ICE buffer and remote desc flag
+      outgoingCandidateBuffer.current = [];
+      remoteDescriptionSet.current = false;
+      incomingCandidateQueue.current = [];
+
       pc.onicecandidate = (event) => {
         if (event.candidate) {
+          // Buffer the candidate so we can re-send on "ready"
+          outgoingCandidateBuffer.current.push(event.candidate.toJSON());
           channel.send({
             type: "broadcast",
             event: "voice-signal",
@@ -651,6 +658,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       // Store offer for re-sending when recipient is ready
       pendingOfferRef.current = { offer, conversationId, callEventId };
 
+      // Fetch our own avatar to include in signaling
+      let callerAvatarUrl: string | undefined;
+      try {
+        const { data: profile } = await supabase.from("profiles").select("avatar_url").eq("user_id", user.id).maybeSingle();
+        callerAvatarUrl = profile?.avatar_url || undefined;
+      } catch {}
+
       // Send offer on the conversation signaling channel
       channel.send({
         type: "broadcast",
@@ -660,6 +674,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           sdp: offer,
           senderId: user.id,
           senderName: user.user_metadata?.display_name || "User",
+          callerAvatarUrl,
           callEventId,
         },
       });
