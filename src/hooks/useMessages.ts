@@ -206,12 +206,22 @@ export function useMessages(conversationId: string | null) {
     const isBotConversation = participants?.some((participant) => participant.user_id === BOT_USER_ID);
 
     if (isBotConversation) {
-      const { error: botReplyError } = await (supabase as any).rpc("send_test_bot_reply", {
-        _conversation_id: conversationId,
-      });
-
-      if (botReplyError) {
-        console.error("Failed to generate bot reply:", botReplyError);
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat-with-bot`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+            "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          },
+          body: JSON.stringify({ conversation_id: conversationId, user_message: trimmedContent }),
+        });
+        if (!res.ok) {
+          console.error("Bot reply failed:", await res.text());
+        }
+      } catch (e) {
+        console.error("Failed to get bot reply:", e);
       }
     }
 
