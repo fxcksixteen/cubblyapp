@@ -188,6 +188,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const remoteAnimFrameRef = useRef<number>(0);
   // Track pre-deafen mute state so undeafen restores it
   const preMuteStateRef = useRef<boolean>(false);
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const endCallRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     detectBestRegion().then(setDetectedRegion);
@@ -918,7 +920,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     pcRef.current?.close();
     pcRef.current = null;
 
-    localStream?.getTracks().forEach(t => t.stop());
+    // Use ref to always have current stream
+    localStreamRef.current?.getTracks().forEach(t => t.stop());
+    localStreamRef.current = null;
     setLocalStream(null);
     setRemoteStream(null);
     setActiveCall(null);
@@ -936,7 +940,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       supabase.removeChannel(channelRef.current);
       channelRef.current = null;
     }
-  }, [localStream, user, stopAudioLevelMonitor, stopScreenShare]);
+    pendingOfferRef.current = null;
+  }, [user, stopAudioLevelMonitor, stopScreenShare]);
+
+  // Keep endCall ref always current
+  useEffect(() => { endCallRef.current = endCall; }, [endCall]);
 
   const toggleMute = useCallback(() => {
     if (localStream) {
