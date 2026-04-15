@@ -1,14 +1,16 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useFriends, Friendship } from "@/hooks/useFriends";
 import { useAuth } from "@/contexts/AuthContext";
-import {
-  Check, X, UserX, UserMinus
-} from "lucide-react";
+import { Check, X } from "lucide-react";
 import { getProfileColor } from "@/lib/profileColors";
 import messagesIcon from "@/assets/icons/messages.svg";
 import searchIcon from "@/assets/icons/search.svg";
 import emptyPendingIcon from "@/assets/icons/empty-pending.svg";
 import emptyBlockedIcon from "@/assets/icons/empty-blocked.svg";
+import addUserIcon from "@/assets/icons/add-user.svg";
+import removeUserIcon from "@/assets/icons/remove-user.svg";
+import blockUserIcon from "@/assets/icons/block-user.svg";
+import activityIcon from "@/assets/icons/activity.svg";
 
 type FriendTab = "online" | "all" | "pending" | "blocked" | "add";
 
@@ -25,12 +27,45 @@ const statusColors: Record<string, string> = {
   offline: "bg-[#747f8d]",
 };
 
+const emptyMessages: Record<string, string[]> = {
+  online: [
+    "No one's around right now — perfect time for a cozy break",
+    "It's just you and the quiet vibes for now",
+    "Everyone's off adventuring — they'll be back soon",
+    "The online list is taking a little nap right now",
+  ],
+  all: [
+    "Your friend list is waiting for its first addition",
+    "No friends yet — but every great friendship starts somewhere",
+    "It's a bit empty here — go say hi to someone new",
+    "Your cozy corner is ready for some friendly faces",
+  ],
+  pending: [
+    "No friend requests right now — but good things come to those who wait",
+    "Your inbox is all clear — nothing pending here",
+    "No requests waiting — maybe it's time to reach out first",
+    "All caught up on friend requests — nice and tidy",
+  ],
+  blocked: [
+    "Your block list is squeaky clean — everyone's welcome in your cozy corner",
+    "Nobody's been blocked — keeping it peaceful around here",
+    "All clear here — no blocked users to worry about",
+    "Your block list is empty — and that's a lovely thing",
+  ],
+};
+
 const FriendsView = ({ activeTab, setActiveTab, onOpenDM }: FriendsViewProps) => {
   const { user } = useAuth();
   const { friends, pending, blocked, sendFriendRequest, acceptRequest, declineRequest, unblockUser, removeFriend } = useFriends();
   const [addInput, setAddInput] = useState("");
   const [addStatus, setAddStatus] = useState<{ type: "success" | "error"; msg: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [activeNowOpen, setActiveNowOpen] = useState(true);
+
+  const randomMessage = useMemo(() => {
+    const msgs = emptyMessages[activeTab] || emptyMessages.online;
+    return msgs[Math.floor(Math.random() * msgs.length)];
+  }, [activeTab]);
 
   const handleSendRequest = async () => {
     if (!addInput.trim()) return;
@@ -100,7 +135,7 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM }: FriendsViewProps) =>
             className="flex h-9 w-9 items-center justify-center rounded-full bg-[#2b2d31] text-[#b5bac1] hover:text-[#dbdee1] cubbly-3d-circle"
             title="Unblock"
           >
-            <UserX className="h-4 w-4" />
+            <img src={blockUserIcon} alt="Unblock" className="h-4 w-4 invert opacity-70" />
           </button>
         </div>
       );
@@ -120,11 +155,16 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM }: FriendsViewProps) =>
           className="flex h-9 w-9 items-center justify-center rounded-full bg-[#2b2d31] text-[#b5bac1] hover:bg-[#ed4245]/20 hover:text-[#ed4245] transition-colors cubbly-3d-circle"
           title="Remove Friend"
         >
-          <UserMinus className="h-4 w-4" />
+          <img src={removeUserIcon} alt="Remove" className="h-4 w-4 invert opacity-70" />
         </button>
       </div>
     );
   };
+
+  const emptyIcon = activeTab === "pending" ? emptyPendingIcon
+    : activeTab === "blocked" ? emptyBlockedIcon
+    : activeTab === "online" ? emptyPendingIcon
+    : emptyPendingIcon;
 
   return (
     <div className="flex flex-1 overflow-hidden">
@@ -184,26 +224,8 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM }: FriendsViewProps) =>
 
             {displayList.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-center">
-                {activeTab === "pending" ? (
-                  <>
-                    <img src={emptyPendingIcon} alt="" className="h-14 w-14 invert opacity-30 mb-3" />
-                    <p className="text-sm text-[#949ba4]">No friend requests right now — but good things come to those who wait! 🧸</p>
-                  </>
-                ) : activeTab === "blocked" ? (
-                  <>
-                    <img src={emptyBlockedIcon} alt="" className="h-14 w-14 invert opacity-30 mb-3" />
-                    <p className="text-sm text-[#949ba4]">Your block list is squeaky clean — everyone's welcome in your cozy corner! 🌿</p>
-                  </>
-                ) : (
-                  <>
-                    <div className="text-5xl mb-3">
-                      {activeTab === "online" ? "😴" : "👋"}
-                    </div>
-                    <p className="text-sm text-[#949ba4]">
-                      {activeTab === "online" ? "No friends are online right now." : "You don't have any friends yet. Add some!"}
-                    </p>
-                  </>
-                )}
+                <img src={emptyIcon} alt="" className="h-14 w-14 invert opacity-30 mb-3" />
+                <p className="text-sm text-[#949ba4]">{randomMessage}</p>
               </div>
             ) : (
               <div className="flex flex-col">
@@ -241,16 +263,27 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM }: FriendsViewProps) =>
         )}
       </div>
 
-      {/* Active Now sidebar */}
-      <div className="hidden xl:flex w-[340px] flex-shrink-0 flex-col border-l border-[#3f4147] px-4 py-4">
-        <h3 className="mb-4 text-xl font-bold text-white">Active Now</h3>
-        <div className="flex flex-1 flex-col items-center justify-center text-center">
-          <p className="text-sm font-semibold text-white">It's quiet for now...</p>
-          <p className="mt-1 text-sm text-[#949ba4]">
-            When a friend starts an activity—like playing a game or hanging out on voice—we'll show it here!
-          </p>
+      {/* Active Now sidebar - collapsible */}
+      {activeNowOpen ? (
+        <div className="hidden xl:flex w-[340px] flex-shrink-0 flex-col border-l border-[#3f4147] px-4 py-4 animate-slide-in-right">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-xl font-bold text-white">Active Now</h3>
+            <button
+              onClick={() => setActiveNowOpen(false)}
+              className="rounded p-1 text-[#949ba4] hover:text-[#dbdee1] hover:bg-[#35373c] transition-colors"
+              title="Hide Active Now"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="flex flex-1 flex-col items-center justify-center text-center">
+            <p className="text-sm font-semibold text-white">It's quiet for now...</p>
+            <p className="mt-1 text-sm text-[#949ba4]">
+              When a friend starts an activity—like playing a game or hanging out on voice—we'll show it here!
+            </p>
+          </div>
         </div>
-      </div>
+      ) : null}
     </div>
   );
 };
