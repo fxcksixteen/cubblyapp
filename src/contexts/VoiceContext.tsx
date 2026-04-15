@@ -87,6 +87,7 @@ interface VoiceContextType {
   localStream: MediaStream | null;
   remoteStream: MediaStream | null;
   audioLevel: number;
+  remoteAudioLevel: number;
   availableDevices: { inputs: MediaDeviceInfo[]; outputs: MediaDeviceInfo[] };
   refreshDevices: () => void;
   callEvents: CallEvent[];
@@ -144,6 +145,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
+  const [remoteAudioLevel, setRemoteAudioLevel] = useState(0);
   const [availableDevices, setAvailableDevices] = useState<{ inputs: MediaDeviceInfo[]; outputs: MediaDeviceInfo[] }>({ inputs: [], outputs: [] });
   const [callEvents, setCallEvents] = useState<CallEvent[]>([]);
   const [detectedRegion, setDetectedRegion] = useState("us-east");
@@ -151,49 +153,19 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
+  const remoteAnalyserRef = useRef<AnalyserNode | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
   const outputGainRef = useRef<GainNode | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const animFrameRef = useRef<number>(0);
-  const prevCallStateRef = useRef<string | null>(null);
+  const remoteAnimFrameRef = useRef<number>(0);
 
   // Detect best region on mount
   useEffect(() => {
     detectBestRegion().then(setDetectedRegion);
   }, []);
 
-  // Track call events for chat pills
-  useEffect(() => {
-    const isInCall = activeCall?.conversationId;
-    const callState = activeCall?.state;
-    const prevState = prevCallStateRef.current;
-
-    if (isInCall && callState === "connected" && prevState !== "connected") {
-      const callId = `call-${Date.now()}`;
-      prevCallStateRef.current = "connected";
-      setCallEvents(prev => [...prev, {
-        id: callId,
-        conversationId: activeCall.conversationId,
-        state: "ongoing",
-        startedAt: new Date().toISOString(),
-      }]);
-    } else if (!isInCall && prevState === "connected") {
-      prevCallStateRef.current = null;
-      setCallEvents(prev => {
-        const last = [...prev];
-        let ongoingIdx = -1;
-        for (let i = last.length - 1; i >= 0; i--) { if (last[i].state === "ongoing") { ongoingIdx = i; break; } }
-        if (ongoingIdx >= 0) {
-          last[ongoingIdx] = { ...last[ongoingIdx], state: "ended", endedAt: new Date().toISOString() };
-        }
-        return last;
-      });
-    } else if (isInCall && callState !== "connected") {
-      prevCallStateRef.current = callState || null;
-    } else if (!isInCall) {
-      prevCallStateRef.current = null;
-    }
-  }, [activeCall?.conversationId, activeCall?.state]);
+  // No longer using useEffect for call events - they are created directly in startCall/acceptCall/endCall
 
   const updateSettings = useCallback((partial: Partial<VoiceSettings>) => {
     setSettings(prev => {
