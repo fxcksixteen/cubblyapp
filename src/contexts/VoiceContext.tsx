@@ -305,8 +305,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
   // Apply voice processing constraints in real-time when settings change during a call
   useEffect(() => {
-    if (!localStream) return;
-    const tracks = localStream.getAudioTracks();
+    const stream = localStreamRef.current;
+    if (!stream) return;
+    const tracks = stream.getAudioTracks();
     tracks.forEach(track => {
       track.applyConstraints({
         echoCancellation: settings.echoCancellation,
