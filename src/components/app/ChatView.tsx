@@ -156,6 +156,10 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
       })
       .subscribe((status) => {
         typingChannelReadyRef.current = status === "SUBSCRIBED";
+        // If user was already typing when channel became ready, broadcast immediately
+        if (status === "SUBSCRIBED" && document.querySelector<HTMLTextAreaElement>('[data-typing-input]')?.value) {
+          channel.send({ type: "broadcast", event: "typing", payload: { userId: user.id } });
+        }
       });
     return () => {
       typingChannelReadyRef.current = false;
