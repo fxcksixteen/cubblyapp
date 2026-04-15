@@ -227,13 +227,24 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
 
   return (
     <div
-      className="app-themed fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backgroundColor: "rgba(0, 0, 0, 0.6)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" }}
+      ref={backdropRef}
+      className="app-themed fixed inset-0 z-50 flex items-center justify-center p-4 transition-all duration-250 ease-out"
+      style={{
+        backgroundColor: animating ? "rgba(0, 0, 0, 0.6)" : "rgba(0, 0, 0, 0)",
+        backdropFilter: animating ? "blur(12px)" : "blur(0px)",
+        WebkitBackdropFilter: animating ? "blur(12px)" : "blur(0px)",
+      }}
       onMouseDown={onClose}
     >
       <div
-        className="flex h-[min(86vh,800px)] w-full max-w-[1160px] overflow-hidden rounded-[30px] border shadow-[0_32px_90px_rgba(0,0,0,0.45)]"
-        style={{ backgroundColor: "var(--app-bg-primary)", borderColor: "var(--app-border)" }}
+        ref={panelRef}
+        className="flex h-[min(86vh,800px)] w-full max-w-[1160px] overflow-hidden rounded-[30px] border shadow-[0_32px_90px_rgba(0,0,0,0.45)] transition-all duration-250 ease-out"
+        style={{
+          backgroundColor: "var(--app-bg-primary)",
+          borderColor: "var(--app-border)",
+          transform: animating ? "scale(1) translateY(0)" : "scale(0.95) translateY(12px)",
+          opacity: animating ? 1 : 0,
+        }}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <aside className="flex w-[280px] flex-shrink-0 flex-col border-r px-4 py-5" style={{ backgroundColor: "var(--app-bg-secondary)", borderColor: "var(--app-border)" }}>
