@@ -263,10 +263,10 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
                       <p className="truncate text-xs leading-tight" style={{ color: "var(--app-text-secondary, #949ba4)" }}>
                         {activeTab === "pending"
                           ? (friendship.addressee_id === user?.id ? "Incoming Friend Request" : "Outgoing Friend Request")
-                          : friendship.profile.status === "online" ? "Online"
+                          : !onlineUserIds.has(friendship.profile.user_id) ? "Offline"
                           : friendship.profile.status === "idle" ? "Idle"
                           : friendship.profile.status === "dnd" ? "Do Not Disturb"
-                          : "Offline"}
+                          : "Online"}
                       </p>
                     </div>
                     {renderFriendActions(friendship)}
