@@ -69,7 +69,7 @@ const Register = () => {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4 font-body">
-      <div className="flex w-full max-w-[960px] overflow-hidden rounded-3xl shadow-2xl" style={{ aspectRatio: "16/9" }}>
+      <div className="flex w-full max-w-[960px] overflow-hidden rounded-3xl shadow-2xl">
         {/* Left half — cozy animation */}
         <div className="hidden md:flex w-1/2 flex-col items-center justify-center relative overflow-hidden bg-background">
           <video
@@ -79,7 +79,7 @@ const Register = () => {
             playsInline
             className="absolute inset-0 w-full h-full object-cover"
           >
-            <source src="/hero-bg-new.webm" type="video/webm" />
+            <source src="./hero-bg-register.webm" type="video/webm" />
           </video>
           <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-background/20 to-transparent" />
           <div className="relative z-10 mt-auto pb-10 px-8 text-center">
