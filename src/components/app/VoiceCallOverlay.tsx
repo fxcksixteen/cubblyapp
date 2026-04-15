@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Phone, PhoneOff, Monitor, Video } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Phone, PhoneOff, Monitor, MonitorOff, Video, Maximize2, Minimize2 } from "lucide-react";
 import { useVoice, CallEvent } from "@/contexts/VoiceContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { defaultProfileColor, getProfileColor } from "@/lib/profileColors";
@@ -24,8 +24,16 @@ export const CallPanel = ({ conversationId, recipientName, recipientUserId }: {
   recipientUserId?: string;
 }) => {
   const { user } = useAuth();
-  const { activeCall, endCall, toggleMute, toggleDeafen, audioLevel, remoteAudioLevel } = useVoice();
+  const {
+    activeCall, endCall, toggleMute, toggleDeafen,
+    audioLevel, remoteAudioLevel,
+    isScreenSharing, startScreenShare, stopScreenShare,
+    screenStream, remoteScreenStream,
+  } = useVoice();
   const [elapsed, setElapsed] = useState(0);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const screenVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteScreenVideoRef = useRef<HTMLVideoElement>(null);
 
   const isThisCall = activeCall?.conversationId === conversationId;
 
@@ -37,6 +45,20 @@ export const CallPanel = ({ conversationId, recipientName, recipientUserId }: {
     return () => clearInterval(interval);
   }, [isThisCall, activeCall?.startedAt]);
 
+  // Attach local screen stream to video element
+  useEffect(() => {
+    if (screenVideoRef.current && screenStream) {
+      screenVideoRef.current.srcObject = screenStream;
+    }
+  }, [screenStream]);
+
+  // Attach remote screen stream to video element
+  useEffect(() => {
+    if (remoteScreenVideoRef.current && remoteScreenStream) {
+      remoteScreenVideoRef.current.srcObject = remoteScreenStream;
+    }
+  }, [remoteScreenStream]);
+
   if (!isThisCall || !activeCall) return null;
 
   const callerColor = defaultProfileColor;
@@ -44,6 +66,7 @@ export const CallPanel = ({ conversationId, recipientName, recipientUserId }: {
   const displayName = user?.user_metadata?.display_name || "You";
   const isWaiting = activeCall.state === "calling" || activeCall.state === "ringing";
   const isRinging = activeCall.state === "ringing";
+  const hasScreenShare = isScreenSharing || !!remoteScreenStream;
 
   return (
     <div className="mx-4 mt-4 rounded-2xl overflow-hidden border" style={{ backgroundColor: "var(--app-bg-tertiary)", borderColor: "var(--app-border)" }}>
@@ -55,15 +78,63 @@ export const CallPanel = ({ conversationId, recipientName, recipientUserId }: {
             {activeCall.state === "calling" ? "Calling..." : activeCall.state === "ringing" ? "Ringing..." : formatDuration(elapsed)}
           </span>
         </div>
+        {hasScreenShare && (
+          <div className="flex items-center gap-1.5">
+            <Monitor className="h-3.5 w-3.5" style={{ color: "#3ba55c" }} />
+            <span className="text-[11px] font-semibold" style={{ color: "#3ba55c" }}>
+              {isScreenSharing ? "You're sharing" : "Screen shared"}
+            </span>
+          </div>
+        )}
       </div>
 
+      {/* Screen share view */}
+      {hasScreenShare && (
+        <div className="relative bg-black">
+          {isScreenSharing && screenStream && (
+            <video
+              ref={screenVideoRef}
+              autoPlay
+              muted
+              playsInline
+              className="w-full max-h-[400px] object-contain"
+            />
+          )}
+          {!isScreenSharing && remoteScreenStream && (
+            <video
+              ref={remoteScreenVideoRef}
+              autoPlay
+              playsInline
+              className="w-full max-h-[400px] object-contain"
+            />
+          )}
+          <div className="absolute top-3 right-3 flex gap-2">
+            <button
+              onClick={() => {
+                const el = (isScreenSharing ? screenVideoRef : remoteScreenVideoRef).current;
+                if (el) {
+                  if (!document.fullscreenElement) {
+                    el.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
+                  } else {
+                    document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
+                  }
+                }
+              }}
+              className="flex h-8 w-8 items-center justify-center rounded-lg bg-black/60 text-white hover:bg-black/80 transition-colors"
+            >
+              {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Participants area */}
-      <div className="flex items-center justify-center gap-12 py-8 px-6">
+      <div className={`flex items-center justify-center gap-12 px-6 ${hasScreenShare ? "py-4" : "py-8"}`}>
         {/* Current user */}
         <div className="flex flex-col items-center gap-2">
           <div className="relative">
             <div
-              className="flex h-[72px] w-[72px] items-center justify-center rounded-full text-2xl font-bold text-white transition-shadow duration-200"
+              className={`flex items-center justify-center rounded-full font-bold text-white transition-shadow duration-200 ${hasScreenShare ? "h-12 w-12 text-lg" : "h-[72px] w-[72px] text-2xl"}`}
               style={{
                 backgroundColor: callerColor.bg,
                 boxShadow: activeCall.state === "connected" && !activeCall.isMuted && audioLevel > 8
@@ -74,21 +145,19 @@ export const CallPanel = ({ conversationId, recipientName, recipientUserId }: {
               {displayName.charAt(0).toUpperCase()}
             </div>
             {activeCall.isMuted && (
-              <div className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-[#ed4245] border-2" style={{ borderColor: "var(--app-bg-tertiary)" }}>
-                <img src={micMuteIcon} alt="Muted" className="h-3 w-3" style={{ filter: "brightness(0) invert(1)" }} />
+              <div className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#ed4245] border-2" style={{ borderColor: "var(--app-bg-tertiary)" }}>
+                <img src={micMuteIcon} alt="Muted" className="h-2.5 w-2.5" style={{ filter: "brightness(0) invert(1)" }} />
               </div>
             )}
           </div>
-          <span className="text-sm font-semibold" style={{ color: "var(--app-text-primary)" }}>{displayName}</span>
+          <span className="text-xs font-semibold" style={{ color: "var(--app-text-primary)" }}>{displayName}</span>
         </div>
 
         {/* Recipient */}
         <div className="flex flex-col items-center gap-2">
           <div className="relative">
             <div
-              className={`flex h-[72px] w-[72px] items-center justify-center rounded-full text-2xl font-bold text-white transition-all duration-300 ${
-                isWaiting ? "opacity-40" : ""
-              }`}
+              className={`flex items-center justify-center rounded-full font-bold text-white transition-all duration-300 ${hasScreenShare ? "h-12 w-12 text-lg" : "h-[72px] w-[72px] text-2xl"} ${isWaiting ? "opacity-40" : ""}`}
               style={{
                 backgroundColor: recipientColor.bg,
                 filter: isWaiting ? "grayscale(0.3)" : "none",
@@ -99,23 +168,21 @@ export const CallPanel = ({ conversationId, recipientName, recipientUserId }: {
             >
               {recipientName.charAt(0).toUpperCase()}
             </div>
-            {/* Ringing pulse animation */}
             {isRinging && (
               <>
                 <div className="absolute inset-0 rounded-full animate-ping" style={{ backgroundColor: recipientColor.bg, opacity: 0.2 }} />
                 <div className="absolute -inset-1 rounded-full animate-pulse border-2 border-[#faa61a]/40" />
               </>
             )}
-            {/* Not connected indicator */}
             {isWaiting && !isRinging && (
               <div className="absolute -inset-1 rounded-full border-2 border-dashed border-[#949ba4]/30 animate-spin" style={{ animationDuration: "8s" }} />
             )}
           </div>
-          <span className={`text-sm font-semibold transition-opacity duration-300 ${isWaiting ? "opacity-50" : ""}`} style={{ color: "var(--app-text-primary)" }}>
+          <span className={`text-xs font-semibold transition-opacity duration-300 ${isWaiting ? "opacity-50" : ""}`} style={{ color: "var(--app-text-primary)" }}>
             {recipientName}
           </span>
           {isWaiting && (
-            <span className="text-[11px] font-medium" style={{ color: "var(--app-text-secondary)" }}>
+            <span className="text-[10px] font-medium" style={{ color: "var(--app-text-secondary)" }}>
               {isRinging ? "Ringing..." : "Not in call"}
             </span>
           )}
@@ -155,11 +222,14 @@ export const CallPanel = ({ conversationId, recipientName, recipientUserId }: {
         </button>
 
         <button
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 hover:bg-white/20 transition-colors"
-          style={{ color: "var(--app-text-primary)" }}
-          title="Share Screen (coming soon)"
+          onClick={isScreenSharing ? stopScreenShare : startScreenShare}
+          className={`flex h-10 w-10 items-center justify-center rounded-full transition-all duration-150 ${
+            isScreenSharing ? "bg-[#3ba55c] hover:bg-[#2d8b4e]" : "bg-white/10 hover:bg-white/20"
+          }`}
+          style={{ color: isScreenSharing ? "white" : "var(--app-text-primary)" }}
+          title={isScreenSharing ? "Stop Sharing" : "Share Screen"}
         >
-          <Monitor className="h-5 w-5" />
+          {isScreenSharing ? <MonitorOff className="h-5 w-5" /> : <Monitor className="h-5 w-5" />}
         </button>
 
         <button

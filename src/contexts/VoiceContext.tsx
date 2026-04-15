@@ -12,7 +12,15 @@ export interface VoiceSettings {
   autoGainControl: boolean;
   autoSensitivity: boolean;
   sensitivityThreshold: number;
-  serverRegion: string; // "auto" or specific region
+  serverRegion: string;
+}
+
+export interface ScreenShareSettings {
+  resolution: string;        // "auto" | "720p" | "1080p" | "1440p" | "source"
+  frameRate: number;          // 15, 30, 60
+  audioShare: boolean;        // share system audio
+  optimizeFor: string;        // "clarity" | "motion"
+  showCursor: boolean;
 }
 
 const DEFAULT_SETTINGS: VoiceSettings = {
@@ -26,6 +34,14 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   autoSensitivity: true,
   sensitivityThreshold: 50,
   serverRegion: "auto",
+};
+
+const DEFAULT_SCREEN_SHARE_SETTINGS: ScreenShareSettings = {
+  resolution: "auto",
+  frameRate: 30,
+  audioShare: true,
+  optimizeFor: "clarity",
+  showCursor: true,
 };
 
 export type CallState = "calling" | "ringing" | "connected" | "ended";
@@ -60,14 +76,12 @@ export const SERVER_REGIONS = [
   { id: "australia", label: "Australia", description: "Sydney" },
 ];
 
-// TURN servers for NAT traversal + STUN fallbacks
 const ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
   { urls: "stun:stun2.l.google.com:19302" },
   { urls: "stun:stun3.l.google.com:19302" },
   { urls: "stun:stun4.l.google.com:19302" },
-  // Free TURN servers from Open Relay (metered.ca)
   { urls: "turn:a.relay.metered.ca:80", username: "e8dd65d92aee94de76f5c205", credential: "0YpDMwFOjVPxbSGO" },
   { urls: "turn:a.relay.metered.ca:80?transport=tcp", username: "e8dd65d92aee94de76f5c205", credential: "0YpDMwFOjVPxbSGO" },
   { urls: "turn:a.relay.metered.ca:443", username: "e8dd65d92aee94de76f5c205", credential: "0YpDMwFOjVPxbSGO" },
@@ -77,6 +91,8 @@ const ICE_SERVERS: RTCIceServer[] = [
 interface VoiceContextType {
   settings: VoiceSettings;
   updateSettings: (partial: Partial<VoiceSettings>) => void;
+  screenShareSettings: ScreenShareSettings;
+  updateScreenShareSettings: (partial: Partial<ScreenShareSettings>) => void;
   activeCall: ActiveCall | null;
   startCall: (conversationId: string, peerId: string, peerName: string) => void;
   acceptCall: () => void;
@@ -92,6 +108,12 @@ interface VoiceContextType {
   refreshDevices: () => void;
   callEvents: CallEvent[];
   detectedRegion: string;
+  // Screen sharing
+  isScreenSharing: boolean;
+  screenStream: MediaStream | null;
+  remoteScreenStream: MediaStream | null;
+  startScreenShare: () => Promise<void>;
+  stopScreenShare: () => void;
 }
 
 const VoiceContext = createContext<VoiceContextType>({} as VoiceContextType);
@@ -105,7 +127,14 @@ function loadSettings(): VoiceSettings {
   return { ...DEFAULT_SETTINGS };
 }
 
-// Ping test to detect best region
+function loadScreenShareSettings(): ScreenShareSettings {
+  try {
+    const raw = localStorage.getItem("cubbly-screenshare-settings");
+    if (raw) return { ...DEFAULT_SCREEN_SHARE_SETTINGS, ...JSON.parse(raw) };
+  } catch {}
+  return { ...DEFAULT_SCREEN_SHARE_SETTINGS };
+}
+
 async function detectBestRegion(): Promise<string> {
   const endpoints: Record<string, string> = {
     "us-east": "https://dynamodb.us-east-1.amazonaws.com/ping",
@@ -119,19 +148,15 @@ async function detectBestRegion(): Promise<string> {
   };
 
   const results: { region: string; latency: number }[] = [];
-
   await Promise.allSettled(
     Object.entries(endpoints).map(async ([region, url]) => {
       const start = performance.now();
       try {
         await fetch(url, { method: "HEAD", mode: "no-cors", signal: AbortSignal.timeout(3000) });
         results.push({ region, latency: performance.now() - start });
-      } catch {
-        // Region unreachable, skip
-      }
+      } catch {}
     })
   );
-
   if (results.length === 0) return "us-east";
   results.sort((a, b) => a.latency - b.latency);
   return results[0].region;
@@ -140,6 +165,7 @@ async function detectBestRegion(): Promise<string> {
 export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const { user } = useAuth();
   const [settings, setSettings] = useState<VoiceSettings>(loadSettings);
+  const [screenShareSettings, setScreenShareSettings] = useState<ScreenShareSettings>(loadScreenShareSettings);
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
   const [incomingCall, setIncomingCall] = useState<VoiceContextType["incomingCall"]>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
@@ -150,7 +176,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const [callEvents, setCallEvents] = useState<CallEvent[]>([]);
   const [detectedRegion, setDetectedRegion] = useState("us-east");
 
+  // Screen sharing state
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
+  const [remoteScreenStream, setRemoteScreenStream] = useState<MediaStream | null>(null);
+
   const pcRef = useRef<RTCPeerConnection | null>(null);
+  const screenPcRef = useRef<RTCPeerConnection | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const remoteAnalyserRef = useRef<AnalyserNode | null>(null);
@@ -160,17 +192,22 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const animFrameRef = useRef<number>(0);
   const remoteAnimFrameRef = useRef<number>(0);
 
-  // Detect best region on mount
   useEffect(() => {
     detectBestRegion().then(setDetectedRegion);
   }, []);
-
-  // No longer using useEffect for call events - they are created directly in startCall/acceptCall/endCall
 
   const updateSettings = useCallback((partial: Partial<VoiceSettings>) => {
     setSettings(prev => {
       const next = { ...prev, ...partial };
       localStorage.setItem("cubbly-voice-settings", JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const updateScreenShareSettings = useCallback((partial: Partial<ScreenShareSettings>) => {
+    setScreenShareSettings(prev => {
+      const next = { ...prev, ...partial };
+      localStorage.setItem("cubbly-screenshare-settings", JSON.stringify(next));
       return next;
     });
   }, []);
@@ -249,6 +286,14 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
     pc.ontrack = (event) => {
       const remote = event.streams[0];
+      // Determine if this is a screen share track or audio track
+      const isVideo = event.track.kind === "video";
+      
+      if (isVideo) {
+        setRemoteScreenStream(remote);
+        return;
+      }
+
       setRemoteStream(remote);
       try {
         const ctx = audioContextRef.current || new AudioContext();
@@ -268,7 +313,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         }
         audioEl.play().catch(console.error);
 
-        // Remote audio level analyser
         const remoteAnalyser = ctx.createAnalyser();
         remoteAnalyser.fftSize = 256;
         remoteAnalyser.smoothingTimeConstant = 0.5;
@@ -335,6 +379,50 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       if (payload.type === "hangup") {
         endCall();
       }
+
+      // Screen share signaling
+      if (payload.type === "screen-offer") {
+        const screenPc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+        screenPc.ontrack = (event) => {
+          setRemoteScreenStream(event.streams[0]);
+        };
+        screenPc.onicecandidate = (event) => {
+          if (event.candidate) {
+            channel.send({
+              type: "broadcast",
+              event: "voice-signal",
+              payload: { type: "screen-ice-candidate", candidate: event.candidate, senderId: user.id },
+            });
+          }
+        };
+        screenPcRef.current = screenPc;
+        await screenPc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+        const answer = await screenPc.createAnswer();
+        await screenPc.setLocalDescription(answer);
+        channel.send({
+          type: "broadcast",
+          event: "voice-signal",
+          payload: { type: "screen-answer", sdp: answer, senderId: user.id },
+        });
+      }
+
+      if (payload.type === "screen-answer" && screenPcRef.current) {
+        await screenPcRef.current.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+      }
+
+      if (payload.type === "screen-ice-candidate" && screenPcRef.current) {
+        try {
+          await screenPcRef.current.addIceCandidate(new RTCIceCandidate(payload.candidate));
+        } catch (e) {
+          console.error("Failed to add screen ICE candidate:", e);
+        }
+      }
+
+      if (payload.type === "screen-stop") {
+        setRemoteScreenStream(null);
+        screenPcRef.current?.close();
+        screenPcRef.current = null;
+      }
     });
 
     channel.subscribe();
@@ -397,7 +485,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         isDeafened: false,
       });
 
-      // Create call event immediately
       setCallEvents(prev => [...prev, {
         id: `call-${Date.now()}`,
         conversationId,
@@ -455,7 +542,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       });
       setIncomingCall(null);
 
-      // Create call event for acceptor
       setCallEvents(prev => {
         const hasOngoing = prev.some(e => e.conversationId === incomingCall.conversationId && e.state === "ongoing");
         if (hasOngoing) return prev;
@@ -471,8 +557,84 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [incomingCall, user, getUserMedia, createPeerConnection, setupSignaling, startAudioLevelMonitor]);
 
+  // Screen sharing
+  const startScreenShare = useCallback(async () => {
+    if (!user || !activeCall || !channelRef.current) return;
+
+    const resolutionMap: Record<string, { width: number; height: number } | undefined> = {
+      "720p": { width: 1280, height: 720 },
+      "1080p": { width: 1920, height: 1080 },
+      "1440p": { width: 2560, height: 1440 },
+    };
+
+    const res = resolutionMap[screenShareSettings.resolution];
+    const displayConstraints: DisplayMediaStreamOptions = {
+      video: {
+        cursor: screenShareSettings.showCursor ? "always" : "never",
+        frameRate: { ideal: screenShareSettings.frameRate },
+        ...(res ? { width: { ideal: res.width }, height: { ideal: res.height } } : {}),
+      } as any,
+      audio: screenShareSettings.audioShare,
+    };
+
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia(displayConstraints);
+      setScreenStream(stream);
+      setIsScreenSharing(true);
+
+      // Create a separate peer connection for screen sharing
+      const screenPc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+      screenPcRef.current = screenPc;
+
+      stream.getTracks().forEach(track => {
+        screenPc.addTrack(track, stream);
+        // Handle user stopping share from browser UI
+        track.onended = () => {
+          stopScreenShare();
+        };
+      });
+
+      screenPc.onicecandidate = (event) => {
+        if (event.candidate) {
+          channelRef.current?.send({
+            type: "broadcast",
+            event: "voice-signal",
+            payload: { type: "screen-ice-candidate", candidate: event.candidate, senderId: user.id },
+          });
+        }
+      };
+
+      const offer = await screenPc.createOffer();
+      await screenPc.setLocalDescription(offer);
+
+      channelRef.current.send({
+        type: "broadcast",
+        event: "voice-signal",
+        payload: { type: "screen-offer", sdp: offer, senderId: user.id },
+      });
+    } catch (e) {
+      console.error("Failed to start screen share:", e);
+      setIsScreenSharing(false);
+    }
+  }, [user, activeCall, screenShareSettings]);
+
+  const stopScreenShare = useCallback(() => {
+    screenStream?.getTracks().forEach(t => t.stop());
+    setScreenStream(null);
+    setIsScreenSharing(false);
+    screenPcRef.current?.close();
+    screenPcRef.current = null;
+
+    if (channelRef.current && user) {
+      channelRef.current.send({
+        type: "broadcast",
+        event: "voice-signal",
+        payload: { type: "screen-stop", senderId: user.id },
+      });
+    }
+  }, [screenStream, user]);
+
   const endCall = useCallback(() => {
-    // Finalize ongoing call events before clearing state
     setCallEvents(prev => {
       const updated = [...prev];
       for (let i = updated.length - 1; i >= 0; i--) {
@@ -483,6 +645,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       }
       return updated;
     });
+
+    // Stop screen share if active
+    stopScreenShare();
+    setRemoteScreenStream(null);
 
     if (channelRef.current && user) {
       channelRef.current.send({
@@ -509,7 +675,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       supabase.removeChannel(channelRef.current);
       channelRef.current = null;
     }
-  }, [localStream, user, stopAudioLevelMonitor]);
+  }, [localStream, user, stopAudioLevelMonitor, stopScreenShare]);
 
   const toggleMute = useCallback(() => {
     if (localStream) {
@@ -540,9 +706,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <VoiceContext.Provider value={{
-      settings, updateSettings, activeCall, startCall, acceptCall, endCall,
+      settings, updateSettings, screenShareSettings, updateScreenShareSettings,
+      activeCall, startCall, acceptCall, endCall,
       incomingCall, toggleMute, toggleDeafen, localStream, remoteStream,
       audioLevel, remoteAudioLevel, availableDevices, refreshDevices, callEvents, detectedRegion,
+      isScreenSharing, screenStream, remoteScreenStream, startScreenShare, stopScreenShare,
     }}>
       {children}
     </VoiceContext.Provider>
