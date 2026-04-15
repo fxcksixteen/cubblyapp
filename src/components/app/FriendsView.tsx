@@ -52,7 +52,7 @@ const emptyMessages: Record<string, string[]> = {
 };
 
 const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActiveNowOpen }: FriendsViewProps) => {
-  const { user } = useAuth();
+  const { user, onlineUserIds } = useAuth();
   const { friends, pending, blocked, sendFriendRequest, acceptRequest, declineRequest, unblockUser, removeFriend } = useFriends();
   const [addInput, setAddInput] = useState("");
   const [addStatus, setAddStatus] = useState<{ type: "success" | "error"; msg: string } | null>(null);
@@ -77,7 +77,7 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
 
   const getDisplayList = (): Friendship[] => {
     let list: Friendship[] = [];
-    if (activeTab === "online") list = friends.filter(f => f.profile.status !== "offline");
+    if (activeTab === "online") list = friends.filter(f => onlineUserIds.has(f.profile.user_id));
     else if (activeTab === "all") list = friends;
     else if (activeTab === "pending") list = pending;
     else if (activeTab === "blocked") list = blocked;
@@ -240,14 +240,28 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
                     onMouseLeave={e => { e.currentTarget.style.backgroundColor = ""; }}
                   >
                     <div className="relative">
-                      <div
-                        className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold text-white"
-                        style={{ backgroundColor: getProfileColor(friendship.profile.user_id).bg }}
-                      >
-                        {friendship.profile.display_name.charAt(0).toUpperCase()}
-                      </div>
+                      {friendship.profile.avatar_url ? (
+                        <img
+                          src={friendship.profile.avatar_url}
+                          alt={friendship.profile.display_name}
+                          className="h-8 w-8 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div
+                          className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold text-white"
+                          style={{ backgroundColor: getProfileColor(friendship.profile.user_id).bg }}
+                        >
+                          {friendship.profile.display_name.charAt(0).toUpperCase()}
+                        </div>
+                      )}
                       <div className="absolute -bottom-0.5 -right-0.5">
-                        <StatusIndicator status={friendship.profile.status} size="sm" borderColor="var(--app-bg-primary, #313338)" />
+                        <StatusIndicator
+                          status={onlineUserIds.has(friendship.profile.user_id)
+                            ? (friendship.profile.status === "invisible" ? "online" : friendship.profile.status)
+                            : "offline"}
+                          size="sm"
+                          borderColor="var(--app-bg-primary, #313338)"
+                        />
                       </div>
                     </div>
                     <div className="flex-1 overflow-hidden">
@@ -255,10 +269,10 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
                       <p className="truncate text-xs leading-tight" style={{ color: "var(--app-text-secondary, #949ba4)" }}>
                         {activeTab === "pending"
                           ? (friendship.addressee_id === user?.id ? "Incoming Friend Request" : "Outgoing Friend Request")
-                          : friendship.profile.status === "online" ? "Online"
+                          : !onlineUserIds.has(friendship.profile.user_id) ? "Offline"
                           : friendship.profile.status === "idle" ? "Idle"
                           : friendship.profile.status === "dnd" ? "Do Not Disturb"
-                          : "Offline"}
+                          : "Online"}
                       </p>
                     </div>
                     {renderFriendActions(friendship)}
