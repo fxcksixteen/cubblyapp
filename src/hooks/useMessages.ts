@@ -137,6 +137,16 @@ export function useMessages(conversationId: string | null) {
             });
           },
         )
+        .on(
+          "postgres_changes",
+          { event: "DELETE", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` },
+          (payload) => {
+            const deletedId = (payload.old as any)?.id;
+            if (deletedId) {
+              setMessages((prev) => prev.filter((m) => m.id !== deletedId));
+            }
+          },
+        )
         .subscribe();
     }
 
@@ -159,7 +169,7 @@ export function useMessages(conversationId: string | null) {
       sender_id: user.id,
       content: trimmedContent,
       created_at: new Date().toISOString(),
-      sender_name: user.user_metadata?.display_name || "You",
+      sender_name: user.user_metadata?.display_name || user.email?.split("@")[0] || "Unknown",
       status: "sending",
     };
 

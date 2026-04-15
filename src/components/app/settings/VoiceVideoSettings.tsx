@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useVoice, SERVER_REGIONS } from "@/contexts/VoiceContext";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
-import { Mic, Globe, Monitor, MousePointer2, Zap, Film } from "lucide-react";
+import { Mic, Globe, Monitor, MousePointer2, Zap, Film, MicOff } from "lucide-react";
 
 interface Props {
   panelStyle: Record<string, string>;
@@ -78,6 +78,51 @@ const VoiceVideoSettings = ({ panelStyle, cardStyle }: Props) => {
 
 /* ─── Voice Tab ─── */
 function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, detectedRegion, activeRegion, cardStyle }: any) {
+  const [micTesting, setMicTesting] = useState(false);
+  const streamRef = useRef<MediaStream | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+
+  const toggleMicTest = async () => {
+    if (micTesting) {
+      streamRef.current?.getTracks().forEach(t => t.stop());
+      audioCtxRef.current?.close();
+      streamRef.current = null;
+      audioCtxRef.current = null;
+      setMicTesting(false);
+      return;
+    }
+
+    try {
+      const constraints: MediaStreamConstraints = {
+        audio: settings.inputDeviceId !== "default"
+          ? { deviceId: { exact: settings.inputDeviceId } }
+          : true,
+      };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      streamRef.current = stream;
+
+      // Create playback so user hears themselves
+      const ctx = new AudioContext();
+      audioCtxRef.current = ctx;
+      const source = ctx.createMediaStreamSource(stream);
+      const gain = ctx.createGain();
+      gain.gain.value = (settings.outputVolume ?? 100) / 100;
+      source.connect(gain);
+      gain.connect(ctx.destination);
+
+      setMicTesting(true);
+    } catch (err) {
+      console.error("Mic test failed:", err);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      streamRef.current?.getTracks().forEach(t => t.stop());
+      audioCtxRef.current?.close();
+    };
+  }, []);
+
   return (
     <div className="space-y-6">
       {/* Server Region */}
@@ -136,11 +181,24 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
           <Slider value={[settings.inputVolume]} onValueChange={([v]) => updateSettings({ inputVolume: v })} min={0} max={200} step={1} className="w-full" />
         </div>
 
-        {/* Live mic level */}
+        {/* Live mic level with test button */}
         <div>
-          <div className="flex items-center gap-2 mb-2">
-            <Mic className="h-4 w-4" style={{ color: "var(--app-text-secondary)" }} />
-            <span className="text-xs font-medium" style={{ color: "var(--app-text-secondary)" }}>Mic Test</span>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <Mic className="h-4 w-4" style={{ color: "var(--app-text-secondary)" }} />
+              <span className="text-xs font-medium" style={{ color: "var(--app-text-secondary)" }}>Mic Test</span>
+            </div>
+            <button
+              onClick={toggleMicTest}
+              className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                micTesting
+                  ? "bg-[#ed4245] text-white hover:bg-[#c03537]"
+                  : "bg-[#5865f2] text-white hover:bg-[#4752c4]"
+              }`}
+            >
+              {micTesting ? <MicOff className="h-3 w-3" /> : <Mic className="h-3 w-3" />}
+              {micTesting ? "Stop Test" : "Start Test"}
+            </button>
           </div>
           <div className="h-2 w-full rounded-full overflow-hidden" style={{ backgroundColor: "var(--app-input)" }}>
             <div
@@ -151,6 +209,11 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
               }}
             />
           </div>
+          {micTesting && (
+            <p className="mt-1.5 text-[11px]" style={{ color: "var(--app-text-secondary)" }}>
+              🎧 You should hear yourself through your output device
+            </p>
+          )}
         </div>
       </div>
 

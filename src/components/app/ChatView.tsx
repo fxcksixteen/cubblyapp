@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useMessages, Message, MessageStatus } from "@/hooks/useMessages";
 import { useAuth } from "@/contexts/AuthContext";
 import { useVoice } from "@/contexts/VoiceContext";
@@ -7,6 +7,9 @@ import { X } from "lucide-react";
 import { defaultProfileColor, getProfileColor } from "@/lib/profileColors";
 import { CallPanel, CallEventMessage } from "./VoiceCallOverlay";
 import TypingIndicator from "./TypingIndicator";
+import MessageActions from "./chat/MessageActions";
+import MessageContextMenu from "./chat/MessageContextMenu";
+import UserProfileCard from "./chat/UserProfileCard";
 import sendIcon from "@/assets/icons/send.svg";
 import folderFileIcon from "@/assets/icons/folder-file.svg";
 
@@ -61,12 +64,12 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [botTyping, setBotTyping] = useState(false);
+  const [profileCard, setProfileCard] = useState<{ userId: string; name: string; x: number; y: number } | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isBotConversation = recipientUserId === BOT_USER_ID;
 
-  // Stop bot typing when a new bot message arrives
   const lastMsgSenderId = messages.length > 0 ? messages[messages.length - 1].sender_id : null;
   useEffect(() => {
     if (lastMsgSenderId === BOT_USER_ID) {
@@ -74,7 +77,6 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
     }
   }, [lastMsgSenderId, messages.length]);
 
-  // Filter call events for this conversation
   const conversationCallEvents = callEvents.filter(e => e.conversationId === conversationId);
 
   useEffect(() => {
@@ -87,7 +89,6 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
     const currentInput = input.trim();
     const currentFiles = [...pendingFiles];
 
-    // Clear input immediately
     setInput("");
     setPendingFiles([]);
     setAttachMenuOpen(false);
@@ -147,6 +148,11 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
   const getAvatarColor = (senderId: string) => {
     if (senderId === user?.id) return defaultProfileColor.bg;
     return getProfileColor(senderId).bg;
+  };
+
+  const handleAvatarClick = (e: React.MouseEvent, senderId: string, senderName: string) => {
+    e.stopPropagation();
+    setProfileCard({ userId: senderId, name: senderName, x: e.clientX, y: e.clientY });
   };
 
   // Build grouped messages with time dividers
@@ -237,51 +243,72 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
               }
 
               return (
-                <div key={idx} className="mt-4 first:mt-0 flex gap-3 hover:bg-[#2e3035] rounded px-2 py-1">
+                <div key={idx} className="mt-4 first:mt-0 flex gap-3 hover:bg-[#2e3035] rounded px-2 py-1 relative group">
                   <div
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white"
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white cursor-pointer hover:opacity-80 transition-opacity"
                     style={{ backgroundColor: getAvatarColor(item.sender_id) }}
+                    onClick={(e) => handleAvatarClick(e, item.sender_id, item.sender_name)}
                   >
                     {item.sender_name.charAt(0).toUpperCase()}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-baseline gap-2">
-                      <span className="font-semibold text-white text-sm">
-                        {item.sender_id === user?.id ? "You" : item.sender_name}
+                      <span
+                        className="font-semibold text-white text-sm cursor-pointer hover:underline"
+                        onClick={(e) => handleAvatarClick(e, item.sender_id, item.sender_name)}
+                      >
+                        {item.sender_name}
                       </span>
                       <span className="text-[11px] text-[#949ba4]">{formatTime(item.messages[0].created_at)}</span>
                     </div>
                     {item.messages.map((msg) => {
                       const { text, attachments } = parseContent(msg.content);
                       return (
-                        <div key={msg.id}>
-                          {text && (
-                            <p className={`text-sm leading-relaxed ${msg.status === "sending" ? "text-[#949ba4]/50" : "text-[#dbdee1]"}`}>
-                              {text}
-                            </p>
-                          )}
-                          {attachments.map((att, ai) => (
-                            <a
-                              key={ai}
-                              href={att.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="mt-1 flex items-center gap-2 rounded-lg border border-[#1e1f22] bg-[#2b2d31] p-3 max-w-sm hover:bg-[#32353b] transition-colors"
+                        <MessageContextMenu
+                          key={msg.id}
+                          messageId={msg.id}
+                          messageContent={msg.content}
+                          isOwnMessage={msg.sender_id === user?.id}
+                        >
+                          <div className="relative group/msg py-0.5">
+                            {/* Hover action buttons for individual messages */}
+                            <div className="absolute -top-3 right-0 flex items-center gap-0.5 rounded-lg border px-1 py-0.5 shadow-lg opacity-0 group-hover/msg:opacity-100 transition-opacity z-10"
+                              style={{ backgroundColor: "var(--app-bg-tertiary, #1e1f22)", borderColor: "var(--app-border, #2b2d31)" }}
                             >
-                              {att.type.startsWith("image/") ? (
-                                <img src={att.url} alt={att.name} className="max-h-[200px] max-w-full rounded" />
-                              ) : (
-                                <>
-                                  <img src={folderFileIcon} alt="" className="h-8 w-8 invert opacity-60 shrink-0" />
-                                  <div className="min-w-0">
-                                    <p className="text-sm font-medium text-[#00a8fc] truncate">{att.name}</p>
-                                    <p className="text-[11px] text-[#949ba4]">{formatFileSize(att.size)}</p>
-                                  </div>
-                                </>
-                              )}
-                            </a>
-                          ))}
-                        </div>
+                              <MessageActions
+                                messageId={msg.id}
+                                messageContent={msg.content}
+                                isOwnMessage={msg.sender_id === user?.id}
+                              />
+                            </div>
+                            {text && (
+                              <p className={`text-[15px] leading-relaxed ${msg.status === "sending" ? "text-[#949ba4]/50" : "text-[#dbdee1]"}`}>
+                                {text}
+                              </p>
+                            )}
+                            {attachments.map((att, ai) => (
+                              <a
+                                key={ai}
+                                href={att.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="mt-1 flex items-center gap-2 rounded-lg border border-[#1e1f22] bg-[#2b2d31] p-3 max-w-sm hover:bg-[#32353b] transition-colors"
+                              >
+                                {att.type.startsWith("image/") ? (
+                                  <img src={att.url} alt={att.name} className="max-h-[200px] max-w-full rounded" />
+                                ) : (
+                                  <>
+                                    <img src={folderFileIcon} alt="" className="h-8 w-8 invert opacity-60 shrink-0" />
+                                    <div className="min-w-0">
+                                      <p className="text-sm font-medium text-[#00a8fc] truncate">{att.name}</p>
+                                      <p className="text-[11px] text-[#949ba4]">{formatFileSize(att.size)}</p>
+                                    </div>
+                                  </>
+                                )}
+                              </a>
+                            ))}
+                          </div>
+                        </MessageContextMenu>
                       );
                     })}
                   </div>
@@ -363,6 +390,16 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
         </div>
         <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleFileSelect} />
       </div>
+
+      {/* Profile Card Popup */}
+      {profileCard && (
+        <UserProfileCard
+          userId={profileCard.userId}
+          displayName={profileCard.name}
+          position={{ x: profileCard.x, y: profileCard.y }}
+          onClose={() => setProfileCard(null)}
+        />
+      )}
     </div>
   );
 };
