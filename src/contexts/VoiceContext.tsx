@@ -295,25 +295,24 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       }
 
       setRemoteStream(remote);
-      try {
-        const ctx = audioContextRef.current || new AudioContext();
-        if (!audioContextRef.current) audioContextRef.current = ctx;
-        const source = ctx.createMediaStreamSource(remote);
-        const gain = ctx.createGain();
-        gain.gain.value = settings.outputVolume / 100;
-        outputGainRef.current = gain;
-        source.connect(gain);
-        const dest = ctx.createMediaStreamDestination();
-        gain.connect(dest);
-        const audioEl = document.createElement("audio");
-        audioEl.srcObject = dest.stream;
-        audioEl.autoplay = true;
-        if (settings.outputDeviceId !== "default" && (audioEl as any).setSinkId) {
-          (audioEl as any).setSinkId(settings.outputDeviceId).catch(console.error);
-        }
-        audioEl.play().catch(console.error);
+      // Play remote audio directly via <audio> element (avoids AudioContext interfering with system audio)
+      const audioEl = document.createElement("audio");
+      audioEl.srcObject = remote;
+      audioEl.autoplay = true;
+      audioEl.volume = settings.outputVolume / 100;
+      outputGainRef.current = { gain: { value: settings.outputVolume / 100 } } as any;
+      (audioEl as any).__cubblyRemote = true;
+      if (settings.outputDeviceId !== "default" && (audioEl as any).setSinkId) {
+        (audioEl as any).setSinkId(settings.outputDeviceId).catch(console.error);
+      }
+      audioEl.play().catch(console.error);
+      document.body.appendChild(audioEl);
 
-        const remoteAnalyser = ctx.createAnalyser();
+      // Separate analyser for level monitoring (doesn't touch audio output)
+      try {
+        const analyserCtx = new AudioContext();
+        const source = analyserCtx.createMediaStreamSource(remote);
+        const remoteAnalyser = analyserCtx.createAnalyser();
         remoteAnalyser.fftSize = 256;
         remoteAnalyser.smoothingTimeConstant = 0.5;
         source.connect(remoteAnalyser);
@@ -327,10 +326,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         };
         tickRemote();
       } catch {
-        const audioEl = document.createElement("audio");
-        audioEl.srcObject = remote;
-        audioEl.autoplay = true;
-        audioEl.play().catch(console.error);
+        // Level monitoring is optional
       }
     };
 
