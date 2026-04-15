@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from "react";
-import { X, Check, LogOut } from "lucide-react";
+import { X, Check, LogOut, Pencil, Camera, Save } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme, ThemeName } from "@/contexts/ThemeContext";
 import { defaultProfileColor } from "@/lib/profileColors";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 import VoiceVideoSettings from "./settings/VoiceVideoSettings";
 
 const APP_VERSION = "0.1.0";
@@ -58,7 +60,33 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
   const backdropRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
+  // Editable account state
+  const [editingField, setEditingField] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [bio, setBio] = useState("");
+  const [bioSaved, setBioSaved] = useState(true);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [bannerUrl, setBannerUrl] = useState<string | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const bannerInputRef = useRef<HTMLInputElement>(null);
+
   const profileColor = defaultProfileColor;
+
+  // Fetch profile data
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("profiles")
+      .select("bio, avatar_url")
+      .eq("user_id", user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          setBio(data.bio || "");
+          setAvatarUrl(data.avatar_url);
+        }
+      });
+  }, [user]);
 
   useEffect(() => {
     if (isOpen) {
@@ -95,20 +123,118 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
     onClose();
   };
 
+  const startEdit = (field: string, currentValue: string) => {
+    setEditingField(field);
+    setEditValue(currentValue);
+  };
+
+  const saveEdit = async () => {
+    if (!editingField || !user) return;
+
+    if (editingField === "display_name") {
+      const { error } = await supabase.auth.updateUser({ data: { display_name: editValue } });
+      if (!error) {
+        await supabase.from("profiles").update({ display_name: editValue }).eq("user_id", user.id);
+        toast.success("Display name updated!");
+      } else toast.error("Failed to update display name");
+    } else if (editingField === "username") {
+      const { error } = await supabase.auth.updateUser({ data: { username: editValue } });
+      if (!error) {
+        await supabase.from("profiles").update({ username: editValue }).eq("user_id", user.id);
+        toast.success("Username updated!");
+      } else toast.error("Failed to update username");
+    } else if (editingField === "email") {
+      const { error } = await supabase.auth.updateUser({ email: editValue });
+      if (!error) {
+        toast.success("Verification email sent to your new address. Please confirm to complete the change.");
+      } else toast.error(error.message || "Failed to update email");
+    }
+
+    setEditingField(null);
+  };
+
+  const saveBio = async () => {
+    if (!user) return;
+    const { error } = await supabase.from("profiles").update({ bio }).eq("user_id", user.id);
+    if (!error) {
+      setBioSaved(true);
+      toast.success("Bio updated!");
+    } else toast.error("Failed to save bio");
+  };
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+    const path = `${user.id}/avatar-${Date.now()}`;
+    const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
+    if (error) { toast.error("Upload failed"); return; }
+    const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+    await supabase.from("profiles").update({ avatar_url: data.publicUrl }).eq("user_id", user.id);
+    setAvatarUrl(data.publicUrl);
+    toast.success("Profile picture updated!");
+  };
+
+  const handleBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+    const path = `${user.id}/banner-${Date.now()}`;
+    const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
+    if (error) { toast.error("Upload failed"); return; }
+    const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+    setBannerUrl(data.publicUrl);
+    toast.success("Banner updated!");
+  };
+
+  const accountCards = [
+    { label: "Display Name", value: displayName, field: "display_name" },
+    { label: "Username", value: username, field: "username" },
+    { label: "Email", value: user?.email || "—", field: "email" },
+  ];
+
   const renderContent = () => {
     switch (activeCategory) {
       case "my-account":
         return (
           <div className="space-y-6">
             <div className="overflow-hidden rounded-[28px] border" style={panelStyle}>
-              <div className="h-36" style={{ background: profileColor.banner }} />
+              {/* Banner with hover overlay */}
+              <div
+                className="h-36 relative group/banner cursor-pointer"
+                style={{ background: bannerUrl ? `url(${bannerUrl}) center/cover` : profileColor.banner }}
+                onClick={() => bannerInputRef.current?.click()}
+              >
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/banner:opacity-100 transition-opacity flex items-center justify-center">
+                  <Camera className="h-8 w-8 text-white/80" />
+                </div>
+                <input ref={bannerInputRef} type="file" accept="image/*" className="hidden" onChange={handleBannerUpload} />
+              </div>
+
               <div className="px-6 pb-6">
                 <div className="-mt-11 flex items-end gap-4">
+                  {/* Avatar with hover overlay */}
                   <div
-                    className="flex h-[88px] w-[88px] items-center justify-center rounded-full border-[6px] text-3xl font-bold text-white shrink-0"
-                    style={{ backgroundColor: profileColor.bg, borderColor: "var(--app-bg-secondary)" }}
+                    className="relative group/avatar cursor-pointer shrink-0"
+                    onClick={() => avatarInputRef.current?.click()}
                   >
-                    {displayName.charAt(0).toUpperCase()}
+                    {avatarUrl ? (
+                      <img
+                        src={avatarUrl}
+                        alt="Avatar"
+                        className="h-[88px] w-[88px] rounded-full border-[6px] object-cover"
+                        style={{ borderColor: "var(--app-bg-secondary)" }}
+                      />
+                    ) : (
+                      <div
+                        className="flex h-[88px] w-[88px] items-center justify-center rounded-full border-[6px] text-3xl font-bold text-white"
+                        style={{ backgroundColor: profileColor.bg, borderColor: "var(--app-bg-secondary)" }}
+                      >
+                        {displayName.charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <div className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover/avatar:opacity-100 transition-opacity flex items-center justify-center">
+                      <Camera className="h-6 w-6 text-white/80" />
+                    </div>
+                    <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
                   </div>
                   <div className="pb-3">
                     <p className="text-2xl font-bold leading-tight" style={{ color: "var(--app-text-primary)" }}>{displayName}</p>
@@ -117,16 +243,67 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
                 </div>
 
                 <div className="mt-5 grid gap-4 md:grid-cols-3">
-                  {[
-                    { label: "Display Name", value: displayName },
-                    { label: "Username", value: username },
-                    { label: "Email", value: user?.email || "—" },
-                  ].map((item) => (
-                    <div key={item.label} className="rounded-[22px] border p-4" style={cardStyle}>
+                  {accountCards.map((item) => (
+                    <div key={item.label} className="rounded-[22px] border p-4 group/card relative" style={cardStyle}>
                       <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: "var(--app-text-secondary)" }}>{item.label}</p>
-                      <p className="mt-2 text-sm font-semibold break-words" style={{ color: "var(--app-text-primary)" }}>{item.value}</p>
+                      {editingField === item.field ? (
+                        <div className="mt-2 flex items-center gap-2">
+                          <input
+                            autoFocus
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            onKeyDown={(e) => e.key === "Enter" && saveEdit()}
+                            className="flex-1 rounded-lg border px-2 py-1 text-sm outline-none"
+                            style={{ backgroundColor: "var(--app-input)", borderColor: "var(--app-border)", color: "var(--app-text-primary)" }}
+                          />
+                          <button onClick={saveEdit} className="text-[#3ba55c] hover:text-[#2d8049]">
+                            <Check className="h-4 w-4" />
+                          </button>
+                          <button onClick={() => setEditingField(null)} className="text-[#ed4245] hover:text-[#c03537]">
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <p className="mt-2 text-sm font-semibold break-words" style={{ color: "var(--app-text-primary)" }}>{item.value}</p>
+                          <button
+                            onClick={() => startEdit(item.field, item.value)}
+                            className="absolute top-3 right-3 opacity-0 group-hover/card:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-white/10"
+                          >
+                            <Pencil className="h-3.5 w-3.5" style={{ color: "var(--app-text-secondary)" }} />
+                          </button>
+                        </>
+                      )}
                     </div>
                   ))}
+                </div>
+
+                {/* Bio Section */}
+                <div className="mt-5 rounded-[22px] border p-5" style={cardStyle}>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: "var(--app-text-secondary)" }}>About Me</p>
+                    {!bioSaved && (
+                      <button
+                        onClick={saveBio}
+                        className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-white bg-[#5865f2] hover:bg-[#4752c4] transition-colors"
+                      >
+                        <Save className="h-3 w-3" />
+                        Save
+                      </button>
+                    )}
+                  </div>
+                  <textarea
+                    value={bio}
+                    onChange={(e) => { setBio(e.target.value); setBioSaved(false); }}
+                    placeholder="Tell us about yourself..."
+                    rows={4}
+                    maxLength={300}
+                    className="w-full resize-none rounded-xl border px-3 py-2.5 text-sm outline-none leading-relaxed"
+                    style={{ backgroundColor: "var(--app-input)", borderColor: "var(--app-border)", color: "var(--app-text-primary)" }}
+                  />
+                  <p className="mt-1.5 text-[11px] text-right" style={{ color: "var(--app-text-muted, var(--app-text-secondary))" }}>
+                    {bio.length}/300
+                  </p>
                 </div>
               </div>
             </div>
