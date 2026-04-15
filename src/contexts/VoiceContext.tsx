@@ -896,7 +896,29 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     const globalChannel = supabase.channel(`voice-global:${user.id}`);
     globalChannel.on("broadcast", { event: "incoming-call" }, ({ payload }) => {
       if (payload.targetId === user.id && !activeCall) {
-        setupSignaling(payload.conversationId);
+        // Join the signaling channel for this conversation
+        const sigChannel = setupSignaling(payload.conversationId);
+        
+        // Fetch caller profile to show incoming call UI
+        supabase
+          .from("profiles")
+          .select("display_name")
+          .eq("user_id", payload.callerId)
+          .maybeSingle()
+          .then(({ data }) => {
+            const callerName = data?.display_name || payload.callerName || "Unknown";
+            setIncomingCall(prev => prev ? { ...prev, callerName } : prev);
+          });
+
+        // Send a "ready" signal so the caller re-sends the offer
+        // Small delay to ensure we're subscribed to the signaling channel first
+        setTimeout(() => {
+          sigChannel?.send({
+            type: "broadcast",
+            event: "voice-signal",
+            payload: { type: "ready", senderId: user.id },
+          });
+        }, 500);
       }
     });
     globalChannel.subscribe();
