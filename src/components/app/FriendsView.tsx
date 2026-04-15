@@ -260,9 +260,13 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM }: FriendsViewProps) =>
         )}
       </div>
 
-      {/* Active Now sidebar - collapsible */}
-      {activeNowOpen ? (
-        <div className="hidden xl:flex w-[340px] flex-shrink-0 flex-col border-l border-[#3f4147] px-4 py-4 animate-slide-in-right">
+      {/* Active Now sidebar - collapsible with animation */}
+      <div
+        className={`hidden xl:flex flex-shrink-0 flex-col border-l border-[#3f4147] transition-all duration-300 ease-in-out overflow-hidden ${
+          activeNowOpen ? "w-[340px] px-4 py-4 opacity-100" : "w-0 px-0 py-0 opacity-0 border-l-0"
+        }`}
+      >
+        <div className="min-w-[308px]">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-xl font-bold text-white">Active Now</h3>
             <button
@@ -280,7 +284,7 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM }: FriendsViewProps) =>
             </p>
           </div>
         </div>
-      ) : null}
+      </div>
     </div>
   );
 };
