@@ -655,10 +655,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         }
 
         if (payload.type === "answer" && pc) {
+          console.log("[Voice] 📥 Answer received, setting remote description...");
           await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
           remoteDescriptionSet.current = true;
           pendingOfferRef.current = null;
           await flushQueuedIceCandidates(pc);
+          console.log("[Voice] ✅ Remote description set, queued candidates flushed");
           return;
         }
 
