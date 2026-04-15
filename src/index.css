@@ -169,3 +169,26 @@
   0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
   30% { transform: translateY(-4px); opacity: 1; }
 }
+
+/* Cubbly toast theming */
+[data-sonner-toaster] [data-sonner-toast] {
+  --normal-bg: var(--app-bg-secondary, #2b2d31);
+  --normal-border: var(--app-border, #1f2023);
+  --normal-text: var(--app-text-primary, #dbdee1);
+}
+[data-sonner-toaster] [data-sonner-toast][data-type="success"] {
+  --normal-bg: var(--app-bg-secondary, #2b2d31);
+  border-left: 3px solid #3ba55c !important;
+}
+[data-sonner-toaster] [data-sonner-toast][data-type="error"] {
+  --normal-bg: var(--app-bg-secondary, #2b2d31);
+  border-left: 3px solid #ed4245 !important;
+}
+[data-sonner-toaster] [data-sonner-toast][data-type="info"] {
+  --normal-bg: var(--app-bg-secondary, #2b2d31);
+  border-left: 3px solid #5865f2 !important;
+}
+[data-sonner-toaster] [data-sonner-toast][data-type="warning"] {
+  --normal-bg: var(--app-bg-secondary, #2b2d31);
+  border-left: 3px solid #faa61a !important;
+}

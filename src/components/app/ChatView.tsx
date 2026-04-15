@@ -189,9 +189,9 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
   }
 
   return (
-    <div className="flex flex-1 flex-col min-h-0">
+    <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
       {/* Discord-style call panel */}
-      <div className="shrink-0">
+      <div className="shrink-0 max-h-[50vh] overflow-y-auto">
         <CallPanel
           conversationId={conversationId}
           recipientName={recipientName}
@@ -200,7 +200,7 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto min-h-0 px-4 py-4">
+      <div className="flex-1 overflow-y-auto px-4 py-4" style={{ minHeight: 0 }}>
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#5865f2] border-t-transparent" />

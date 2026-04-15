@@ -235,11 +235,10 @@ const AppLayout = () => {
                   {activeParticipant?.display_name || "Conversation"}
                 </span>
               </div>
-              <div className="flex items-center gap-4" style={{ color: "var(--app-text-secondary)" }}>
+              <div className="flex items-center gap-2" style={{ color: "var(--app-text-secondary)" }}>
                 <button
                   onClick={handleVoiceCall}
-                  className="transition-all hover:opacity-100"
-                  style={{ opacity: isInCall ? 1 : 0.9 }}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg transition-all hover:bg-[var(--app-hover)]"
                   title={isInCall ? "End Voice Call" : "Start Voice Call"}
                 >
                   <img
@@ -252,7 +251,7 @@ const AppLayout = () => {
                     }}
                   />
                 </button>
-                <button className="transition-opacity hover:opacity-100" style={{ opacity: 0.9 }} title="Start Video Call">
+                <button className="flex h-8 w-8 items-center justify-center rounded-lg transition-all hover:bg-[var(--app-hover)]" title="Start Video Call">
                   <img src={videoIcon} alt="Video" className="h-5 w-5" style={{ filter: "brightness(0) invert(0.6)" }} />
                 </button>
               </div>
