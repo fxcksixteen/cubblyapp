@@ -106,7 +106,8 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
           {isIncoming && (
             <button
               onClick={() => acceptRequest(friendship.id)}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-[#2b2d31] text-[#3ba55c] hover:text-white cubbly-3d-circle"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-[#3ba55c] hover:text-white cubbly-3d-circle"
+              style={{ backgroundColor: "var(--app-bg-secondary, #2b2d31)" }}
               title="Accept"
             >
               <Check className="h-4 w-4" />
@@ -114,7 +115,8 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
           )}
           <button
             onClick={() => declineRequest(friendship.id)}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-[#2b2d31] text-[#ed4245] hover:text-white cubbly-3d-circle"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-[#ed4245] hover:text-white cubbly-3d-circle"
+            style={{ backgroundColor: "var(--app-bg-secondary, #2b2d31)" }}
             title={isIncoming ? "Decline" : "Cancel"}
           >
             <X className="h-4 w-4" />
@@ -128,7 +130,8 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
         <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100">
           <button
             onClick={() => unblockUser(friendship.id)}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-[#2b2d31] text-[#b5bac1] hover:text-[#dbdee1] cubbly-3d-circle"
+            className="flex h-9 w-9 items-center justify-center rounded-full cubbly-3d-circle"
+            style={{ backgroundColor: "var(--app-bg-secondary, #2b2d31)", color: "var(--app-text-secondary, #b5bac1)" }}
             title="Unblock"
           >
             <img src={blockUserIcon} alt="Unblock" className="h-4 w-4 invert opacity-70" />
@@ -141,14 +144,16 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
       <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100">
         <button
           onClick={() => onOpenDM(friendship.profile.user_id)}
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-[#2b2d31] text-[#b5bac1] hover:bg-[#36393f] hover:text-[#dbdee1] transition-colors cubbly-3d-circle"
+          className="flex h-9 w-9 items-center justify-center rounded-full transition-colors cubbly-3d-circle"
+          style={{ backgroundColor: "var(--app-bg-secondary, #2b2d31)", color: "var(--app-text-secondary, #b5bac1)" }}
           title="Message"
         >
           <img src={messagesIcon} alt="Message" className="h-5 w-5 invert opacity-80" />
         </button>
         <button
           onClick={() => removeFriend(friendship.id)}
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-[#2b2d31] text-[#b5bac1] hover:bg-[#ed4245]/20 hover:text-[#ed4245] transition-colors cubbly-3d-circle"
+          className="flex h-9 w-9 items-center justify-center rounded-full transition-colors cubbly-3d-circle hover:text-[#ed4245]"
+          style={{ backgroundColor: "var(--app-bg-secondary, #2b2d31)", color: "var(--app-text-secondary, #b5bac1)" }}
           title="Remove Friend"
         >
           <img src={removeUserIcon} alt="Remove" className="h-4 w-4 invert opacity-70" />
@@ -168,15 +173,16 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
         {activeTab === "add" ? (
           <div className="mb-4">
             <h2 className="text-base font-semibold text-white">Add Friend</h2>
-            <p className="mt-1 text-sm text-[#b5bac1]">You can add friends with their Cubbly username.</p>
-            <div className="mt-4 flex items-center gap-2 rounded-lg border border-[#1e1f22] bg-[#1e1f22] px-4 py-3">
+            <p className="mt-1 text-sm" style={{ color: "var(--app-text-secondary, #b5bac1)" }}>You can add friends with their Cubbly username.</p>
+            <div className="mt-4 flex items-center gap-2 rounded-lg border px-4 py-3" style={{ borderColor: "var(--app-border, #1e1f22)", backgroundColor: "var(--app-bg-tertiary, #1e1f22)" }}>
               <input
                 type="text"
                 value={addInput}
                 onChange={(e) => { setAddInput(e.target.value); setAddStatus(null); }}
                 onKeyDown={(e) => e.key === "Enter" && handleSendRequest()}
                 placeholder="Enter a username..."
-                className="flex-1 bg-transparent text-sm text-[#dbdee1] outline-none placeholder:text-[#6d6f78]"
+                className="flex-1 bg-transparent text-sm outline-none placeholder:text-[#6d6f78]"
+                style={{ color: "var(--app-text-primary, #dbdee1)" }}
               />
               <button
                 onClick={handleSendRequest}
@@ -211,7 +217,7 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
               </div>
             </div>
 
-            <h3 className="mb-2 px-0.5 text-[11px] font-bold uppercase tracking-wide text-[#949ba4]">
+            <h3 className="mb-2 px-0.5 text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--app-text-secondary, #949ba4)" }}>
               {activeTab === "online" ? `Online — ${displayList.length}` :
                activeTab === "all" ? `All Friends — ${displayList.length}` :
                activeTab === "pending" ? `Pending — ${displayList.length}` :
@@ -221,14 +227,17 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
             {displayList.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-center">
                 <img src={emptyIcon} alt="" className="h-14 w-14 invert opacity-30 mb-3" />
-                <p className="text-sm text-[#949ba4]">{randomMessage}</p>
+                <p className="text-sm" style={{ color: "var(--app-text-secondary, #949ba4)" }}>{randomMessage}</p>
               </div>
             ) : (
               <div className="flex flex-col">
                 {displayList.map((friendship) => (
                   <div
                     key={friendship.id}
-                    className="group flex items-center gap-3 rounded-lg border-t border-[#3f4147] px-2 py-3 transition-colors hover:bg-[#404249]"
+                    className="group flex items-center gap-3 rounded-lg border-t px-2 py-3 transition-colors"
+                    style={{ borderColor: "var(--app-border, #3f4147)" }}
+                    onMouseEnter={e => { e.currentTarget.style.backgroundColor = "var(--app-active, #404249)"; }}
+                    onMouseLeave={e => { e.currentTarget.style.backgroundColor = ""; }}
                   >
                     <div className="relative">
                       <div
@@ -238,12 +247,12 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
                         {friendship.profile.display_name.charAt(0).toUpperCase()}
                       </div>
                       <div className="absolute -bottom-0.5 -right-0.5">
-                        <StatusIndicator status={friendship.profile.status} size="sm" borderColor="#313338" />
+                        <StatusIndicator status={friendship.profile.status} size="sm" borderColor="var(--app-bg-primary, #313338)" />
                       </div>
                     </div>
                     <div className="flex-1 overflow-hidden">
                       <p className="text-sm font-semibold text-white leading-tight">{friendship.profile.display_name}</p>
-                      <p className="truncate text-xs text-[#949ba4] leading-tight">
+                      <p className="truncate text-xs leading-tight" style={{ color: "var(--app-text-secondary, #949ba4)" }}>
                         {activeTab === "pending"
                           ? (friendship.addressee_id === user?.id ? "Incoming Friend Request" : "Outgoing Friend Request")
                           : friendship.profile.status === "online" ? "Online"
@@ -263,16 +272,20 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
 
       {/* Active Now sidebar - collapsible with animation */}
       <div
-        className={`hidden xl:flex flex-shrink-0 flex-col border-l border-[#3f4147] transition-all duration-300 ease-in-out overflow-hidden ${
+        className={`hidden xl:flex flex-shrink-0 flex-col border-l transition-all duration-300 ease-in-out overflow-hidden ${
           activeNowOpen ? "w-[340px] px-4 py-4 opacity-100" : "w-0 px-0 py-0 opacity-0 border-l-0"
         }`}
+        style={{ borderColor: "var(--app-border, #3f4147)" }}
       >
         <div className="min-w-[308px]">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-xl font-bold text-white">Active Now</h3>
             <button
               onClick={() => setActiveNowOpen(false)}
-              className="rounded p-1 text-[#949ba4] hover:text-[#dbdee1] hover:bg-[#35373c] transition-colors"
+              className="rounded p-1 transition-colors"
+              style={{ color: "var(--app-text-secondary, #949ba4)" }}
+              onMouseEnter={e => { e.currentTarget.style.backgroundColor = "var(--app-hover, #35373c)"; }}
+              onMouseLeave={e => { e.currentTarget.style.backgroundColor = ""; }}
               title="Hide Active Now"
             >
               <X className="h-4 w-4" />
@@ -280,7 +293,7 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
           </div>
           <div className="flex flex-1 flex-col items-center justify-center text-center">
             <p className="text-sm font-semibold text-white">It's quiet for now...</p>
-            <p className="mt-1 text-sm text-[#949ba4]">
+            <p className="mt-1 text-sm" style={{ color: "var(--app-text-secondary, #949ba4)" }}>
               When a friend starts an activity—like playing a game or hanging out on voice—we'll show it here!
             </p>
           </div>

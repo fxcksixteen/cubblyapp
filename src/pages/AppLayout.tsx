@@ -139,17 +139,19 @@ const AppLayout = () => {
           <img src={friendsIcon} alt="" className="h-5 w-5 invert opacity-60" />
           <span className="font-semibold" style={{ color: "var(--app-text-primary)" }}>Friends</span>
         </div>
-        <div className="h-6 w-px bg-[#3f4147]" />
+        <div className="h-6 w-px" style={{ backgroundColor: "var(--app-border, #3f4147)" }} />
         <div className="flex items-center gap-1">
           {(["online", "all", "pending", "blocked"] as FriendTab[]).map((tab) => (
             <button
               key={tab}
               onClick={() => setFriendTab(tab)}
-              className={`rounded px-2.5 py-1 text-sm font-medium capitalize transition-colors ${
-                friendTab === tab && activeView === "friends"
-                  ? "bg-[#404249] text-white"
-                  : "text-[#b5bac1] hover:bg-[#35373c] hover:text-[#dbdee1]"
-              }`}
+              className="rounded px-2.5 py-1 text-sm font-medium capitalize transition-colors"
+              style={{
+                backgroundColor: friendTab === tab && activeView === "friends" ? "var(--app-active, #404249)" : undefined,
+                color: friendTab === tab && activeView === "friends" ? "white" : "var(--app-text-secondary, #b5bac1)",
+              }}
+              onMouseEnter={e => { if (!(friendTab === tab && activeView === "friends")) e.currentTarget.style.backgroundColor = "var(--app-hover, #35373c)"; }}
+              onMouseLeave={e => { if (!(friendTab === tab && activeView === "friends")) e.currentTarget.style.backgroundColor = ""; }}
             >
               {tab}
             </button>
@@ -238,7 +240,10 @@ const AppLayout = () => {
               <div className="flex items-center gap-2" style={{ color: "var(--app-text-secondary)" }}>
                 <button
                   onClick={handleVoiceCall}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg transition-all hover:bg-[var(--app-hover)]"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg transition-all"
+                  style={{ }}
+                  onMouseEnter={e => { e.currentTarget.style.backgroundColor = "var(--app-hover)"; }}
+                  onMouseLeave={e => { e.currentTarget.style.backgroundColor = ""; }}
                   title={isInCall ? "End Voice Call" : "Start Voice Call"}
                 >
                   <img
@@ -251,7 +256,12 @@ const AppLayout = () => {
                     }}
                   />
                 </button>
-                <button className="flex h-8 w-8 items-center justify-center rounded-lg transition-all hover:bg-[var(--app-hover)]" title="Start Video Call">
+                <button
+                  className="flex h-8 w-8 items-center justify-center rounded-lg transition-all"
+                  onMouseEnter={e => { e.currentTarget.style.backgroundColor = "var(--app-hover)"; }}
+                  onMouseLeave={e => { e.currentTarget.style.backgroundColor = ""; }}
+                  title="Start Video Call"
+                >
                   <img src={videoIcon} alt="Video" className="h-5 w-5" style={{ filter: "brightness(0) invert(0.6)" }} />
                 </button>
               </div>

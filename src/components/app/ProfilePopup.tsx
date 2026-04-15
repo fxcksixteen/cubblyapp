@@ -89,18 +89,20 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
       </button>
 
       {open && (
-        <div className="absolute bottom-full left-0 mb-2 w-[300px] rounded-xl bg-[#111214] shadow-2xl border border-[#2b2d31] z-50 overflow-hidden">
+        <div className="absolute bottom-full left-0 mb-2 w-[300px] rounded-xl shadow-2xl border z-50 overflow-hidden"
+          style={{ backgroundColor: "var(--app-bg-tertiary, #111214)", borderColor: "var(--app-border, #2b2d31)" }}
+        >
           {/* Banner */}
           <div className="h-[60px]" style={{ background: profileColor.banner }} />
 
           {/* Avatar */}
           <div className="px-4 -mt-6 relative z-10">
             {avatarUrl ? (
-              <img src={avatarUrl} alt={displayName} className="h-[52px] w-[52px] rounded-full border-[4px] border-[#111214] object-cover" />
+              <img src={avatarUrl} alt={displayName} className="h-[52px] w-[52px] rounded-full border-[4px] object-cover" style={{ borderColor: "var(--app-bg-tertiary, #111214)" }} />
             ) : (
               <div
-                className="flex h-[52px] w-[52px] items-center justify-center rounded-full border-[4px] border-[#111214] text-lg font-bold text-white"
-                style={{ backgroundColor: profileColor.bg }}
+                className="flex h-[52px] w-[52px] items-center justify-center rounded-full border-[4px] text-lg font-bold text-white"
+                style={{ backgroundColor: profileColor.bg, borderColor: "var(--app-bg-tertiary, #111214)" }}
               >
                 {displayName.charAt(0).toUpperCase()}
               </div>
@@ -110,21 +112,25 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
           {/* Info */}
           <div className="px-4 pt-1.5 pb-3">
             <p className="text-lg font-bold text-white">{displayName}</p>
-            <p className="text-sm text-[#949ba4]">{username}</p>
+            <p className="text-sm" style={{ color: "var(--app-text-secondary, #949ba4)" }}>{username}</p>
           </div>
 
-          <div className="mx-3 h-px bg-[#2b2d31]" />
+          <div className="mx-3 h-px" style={{ backgroundColor: "var(--app-border, #2b2d31)" }} />
 
           {/* Actions */}
           <div className="p-2">
-            <p className="px-2 pt-1 pb-1 text-[11px] font-bold uppercase text-[#949ba4]">Status</p>
+            <p className="px-2 pt-1 pb-1 text-[11px] font-bold uppercase" style={{ color: "var(--app-text-secondary, #949ba4)" }}>Status</p>
             {statuses.map((s) => (
               <button
                 key={s.value}
                 onClick={() => handleStatusSelect(s.value)}
-                className={`flex w-full items-center gap-2.5 rounded px-2 py-1.5 text-sm transition-colors ${
-                  currentStatus === s.value ? "bg-[#404249] text-white" : "text-[#dbdee1] hover:bg-[#35373c]"
-                }`}
+                className="flex w-full items-center gap-2.5 rounded px-2 py-1.5 text-sm transition-colors"
+                style={{
+                  backgroundColor: currentStatus === s.value ? "var(--app-active, #404249)" : undefined,
+                  color: currentStatus === s.value ? "white" : "var(--app-text-primary, #dbdee1)",
+                }}
+                onMouseEnter={e => { if (currentStatus !== s.value) e.currentTarget.style.backgroundColor = "var(--app-hover, #35373c)"; }}
+                onMouseLeave={e => { if (currentStatus !== s.value) e.currentTarget.style.backgroundColor = ""; }}
               >
                 {s.value === "online" ? (
                   <div className="h-2.5 w-2.5 rounded-full bg-[#3ba55c]" />
@@ -137,26 +143,35 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
               </button>
             ))}
 
-            <div className="my-1.5 h-px bg-[#2b2d31]" />
+            <div className="my-1.5 h-px" style={{ backgroundColor: "var(--app-border, #2b2d31)" }} />
 
             <button
               onClick={() => { setOpen(false); onOpenSettings(); }}
-              className="flex w-full items-center gap-2.5 rounded px-2 py-1.5 text-sm text-[#dbdee1] hover:bg-[#35373c] transition-colors"
+              className="flex w-full items-center gap-2.5 rounded px-2 py-1.5 text-sm transition-colors"
+              style={{ color: "var(--app-text-primary, #dbdee1)" }}
+              onMouseEnter={e => { e.currentTarget.style.backgroundColor = "var(--app-hover, #35373c)"; }}
+              onMouseLeave={e => { e.currentTarget.style.backgroundColor = ""; }}
             >
-              <Pencil className="h-4 w-4 text-[#949ba4]" />
+              <Pencil className="h-4 w-4" style={{ color: "var(--app-text-secondary, #949ba4)" }} />
               Edit Profile
             </button>
             <button
               onClick={handleCopyId}
-              className="flex w-full items-center gap-2.5 rounded px-2 py-1.5 text-sm text-[#dbdee1] hover:bg-[#35373c] transition-colors"
+              className="flex w-full items-center gap-2.5 rounded px-2 py-1.5 text-sm transition-colors"
+              style={{ color: "var(--app-text-primary, #dbdee1)" }}
+              onMouseEnter={e => { e.currentTarget.style.backgroundColor = "var(--app-hover, #35373c)"; }}
+              onMouseLeave={e => { e.currentTarget.style.backgroundColor = ""; }}
             >
-              {copied ? <Check className="h-4 w-4 text-[#3ba55c]" /> : <Copy className="h-4 w-4 text-[#949ba4]" />}
+              {copied ? <Check className="h-4 w-4 text-[#3ba55c]" /> : <Copy className="h-4 w-4" style={{ color: "var(--app-text-secondary, #949ba4)" }} />}
               {copied ? "Copied!" : "Copy User ID"}
             </button>
             <button
-              className="flex w-full items-center gap-2.5 rounded px-2 py-1.5 text-sm text-[#dbdee1] hover:bg-[#35373c] transition-colors"
+              className="flex w-full items-center gap-2.5 rounded px-2 py-1.5 text-sm transition-colors"
+              style={{ color: "var(--app-text-primary, #dbdee1)" }}
+              onMouseEnter={e => { e.currentTarget.style.backgroundColor = "var(--app-hover, #35373c)"; }}
+              onMouseLeave={e => { e.currentTarget.style.backgroundColor = ""; }}
             >
-              <User className="h-4 w-4 text-[#949ba4]" />
+              <User className="h-4 w-4" style={{ color: "var(--app-text-secondary, #949ba4)" }} />
               View Profile
             </button>
           </div>

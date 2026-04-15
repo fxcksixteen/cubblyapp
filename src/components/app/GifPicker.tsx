@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { X } from "lucide-react";
+import { X, Heart } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import searchIcon from "@/assets/icons/search.svg";
 
 interface GifPickerProps {
@@ -20,7 +21,16 @@ interface GiphyGif {
   };
 }
 
+interface GifFavorite {
+  id: string;
+  gif_id: string;
+  gif_url: string;
+  gif_preview_url: string;
+  title: string;
+}
+
 const CATEGORIES = [
+  { name: "Favorites", query: "__favorites__" },
   { name: "Trending", query: "" },
   { name: "Reactions", query: "reactions" },
   { name: "Love", query: "love" },
@@ -32,13 +42,29 @@ const CATEGORIES = [
 ];
 
 const GifPicker = ({ isOpen, onClose, onSelect }: GifPickerProps) => {
+  const { user } = useAuth();
   const [gifs, setGifs] = useState<GiphyGif[]>([]);
   const [query, setQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState("Trending");
   const [loading, setLoading] = useState(false);
+  const [favorites, setFavorites] = useState<GifFavorite[]>([]);
+  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<NodeJS.Timeout>();
+
+  const fetchFavorites = useCallback(async () => {
+    if (!user) return;
+    const { data } = await supabase
+      .from("gif_favorites")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false });
+    if (data) {
+      setFavorites(data as GifFavorite[]);
+      setFavoriteIds(new Set(data.map((f: any) => f.gif_id)));
+    }
+  }, [user]);
 
   const fetchGifs = useCallback(async (searchQuery: string) => {
     setLoading(true);
@@ -68,13 +94,14 @@ const GifPicker = ({ isOpen, onClose, onSelect }: GifPickerProps) => {
   useEffect(() => {
     if (isOpen) {
       fetchGifs("");
+      fetchFavorites();
       setTimeout(() => inputRef.current?.focus(), 100);
     } else {
       setQuery("");
       setActiveCategory("Trending");
       setGifs([]);
     }
-  }, [isOpen, fetchGifs]);
+  }, [isOpen, fetchGifs, fetchFavorites]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -95,10 +122,43 @@ const GifPicker = ({ isOpen, onClose, onSelect }: GifPickerProps) => {
   const handleCategoryClick = (cat: typeof CATEGORIES[0]) => {
     setActiveCategory(cat.name);
     setQuery("");
+    if (cat.query === "__favorites__") return; // favorites are already loaded
     fetchGifs(cat.query);
   };
 
+  const toggleFavorite = async (gif: GiphyGif) => {
+    if (!user) return;
+    const isFav = favoriteIds.has(gif.id);
+    if (isFav) {
+      await supabase.from("gif_favorites").delete().eq("user_id", user.id).eq("gif_id", gif.id);
+      setFavoriteIds(prev => { const s = new Set(prev); s.delete(gif.id); return s; });
+      setFavorites(prev => prev.filter(f => f.gif_id !== gif.id));
+    } else {
+      const newFav = {
+        user_id: user.id,
+        gif_id: gif.id,
+        gif_url: gif.images.original.url,
+        gif_preview_url: gif.images.fixed_width.url,
+        title: gif.title || "",
+      };
+      const { data } = await supabase.from("gif_favorites").insert(newFav).select().single();
+      if (data) {
+        setFavoriteIds(prev => new Set(prev).add(gif.id));
+        setFavorites(prev => [data as GifFavorite, ...prev]);
+      }
+    }
+  };
+
+  const removeFavoriteById = async (fav: GifFavorite) => {
+    if (!user) return;
+    await supabase.from("gif_favorites").delete().eq("id", fav.id);
+    setFavoriteIds(prev => { const s = new Set(prev); s.delete(fav.gif_id); return s; });
+    setFavorites(prev => prev.filter(f => f.id !== fav.id));
+  };
+
   if (!isOpen) return null;
+
+  const showFavorites = activeCategory === "Favorites";
 
   return (
     <div
@@ -109,7 +169,7 @@ const GifPicker = ({ isOpen, onClose, onSelect }: GifPickerProps) => {
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "var(--app-border, #1e1f22)" }}>
         <span className="text-sm font-bold" style={{ color: "var(--app-text-primary, #dbdee1)" }}>GIFs</span>
-        <button onClick={onClose} className="text-[#949ba4] hover:text-[#dbdee1] transition-colors">
+        <button onClick={onClose} className="transition-colors" style={{ color: "var(--app-text-secondary, #949ba4)" }}>
           <X className="h-4 w-4" />
         </button>
       </div>
@@ -139,43 +199,87 @@ const GifPicker = ({ isOpen, onClose, onSelect }: GifPickerProps) => {
             className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
               activeCategory === cat.name
                 ? "bg-[#5865f2] text-white"
-                : "text-[#949ba4] hover:bg-[#35373c] hover:text-[#dbdee1]"
+                : ""
             }`}
-            style={activeCategory !== cat.name ? { backgroundColor: "var(--app-bg-tertiary, #1e1f22)" } : undefined}
+            style={activeCategory !== cat.name ? { backgroundColor: "var(--app-bg-tertiary, #1e1f22)", color: "var(--app-text-secondary, #949ba4)" } : undefined}
           >
-            {cat.name}
+            {cat.name === "Favorites" ? "❤️ Favorites" : cat.name}
           </button>
         ))}
       </div>
 
       {/* GIF Grid */}
       <div className="h-[320px] overflow-y-auto px-3 pb-3">
-        {loading ? (
+        {showFavorites ? (
+          favorites.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-sm" style={{ color: "var(--app-text-secondary, #949ba4)" }}>
+              <Heart className="h-8 w-8 mb-2 opacity-40" />
+              <p>No favorite GIFs yet</p>
+              <p className="text-xs mt-1 opacity-60">Hover over any GIF and click ❤️ to save it</p>
+            </div>
+          ) : (
+            <div className="columns-2 gap-2">
+              {favorites.map((fav) => (
+                <div key={fav.id} className="relative mb-2 w-full break-inside-avoid rounded-lg overflow-hidden group/gif">
+                  <button
+                    onClick={() => {
+                      onSelect(fav.gif_url);
+                      onClose();
+                    }}
+                    className="w-full hover:opacity-80 hover:scale-[1.02] transition-all duration-150 cursor-pointer"
+                  >
+                    <img
+                      src={fav.gif_preview_url}
+                      alt={fav.title}
+                      className="w-full rounded-lg"
+                      loading="lazy"
+                    />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); removeFavoriteById(fav); }}
+                    className="absolute top-1.5 right-1.5 rounded-full p-1 opacity-0 group-hover/gif:opacity-100 transition-opacity bg-black/60 hover:bg-black/80"
+                    title="Remove from favorites"
+                  >
+                    <Heart className="h-4 w-4 fill-red-500 text-red-500" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )
+        ) : loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#5865f2] border-t-transparent" />
           </div>
         ) : gifs.length === 0 ? (
-          <div className="flex items-center justify-center py-12 text-sm text-[#949ba4]">
+          <div className="flex items-center justify-center py-12 text-sm" style={{ color: "var(--app-text-secondary, #949ba4)" }}>
             No GIFs found
           </div>
         ) : (
           <div className="columns-2 gap-2">
             {gifs.map((gif) => (
-              <button
-                key={gif.id}
-                onClick={() => {
-                  onSelect(gif.images.original.url);
-                  onClose();
-                }}
-                className="mb-2 w-full break-inside-avoid rounded-lg overflow-hidden hover:opacity-80 hover:scale-[1.02] transition-all duration-150 cursor-pointer"
-              >
-                <img
-                  src={gif.images.fixed_width.url}
-                  alt={gif.title}
-                  className="w-full rounded-lg"
-                  loading="lazy"
-                />
-              </button>
+              <div key={gif.id} className="relative mb-2 w-full break-inside-avoid rounded-lg overflow-hidden group/gif">
+                <button
+                  onClick={() => {
+                    onSelect(gif.images.original.url);
+                    onClose();
+                  }}
+                  className="w-full hover:opacity-80 hover:scale-[1.02] transition-all duration-150 cursor-pointer"
+                >
+                  <img
+                    src={gif.images.fixed_width.url}
+                    alt={gif.title}
+                    className="w-full rounded-lg"
+                    loading="lazy"
+                  />
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); toggleFavorite(gif); }}
+                  className="absolute top-1.5 right-1.5 rounded-full p-1 opacity-0 group-hover/gif:opacity-100 transition-opacity bg-black/60 hover:bg-black/80"
+                  title={favoriteIds.has(gif.id) ? "Remove from favorites" : "Add to favorites"}
+                >
+                  <Heart className={`h-4 w-4 ${favoriteIds.has(gif.id) ? "fill-red-500 text-red-500" : "text-white"}`} />
+                </button>
+              </div>
             ))}
           </div>
         )}
@@ -183,7 +287,7 @@ const GifPicker = ({ isOpen, onClose, onSelect }: GifPickerProps) => {
 
       {/* Powered by GIPHY */}
       <div className="flex items-center justify-center py-2 border-t" style={{ borderColor: "var(--app-border, #1e1f22)" }}>
-        <span className="text-[10px] text-[#949ba4]">Powered by GIPHY</span>
+        <span className="text-[10px]" style={{ color: "var(--app-text-secondary, #949ba4)" }}>Powered by GIPHY</span>
       </div>
     </div>
   );
