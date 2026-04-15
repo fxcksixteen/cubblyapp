@@ -1,43 +1,62 @@
 
 
-## Plan: Fix Call Event Pills, Custom SVG Icons, and Audio Level Indicators
+# Plan: Fix Theme Colors, Chat Scroll, GIF Alignment & Favorites
 
-### Problem Analysis
+## Issues to Fix
 
-1. **Call event pills not appearing in chat**: The `callEvents` state lives in `VoiceContext` (in-memory only) and resets on re-render/navigation. More critically, the call events are only appended at the bottom of the chat items list (after all messages), but the real issue is that `callEvents` is tracked via `prevCallStateRef` which may not trigger properly — the call with CubblyBot is likely client-only and never reaches "connected" state, so no event is ever created. The fix: create the call event immediately when a call starts (not just on "connected"), and persist events so they survive.
+### 1. Cubbly theme grey colors → dark brown
+All hardcoded grey hex values used for hover/active states need to use CSS variables so the cubbly theme applies correctly:
+- `hover:bg-[#2e3035]` (message hover in ChatView) → `hover:bg-[var(--app-hover)]`
+- `bg-[#404249]` (active items in DMSidebar, AppLayout, FriendsView) → `bg-[var(--app-active)]`
+- `hover:bg-[#35373c]` (hover states everywhere) → `hover:bg-[var(--app-hover)]`
+- `bg-[#383a40]` (input backgrounds) → `bg-[var(--app-input)]`
+- `bg-[#2b2d31]`, `bg-[#1e1f22]`, etc. in ChatView attachment areas → use CSS variables
 
-2. **Mute/Deafen buttons using Lucide icons instead of custom SVGs**: The call UI uses `Mic`, `MicOff`, `Volume2`, `VolumeX` from lucide-react. Should use `microphone.svg`, `microphone-mute.svg`, `headphone.svg`, `headphone-deafen.svg`.
+**Files:** `ChatView.tsx`, `DMSidebar.tsx`, `AppLayout.tsx`, `FriendsView.tsx`, `ProfilePopup.tsx`, `SearchBar.tsx`, `GifPicker.tsx`
 
-3. **No remote audio level detection**: Currently only local `audioLevel` is tracked. Need to add a `remoteAudioLevel` by creating an analyser on the remote stream too.
+### 2. Chat scroll during voice call
+The auto-scroll `useEffect` on line 85-87 of ChatView fires on every `conversationCallEvents` change, and `audioLevel` updates in VoiceContext cause re-renders that lock scrolling. Fix:
+- Remove `conversationCallEvents` from the scroll dependency array
+- Only auto-scroll on new messages (track message count), not on every render
+- Use a `userHasScrolledUp` flag — skip auto-scroll if user scrolled away from bottom
 
-### Changes
+### 3. GIF button alignment
+The GIF icon (`h-6 w-6`) is slightly taller than the send button (`h-5 w-5`). Fix by making them consistent and adding `flex items-center` alignment to both button wrappers.
 
-**`src/contexts/VoiceContext.tsx`**
-- Create a call event as soon as `startCall` is invoked (state: "ongoing"), not waiting for "connected"
-- End the call event when `endCall` is called — update the last ongoing event to "ended"
-- Remove the fragile `prevCallStateRef` approach
-- Add `remoteAudioLevel` state + analyser for the remote stream's audio in `ontrack`
-- Export `remoteAudioLevel` in context
+### 4. GIF Favorites System
+- Create a new `gif_favorites` database table: `id`, `user_id`, `gif_id`, `gif_url`, `gif_preview_url`, `title`, `created_at`
+- Add RLS policies for authenticated users to manage their own favorites
+- Add a "Favorites" category tab (first position) in GifPicker
+- On hover over any GIF, show a heart/star button in the upper-right corner
+- Clicking it toggles favorite status (insert/delete from `gif_favorites`)
+- When "Favorites" tab is active, fetch from the database instead of Giphy API
 
-**`src/components/app/VoiceCallOverlay.tsx`**
-- Replace `Mic`/`MicOff` with custom `microphone.svg`/`microphone-mute.svg` as `<img>` tags
-- Replace `Volume2`/`VolumeX` with custom `headphone.svg`/`headphone-deafen.svg` as `<img>` tags
-- Keep all layout, sizing, coloring, and button structure identical — just swap the icon content
-- Add `remoteAudioLevel` from `useVoice()` and apply the same green speaking-ring glow to the recipient's avatar when their audio level exceeds the threshold
-- Apply CSS `filter` for icon color changes (white by default, red-tinted when muted/deafened)
+**New table migration:**
+```sql
+CREATE TABLE public.gif_favorites (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  gif_id text NOT NULL,
+  gif_url text NOT NULL,
+  gif_preview_url text NOT NULL,
+  title text DEFAULT '',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(user_id, gif_id)
+);
+ALTER TABLE public.gif_favorites ENABLE ROW LEVEL SECURITY;
+-- Users can manage their own favorites
+CREATE POLICY "Users can view own favorites" ON public.gif_favorites FOR SELECT TO authenticated USING (auth.uid() = user_id);
+CREATE POLICY "Users can add favorites" ON public.gif_favorites FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can remove favorites" ON public.gif_favorites FOR DELETE TO authenticated USING (auth.uid() = user_id);
+```
 
-**`src/components/app/ChatView.tsx`**
-- Interleave call events with messages by timestamp instead of appending at end
-- This ensures pills appear in chronological order within the chat
-
-### Technical Details
-
-- Custom SVG icons will use `<img>` with `filter: brightness(0) invert(1)` for white, and a red filter variant when active
-- Remote audio analyser: create a second `AnalyserNode` on the remote stream in `ontrack`, run a separate RAF loop updating `remoteAudioLevel`
-- Call events: generate on `startCall`/`acceptCall`, finalize on `endCall` — simple and reliable
-
-### Files Modified
-- `src/contexts/VoiceContext.tsx`
-- `src/components/app/VoiceCallOverlay.tsx`
-- `src/components/app/ChatView.tsx`
+## Files Changed
+- `src/components/app/ChatView.tsx` — theme vars, scroll fix, GIF button alignment
+- `src/components/app/GifPicker.tsx` — favorites tab, hover favorite button, theme vars
+- `src/components/app/DMSidebar.tsx` — theme vars
+- `src/components/app/FriendsView.tsx` — theme vars
+- `src/components/app/ProfilePopup.tsx` — theme vars
+- `src/components/app/SearchBar.tsx` — theme vars
+- `src/pages/AppLayout.tsx` — theme vars
+- DB migration for `gif_favorites` table
 
