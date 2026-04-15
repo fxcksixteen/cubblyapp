@@ -229,10 +229,10 @@ export const CallPanel = ({ conversationId, recipientName, recipientUserId }: {
           title={isScreenSharing ? "Stop Sharing" : "Share Screen"}
         >
           <img
-            src={(await import("@/assets/icons/screenshare.svg")).default}
+            src={screenshareIcon}
             alt={isScreenSharing ? "Stop Sharing" : "Share Screen"}
             className="h-5 w-5"
-            style={{ filter: isScreenSharing ? "brightness(0) invert(1)" : "brightness(0) invert(1)" }}
+            style={{ filter: "brightness(0) invert(1)" }}
           />
         </button>
 
