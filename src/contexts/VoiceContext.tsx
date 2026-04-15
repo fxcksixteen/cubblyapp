@@ -16,10 +16,10 @@ export interface VoiceSettings {
 }
 
 export interface ScreenShareSettings {
-  resolution: string;        // "auto" | "720p" | "1080p" | "1440p" | "source"
-  frameRate: number;          // 15, 30, 60
-  audioShare: boolean;        // share system audio
-  optimizeFor: string;        // "clarity" | "motion"
+  resolution: string;
+  frameRate: number;
+  audioShare: boolean;
+  optimizeFor: string;
   showCursor: boolean;
 }
 
@@ -101,7 +101,6 @@ interface VoiceContextType {
   refreshDevices: () => void;
   callEvents: CallEvent[];
   detectedRegion: string;
-  // Screen sharing
   isScreenSharing: boolean;
   screenStream: MediaStream | null;
   remoteScreenStream: MediaStream | null;
@@ -155,6 +154,9 @@ async function detectBestRegion(): Promise<string> {
   return results[0].region;
 }
 
+// Detect if running in Electron
+const isElectron = typeof window !== "undefined" && !!(window as any).electronAPI;
+
 export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const { user } = useAuth();
   const [settings, setSettings] = useState<VoiceSettings>(loadSettings);
@@ -169,7 +171,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const [callEvents, setCallEvents] = useState<CallEvent[]>([]);
   const [detectedRegion, setDetectedRegion] = useState("us-east");
 
-  // Screen sharing state
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const [remoteScreenStream, setRemoteScreenStream] = useState<MediaStream | null>(null);
@@ -185,12 +186,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const audioContextRef = useRef<AudioContext | null>(null);
   const animFrameRef = useRef<number>(0);
   const remoteAnimFrameRef = useRef<number>(0);
+  // Track pre-deafen mute state so undeafen restores it
+  const preMuteStateRef = useRef<boolean>(false);
 
   useEffect(() => {
     detectBestRegion().then(setDetectedRegion);
   }, []);
 
-  // Fetch TURN credentials on mount
   useEffect(() => {
     if (!user) return;
     supabase.functions.invoke("get-turn-credentials").then(({ data, error }) => {
@@ -200,7 +202,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     });
   }, [user]);
 
-  // Load persisted call events from DB
   useEffect(() => {
     if (!user) return;
     supabase
@@ -259,11 +260,35 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   }, [settings.inputVolume]);
 
   useEffect(() => {
-    // Update volume on all remote audio elements
     document.querySelectorAll("audio").forEach((el: any) => {
       if (el.__cubblyRemote) el.volume = settings.outputVolume / 100;
     });
   }, [settings.outputVolume]);
+
+  // Apply voice processing constraints in real-time when settings change during a call
+  useEffect(() => {
+    if (!localStream) return;
+    const tracks = localStream.getAudioTracks();
+    tracks.forEach(track => {
+      track.applyConstraints({
+        echoCancellation: settings.echoCancellation,
+        noiseSuppression: settings.noiseSuppression,
+        autoGainControl: settings.autoGainControl,
+      }).catch(e => console.warn("Failed to apply audio constraints:", e));
+    });
+  }, [settings.echoCancellation, settings.noiseSuppression, settings.autoGainControl, localStream]);
+
+  // Sensitivity threshold gating: mute outgoing track when below threshold
+  useEffect(() => {
+    if (!localStream || settings.autoSensitivity || !activeCall) return;
+    const tracks = localStream.getAudioTracks();
+    if (activeCall.isMuted || activeCall.isDeafened) return; // don't interfere with manual mute
+    
+    const shouldTransmit = audioLevel >= settings.sensitivityThreshold;
+    tracks.forEach(track => {
+      track.enabled = shouldTransmit;
+    });
+  }, [audioLevel, settings.sensitivityThreshold, settings.autoSensitivity, localStream, activeCall]);
 
   const startAudioLevelMonitor = useCallback((stream: MediaStream) => {
     const ctx = new AudioContext();
@@ -273,6 +298,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     analyser.fftSize = 256;
     analyser.smoothingTimeConstant = 0.5;
     source.connect(analyser);
+    // Do NOT connect to ctx.destination — that causes echo/underwater effect
     analyserRef.current = analyser;
     const dataArray = new Uint8Array(analyser.frequencyBinCount);
     const tick = () => {
@@ -313,7 +339,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
     pc.ontrack = (event) => {
       const remote = event.streams[0];
-      // Determine if this is a screen share track or audio track
       const isVideo = event.track.kind === "video";
       
       if (isVideo) {
@@ -322,7 +347,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       }
 
       setRemoteStream(remote);
-      // Play remote audio directly via <audio> element (avoids AudioContext interfering with system audio)
       const audioEl = document.createElement("audio");
       audioEl.srcObject = remote;
       audioEl.autoplay = true;
@@ -335,7 +359,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       audioEl.play().catch(console.error);
       document.body.appendChild(audioEl);
 
-      // Separate analyser for level monitoring (doesn't touch audio output)
       try {
         const analyserCtx = new AudioContext();
         const source = analyserCtx.createMediaStreamSource(remote);
@@ -352,9 +375,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           remoteAnimFrameRef.current = requestAnimationFrame(tickRemote);
         };
         tickRemote();
-      } catch {
-        // Level monitoring is optional
-      }
+      } catch {}
     };
 
     pc.oniceconnectionstatechange = () => {
@@ -403,7 +424,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         endCall();
       }
 
-      // Screen share signaling
       if (payload.type === "screen-offer") {
         const screenPc = new RTCPeerConnection({ iceServers: iceServersRef.current });
         screenPc.ontrack = (event) => {
@@ -519,7 +539,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         startedAt: new Date().toISOString(),
       }]);
 
-      // Persist to DB
       supabase.from("call_events").insert({
         id: callEventId,
         conversation_id: conversationId,
@@ -581,7 +600,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         const hasOngoing = prev.some(e => e.conversationId === incomingCall.conversationId && e.state === "ongoing");
         if (hasOngoing) return prev;
         const callEventId = crypto.randomUUID();
-        // Persist to DB
         supabase.from("call_events").insert({
           id: callEventId,
           conversation_id: incomingCall.conversationId,
@@ -616,38 +634,71 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     };
 
     const res = resolutionMap[effectiveQuality];
-    
-    const videoConstraints: any = {
-      cursor: screenShareSettings.showCursor ? "always" : "never",
-      frameRate: { ideal: effectiveFps },
-      ...(res ? { width: { ideal: res.width }, height: { ideal: res.height } } : {}),
-    };
-
-    if (type === "tab") {
-      videoConstraints.displaySurface = "browser";
-    } else if (type === "window") {
-      videoConstraints.displaySurface = "window";
-    } else if (type === "screen") {
-      videoConstraints.displaySurface = "monitor";
-    }
-
-    const displayConstraints: DisplayMediaStreamOptions = {
-      video: videoConstraints,
-      audio: effectiveAudio,
-    };
 
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia(displayConstraints);
+      let stream: MediaStream;
+
+      // Electron path: use desktopCapturer via preload
+      if (isElectron && (window as any).electronAPI?.getDesktopSources) {
+        const sources = await (window as any).electronAPI.getDesktopSources();
+        // Pick first source matching type, or first available
+        let selectedSource = sources[0];
+        if (type === "screen") {
+          selectedSource = sources.find((s: any) => s.id.startsWith("screen:")) || selectedSource;
+        } else if (type === "window") {
+          selectedSource = sources.find((s: any) => s.id.startsWith("window:")) || selectedSource;
+        }
+
+        if (!selectedSource) throw new Error("No screen sources available");
+
+        const videoConstraints: any = {
+          mandatory: {
+            chromeMediaSource: "desktop",
+            chromeMediaSourceId: selectedSource.id,
+            ...(res ? { maxWidth: res.width, maxHeight: res.height } : {}),
+            maxFrameRate: effectiveFps,
+          },
+        };
+
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: effectiveAudio ? {
+            mandatory: {
+              chromeMediaSource: "desktop",
+              chromeMediaSourceId: selectedSource.id,
+            },
+          } as any : false,
+          video: videoConstraints,
+        });
+      } else {
+        // Browser path: standard getDisplayMedia
+        const videoConstraints: any = {
+          cursor: screenShareSettings.showCursor ? "always" : "never",
+          frameRate: { ideal: effectiveFps },
+          ...(res ? { width: { ideal: res.width }, height: { ideal: res.height } } : {}),
+        };
+
+        if (type === "tab") {
+          videoConstraints.displaySurface = "browser";
+        } else if (type === "window") {
+          videoConstraints.displaySurface = "window";
+        } else if (type === "screen") {
+          videoConstraints.displaySurface = "monitor";
+        }
+
+        stream = await navigator.mediaDevices.getDisplayMedia({
+          video: videoConstraints,
+          audio: effectiveAudio,
+        });
+      }
+
       setScreenStream(stream);
       setIsScreenSharing(true);
 
-      // Create a separate peer connection for screen sharing
       const screenPc = new RTCPeerConnection({ iceServers: iceServersRef.current });
       screenPcRef.current = screenPc;
 
       stream.getTracks().forEach(track => {
         screenPc.addTrack(track, stream);
-        // Handle user stopping share from browser UI
         track.onended = () => {
           stopScreenShare();
         };
@@ -701,7 +752,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         if (updated[i].state === "ongoing") {
           const evt = updated[i];
           updated[i] = { ...evt, state: "ended", endedAt };
-          // Persist to DB
           supabase.from("call_events").update({ state: "ended", ended_at: endedAt } as any).eq("id", evt.id).then(() => {});
           break;
         }
@@ -709,7 +759,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       return updated;
     });
 
-    // Stop screen share if active
     stopScreenShare();
     setRemoteScreenStream(null);
 
@@ -734,7 +783,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     remoteAnalyserRef.current = null;
     setRemoteAudioLevel(0);
 
-    // Clean up remote audio elements
     document.querySelectorAll("audio").forEach((el: any) => {
       if (el.__cubblyRemote) { el.pause(); el.srcObject = null; el.remove(); }
     });
@@ -753,11 +801,31 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   }, [localStream]);
 
   const toggleDeafen = useCallback(() => {
-    // For bot calls or when there's no remote stream, still toggle the state
-    const audioElements = document.querySelectorAll("audio");
-    audioElements.forEach((el: any) => { if (el.__cubblyRemote) el.muted = !el.muted; });
-    setActiveCall(prev => prev ? { ...prev, isDeafened: !prev.isDeafened } : null);
-  }, []);
+    setActiveCall(prev => {
+      if (!prev) return null;
+      const newDeafened = !prev.isDeafened;
+      
+      // Mute/unmute remote audio
+      const audioElements = document.querySelectorAll("audio");
+      audioElements.forEach((el: any) => { if (el.__cubblyRemote) el.muted = newDeafened; });
+      
+      if (newDeafened) {
+        // Save current mute state before deafening, then mute mic
+        preMuteStateRef.current = prev.isMuted;
+        if (localStream) {
+          localStream.getAudioTracks().forEach(track => { track.enabled = false; });
+        }
+        return { ...prev, isDeafened: true, isMuted: true };
+      } else {
+        // Restore pre-deafen mute state
+        const restoreMuted = preMuteStateRef.current;
+        if (localStream) {
+          localStream.getAudioTracks().forEach(track => { track.enabled = !restoreMuted; });
+        }
+        return { ...prev, isDeafened: false, isMuted: restoreMuted };
+      }
+    });
+  }, [localStream]);
 
   useEffect(() => {
     if (!user) return;

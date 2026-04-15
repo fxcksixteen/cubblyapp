@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useVoice, SERVER_REGIONS } from "@/contexts/VoiceContext";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Mic, Globe, Monitor, MousePointer2, Zap, Film, MicOff } from "lucide-react";
 
 interface Props {
@@ -35,7 +36,6 @@ const VoiceVideoSettings = ({ panelStyle, cardStyle }: Props) => {
         </p>
       </div>
 
-      {/* Tabs */}
       <div className="flex gap-1 rounded-2xl p-1" style={{ backgroundColor: "var(--app-bg-tertiary)" }}>
         <button
           onClick={() => setActiveTab("voice")}
@@ -81,34 +81,56 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
   const [micTesting, setMicTesting] = useState(false);
   const streamRef = useRef<MediaStream | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const animRef = useRef<number>(0);
+  const [testLevel, setTestLevel] = useState(0);
 
   const toggleMicTest = async () => {
     if (micTesting) {
       streamRef.current?.getTracks().forEach(t => t.stop());
       audioCtxRef.current?.close();
+      cancelAnimationFrame(animRef.current);
       streamRef.current = null;
       audioCtxRef.current = null;
+      analyserRef.current = null;
       setMicTesting(false);
+      setTestLevel(0);
       return;
     }
 
     try {
       const constraints: MediaStreamConstraints = {
-        audio: settings.inputDeviceId !== "default"
-          ? { deviceId: { exact: settings.inputDeviceId } }
-          : true,
+        audio: {
+          deviceId: settings.inputDeviceId !== "default" ? { exact: settings.inputDeviceId } : undefined,
+          echoCancellation: settings.echoCancellation,
+          noiseSuppression: settings.noiseSuppression,
+          autoGainControl: settings.autoGainControl,
+          sampleRate: 48000,
+          sampleSize: 24,
+          channelCount: 2,
+        } as MediaTrackConstraints,
       };
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
 
-      // Create playback so user hears themselves
+      // Analyser-only path for level monitoring — NO routing to destination (prevents echo)
       const ctx = new AudioContext();
       audioCtxRef.current = ctx;
       const source = ctx.createMediaStreamSource(stream);
-      const gain = ctx.createGain();
-      gain.gain.value = (settings.outputVolume ?? 100) / 100;
-      source.connect(gain);
-      gain.connect(ctx.destination);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.5;
+      source.connect(analyser);
+      analyserRef.current = analyser;
+
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      const tick = () => {
+        analyser.getByteFrequencyData(dataArray);
+        const avg = dataArray.reduce((sum, v) => sum + v, 0) / dataArray.length;
+        setTestLevel(avg / 255 * 100);
+        animRef.current = requestAnimationFrame(tick);
+      };
+      tick();
 
       setMicTesting(true);
     } catch (err) {
@@ -116,12 +138,28 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
     }
   };
 
+  // Apply constraints in real-time when settings change during mic test
+  useEffect(() => {
+    if (!streamRef.current || !micTesting) return;
+    const tracks = streamRef.current.getAudioTracks();
+    tracks.forEach(track => {
+      track.applyConstraints({
+        echoCancellation: settings.echoCancellation,
+        noiseSuppression: settings.noiseSuppression,
+        autoGainControl: settings.autoGainControl,
+      }).catch(e => console.warn("Failed to apply mic test constraints:", e));
+    });
+  }, [settings.echoCancellation, settings.noiseSuppression, settings.autoGainControl, micTesting]);
+
   useEffect(() => {
     return () => {
       streamRef.current?.getTracks().forEach(t => t.stop());
       audioCtxRef.current?.close();
+      cancelAnimationFrame(animRef.current);
     };
   }, []);
+
+  const displayLevel = micTesting ? testLevel : audioLevel;
 
   return (
     <div className="space-y-6">
@@ -133,18 +171,29 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
             Server Region
           </p>
         </div>
-        <select
-          value={settings.serverRegion}
-          onChange={(e) => updateSettings({ serverRegion: e.target.value })}
-          className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none cursor-pointer"
-          style={{ backgroundColor: "var(--app-input)", borderColor: "var(--app-border)", color: "var(--app-text-primary)" }}
-        >
-          {SERVER_REGIONS.map((r: any) => (
-            <option key={r.id} value={r.id}>
-              {r.label} — {r.description}
-            </option>
-          ))}
-        </select>
+        <Select value={settings.serverRegion} onValueChange={(v) => updateSettings({ serverRegion: v })}>
+          <SelectTrigger
+            className="w-full rounded-xl border text-sm"
+            style={{ backgroundColor: "var(--app-input)", borderColor: "var(--app-border)", color: "var(--app-text-primary)" }}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent
+            className="rounded-xl border shadow-xl"
+            style={{ backgroundColor: "var(--app-bg-secondary)", borderColor: "var(--app-border)" }}
+          >
+            {SERVER_REGIONS.map((r: any) => (
+              <SelectItem
+                key={r.id}
+                value={r.id}
+                className="rounded-lg text-sm cursor-pointer"
+                style={{ color: "var(--app-text-primary)" }}
+              >
+                {r.label} — {r.description}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         {settings.serverRegion === "auto" && (
           <p className="text-xs" style={{ color: "var(--app-text-secondary)" }}>
             Detected best region: <span className="font-semibold" style={{ color: "var(--app-text-primary)" }}>{activeRegion.label}</span> ({activeRegion.description})
@@ -157,19 +206,32 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
         <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: "var(--app-text-secondary)" }}>
           Input Device
         </p>
-        <select
-          value={settings.inputDeviceId}
-          onChange={(e) => updateSettings({ inputDeviceId: e.target.value })}
-          className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none cursor-pointer"
-          style={{ backgroundColor: "var(--app-input)", borderColor: "var(--app-border)", color: "var(--app-text-primary)" }}
-        >
-          <option value="default">Default</option>
-          {availableDevices.inputs.map((d: MediaDeviceInfo) => (
-            <option key={d.deviceId} value={d.deviceId}>
-              {d.label || `Microphone (${d.deviceId.slice(0, 8)})`}
-            </option>
-          ))}
-        </select>
+        <Select value={settings.inputDeviceId} onValueChange={(v) => updateSettings({ inputDeviceId: v })}>
+          <SelectTrigger
+            className="w-full rounded-xl border text-sm"
+            style={{ backgroundColor: "var(--app-input)", borderColor: "var(--app-border)", color: "var(--app-text-primary)" }}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent
+            className="rounded-xl border shadow-xl"
+            style={{ backgroundColor: "var(--app-bg-secondary)", borderColor: "var(--app-border)" }}
+          >
+            <SelectItem value="default" className="rounded-lg text-sm cursor-pointer" style={{ color: "var(--app-text-primary)" }}>
+              Default
+            </SelectItem>
+            {availableDevices.inputs.map((d: MediaDeviceInfo) => (
+              <SelectItem
+                key={d.deviceId}
+                value={d.deviceId}
+                className="rounded-lg text-sm cursor-pointer"
+                style={{ color: "var(--app-text-primary)" }}
+              >
+                {d.label || `Microphone (${d.deviceId.slice(0, 8)})`}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
         <div>
           <div className="flex items-center justify-between mb-2">
@@ -204,14 +266,14 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
             <div
               className="h-full rounded-full transition-all duration-100"
               style={{
-                width: `${Math.min(audioLevel, 100)}%`,
-                backgroundColor: audioLevel > 80 ? "#ed4245" : audioLevel > 40 ? "#faa61a" : "#3ba55c",
+                width: `${Math.min(displayLevel, 100)}%`,
+                backgroundColor: displayLevel > 80 ? "#ed4245" : displayLevel > 40 ? "#faa61a" : "#3ba55c",
               }}
             />
           </div>
           {micTesting && (
             <p className="mt-1.5 text-[11px]" style={{ color: "var(--app-text-secondary)" }}>
-              🎧 You should hear yourself through your output device
+              🎤 Speak now — the level bar shows your mic input
             </p>
           )}
         </div>
@@ -222,19 +284,32 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
         <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: "var(--app-text-secondary)" }}>
           Output Device
         </p>
-        <select
-          value={settings.outputDeviceId}
-          onChange={(e) => updateSettings({ outputDeviceId: e.target.value })}
-          className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none cursor-pointer"
-          style={{ backgroundColor: "var(--app-input)", borderColor: "var(--app-border)", color: "var(--app-text-primary)" }}
-        >
-          <option value="default">Default</option>
-          {availableDevices.outputs.map((d: MediaDeviceInfo) => (
-            <option key={d.deviceId} value={d.deviceId}>
-              {d.label || `Speaker (${d.deviceId.slice(0, 8)})`}
-            </option>
-          ))}
-        </select>
+        <Select value={settings.outputDeviceId} onValueChange={(v) => updateSettings({ outputDeviceId: v })}>
+          <SelectTrigger
+            className="w-full rounded-xl border text-sm"
+            style={{ backgroundColor: "var(--app-input)", borderColor: "var(--app-border)", color: "var(--app-text-primary)" }}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent
+            className="rounded-xl border shadow-xl"
+            style={{ backgroundColor: "var(--app-bg-secondary)", borderColor: "var(--app-border)" }}
+          >
+            <SelectItem value="default" className="rounded-lg text-sm cursor-pointer" style={{ color: "var(--app-text-primary)" }}>
+              Default
+            </SelectItem>
+            {availableDevices.outputs.map((d: MediaDeviceInfo) => (
+              <SelectItem
+                key={d.deviceId}
+                value={d.deviceId}
+                className="rounded-lg text-sm cursor-pointer"
+                style={{ color: "var(--app-text-primary)" }}
+              >
+                {d.label || `Speaker (${d.deviceId.slice(0, 8)})`}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
         <div>
           <div className="flex items-center justify-between mb-2">
@@ -316,8 +391,8 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
                 <div
                   className="h-full rounded-full transition-all duration-100"
                   style={{
-                    width: `${Math.min(audioLevel, 100)}%`,
-                    backgroundColor: audioLevel > settings.sensitivityThreshold ? "#3ba55c" : "#ed4245",
+                    width: `${Math.min(displayLevel, 100)}%`,
+                    backgroundColor: displayLevel > settings.sensitivityThreshold ? "#3ba55c" : "#ed4245",
                   }}
                 />
               </div>
