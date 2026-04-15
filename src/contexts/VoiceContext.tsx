@@ -90,7 +90,7 @@ interface VoiceContextType {
   startCall: (conversationId: string, peerId: string, peerName: string) => void;
   acceptCall: () => void;
   endCall: () => void;
-  incomingCall: { conversationId: string; callerId: string; callerName: string; callerAvatarUrl?: string; offer: RTCSessionDescriptionInit; callEventId?: string } | null;
+  incomingCall: { conversationId: string; callerId: string; callerName: string; callerAvatarUrl?: string; offer?: RTCSessionDescriptionInit; callEventId?: string } | null;
   toggleMute: () => void;
   toggleDeafen: () => void;
   localStream: MediaStream | null;
@@ -195,6 +195,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const incomingCandidateQueue = useRef<RTCIceCandidateInit[]>([]);
   const outgoingCandidateBuffer = useRef<RTCIceCandidateInit[]>([]);
   const remoteDescriptionSet = useRef<boolean>(false);
+  const acceptedIncomingCallRef = useRef<VoiceContextType["incomingCall"]>(null);
+  const outgoingCallMetaRef = useRef<{ conversationId: string; callEventId: string; callerAvatarUrl?: string } | null>(null);
   // Flag to prevent re-broadcasting hangup when receiving one
   const isRemoteHangup = useRef<boolean>(false);
 
