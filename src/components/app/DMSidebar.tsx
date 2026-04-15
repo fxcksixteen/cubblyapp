@@ -99,7 +99,7 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
             <button
               key={conv.id}
               onClick={() => setActiveView(`dm:${conv.id}`)}
-              className={`group flex w-full items-center gap-3 rounded-[4px] px-2 py-1.5 transition-colors ${
+              className={`group flex w-full items-center gap-3 rounded-[4px] px-2 py-1.5 transition-colors cubbly-3d-nav ${
                 activeView === `dm:${conv.id}`
                   ? "bg-[#404249] text-white"
                   : "text-[#949ba4] hover:bg-[#35373c] hover:text-[#dbdee1]"
@@ -132,40 +132,40 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
           <p className="truncate text-[15px] font-bold text-white leading-snug">{displayName}</p>
           <p className="truncate text-[11px] text-[#949ba4] leading-snug">{username}</p>
         </div>
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-0.5 shrink-0">
           <button
             onClick={() => setMuted(!muted)}
-            className={`rounded-md p-2.5 transition-colors ${muted ? "bg-[#ed4245]/20" : "hover:bg-[#35373c]"}`}
+            className={`rounded p-1.5 transition-colors ${muted ? "bg-[#ed4245]/20" : "hover:bg-[#35373c]"}`}
             title={muted ? "Unmute" : "Mute"}
           >
             <img
               src={muted ? micMuteIcon : micIcon}
               alt={muted ? "Muted" : "Microphone"}
-              className={`h-[22px] w-[22px] transition-opacity ${muted ? "opacity-100" : "invert opacity-70 hover:opacity-100"}`}
+              className={`h-[18px] w-[18px] transition-opacity ${muted ? "opacity-100" : "invert opacity-70 hover:opacity-100"}`}
               style={muted ? { filter: "invert(36%) sepia(93%) saturate(7471%) hue-rotate(348deg) brightness(101%) contrast(88%)" } : undefined}
             />
           </button>
           <button
             onClick={() => setDeafened(!deafened)}
-            className={`rounded-md p-2.5 transition-colors ${deafened ? "bg-[#ed4245]/20" : "hover:bg-[#35373c]"}`}
+            className={`rounded p-1.5 transition-colors ${deafened ? "bg-[#ed4245]/20" : "hover:bg-[#35373c]"}`}
             title={deafened ? "Undeafen" : "Deafen"}
           >
             <img
               src={deafened ? headphoneDeafenIcon : headphoneIcon}
               alt={deafened ? "Deafened" : "Headphones"}
-              className={`h-[22px] w-[22px] transition-opacity ${deafened ? "opacity-100" : "invert opacity-70 hover:opacity-100"}`}
+              className={`h-[18px] w-[18px] transition-opacity ${deafened ? "opacity-100" : "invert opacity-70 hover:opacity-100"}`}
               style={deafened ? { filter: "invert(36%) sepia(93%) saturate(7471%) hue-rotate(348deg) brightness(101%) contrast(88%)" } : undefined}
             />
           </button>
           <button
             onClick={() => setSettingsOpen(true)}
-            className="rounded-md p-2.5 hover:bg-[#35373c] transition-colors"
+            className="rounded p-1.5 hover:bg-[#35373c] transition-colors"
             title="User Settings"
           >
             <img
               src={settingsIcon}
               alt="Settings"
-              className="h-[22px] w-[22px] invert opacity-70 hover:opacity-100 transition-opacity"
+              className="h-[18px] w-[18px] invert opacity-70 hover:opacity-100 transition-opacity"
             />
           </button>
         </div>

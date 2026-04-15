@@ -107,14 +107,14 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM }: FriendsViewProps) =>
       <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100">
         <button
           onClick={() => onOpenDM(friendship.profile.user_id)}
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-[#2b2d31] text-[#b5bac1] hover:text-[#dbdee1] cubbly-3d-circle"
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-[#2b2d31] text-[#b5bac1] hover:bg-[#36393f] hover:text-[#dbdee1] transition-colors cubbly-3d-circle"
           title="Message"
         >
           <img src={messagesIcon} alt="Message" className="h-5 w-5 invert opacity-80" />
         </button>
         <button
           onClick={() => removeFriend(friendship.id)}
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-[#2b2d31] text-[#b5bac1] hover:text-[#ed4245] cubbly-3d-circle"
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-[#2b2d31] text-[#b5bac1] hover:bg-[#ed4245]/20 hover:text-[#ed4245] transition-colors cubbly-3d-circle"
           title="Remove Friend"
         >
           <UserMinus className="h-4 w-4" />
