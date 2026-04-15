@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Maximize2, Minimize2, Monitor } from "lucide-react";
 import { useVoice, CallEvent } from "@/contexts/VoiceContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 import { defaultProfileColor, getProfileColor } from "@/lib/profileColors";
 import ScreenSharePicker, { ScreenShareType } from "./ScreenSharePicker";
 import micIcon from "@/assets/icons/microphone.svg";

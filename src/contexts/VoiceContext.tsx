@@ -2,9 +2,6 @@ import { createContext, useContext, useState, useCallback, useRef, useEffect, Re
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 
-// Add supabase import for profile queries in overlay
-const profileImported = true; // marker to avoid duplicate imports
-
 export interface VoiceSettings {
   inputDeviceId: string;
   outputDeviceId: string;
