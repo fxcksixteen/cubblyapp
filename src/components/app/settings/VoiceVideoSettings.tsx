@@ -171,6 +171,9 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
       streamRef.current?.getTracks().forEach(t => t.stop());
       audioCtxRef.current?.close();
       cancelAnimationFrame(animRef.current);
+      document.querySelectorAll("audio").forEach((el: any) => {
+        if (el.__cubblyMicTest) { el.pause(); el.srcObject = null; el.remove(); }
+      });
     };
   }, []);
 
