@@ -88,29 +88,93 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
 
   const conversationCallEvents = callEvents.filter(e => e.conversationId === conversationId);
 
-  // Track if user scrolled up
+  // ---- Auto-scroll ----
+  const scrollToBottom = useCallback(() => {
+    requestAnimationFrame(() => {
+      const container = messagesContainerRef.current;
+      if (container) container.scrollTop = container.scrollHeight;
+    });
+  }, []);
+
   const handleScroll = useCallback(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
-    const threshold = 100;
-    const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
-    userHasScrolledUpRef.current = !isAtBottom;
+    const threshold = 150;
+    userHasScrolledUpRef.current =
+      container.scrollHeight - container.scrollTop - container.clientHeight >= threshold;
   }, []);
 
-  // Only auto-scroll when new messages arrive and user hasn't scrolled up
   useEffect(() => {
-    if (messages.length > prevMessageCountRef.current && !userHasScrolledUpRef.current) {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const n = messages.length;
+    if (n > prevMessageCountRef.current) {
+      const lastMsg = messages[n - 1];
+      if (lastMsg?.sender_id === user?.id || !userHasScrolledUpRef.current) scrollToBottom();
     }
-    prevMessageCountRef.current = messages.length;
-  }, [messages.length]);
+    prevMessageCountRef.current = n;
+  }, [messages.length, messages, user?.id, scrollToBottom]);
 
-  // Auto-scroll when botTyping changes
   useEffect(() => {
-    if (botTyping && !userHasScrolledUpRef.current) {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (!loading && messages.length > 0) scrollToBottom();
+  }, [loading, conversationId, scrollToBottom]);
+
+  useEffect(() => {
+    if (botTyping && !userHasScrolledUpRef.current) scrollToBottom();
+  }, [botTyping, scrollToBottom]);
+
+  // ---- Realtime typing indicator ----
+  useEffect(() => {
+    if (!user || !conversationId) return;
+    const channel = supabase.channel(`typing:${conversationId}`);
+    channel.on("broadcast", { event: "typing" }, ({ payload }) => {
+      if (payload.userId === user.id) return;
+      setPeerTyping(true);
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = setTimeout(() => setPeerTyping(false), 3000);
+    });
+    channel.on("broadcast", { event: "stop-typing" }, ({ payload }) => {
+      if (payload.userId === user.id) return;
+      setPeerTyping(false);
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    });
+    channel.subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      setPeerTyping(false);
+    };
+  }, [user, conversationId]);
+
+  useEffect(() => {
+    if (messages.length > 0) {
+      const last = messages[messages.length - 1];
+      if (last.sender_id !== user?.id) setPeerTyping(false);
     }
-  }, [botTyping]);
+  }, [messages.length, messages, user?.id]);
+
+  const broadcastTyping = useCallback(() => {
+    if (!user || !conversationId) return;
+    const now = Date.now();
+    if (now - lastTypingBroadcast.current < 2000) return;
+    lastTypingBroadcast.current = now;
+    const ch = supabase.channel(`typing:${conversationId}`);
+    ch.subscribe((s) => {
+      if (s === "SUBSCRIBED") {
+        ch.send({ type: "broadcast", event: "typing", payload: { userId: user.id } });
+        setTimeout(() => supabase.removeChannel(ch), 500);
+      }
+    });
+  }, [user, conversationId]);
+
+  const broadcastStopTyping = useCallback(() => {
+    if (!user || !conversationId) return;
+    const ch = supabase.channel(`typing:${conversationId}`);
+    ch.subscribe((s) => {
+      if (s === "SUBSCRIBED") {
+        ch.send({ type: "broadcast", event: "stop-typing", payload: { userId: user.id } });
+        setTimeout(() => supabase.removeChannel(ch), 500);
+      }
+    });
+  }, [user, conversationId]);
 
   const handleSend = async () => {
     if (!input.trim() && pendingFiles.length === 0) return;
