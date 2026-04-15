@@ -515,7 +515,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         }
 
         if (payload.type === "hangup") {
-          endCall();
+          endCallRef.current();
         }
 
         if (payload.type === "screen-offer") {
@@ -588,6 +588,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     try {
       const stream = await getUserMedia();
       setLocalStream(stream);
+      localStreamRef.current = stream;
       startAudioLevelMonitor(stream);
 
       const pc = createPeerConnection();
@@ -685,6 +686,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     try {
       const stream = await getUserMedia();
       setLocalStream(stream);
+      localStreamRef.current = stream;
       startAudioLevelMonitor(stream);
 
       const pc = createPeerConnection();
