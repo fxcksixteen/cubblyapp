@@ -3,6 +3,7 @@ import { Phone, PhoneOff, Monitor, MonitorOff, Video, Maximize2, Minimize2 } fro
 import { useVoice, CallEvent } from "@/contexts/VoiceContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { defaultProfileColor, getProfileColor } from "@/lib/profileColors";
+import ScreenSharePicker, { ScreenShareType } from "./ScreenSharePicker";
 import micIcon from "@/assets/icons/microphone.svg";
 import micMuteIcon from "@/assets/icons/microphone-mute.svg";
 import headphoneIcon from "@/assets/icons/headphone.svg";
@@ -32,6 +33,7 @@ export const CallPanel = ({ conversationId, recipientName, recipientUserId }: {
   } = useVoice();
   const [elapsed, setElapsed] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showScreenSharePicker, setShowScreenSharePicker] = useState(false);
   const screenVideoRef = useRef<HTMLVideoElement>(null);
   const remoteScreenVideoRef = useRef<HTMLVideoElement>(null);
 
@@ -222,7 +224,13 @@ export const CallPanel = ({ conversationId, recipientName, recipientUserId }: {
         </button>
 
         <button
-          onClick={isScreenSharing ? stopScreenShare : startScreenShare}
+          onClick={() => {
+            if (isScreenSharing) {
+              stopScreenShare();
+            } else {
+              setShowScreenSharePicker(true);
+            }
+          }}
           className={`flex h-10 w-10 items-center justify-center rounded-full transition-all duration-150 ${
             isScreenSharing ? "bg-[#3ba55c] hover:bg-[#2d8b4e]" : "bg-white/10 hover:bg-white/20"
           }`}
@@ -250,6 +258,15 @@ export const CallPanel = ({ conversationId, recipientName, recipientUserId }: {
           <PhoneOff className="h-4 w-4" />
         </button>
       </div>
+
+      <ScreenSharePicker
+        isOpen={showScreenSharePicker}
+        onClose={() => setShowScreenSharePicker(false)}
+        onSelect={(type: ScreenShareType) => {
+          setShowScreenSharePicker(false);
+          startScreenShare(type);
+        }}
+      />
     </div>
   );
 };

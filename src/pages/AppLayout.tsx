@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useConversations } from "@/hooks/useConversations";
 import { useVoice } from "@/contexts/VoiceContext";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { Inbox, Phone, PhoneOff, Video } from "lucide-react";
 import { getProfileColor } from "@/lib/profileColors";
 import ServerSidebar from "@/components/app/ServerSidebar";
@@ -22,9 +24,12 @@ const statusColors: Record<string, string> = {
   offline: "bg-[#747f8d]",
 };
 
+const BOT_USER_ID = "00000000-0000-0000-0000-000000000001";
+
 const AppLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
   const { activeCall, startCall, endCall } = useVoice();
 
   const pathParts = location.pathname.split("/").filter(Boolean);
@@ -85,10 +90,31 @@ const AppLayout = () => {
 
   const isInCall = activeCall?.conversationId === activeConvId;
 
-  const handleVoiceCall = () => {
+  const handleVoiceCall = async () => {
     if (isInCall) {
       endCall();
     } else if (activeParticipant) {
+      // If calling CubblyBot, trigger a bot response instead of a real WebRTC call
+      if (activeParticipant.user_id === BOT_USER_ID) {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat-with-bot`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+              "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+            },
+            body: JSON.stringify({
+              conversation_id: activeConvId,
+              user_message: "[SYSTEM: The user just tried to start a voice call with you. Explain that you're a text-based AI and can't join voice calls yet, but you'd love to help test other features or just chat! Be warm and helpful.]",
+            }),
+          });
+        } catch (e) {
+          console.error("Failed to notify bot about call:", e);
+        }
+        return;
+      }
       startCall(activeConvId!, activeParticipant.user_id, activeParticipant.display_name);
     }
   };
