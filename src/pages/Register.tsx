@@ -3,6 +3,7 @@ import { Link, Navigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Eye, EyeOff, ChevronDown } from "lucide-react";
+import { getProfileColor } from "@/lib/profileColors";
 
 const months = [
   "January", "February", "March", "April", "May", "June",

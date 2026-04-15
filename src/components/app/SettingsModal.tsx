@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { X, Check, LogOut } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme, ThemeName } from "@/contexts/ThemeContext";
+import { getProfileColor } from "@/lib/profileColors";
 
 const APP_VERSION = "0.1.0";
 
@@ -52,13 +53,13 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
   const { user, signOut } = useAuth();
   const { theme, setTheme } = useTheme();
 
+  const profileColor = getProfileColor(user?.id || "default");
+
   useEffect(() => {
     if (!isOpen) return;
-
     const handler = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
     };
-
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
   }, [isOpen, onClose]);
@@ -82,10 +83,13 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
         return (
           <div className="space-y-6">
             <div className="overflow-hidden rounded-[28px] border" style={panelStyle}>
-              <div className="h-36 bg-gradient-to-r from-[#5865f2] via-[#6a73f7] to-[#f59e0b]" />
+              <div className="h-36" style={{ background: profileColor.banner }} />
               <div className="px-6 pb-6">
                 <div className="-mt-11 flex items-end gap-4">
-                  <div className="flex h-[88px] w-[88px] items-center justify-center rounded-full border-[6px] text-3xl font-bold text-white shrink-0" style={{ backgroundColor: "#5865f2", borderColor: "var(--app-bg-secondary)" }}>
+                  <div
+                    className="flex h-[88px] w-[88px] items-center justify-center rounded-full border-[6px] text-3xl font-bold text-white shrink-0"
+                    style={{ backgroundColor: profileColor.bg, borderColor: "var(--app-bg-secondary)" }}
+                  >
                     {displayName.charAt(0).toUpperCase()}
                   </div>
                   <div className="pb-3">
@@ -178,7 +182,7 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
                     </div>
                     <div className="flex-1 p-4" style={{ backgroundColor: "var(--app-bg-primary)" }}>
                       <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 rounded-full bg-[#5865f2]" />
+                        <div className="h-10 w-10 rounded-full" style={{ backgroundColor: profileColor.bg }} />
                         <div className="space-y-2">
                           <div className="h-3 w-28 rounded-full" style={{ backgroundColor: "var(--app-active)" }} />
                           <div className="h-2 w-16 rounded-full" style={{ backgroundColor: "var(--app-hover)" }} />
@@ -229,10 +233,22 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
                   <button
                     key={item.id}
                     onClick={() => setActiveCategory(item.id)}
-                    className="mb-1 flex w-full rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors"
+                    className="cubbly-3d-nav mb-1 flex w-full rounded-xl px-3 py-2.5 text-sm font-semibold transition-all duration-150"
                     style={activeCategory === item.id
                       ? { backgroundColor: "var(--app-active)", color: "var(--app-text-primary)" }
                       : { color: "var(--app-text-secondary)" }}
+                    onMouseEnter={(e) => {
+                      if (activeCategory !== item.id) {
+                        e.currentTarget.style.backgroundColor = "var(--app-hover)";
+                        e.currentTarget.style.color = "var(--app-text-primary)";
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (activeCategory !== item.id) {
+                        e.currentTarget.style.backgroundColor = "transparent";
+                        e.currentTarget.style.color = "var(--app-text-secondary)";
+                      }
+                    }}
                   >
                     {item.label}
                   </button>
