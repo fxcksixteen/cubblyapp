@@ -267,6 +267,21 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           (audioEl as any).setSinkId(settings.outputDeviceId).catch(console.error);
         }
         audioEl.play().catch(console.error);
+
+        // Remote audio level analyser
+        const remoteAnalyser = ctx.createAnalyser();
+        remoteAnalyser.fftSize = 256;
+        remoteAnalyser.smoothingTimeConstant = 0.5;
+        source.connect(remoteAnalyser);
+        remoteAnalyserRef.current = remoteAnalyser;
+        const remoteData = new Uint8Array(remoteAnalyser.frequencyBinCount);
+        const tickRemote = () => {
+          remoteAnalyser.getByteFrequencyData(remoteData);
+          const avg = remoteData.reduce((sum, v) => sum + v, 0) / remoteData.length;
+          setRemoteAudioLevel(avg / 255 * 100);
+          remoteAnimFrameRef.current = requestAnimationFrame(tickRemote);
+        };
+        tickRemote();
       } catch {
         const audioEl = document.createElement("audio");
         audioEl.srcObject = remote;
@@ -381,6 +396,14 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         isMuted: false,
         isDeafened: false,
       });
+
+      // Create call event immediately
+      setCallEvents(prev => [...prev, {
+        id: `call-${Date.now()}`,
+        conversationId,
+        state: "ongoing",
+        startedAt: new Date().toISOString(),
+      }]);
     } catch (e) {
       console.error("Failed to start call:", e);
     }
@@ -431,12 +454,36 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         isDeafened: false,
       });
       setIncomingCall(null);
+
+      // Create call event for acceptor
+      setCallEvents(prev => {
+        const hasOngoing = prev.some(e => e.conversationId === incomingCall.conversationId && e.state === "ongoing");
+        if (hasOngoing) return prev;
+        return [...prev, {
+          id: `call-${Date.now()}`,
+          conversationId: incomingCall.conversationId,
+          state: "ongoing",
+          startedAt: new Date().toISOString(),
+        }];
+      });
     } catch (e) {
       console.error("Failed to accept call:", e);
     }
   }, [incomingCall, user, getUserMedia, createPeerConnection, setupSignaling, startAudioLevelMonitor]);
 
   const endCall = useCallback(() => {
+    // Finalize ongoing call events before clearing state
+    setCallEvents(prev => {
+      const updated = [...prev];
+      for (let i = updated.length - 1; i >= 0; i--) {
+        if (updated[i].state === "ongoing") {
+          updated[i] = { ...updated[i], state: "ended", endedAt: new Date().toISOString() };
+          break;
+        }
+      }
+      return updated;
+    });
+
     if (channelRef.current && user) {
       channelRef.current.send({
         type: "broadcast",
@@ -454,6 +501,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     setActiveCall(null);
     setIncomingCall(null);
     stopAudioLevelMonitor();
+    cancelAnimationFrame(remoteAnimFrameRef.current);
+    remoteAnalyserRef.current = null;
+    setRemoteAudioLevel(0);
 
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
@@ -492,7 +542,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     <VoiceContext.Provider value={{
       settings, updateSettings, activeCall, startCall, acceptCall, endCall,
       incomingCall, toggleMute, toggleDeafen, localStream, remoteStream,
-      audioLevel, availableDevices, refreshDevices, callEvents, detectedRegion,
+      audioLevel, remoteAudioLevel, availableDevices, refreshDevices, callEvents, detectedRegion,
     }}>
       {children}
     </VoiceContext.Provider>

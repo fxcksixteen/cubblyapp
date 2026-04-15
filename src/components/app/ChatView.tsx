@@ -126,9 +126,9 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
 
   // Build grouped messages with time dividers
   type ChatItem = 
-    | { type: "messages"; sender_id: string; sender_name: string; messages: Message[] }
-    | { type: "divider"; label: string }
-    | { type: "call-event"; event: typeof conversationCallEvents[0] };
+    | { type: "messages"; sender_id: string; sender_name: string; messages: Message[]; timestamp: number }
+    | { type: "divider"; label: string; timestamp: number }
+    | { type: "call-event"; event: typeof conversationCallEvents[0]; timestamp: number };
 
   const items: ChatItem[] = [];
 
@@ -136,20 +136,25 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
     const msg = messages[i];
 
     if (i > 0 && shouldShowTimeDivider(messages[i - 1].created_at, msg.created_at)) {
-      items.push({ type: "divider", label: formatDateDivider(msg.created_at) });
+      items.push({ type: "divider", label: formatDateDivider(msg.created_at), timestamp: new Date(msg.created_at).getTime() - 1 });
     }
 
     const last = items[items.length - 1];
     if (last && last.type === "messages" && last.sender_id === msg.sender_id) {
       last.messages.push(msg);
     } else {
-      items.push({ type: "messages", sender_id: msg.sender_id, sender_name: msg.sender_name || "Unknown", messages: [msg] });
+      items.push({ type: "messages", sender_id: msg.sender_id, sender_name: msg.sender_name || "Unknown", messages: [msg], timestamp: new Date(msg.created_at).getTime() });
     }
   }
 
-  // Append call events at the end
+  // Interleave call events by timestamp
   for (const evt of conversationCallEvents) {
-    items.push({ type: "call-event", event: evt });
+    const ts = new Date(evt.startedAt).getTime();
+    let insertIdx = items.length;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].timestamp > ts) { insertIdx = i; break; }
+    }
+    items.splice(insertIdx, 0, { type: "call-event", event: evt, timestamp: ts });
   }
 
   return (
