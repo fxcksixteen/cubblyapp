@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useConversations } from "@/hooks/useConversations";
 import { useVoice } from "@/contexts/VoiceContext";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { Inbox, Phone, PhoneOff, Video } from "lucide-react";
 import { getProfileColor } from "@/lib/profileColors";
 import ServerSidebar from "@/components/app/ServerSidebar";
