@@ -13,11 +13,12 @@ export const profileColors = [
 
 export type ProfileColorId = typeof profileColors[number]["id"];
 
-/** Deterministically pick a color from a user ID string */
+/** Default color (blue) — used for current user until color preferences are stored */
+export const defaultProfileColor = profileColors[0];
+
+/** Deterministically pick a color from a user ID string (for other users' avatars) */
 export function getProfileColor(userId: string) {
-  // Use last character of UUID to distribute — gives a nice spread
-  // and keeps blue (index 0) as the most common default
-  if (!userId || userId === "default") return profileColors[0]; // blue
+  if (!userId || userId === "default") return profileColors[0];
   const lastChar = userId.charCodeAt(userId.length - 1);
   const index = lastChar % profileColors.length;
   return profileColors[index];
