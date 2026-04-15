@@ -4,9 +4,11 @@ import { useConversations } from "@/hooks/useConversations";
 import { useVoice } from "@/contexts/VoiceContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { Phone, PhoneOff, Video } from "lucide-react";
 import { getProfileColor } from "@/lib/profileColors";
 import messagesInboxIcon from "@/assets/icons/messages.svg";
+import callIcon from "@/assets/icons/call.svg";
+import callEndIcon from "@/assets/icons/call-end.svg";
+import videoIcon from "@/assets/icons/video-camera.svg";
 import ServerSidebar from "@/components/app/ServerSidebar";
 import DMSidebar from "@/components/app/DMSidebar";
 import FriendsView from "@/components/app/FriendsView";
@@ -99,7 +101,6 @@ const AppLayout = () => {
       endCall();
     } else if (activeParticipant) {
       if (activeParticipant.user_id === BOT_USER_ID && !isAdmin) {
-        // Non-admin users get a text response explaining bot can't join calls
         try {
           const { data: { session } } = await supabase.auth.getSession();
           await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat-with-bot`, {
@@ -119,7 +120,6 @@ const AppLayout = () => {
         }
         return;
       }
-      // Admin users can start calls with CubblyBot (full call UI), and all users can call others
       startCall(activeConvId!, activeParticipant.user_id, activeParticipant.display_name);
     }
   };
@@ -235,14 +235,22 @@ const AppLayout = () => {
               <div className="flex items-center gap-4" style={{ color: "var(--app-text-secondary)" }}>
                 <button
                   onClick={handleVoiceCall}
-                  className={`transition-all hover:opacity-100 ${isInCall ? "text-[#ed4245]" : ""}`}
-                  style={isInCall ? {} : { opacity: 0.9 }}
+                  className="transition-all hover:opacity-100"
+                  style={{ opacity: isInCall ? 1 : 0.9 }}
                   title={isInCall ? "End Voice Call" : "Start Voice Call"}
                 >
-                  {isInCall ? <PhoneOff className="h-5 w-5" /> : <Phone className="h-5 w-5" />}
+                  <img
+                    src={isInCall ? callEndIcon : callIcon}
+                    alt={isInCall ? "End Call" : "Call"}
+                    className="h-5 w-5"
+                    style={{ filter: isInCall
+                      ? "brightness(0) saturate(100%) invert(29%) sepia(98%) saturate(2052%) hue-rotate(337deg) brightness(95%) contrast(92%)"
+                      : "brightness(0) invert(0.6)"
+                    }}
+                  />
                 </button>
                 <button className="transition-opacity hover:opacity-100" style={{ opacity: 0.9 }} title="Start Video Call">
-                  <Video className="h-5 w-5" />
+                  <img src={videoIcon} alt="Video" className="h-5 w-5" style={{ filter: "brightness(0) invert(0.6)" }} />
                 </button>
               </div>
             </>
@@ -259,7 +267,6 @@ const AppLayout = () => {
         {renderContent()}
       </div>
 
-      {/* Voice call overlay */}
       <VoiceCallOverlay />
     </div>
   );

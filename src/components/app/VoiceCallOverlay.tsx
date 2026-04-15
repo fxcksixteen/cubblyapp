@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Phone, PhoneOff, Monitor, MonitorOff, Video, Maximize2, Minimize2 } from "lucide-react";
+import { Monitor, MonitorOff, Maximize2, Minimize2 } from "lucide-react";
 import { useVoice, CallEvent } from "@/contexts/VoiceContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { defaultProfileColor, getProfileColor } from "@/lib/profileColors";
@@ -8,6 +8,9 @@ import micIcon from "@/assets/icons/microphone.svg";
 import micMuteIcon from "@/assets/icons/microphone-mute.svg";
 import headphoneIcon from "@/assets/icons/headphone.svg";
 import headphoneDeafenIcon from "@/assets/icons/headphone-deafen.svg";
+import callIcon from "@/assets/icons/call.svg";
+import callEndIcon from "@/assets/icons/call-end.svg";
+import videoIcon from "@/assets/icons/video-camera.svg";
 
 const formatDuration = (ms: number) => {
   const secs = Math.floor(ms / 1000);
@@ -47,14 +50,12 @@ export const CallPanel = ({ conversationId, recipientName, recipientUserId }: {
     return () => clearInterval(interval);
   }, [isThisCall, activeCall?.startedAt]);
 
-  // Attach local screen stream to video element
   useEffect(() => {
     if (screenVideoRef.current && screenStream) {
       screenVideoRef.current.srcObject = screenStream;
     }
   }, [screenStream]);
 
-  // Attach remote screen stream to video element
   useEffect(() => {
     if (remoteScreenVideoRef.current && remoteScreenStream) {
       remoteScreenVideoRef.current.srcObject = remoteScreenStream;
@@ -94,21 +95,10 @@ export const CallPanel = ({ conversationId, recipientName, recipientUserId }: {
       {hasScreenShare && (
         <div className="relative bg-black">
           {isScreenSharing && screenStream && (
-            <video
-              ref={screenVideoRef}
-              autoPlay
-              muted
-              playsInline
-              className="w-full max-h-[400px] object-contain"
-            />
+            <video ref={screenVideoRef} autoPlay muted playsInline className="w-full max-h-[400px] object-contain" />
           )}
           {!isScreenSharing && remoteScreenStream && (
-            <video
-              ref={remoteScreenVideoRef}
-              autoPlay
-              playsInline
-              className="w-full max-h-[400px] object-contain"
-            />
+            <video ref={remoteScreenVideoRef} autoPlay playsInline className="w-full max-h-[400px] object-contain" />
           )}
           <div className="absolute top-3 right-3 flex gap-2">
             <button
@@ -242,10 +232,9 @@ export const CallPanel = ({ conversationId, recipientName, recipientUserId }: {
 
         <button
           className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 hover:bg-white/20 transition-colors"
-          style={{ color: "var(--app-text-primary)" }}
           title="Video (coming soon)"
         >
-          <Video className="h-5 w-5" />
+          <img src={videoIcon} alt="Video" className="h-5 w-5" style={{ filter: "brightness(0) invert(1)" }} />
         </button>
 
         <div className="w-px h-6 mx-1" style={{ backgroundColor: "var(--app-border)" }} />
@@ -255,7 +244,7 @@ export const CallPanel = ({ conversationId, recipientName, recipientUserId }: {
           className="flex h-10 px-5 items-center justify-center gap-2 rounded-full bg-[#ed4245] text-white hover:bg-[#c73b3e] transition-colors"
           title="Disconnect"
         >
-          <PhoneOff className="h-4 w-4" />
+          <img src={callEndIcon} alt="End Call" className="h-5 w-5" style={{ filter: "brightness(0) invert(1)" }} />
         </button>
       </div>
 
@@ -309,9 +298,18 @@ export const CallEventMessage = ({ state, startedAt, endedAt }: {
         <div className={`flex h-8 w-8 items-center justify-center rounded-full ${
           state === "ongoing" ? "bg-[#3ba55c]/20" : state === "missed" ? "bg-[#ed4245]/20" : "bg-white/10"
         }`}>
-          <Phone className={`h-4 w-4 ${
-            state === "ongoing" ? "text-[#3ba55c]" : state === "missed" ? "text-[#ed4245]" : ""
-          }`} style={state === "ended" ? { color: "var(--app-text-secondary)" } : {}} />
+          <img
+            src={callIcon}
+            alt="Call"
+            className="h-4 w-4"
+            style={{
+              filter: state === "ongoing"
+                ? "brightness(0) saturate(100%) invert(58%) sepia(52%) saturate(541%) hue-rotate(93deg) brightness(95%) contrast(91%)"
+                : state === "missed"
+                ? "brightness(0) saturate(100%) invert(29%) sepia(98%) saturate(2052%) hue-rotate(337deg) brightness(95%) contrast(92%)"
+                : "brightness(0) invert(0.6)"
+            }}
+          />
         </div>
 
         <div className="flex flex-col">
@@ -354,14 +352,14 @@ const VoiceCallOverlay = () => {
           className="flex h-10 w-10 items-center justify-center rounded-full bg-[#3ba55c] text-white hover:bg-[#2d8b4e] transition-colors"
           title="Accept"
         >
-          <Phone className="h-4 w-4" />
+          <img src={callIcon} alt="Accept" className="h-5 w-5" style={{ filter: "brightness(0) invert(1)" }} />
         </button>
         <button
           onClick={endCall}
           className="flex h-10 w-10 items-center justify-center rounded-full bg-[#ed4245] text-white hover:bg-[#c73b3e] transition-colors"
           title="Decline"
         >
-          <PhoneOff className="h-4 w-4" />
+          <img src={callEndIcon} alt="Decline" className="h-5 w-5" style={{ filter: "brightness(0) invert(1)" }} />
         </button>
       </div>
     );
