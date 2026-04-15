@@ -199,23 +199,28 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
       <div className="h-[60px]" style={{ background: color.banner }} />
 
       {/* Avatar - clickable to open full profile */}
-      <div className="px-4 -mt-6">
-        {profile?.avatar_url ? (
-          <img
-            src={profile.avatar_url}
-            alt={displayName}
-            className="h-[52px] w-[52px] rounded-full border-[4px] border-[#111214] object-cover cursor-pointer hover:opacity-80 transition-opacity"
-            onClick={() => setShowFullProfile(true)}
-          />
-        ) : (
-          <div
-            className="flex h-[52px] w-[52px] items-center justify-center rounded-full border-[4px] border-[#111214] text-lg font-bold text-white cursor-pointer hover:opacity-80 transition-opacity"
-            style={{ backgroundColor: color.bg }}
-            onClick={() => setShowFullProfile(true)}
-          >
-            {displayName.charAt(0).toUpperCase()}
+      <div className="px-4 -mt-6 relative z-10">
+        <div className="relative inline-block">
+          {profile?.avatar_url ? (
+            <img
+              src={profile.avatar_url}
+              alt={displayName}
+              className="h-[52px] w-[52px] rounded-full border-[4px] border-[#111214] object-cover cursor-pointer hover:opacity-80 transition-opacity"
+              onClick={() => setShowFullProfile(true)}
+            />
+          ) : (
+            <div
+              className="flex h-[52px] w-[52px] items-center justify-center rounded-full border-[4px] border-[#111214] text-lg font-bold text-white cursor-pointer hover:opacity-80 transition-opacity"
+              style={{ backgroundColor: color.bg }}
+              onClick={() => setShowFullProfile(true)}
+            >
+              {displayName.charAt(0).toUpperCase()}
+            </div>
+          )}
+          <div className="absolute -bottom-0.5 -right-0.5">
+            <StatusIndicator status={profile?.status || "offline"} size="md" borderColor="#111214" />
           </div>
-        )}
+        </div>
       </div>
 
       {/* Info */}
@@ -240,14 +245,14 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
             </button>
           )}
           {friendshipStatus === "accepted" ? (
-            <button onClick={handleRemoveFriend} className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 hover:bg-[#ed4245]/20 text-[#949ba4] hover:text-[#ed4245] transition-colors" title="Remove Friend">
-              <UserMinus className="h-3.5 w-3.5" />
+            <button onClick={handleRemoveFriend} className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 hover:bg-[#ed4245]/20 transition-colors" title="Remove Friend">
+              <img src={removeUserIcon} alt="Remove" className="h-3.5 w-3.5 invert opacity-70" />
             </button>
           ) : friendshipStatus === "pending" ? (
             <span className="text-xs text-[#949ba4]">Pending</span>
           ) : friendshipStatus !== "blocked" ? (
-            <button onClick={handleAddFriend} className="flex h-9 w-9 items-center justify-center rounded-full bg-[#3ba55c] hover:bg-[#2d8b4e] text-white transition-colors" title="Add Friend">
-              <UserPlus className="h-3.5 w-3.5" />
+            <button onClick={handleAddFriend} className="flex h-9 w-9 items-center justify-center rounded-full bg-[#3ba55c] hover:bg-[#2d8b4e] transition-colors" title="Add Friend">
+              <img src={addUserIcon} alt="Add" className="h-3.5 w-3.5 invert" />
             </button>
           ) : null}
         </div>

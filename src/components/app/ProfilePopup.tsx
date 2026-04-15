@@ -4,12 +4,16 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Copy, Pencil, User, Check } from "lucide-react";
 import { toast } from "sonner";
 import { defaultProfileColor } from "@/lib/profileColors";
+import StatusIndicator from "@/components/app/StatusIndicator";
+import statusIdleIcon from "@/assets/icons/status-idle.svg";
+import statusDndIcon from "@/assets/icons/status-dnd.svg";
+import statusInvisibleIcon from "@/assets/icons/status-invisible.svg";
 
 const statuses = [
-  { value: "online", label: "Online", color: "bg-[#3ba55c]", dotClass: "bg-[#3ba55c]" },
-  { value: "idle", label: "Idle", color: "bg-[#faa61a]", dotClass: "bg-[#faa61a]" },
-  { value: "dnd", label: "Do Not Disturb", color: "bg-[#ed4245]", dotClass: "bg-[#ed4245]" },
-  { value: "invisible", label: "Invisible", color: "bg-[#747f8d]", dotClass: "bg-[#747f8d]" },
+  { value: "online", label: "Online", icon: null, dotClass: "bg-[#3ba55c]" },
+  { value: "idle", label: "Idle", icon: statusIdleIcon, filter: "brightness(0) saturate(100%) invert(72%) sepia(58%) saturate(1000%) hue-rotate(357deg) brightness(101%) contrast(96%)" },
+  { value: "dnd", label: "Do Not Disturb", icon: statusDndIcon, filter: "brightness(0) saturate(100%) invert(36%) sepia(71%) saturate(5500%) hue-rotate(345deg) brightness(94%) contrast(92%)" },
+  { value: "invisible", label: "Invisible", icon: statusInvisibleIcon, filter: "brightness(0) saturate(100%) invert(55%) sepia(7%) saturate(500%) hue-rotate(182deg) brightness(92%) contrast(87%)" },
 ] as const;
 
 interface ProfilePopupProps {
