@@ -483,16 +483,20 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         const pc = pcRef.current;
 
         if (payload.type === "offer") {
+          // Store the offer for when user accepts — also reset candidate queue
+          incomingCandidateQueue.current = [];
+          remoteDescriptionSet.current = false;
           setIncomingCall({
             conversationId,
             callerId: payload.senderId,
             callerName: payload.senderName || "Unknown",
+            callerAvatarUrl: payload.callerAvatarUrl,
             offer: payload.sdp,
             callEventId: payload.callEventId,
           });
         }
 
-        // Recipient joined and is ready — re-send the offer
+        // Recipient joined and is ready — re-send the offer AND all buffered ICE candidates
         if (payload.type === "ready" && pc && pendingOfferRef.current?.conversationId === conversationId) {
           channel.send({
             type: "broadcast",
@@ -502,27 +506,51 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               sdp: pendingOfferRef.current.offer,
               senderId: user.id,
               senderName: user.user_metadata?.display_name || "User",
+              callerAvatarUrl: user.user_metadata?.avatar_url,
               callEventId: pendingOfferRef.current.callEventId,
             },
           });
+          // Re-send all buffered outgoing ICE candidates
+          for (const candidate of outgoingCandidateBuffer.current) {
+            channel.send({
+              type: "broadcast",
+              event: "voice-signal",
+              payload: { type: "ice-candidate", candidate, senderId: user.id },
+            });
+          }
         }
 
         if (payload.type === "answer" && pc) {
           await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+          remoteDescriptionSet.current = true;
           pendingOfferRef.current = null;
-          setActiveCall(prev => prev ? { ...prev, state: "connected", startedAt: Date.now() } : null);
+          // DON'T set connected here — wait for ICE connection state
+          // Flush any queued incoming ICE candidates
+          for (const candidate of incomingCandidateQueue.current) {
+            try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch (e) { console.warn("[Voice] Flushing queued candidate failed:", e); }
+          }
+          incomingCandidateQueue.current = [];
         }
 
-        if (payload.type === "ice-candidate" && pc) {
-          try {
-            await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
-          } catch (e) {
-            console.error("Failed to add ICE candidate:", e);
+        if (payload.type === "ice-candidate") {
+          if (pc && remoteDescriptionSet.current) {
+            try {
+              await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
+            } catch (e) {
+              console.warn("[Voice] addIceCandidate failed:", e);
+            }
+          } else {
+            // Queue it — will be flushed after setRemoteDescription
+            console.log("[Voice] Queuing incoming ICE candidate (no remote desc yet)");
+            incomingCandidateQueue.current.push(payload.candidate);
           }
         }
 
         if (payload.type === "hangup") {
+          // Remote hangup — tear down locally without re-broadcasting
+          isRemoteHangup.current = true;
           endCallRef.current();
+          isRemoteHangup.current = false;
         }
 
         if (payload.type === "screen-offer") {
