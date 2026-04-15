@@ -75,7 +75,7 @@ export const CallPanel = ({ conversationId, recipientName, recipientUserId }: {
             </div>
             {activeCall.isMuted && (
               <div className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-[#ed4245] border-2" style={{ borderColor: "var(--app-bg-tertiary)" }}>
-                <MicOff className="h-3 w-3 text-white" />
+                <img src={micMuteIcon} alt="Muted" className="h-3 w-3" style={{ filter: "brightness(0) invert(1)" }} />
               </div>
             )}
           </div>
