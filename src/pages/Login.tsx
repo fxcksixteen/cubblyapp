@@ -20,55 +20,33 @@ const Login = () => {
     setLoading(true);
 
     const trimmed = identifier.trim();
-    let email = trimmed;
 
-    // If the input doesn't look like an email, look up the username
-    if (!trimmed.includes("@")) {
-      const { data: profile, error: lookupError } = await supabase
-        .from("profiles")
-        .select("user_id")
-        .eq("username", trimmed.toLowerCase())
-        .maybeSingle();
-
-      if (lookupError || !profile) {
-        setError("No account found with that username.");
-        setLoading(false);
-        return;
-      }
-
-      // Get the email from auth via a profiles join — we need to find the user's email
-      // Since we can't query auth.users directly, we'll use a workaround:
-      // Look up the user's email from their profile's user_id
-      const { data: userData } = await supabase
-        .from("profiles")
-        .select("user_id")
-        .eq("username", trimmed.toLowerCase())
-        .single();
-
-      if (!userData) {
-        setError("No account found with that username.");
-        setLoading(false);
-        return;
-      }
-
-      // We need to try signing in — but we don't have the email yet.
-      // Let's use a different approach: store email in profiles or use RPC
-      // For now, we'll look up via the admin-level edge function
-      const { data: fnData, error: fnError } = await supabase.functions.invoke("get-email-by-username", {
-        body: { username: trimmed.toLowerCase() },
-      });
-
-      if (fnError || !fnData?.email) {
-        setError("Could not resolve username. Try using your email instead.");
-        setLoading(false);
-        return;
-      }
-
-      email = fnData.email;
+    // If it looks like an email, sign in directly
+    if (trimmed.includes("@")) {
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email: trimmed, password });
+      if (signInError) setError(signInError.message);
+      setLoading(false);
+      return;
     }
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
-    if (signInError) setError(signInError.message);
+    // Username login — use server-side function (never exposes email)
+    const { data, error: fnError } = await supabase.functions.invoke("login-with-username", {
+      body: { username: trimmed.toLowerCase(), password },
+    });
+
+    if (fnError || !data?.access_token) {
+      setError(data?.error || "Invalid username or password.");
+      setLoading(false);
+      return;
+    }
+
+    // Set the session from the returned tokens
+    const { error: sessionError } = await supabase.auth.setSession({
+      access_token: data.access_token,
+      refresh_token: data.refresh_token,
+    });
+
+    if (sessionError) setError(sessionError.message);
     setLoading(false);
   };
 

@@ -126,8 +126,10 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
       const path = `${conversationId}/${Date.now()}-${pf.file.name}`;
       const { error } = await supabase.storage.from("chat-attachments").upload(path, pf.file);
       if (!error) {
-        const { data: urlData } = supabase.storage.from("chat-attachments").getPublicUrl(path);
-        attachmentUrls.push({ name: pf.file.name, url: urlData.publicUrl, size: pf.file.size, type: pf.file.type });
+        const { data: signedData } = await supabase.storage.from("chat-attachments").createSignedUrl(path, 3600);
+        if (signedData?.signedUrl) {
+          attachmentUrls.push({ name: pf.file.name, url: signedData.signedUrl, size: pf.file.size, type: pf.file.type });
+        }
       }
     }
 
