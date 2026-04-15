@@ -450,6 +450,7 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
         <div ref={bottomRef} />
       </div>
 
+
       {/* Pending files preview */}
       {pendingFiles.length > 0 && (
         <div className="border-t px-4 py-2" style={{ borderColor: "var(--app-border, #1e1f22)", backgroundColor: "var(--app-bg-secondary, #2b2d31)" }}>
@@ -502,7 +503,10 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
           <input
             type="text"
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              setInput(e.target.value);
+              if (e.target.value.trim()) broadcastTyping();
+            }}
             onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
             placeholder={`Message @${recipientName}`}
             className="flex-1 bg-transparent text-sm outline-none placeholder:text-[#6d6f78]"
