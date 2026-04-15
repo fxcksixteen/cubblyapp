@@ -165,7 +165,17 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                         </div>
                       )}
                       <div className="absolute -bottom-0.5 -right-0.5">
-                        <StatusIndicator status={conv.participant.status} size="sm" borderColor="var(--app-bg-secondary, #2b2d31)" />
+                        <StatusIndicator
+                          status={
+                            conv.participant.user_id === "00000000-0000-0000-0000-000000000001"
+                              ? "online"
+                              : onlineUserIds.has(conv.participant.user_id)
+                                ? (conv.participant.status === "invisible" ? "online" : conv.participant.status)
+                                : "offline"
+                          }
+                          size="sm"
+                          borderColor="var(--app-bg-secondary, #2b2d31)"
+                        />
                       </div>
                     </div>
                     <span className="truncate text-sm font-medium">{conv.participant.display_name}</span>
