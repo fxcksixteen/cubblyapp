@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useVoice } from "@/contexts/VoiceContext";
 import { Conversation } from "@/hooks/useConversations";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, X, ShoppingBag } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { getProfileColor } from "@/lib/profileColors";
 import { toast } from "sonner";
 import {
@@ -17,13 +17,17 @@ import ProfilePopup from "./ProfilePopup";
 import SettingsModal from "./SettingsModal";
 import SearchBar from "./SearchBar";
 import friendsIcon from "@/assets/icons/friends.svg";
+import shopIcon from "@/assets/icons/shop.svg";
 import micIcon from "@/assets/icons/microphone.svg";
 import micMuteIcon from "@/assets/icons/microphone-mute.svg";
 import headphoneIcon from "@/assets/icons/headphone.svg";
 import headphoneDeafenIcon from "@/assets/icons/headphone-deafen.svg";
 import settingsIcon from "@/assets/icons/settings.svg";
+import removeUserIcon from "@/assets/icons/remove-user.svg";
+import blockUserIcon from "@/assets/icons/block-user.svg";
+import copyIcon from "@/assets/icons/copy.svg";
 
-const preloadImages = [micIcon, micMuteIcon, headphoneIcon, headphoneDeafenIcon, settingsIcon, friendsIcon];
+const preloadImages = [micIcon, micMuteIcon, headphoneIcon, headphoneDeafenIcon, settingsIcon, friendsIcon, shopIcon];
 preloadImages.forEach(src => { const img = new Image(); img.src = src; });
 
 interface DMSidebarProps {
@@ -82,7 +86,6 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
 
   const handleBlockUser = async (userId: string) => {
     if (!user) return;
-    // Check if friendship exists
     const { data: existing } = await supabase
       .from("friendships")
       .select("id")
@@ -98,8 +101,8 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
   };
 
   const navItems = [
-    { id: "friends", icon: friendsIcon, label: "Friends", isSvg: true },
-    { id: "shop", icon: ShoppingBag, label: "Shop", isSvg: false as const },
+    { id: "friends", icon: friendsIcon, label: "Friends" },
+    { id: "shop", icon: shopIcon, label: "Shop" },
   ];
 
   return (
@@ -117,11 +120,7 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                 : "text-[#949ba4] hover:bg-[#35373c] hover:text-[#dbdee1]"
             }`}
           >
-            {item.isSvg ? (
-              <img src={item.icon as string} alt="" className="h-5 w-5 shrink-0 invert opacity-80" />
-            ) : (
-              <item.icon className="h-5 w-5 shrink-0" />
-            )}
+            <img src={item.icon} alt="" className="h-5 w-5 shrink-0 invert opacity-80" />
             {item.label}
           </button>
         ))}
@@ -177,18 +176,21 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                     onClick={() => setActiveView(`dm:${conv.id}`)}
                     className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer"
                   >
+                    <img src={friendsIcon} alt="" className="h-4 w-4 invert opacity-70" />
                     Profile
                   </ContextMenuItem>
                   <ContextMenuItem
                     onClick={() => handleRemoveFriend(conv.participant.user_id)}
                     className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer"
                   >
+                    <img src={removeUserIcon} alt="" className="h-4 w-4 invert opacity-70" />
                     Remove Friend
                   </ContextMenuItem>
                   <ContextMenuItem
                     onClick={() => onCloseConversation(conv.id)}
                     className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer"
                   >
+                    <X className="h-4 w-4" />
                     Close DM
                   </ContextMenuItem>
                   <ContextMenuSeparator className="my-1 bg-[#2b2d31]" />
@@ -196,6 +198,7 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                     onClick={() => handleBlockUser(conv.participant.user_id)}
                     className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#ed4245] hover:bg-[#ed4245] hover:text-white cursor-pointer"
                   >
+                    <img src={blockUserIcon} alt="" className="h-4 w-4" style={{ filter: "invert(36%) sepia(93%) saturate(7471%) hue-rotate(348deg) brightness(101%) contrast(88%)" }} />
                     Block
                   </ContextMenuItem>
                   <ContextMenuSeparator className="my-1 bg-[#2b2d31]" />
@@ -203,6 +206,7 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                     onClick={() => handleCopyUserId(conv.participant.user_id)}
                     className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer"
                   >
+                    <img src={copyIcon} alt="" className="h-4 w-4 invert opacity-70" />
                     Copy User ID
                   </ContextMenuItem>
                 </ContextMenuContent>

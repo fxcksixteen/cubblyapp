@@ -6,9 +6,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { getProfileColor } from "@/lib/profileColors";
 import messagesInboxIcon from "@/assets/icons/messages.svg";
+import activityIcon from "@/assets/icons/activity.svg";
 import callIcon from "@/assets/icons/call.svg";
 import callEndIcon from "@/assets/icons/call-end.svg";
 import videoIcon from "@/assets/icons/video-camera.svg";
+import addUserIcon from "@/assets/icons/add-user.svg";
 import ServerSidebar from "@/components/app/ServerSidebar";
 import DMSidebar from "@/components/app/DMSidebar";
 import FriendsView from "@/components/app/FriendsView";
@@ -257,7 +259,7 @@ const AppLayout = () => {
           ) : (
             <>
               <div className="flex items-center gap-4">{renderHeader()}</div>
-              <div className="flex items-center gap-4" style={{ color: "var(--app-text-secondary)" }}>
+              <div className="flex items-center gap-3" style={{ color: "var(--app-text-secondary)" }}>
                 <img src={messagesInboxIcon} alt="Inbox" className="h-5 w-5 cursor-pointer invert opacity-60 hover:opacity-100 transition-opacity" />
               </div>
             </>
