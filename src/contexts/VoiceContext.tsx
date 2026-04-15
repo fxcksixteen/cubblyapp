@@ -407,8 +407,23 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         });
       }
 
+      // Recipient joined and is ready — re-send the offer
+      if (payload.type === "ready" && pc && pendingOfferRef.current?.conversationId === conversationId) {
+        channel.send({
+          type: "broadcast",
+          event: "voice-signal",
+          payload: {
+            type: "offer",
+            sdp: pendingOfferRef.current.offer,
+            senderId: user.id,
+            senderName: user.user_metadata?.display_name || "User",
+          },
+        });
+      }
+
       if (payload.type === "answer" && pc) {
         await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+        pendingOfferRef.current = null;
         setActiveCall(prev => prev ? { ...prev, state: "connected", startedAt: Date.now() } : null);
       }
 
