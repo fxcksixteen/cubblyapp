@@ -1,60 +1,43 @@
 
 
-## Plan: Fix Multiple UI/UX Issues
+## Plan: Fix Call Event Pills, Custom SVG Icons, and Audio Level Indicators
 
-### Issues to Address
+### Problem Analysis
 
-1. **Cubbly logo in far-left sidebar** — Currently showing the square logo inside a circle. Need to use the logo as the circle itself (clip it to a circle, no background container showing).
+1. **Call event pills not appearing in chat**: The `callEvents` state lives in `VoiceContext` (in-memory only) and resets on re-render/navigation. More critically, the call events are only appended at the bottom of the chat items list (after all messages), but the real issue is that `callEvents` is tracked via `prevCallStateRef` which may not trigger properly — the call with CubblyBot is likely client-only and never reaches "connected" state, so no event is ever created. The fix: create the call event immediately when a call starts (not just on "connected"), and persist events so they survive.
 
-2. **Bigger mic/deafen/settings icons** — Currently 18px, increase to ~20-22px with larger tap targets.
+2. **Mute/Deafen buttons using Lucide icons instead of custom SVGs**: The call UI uses `Mic`, `MicOff`, `Volume2`, `VolumeX` from lucide-react. Should use `microphone.svg`, `microphone-mute.svg`, `headphone.svg`, `headphone-deafen.svg`.
 
-3. **Messages SVG icon on friend hover** — The "Message" button in FriendsView uses `MessageSquare` from lucide-react. Replace with the custom `messages.svg` icon.
+3. **No remote audio level detection**: Currently only local `audioLevel` is tracked. Need to add a `remoteAudioLevel` by creating an analyser on the remote stream too.
 
-4. **Sending messages doesn't work** — The RLS policy requires `auth.uid() = sender_id` AND the user must be a participant. Need to debug: likely the insert is failing silently or the error isn't surfaced. Will add proper error logging and check if the conversation_participants entry exists for the current user.
+### Changes
 
-5. **Upload file icon lag** — The `folderFileIcon` SVG in the attach menu isn't preloaded. Add it to the preload list (already done for mic/headphone icons in DMSidebar but not for ChatView).
+**`src/contexts/VoiceContext.tsx`**
+- Create a call event as soon as `startCall` is invoked (state: "ongoing"), not waiting for "connected"
+- End the call event when `endCall` is called — update the last ongoing event to "ended"
+- Remove the fragile `prevCallStateRef` approach
+- Add `remoteAudioLevel` state + analyser for the remote stream's audio in `ontrack`
+- Export `remoteAudioLevel` in context
 
-6. **Search bar too small** — Increase height from `h-7` to `h-9`, increase font size, make it more prominent.
-
-7. **Chat page header showing friend tabs** — The `renderHeader()` in AppLayout shows friend tabs for ALL non-DM views. When on a chat route, it shows `@username` but the issue is the header still renders friend tabs when it shouldn't. Fix: the DM header should show the recipient's avatar, status indicator, display name, and call/video buttons on the right.
-
-8. **Chat header for DM conversations** — Add recipient profile picture + status dot + display name on left, and call + video call buttons on the far right.
-
-### Technical Changes
-
-**`src/components/app/ServerSidebar.tsx`**
-- Change the home button to use `object-cover` + `rounded-full` directly on the image, remove the container background so the logo IS the circle.
-
-**`src/components/app/DMSidebar.tsx`**
-- Increase icon sizes from `h-[18px] w-[18px]` to `h-5 w-5` (20px)
-- Increase button padding from `p-1.5` to `p-2`
-
-**`src/components/app/FriendsView.tsx`**
-- Replace `MessageSquare` lucide icon with the custom `messages.svg` for the DM button on friend hover
-
-**`src/hooks/useMessages.ts`**
-- Add `console.error` on insert failure to debug
-- Ensure the error from supabase insert is properly logged
+**`src/components/app/VoiceCallOverlay.tsx`**
+- Replace `Mic`/`MicOff` with custom `microphone.svg`/`microphone-mute.svg` as `<img>` tags
+- Replace `Volume2`/`VolumeX` with custom `headphone.svg`/`headphone-deafen.svg` as `<img>` tags
+- Keep all layout, sizing, coloring, and button structure identical — just swap the icon content
+- Add `remoteAudioLevel` from `useVoice()` and apply the same green speaking-ring glow to the recipient's avatar when their audio level exceeds the threshold
+- Apply CSS `filter` for icon color changes (white by default, red-tinted when muted/deafened)
 
 **`src/components/app/ChatView.tsx`**
-- Preload `folderFileIcon` at module level (same pattern as DMSidebar)
-- Add error logging for send failures
+- Interleave call events with messages by timestamp instead of appending at end
+- This ensures pills appear in chronological order within the chat
 
-**`src/components/app/SearchBar.tsx`**
-- Increase height from `h-7` to `h-9`
-- Increase text from `text-xs` to `text-sm`
-- Make icon slightly larger
+### Technical Details
 
-**`src/pages/AppLayout.tsx`**
-- Update `renderHeader()` for DM views: show avatar circle + status dot + display name on left, Phone and Video icons on far right
-- Import `Phone`, `Video` from lucide-react
+- Custom SVG icons will use `<img>` with `filter: brightness(0) invert(1)` for white, and a red filter variant when active
+- Remote audio analyser: create a second `AnalyserNode` on the remote stream in `ontrack`, run a separate RAF loop updating `remoteAudioLevel`
+- Call events: generate on `startCall`/`acceptCall`, finalize on `endCall` — simple and reliable
 
 ### Files Modified
-- `src/components/app/ServerSidebar.tsx`
-- `src/components/app/DMSidebar.tsx`
-- `src/components/app/FriendsView.tsx`
+- `src/contexts/VoiceContext.tsx`
+- `src/components/app/VoiceCallOverlay.tsx`
 - `src/components/app/ChatView.tsx`
-- `src/components/app/SearchBar.tsx`
-- `src/hooks/useMessages.ts`
-- `src/pages/AppLayout.tsx`
 
