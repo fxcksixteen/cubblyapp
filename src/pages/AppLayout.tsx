@@ -90,12 +90,15 @@ const AppLayout = () => {
 
   const isInCall = activeCall?.conversationId === activeConvId;
 
+  const currentUsername = user?.user_metadata?.username?.toLowerCase() || "";
+  const isAdmin = currentUsername === "kaszy";
+
   const handleVoiceCall = async () => {
     if (isInCall) {
       endCall();
     } else if (activeParticipant) {
-      // If calling CubblyBot, trigger a bot response instead of a real WebRTC call
-      if (activeParticipant.user_id === BOT_USER_ID) {
+      if (activeParticipant.user_id === BOT_USER_ID && !isAdmin) {
+        // Non-admin users get a text response explaining bot can't join calls
         try {
           const { data: { session } } = await supabase.auth.getSession();
           await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat-with-bot`, {
@@ -115,6 +118,7 @@ const AppLayout = () => {
         }
         return;
       }
+      // Admin users can start calls with CubblyBot (full call UI), and all users can call others
       startCall(activeConvId!, activeParticipant.user_id, activeParticipant.display_name);
     }
   };
