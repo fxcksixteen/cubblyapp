@@ -185,6 +185,7 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
     setInput("");
     setPendingFiles([]);
     setAttachMenuOpen(false);
+    broadcastStopTyping();
 
     setUploading(true);
 
