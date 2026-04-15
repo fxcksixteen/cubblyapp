@@ -263,7 +263,6 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
                           borderColor="var(--app-bg-primary, #313338)"
                         />
                       </div>
-                      </div>
                     </div>
                     <div className="flex-1 overflow-hidden">
                       <p className="text-sm font-semibold text-white leading-tight">{friendship.profile.display_name}</p>
