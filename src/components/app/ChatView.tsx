@@ -27,6 +27,25 @@ const formatFileSize = (bytes: number) => {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
+const formatTime = (dateStr: string) => {
+  const d = new Date(dateStr);
+  const today = new Date();
+  const isToday = d.toDateString() === today.toDateString();
+  const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return isToday ? `Today at ${time}` : `${d.toLocaleDateString()} ${time}`;
+};
+
+const formatDateDivider = (dateStr: string) => {
+  const d = new Date(dateStr);
+  return d.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+};
+
+const shouldShowTimeDivider = (prevDate: string, currDate: string): boolean => {
+  const prev = new Date(prevDate).getTime();
+  const curr = new Date(currDate).getTime();
+  return curr - prev >= 2 * 60 * 60 * 1000; // 2 hours
+};
+
 const ChatView = ({ conversationId, recipientName }: ChatViewProps) => {
   const { user } = useAuth();
   const { messages, loading, sendMessage } = useMessages(conversationId);
@@ -45,34 +64,23 @@ const ChatView = ({ conversationId, recipientName }: ChatViewProps) => {
     if (!input.trim() && pendingFiles.length === 0) return;
     setUploading(true);
 
-    // Upload files first
     const attachmentUrls: { name: string; url: string; size: number; type: string }[] = [];
     for (const pf of pendingFiles) {
       const path = `${conversationId}/${Date.now()}-${pf.file.name}`;
       const { error } = await supabase.storage.from("chat-attachments").upload(path, pf.file);
       if (!error) {
         const { data: urlData } = supabase.storage.from("chat-attachments").getPublicUrl(path);
-        attachmentUrls.push({
-          name: pf.file.name,
-          url: urlData.publicUrl,
-          size: pf.file.size,
-          type: pf.file.type,
-        });
+        attachmentUrls.push({ name: pf.file.name, url: urlData.publicUrl, size: pf.file.size, type: pf.file.type });
       }
     }
 
-    // Build message content with attachments
     let content = input.trim();
     if (attachmentUrls.length > 0) {
       const attachmentMeta = JSON.stringify(attachmentUrls);
-      content = content
-        ? `${content}\n[attachments]${attachmentMeta}[/attachments]`
-        : `[attachments]${attachmentMeta}[/attachments]`;
+      content = content ? `${content}\n[attachments]${attachmentMeta}[/attachments]` : `[attachments]${attachmentMeta}[/attachments]`;
     }
 
-    if (content) {
-      await sendMessage(content);
-    }
+    if (content) await sendMessage(content);
 
     setInput("");
     setPendingFiles([]);
@@ -93,14 +101,6 @@ const ChatView = ({ conversationId, recipientName }: ChatViewProps) => {
     setPendingFiles(prev => prev.filter(f => f.id !== id));
   };
 
-  const formatTime = (dateStr: string) => {
-    const d = new Date(dateStr);
-    const today = new Date();
-    const isToday = d.toDateString() === today.toDateString();
-    const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    return isToday ? `Today at ${time}` : `${d.toLocaleDateString()} ${time}`;
-  };
-
   const parseContent = (content: string) => {
     const attachRegex = /\[attachments\](.*?)\[\/attachments\]/s;
     const match = content.match(attachRegex);
@@ -112,14 +112,23 @@ const ChatView = ({ conversationId, recipientName }: ChatViewProps) => {
     return { text, attachments };
   };
 
-  // Group consecutive messages from same sender
-  const grouped: { sender_id: string; sender_name: string; messages: Message[] }[] = [];
-  for (const msg of messages) {
-    const last = grouped[grouped.length - 1];
-    if (last && last.sender_id === msg.sender_id) {
+  // Build grouped messages with time dividers
+  const grouped: { type: "messages"; sender_id: string; sender_name: string; messages: Message[] }[] | { type: "divider"; label: string }[] = [];
+  const items: ({ type: "messages"; sender_id: string; sender_name: string; messages: Message[] } | { type: "divider"; label: string })[] = [];
+
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+
+    // Check time gap
+    if (i > 0 && shouldShowTimeDivider(messages[i - 1].created_at, msg.created_at)) {
+      items.push({ type: "divider", label: formatDateDivider(msg.created_at) });
+    }
+
+    const last = items[items.length - 1];
+    if (last && last.type === "messages" && last.sender_id === msg.sender_id) {
       last.messages.push(msg);
     } else {
-      grouped.push({ sender_id: msg.sender_id, sender_name: msg.sender_name || "Unknown", messages: [msg] });
+      items.push({ type: "messages", sender_id: msg.sender_id, sender_name: msg.sender_name || "Unknown", messages: [msg] });
     }
   }
 
@@ -142,54 +151,66 @@ const ChatView = ({ conversationId, recipientName }: ChatViewProps) => {
             </p>
           </div>
         ) : (
-          grouped.map((group, gi) => (
-            <div key={gi} className="mt-4 first:mt-0 flex gap-3 hover:bg-[#2e3035] rounded px-2 py-1">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#5865f2] text-sm font-bold text-white">
-                {group.sender_name.charAt(0).toUpperCase()}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-baseline gap-2">
-                  <span className="font-semibold text-white text-sm">
-                    {group.sender_id === user?.id ? "You" : group.sender_name}
-                  </span>
-                  <span className="text-[11px] text-[#949ba4]">{formatTime(group.messages[0].created_at)}</span>
+          items.map((item, idx) => {
+            if (item.type === "divider") {
+              return (
+                <div key={`divider-${idx}`} className="my-4 flex items-center gap-2">
+                  <div className="flex-1 h-px bg-[#3f4147]" />
+                  <span className="text-[11px] font-semibold text-[#949ba4] px-2 whitespace-nowrap">{item.label}</span>
+                  <div className="flex-1 h-px bg-[#3f4147]" />
                 </div>
-                {group.messages.map((msg) => {
-                  const { text, attachments } = parseContent(msg.content);
-                  return (
-                    <div key={msg.id}>
-                      {text && (
-                        <p className={`text-sm leading-relaxed ${msg.status === "sending" ? "text-[#949ba4]/50" : "text-[#dbdee1]"}`}>
-                          {text}
-                        </p>
-                      )}
-                      {attachments.map((att, ai) => (
-                        <a
-                          key={ai}
-                          href={att.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="mt-1 flex items-center gap-2 rounded-lg border border-[#1e1f22] bg-[#2b2d31] p-3 max-w-sm hover:bg-[#32353b] transition-colors"
-                        >
-                          {att.type.startsWith("image/") ? (
-                            <img src={att.url} alt={att.name} className="max-h-[200px] max-w-full rounded" />
-                          ) : (
-                            <>
-                              <img src={folderFileIcon} alt="" className="h-8 w-8 invert opacity-60 shrink-0" />
-                              <div className="min-w-0">
-                                <p className="text-sm font-medium text-[#00a8fc] truncate">{att.name}</p>
-                                <p className="text-[11px] text-[#949ba4]">{formatFileSize(att.size)}</p>
-                              </div>
-                            </>
-                          )}
-                        </a>
-                      ))}
-                    </div>
-                  );
-                })}
+              );
+            }
+
+            return (
+              <div key={idx} className="mt-4 first:mt-0 flex gap-3 hover:bg-[#2e3035] rounded px-2 py-1">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#5865f2] text-sm font-bold text-white">
+                  {item.sender_name.charAt(0).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-semibold text-white text-sm">
+                      {item.sender_id === user?.id ? "You" : item.sender_name}
+                    </span>
+                    <span className="text-[11px] text-[#949ba4]">{formatTime(item.messages[0].created_at)}</span>
+                  </div>
+                  {item.messages.map((msg) => {
+                    const { text, attachments } = parseContent(msg.content);
+                    return (
+                      <div key={msg.id}>
+                        {text && (
+                          <p className={`text-sm leading-relaxed ${msg.status === "sending" ? "text-[#949ba4]/50" : "text-[#dbdee1]"}`}>
+                            {text}
+                          </p>
+                        )}
+                        {attachments.map((att, ai) => (
+                          <a
+                            key={ai}
+                            href={att.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-1 flex items-center gap-2 rounded-lg border border-[#1e1f22] bg-[#2b2d31] p-3 max-w-sm hover:bg-[#32353b] transition-colors"
+                          >
+                            {att.type.startsWith("image/") ? (
+                              <img src={att.url} alt={att.name} className="max-h-[200px] max-w-full rounded" />
+                            ) : (
+                              <>
+                                <img src={folderFileIcon} alt="" className="h-8 w-8 invert opacity-60 shrink-0" />
+                                <div className="min-w-0">
+                                  <p className="text-sm font-medium text-[#00a8fc] truncate">{att.name}</p>
+                                  <p className="text-[11px] text-[#949ba4]">{formatFileSize(att.size)}</p>
+                                </div>
+                              </>
+                            )}
+                          </a>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
         <div ref={bottomRef} />
       </div>
@@ -217,7 +238,6 @@ const ChatView = ({ conversationId, recipientName }: ChatViewProps) => {
       {/* Input */}
       <div className="px-4 pb-4">
         <div className="flex items-center gap-2 rounded-lg bg-[#383a40] px-4 py-2.5 relative">
-          {/* Plus / attach button */}
           <div className="relative">
             <button
               onClick={() => setAttachMenuOpen(!attachMenuOpen)}

@@ -55,25 +55,25 @@ const SearchBar = ({ onOpenDM }: SearchBarProps) => {
       {!open ? (
         <button
           onClick={handleOpen}
-          className="flex h-11 w-full items-center gap-3 rounded-full border px-4 text-sm font-medium transition-colors hover:opacity-95"
+          className="flex h-8 w-full items-center gap-2 rounded-full border px-3 text-xs font-medium transition-colors hover:opacity-95 cubbly-3d-pill"
           style={{ ...shellStyle, color: "var(--app-text-secondary)" }}
         >
-          <span className="flex-1 text-left">Find or start a conversation</span>
-          <img src={searchIcon} alt="" className="h-5 w-5 invert opacity-50" />
+          <span className="flex-1 text-left whitespace-nowrap overflow-hidden text-ellipsis">Find or start a conversation</span>
+          <img src={searchIcon} alt="" className="h-4 w-4 shrink-0 invert opacity-50" />
         </button>
       ) : (
         <div>
-          <div className="flex h-11 items-center gap-3 rounded-full border px-4" style={shellStyle}>
-            <img src={searchIcon} alt="" className="h-5 w-5 invert opacity-50" />
+          <div className="flex h-8 items-center gap-2 rounded-full border px-3 cubbly-3d-pill" style={shellStyle}>
             <input
               ref={inputRef}
               type="text"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Find or start a conversation"
-              className="flex-1 bg-transparent text-sm outline-none placeholder:text-[#6d6f78]"
+              className="flex-1 bg-transparent text-xs outline-none placeholder:text-[#6d6f78]"
               style={{ color: "var(--app-text-primary)" }}
             />
+            <img src={searchIcon} alt="" className="h-4 w-4 shrink-0 invert opacity-50" />
           </div>
 
           <div
