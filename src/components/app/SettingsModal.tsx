@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { X, Check, LogOut } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme, ThemeName } from "@/contexts/ThemeContext";
-import { getProfileColor } from "@/lib/profileColors";
+import { defaultProfileColor } from "@/lib/profileColors";
 
 const APP_VERSION = "0.1.0";
 
@@ -53,7 +53,7 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
   const { user, signOut } = useAuth();
   const { theme, setTheme } = useTheme();
 
-  const profileColor = getProfileColor(user?.id || "default");
+  const profileColor = defaultProfileColor;
 
   useEffect(() => {
     if (!isOpen) return;
