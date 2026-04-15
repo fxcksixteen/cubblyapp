@@ -240,12 +240,20 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
                     onMouseLeave={e => { e.currentTarget.style.backgroundColor = ""; }}
                   >
                     <div className="relative">
-                      <div
-                        className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold text-white"
-                        style={{ backgroundColor: getProfileColor(friendship.profile.user_id).bg }}
-                      >
-                        {friendship.profile.display_name.charAt(0).toUpperCase()}
-                      </div>
+                      {friendship.profile.avatar_url ? (
+                        <img
+                          src={friendship.profile.avatar_url}
+                          alt={friendship.profile.display_name}
+                          className="h-8 w-8 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div
+                          className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold text-white"
+                          style={{ backgroundColor: getProfileColor(friendship.profile.user_id).bg }}
+                        >
+                          {friendship.profile.display_name.charAt(0).toUpperCase()}
+                        </div>
+                      )}
                       <div className="absolute -bottom-0.5 -right-0.5">
                         <StatusIndicator status={friendship.profile.status} size="sm" borderColor="var(--app-bg-primary, #313338)" />
                       </div>
