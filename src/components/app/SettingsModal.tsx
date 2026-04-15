@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { X, Check, LogOut } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme, ThemeName } from "@/contexts/ThemeContext";
@@ -53,8 +53,25 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
   const [activeCategory, setActiveCategory] = useState<SettingsCategory>("my-account");
   const { user, signOut } = useAuth();
   const { theme, setTheme } = useTheme();
+  const [visible, setVisible] = useState(false);
+  const [animating, setAnimating] = useState(false);
+  const backdropRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const profileColor = defaultProfileColor;
+
+  useEffect(() => {
+    if (isOpen) {
+      setVisible(true);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => setAnimating(true));
+      });
+    } else {
+      setAnimating(false);
+      const timer = setTimeout(() => setVisible(false), 250);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -65,7 +82,7 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
     return () => document.removeEventListener("keydown", handler);
   }, [isOpen, onClose]);
 
-  if (!isOpen) return null;
+  if (!visible) return null;
 
   const displayName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "User";
   const username = user?.user_metadata?.username || displayName.toLowerCase();
@@ -210,13 +227,24 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
 
   return (
     <div
-      className="app-themed fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backgroundColor: "rgba(0, 0, 0, 0.6)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" }}
+      ref={backdropRef}
+      className="app-themed fixed inset-0 z-50 flex items-center justify-center p-4 transition-all duration-250 ease-out"
+      style={{
+        backgroundColor: animating ? "rgba(0, 0, 0, 0.6)" : "rgba(0, 0, 0, 0)",
+        backdropFilter: animating ? "blur(12px)" : "blur(0px)",
+        WebkitBackdropFilter: animating ? "blur(12px)" : "blur(0px)",
+      }}
       onMouseDown={onClose}
     >
       <div
-        className="flex h-[min(86vh,800px)] w-full max-w-[1160px] overflow-hidden rounded-[30px] border shadow-[0_32px_90px_rgba(0,0,0,0.45)]"
-        style={{ backgroundColor: "var(--app-bg-primary)", borderColor: "var(--app-border)" }}
+        ref={panelRef}
+        className="flex h-[min(86vh,800px)] w-full max-w-[1160px] overflow-hidden rounded-[30px] border shadow-[0_32px_90px_rgba(0,0,0,0.45)] transition-all duration-250 ease-out"
+        style={{
+          backgroundColor: "var(--app-bg-primary)",
+          borderColor: "var(--app-border)",
+          transform: animating ? "scale(1) translateY(0)" : "scale(0.95) translateY(12px)",
+          opacity: animating ? 1 : 0,
+        }}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <aside className="flex w-[280px] flex-shrink-0 flex-col border-r px-4 py-5" style={{ backgroundColor: "var(--app-bg-secondary)", borderColor: "var(--app-border)" }}>

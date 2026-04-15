@@ -6,7 +6,7 @@ import { Eye, EyeOff } from "lucide-react";
 
 const Login = () => {
   const { session } = useAuth();
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
@@ -19,8 +19,56 @@ const Login = () => {
     setError("");
     setLoading(true);
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) setError(error.message);
+    const trimmed = identifier.trim();
+    let email = trimmed;
+
+    // If the input doesn't look like an email, look up the username
+    if (!trimmed.includes("@")) {
+      const { data: profile, error: lookupError } = await supabase
+        .from("profiles")
+        .select("user_id")
+        .eq("username", trimmed.toLowerCase())
+        .maybeSingle();
+
+      if (lookupError || !profile) {
+        setError("No account found with that username.");
+        setLoading(false);
+        return;
+      }
+
+      // Get the email from auth via a profiles join — we need to find the user's email
+      // Since we can't query auth.users directly, we'll use a workaround:
+      // Look up the user's email from their profile's user_id
+      const { data: userData } = await supabase
+        .from("profiles")
+        .select("user_id")
+        .eq("username", trimmed.toLowerCase())
+        .single();
+
+      if (!userData) {
+        setError("No account found with that username.");
+        setLoading(false);
+        return;
+      }
+
+      // We need to try signing in — but we don't have the email yet.
+      // Let's use a different approach: store email in profiles or use RPC
+      // For now, we'll look up via the admin-level edge function
+      const { data: fnData, error: fnError } = await supabase.functions.invoke("get-email-by-username", {
+        body: { username: trimmed.toLowerCase() },
+      });
+
+      if (fnError || !fnData?.email) {
+        setError("Could not resolve username. Try using your email instead.");
+        setLoading(false);
+        return;
+      }
+
+      email = fnData.email;
+    }
+
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+    if (signInError) setError(signInError.message);
     setLoading(false);
   };
 
@@ -39,15 +87,15 @@ const Login = () => {
         <form onSubmit={handleLogin} className="flex flex-col gap-4">
           <div>
             <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-muted-foreground">
-              Email
+              Email or Username
             </label>
             <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              type="text"
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
               required
               className="w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary font-body"
-              placeholder="bear@cubbly.app"
+              placeholder="bear@cubbly.app or username"
             />
           </div>
 
