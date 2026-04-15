@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { X, Check, LogOut } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme, ThemeName } from "@/contexts/ThemeContext";
