@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useConversations } from "@/hooks/useConversations";
 import { useFriends } from "@/hooks/useFriends";
+import { getProfileColor } from "@/lib/profileColors";
 import searchIcon from "@/assets/icons/search.svg";
 
 interface SearchBarProps {
@@ -102,9 +103,16 @@ const SearchBar = ({ onOpenDM }: SearchBarProps) => {
                         className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm hover:bg-[#35373c]"
                         style={{ color: "var(--app-text-primary)" }}
                       >
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#5865f2] text-xs font-bold text-white">
-                          {conversation.participant.display_name.charAt(0).toUpperCase()}
-                        </div>
+                        {conversation.participant.avatar_url ? (
+                          <img src={conversation.participant.avatar_url} alt="" className="h-8 w-8 rounded-full object-cover" />
+                        ) : (
+                          <div
+                            className="flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold text-white"
+                            style={{ backgroundColor: getProfileColor(conversation.participant.user_id).bg }}
+                          >
+                            {conversation.participant.display_name.charAt(0).toUpperCase()}
+                          </div>
+                        )}
                         <span>{conversation.participant.display_name}</span>
                         <span className="ml-auto text-[11px]" style={{ color: "var(--app-text-secondary)" }}>
                           {conversation.participant.username}
@@ -130,9 +138,16 @@ const SearchBar = ({ onOpenDM }: SearchBarProps) => {
                         className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm hover:bg-[#35373c]"
                         style={{ color: "var(--app-text-primary)" }}
                       >
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#5865f2] text-xs font-bold text-white">
-                          {friend.profile.display_name.charAt(0).toUpperCase()}
-                        </div>
+                        {friend.profile.avatar_url ? (
+                          <img src={friend.profile.avatar_url} alt="" className="h-8 w-8 rounded-full object-cover" />
+                        ) : (
+                          <div
+                            className="flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold text-white"
+                            style={{ backgroundColor: getProfileColor(friend.profile.user_id).bg }}
+                          >
+                            {friend.profile.display_name.charAt(0).toUpperCase()}
+                          </div>
+                        )}
                         <span>{friend.profile.display_name}</span>
                         <span className="ml-auto text-[11px]" style={{ color: "var(--app-text-secondary)" }}>
                           {friend.profile.username}
