@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import {
   Check, X, UserX, UserMinus
 } from "lucide-react";
+import { getProfileColor } from "@/lib/profileColors";
 import messagesIcon from "@/assets/icons/messages.svg";
 import searchIcon from "@/assets/icons/search.svg";
 
@@ -199,7 +200,10 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM }: FriendsViewProps) =>
                     className="group flex items-center gap-3 rounded-lg border-t border-[#3f4147] px-2 py-3 transition-colors hover:bg-[#404249]"
                   >
                     <div className="relative">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#5865f2] text-sm font-bold text-white">
+                      <div
+                        className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold text-white"
+                        style={{ backgroundColor: getProfileColor(friendship.profile.user_id).bg }}
+                      >
                         {friendship.profile.display_name.charAt(0).toUpperCase()}
                       </div>
                       <div className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-[2.5px] border-[#313338] group-hover:border-[#404249] ${statusColors[friendship.profile.status]}`} />
