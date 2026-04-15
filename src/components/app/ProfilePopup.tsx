@@ -5,15 +5,12 @@ import { Copy, Pencil, User, Check } from "lucide-react";
 import { toast } from "sonner";
 import { defaultProfileColor } from "@/lib/profileColors";
 import StatusIndicator from "@/components/app/StatusIndicator";
-import statusIdleIcon from "@/assets/icons/status-idle.svg";
-import statusDndIcon from "@/assets/icons/status-dnd.svg";
-import statusInvisibleIcon from "@/assets/icons/status-invisible.svg";
 
 const statuses = [
-  { value: "online", label: "Online", icon: null, dotClass: "bg-[#3ba55c]" },
-  { value: "idle", label: "Idle", icon: statusIdleIcon, filter: "brightness(0) saturate(100%) invert(72%) sepia(58%) saturate(1000%) hue-rotate(357deg) brightness(101%) contrast(96%)" },
-  { value: "dnd", label: "Do Not Disturb", icon: statusDndIcon, filter: "brightness(0) saturate(100%) invert(36%) sepia(71%) saturate(5500%) hue-rotate(345deg) brightness(94%) contrast(92%)" },
-  { value: "invisible", label: "Invisible", icon: statusInvisibleIcon, filter: "brightness(0) saturate(100%) invert(55%) sepia(7%) saturate(500%) hue-rotate(182deg) brightness(92%) contrast(87%)" },
+  { value: "online", label: "Online" },
+  { value: "idle", label: "Idle" },
+  { value: "dnd", label: "Do Not Disturb" },
+  { value: "invisible", label: "Invisible" },
 ] as const;
 
 interface ProfilePopupProps {
@@ -132,13 +129,7 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
                 onMouseEnter={e => { if (currentStatus !== s.value) e.currentTarget.style.backgroundColor = "var(--app-hover, #35373c)"; }}
                 onMouseLeave={e => { if (currentStatus !== s.value) e.currentTarget.style.backgroundColor = ""; }}
               >
-                {s.value === "online" ? (
-                  <div className="h-2.5 w-2.5 rounded-full bg-[#3ba55c]" />
-                ) : s.icon ? (
-                  <img src={s.icon} alt="" className="h-2.5 w-2.5" style={{ filter: s.filter }} />
-                ) : (
-                  <div className="h-2.5 w-2.5 rounded-full bg-[#747f8d]" />
-                )}
+                <StatusIndicator status={s.value} size="sm" borderColor="var(--app-bg-tertiary, #111214)" />
                 {s.label}
               </button>
             ))}
