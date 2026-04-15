@@ -407,8 +407,23 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         });
       }
 
+      // Recipient joined and is ready — re-send the offer
+      if (payload.type === "ready" && pc && pendingOfferRef.current?.conversationId === conversationId) {
+        channel.send({
+          type: "broadcast",
+          event: "voice-signal",
+          payload: {
+            type: "offer",
+            sdp: pendingOfferRef.current.offer,
+            senderId: user.id,
+            senderName: user.user_metadata?.display_name || "User",
+          },
+        });
+      }
+
       if (payload.type === "answer" && pc) {
         await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+        pendingOfferRef.current = null;
         setActiveCall(prev => prev ? { ...prev, state: "connected", startedAt: Date.now() } : null);
       }
 
@@ -480,6 +495,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     );
   };
 
+  // Store pending offer so we can re-send when recipient signals ready
+  const pendingOfferRef = useRef<{ offer: RTCSessionDescriptionInit; conversationId: string } | null>(null);
+
   const startCall = useCallback(async (conversationId: string, peerId: string, peerName: string) => {
     if (!user) return;
     try {
@@ -508,6 +526,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       offer.sdp = sdp;
       await pc.setLocalDescription(offer);
 
+      // Store offer for re-sending when recipient is ready
+      pendingOfferRef.current = { offer, conversationId };
+
+      // Send offer on the conversation signaling channel
       channel?.send({
         type: "broadcast",
         event: "voice-signal",
@@ -517,6 +539,27 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           senderId: user.id,
           senderName: user.user_metadata?.display_name || "User",
         },
+      });
+
+      // CRITICAL: Notify the recipient via their global channel so they join signaling
+      const recipientGlobalChannel = supabase.channel(`voice-global:${peerId}:notify`);
+      recipientGlobalChannel.subscribe(async (status) => {
+        if (status === "SUBSCRIBED") {
+          recipientGlobalChannel.send({
+            type: "broadcast",
+            event: "incoming-call",
+            payload: {
+              targetId: peerId,
+              conversationId,
+              callerId: user.id,
+              callerName: user.user_metadata?.display_name || "User",
+            },
+          });
+          // Keep channel alive briefly so the message goes through, then clean up
+          setTimeout(() => {
+            supabase.removeChannel(recipientGlobalChannel);
+          }, 3000);
+        }
       });
 
       const isBotCall = peerId === "00000000-0000-0000-0000-000000000001";
@@ -853,7 +896,29 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     const globalChannel = supabase.channel(`voice-global:${user.id}`);
     globalChannel.on("broadcast", { event: "incoming-call" }, ({ payload }) => {
       if (payload.targetId === user.id && !activeCall) {
-        setupSignaling(payload.conversationId);
+        // Join the signaling channel for this conversation
+        const sigChannel = setupSignaling(payload.conversationId);
+        
+        // Fetch caller profile to show incoming call UI
+        supabase
+          .from("profiles")
+          .select("display_name")
+          .eq("user_id", payload.callerId)
+          .maybeSingle()
+          .then(({ data }) => {
+            const callerName = data?.display_name || payload.callerName || "Unknown";
+            setIncomingCall(prev => prev ? { ...prev, callerName } : prev);
+          });
+
+        // Send a "ready" signal so the caller re-sends the offer
+        // Small delay to ensure we're subscribed to the signaling channel first
+        setTimeout(() => {
+          sigChannel?.send({
+            type: "broadcast",
+            event: "voice-signal",
+            payload: { type: "ready", senderId: user.id },
+          });
+        }, 500);
       }
     });
     globalChannel.subscribe();

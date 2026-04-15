@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -60,7 +60,29 @@ export function useFriends() {
     setLoading(false);
   }, [user]);
 
+  const fetchRef = useRef(fetchFriends);
+  fetchRef.current = fetchFriends;
+
   useEffect(() => { fetchFriends(); }, [fetchFriends]);
+
+  // Realtime subscription for live friend list updates
+  useEffect(() => {
+    if (!user) return;
+
+    const channel = supabase.channel(`friendships-realtime:${user.id}`);
+
+    channel.on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "friendships" },
+      () => fetchRef.current(),
+    );
+
+    channel.subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
 
   const sendFriendRequest = async (username: string) => {
     if (!user) return { error: "Not authenticated" };

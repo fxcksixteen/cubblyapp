@@ -143,9 +143,51 @@ export function useConversations() {
       { event: "*", schema: "public", table: "conversation_participants" },
       () => fetchRef.current(),
     );
+    // Live message updates — re-sort conversations when new messages arrive
     channel.on(
       "postgres_changes",
-      { event: "*", schema: "public", table: "messages" },
+      { event: "INSERT", schema: "public", table: "messages" },
+      (payload) => {
+        const newMsg = payload.new as any;
+        // Optimistically update the conversation with the new message
+        setConversations(prev => {
+          const idx = prev.findIndex(c => c.id === newMsg.conversation_id);
+          if (idx === -1) {
+            // New conversation we don't know about yet — full refetch
+            fetchRef.current();
+            return prev;
+          }
+          const updated = [...prev];
+          updated[idx] = {
+            ...updated[idx],
+            lastMessage: newMsg.content,
+            lastMessageAt: newMsg.created_at,
+          };
+          // Re-sort by latest message
+          updated.sort((a, b) => {
+            const aTime = a.lastMessageAt || "";
+            const bTime = b.lastMessageAt || "";
+            return bTime.localeCompare(aTime);
+          });
+          return updated;
+        });
+      },
+    );
+    // Also handle other message events (delete, update) with full refetch
+    channel.on(
+      "postgres_changes",
+      { event: "UPDATE", schema: "public", table: "messages" },
+      () => fetchRef.current(),
+    );
+    channel.on(
+      "postgres_changes",
+      { event: "DELETE", schema: "public", table: "messages" },
+      () => fetchRef.current(),
+    );
+    // Live profile updates (avatar, status, display name changes)
+    channel.on(
+      "postgres_changes",
+      { event: "UPDATE", schema: "public", table: "profiles" },
       () => fetchRef.current(),
     );
     channel.subscribe();
