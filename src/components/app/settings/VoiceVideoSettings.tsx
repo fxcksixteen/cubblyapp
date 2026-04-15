@@ -78,6 +78,51 @@ const VoiceVideoSettings = ({ panelStyle, cardStyle }: Props) => {
 
 /* ─── Voice Tab ─── */
 function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, detectedRegion, activeRegion, cardStyle }: any) {
+  const [micTesting, setMicTesting] = useState(false);
+  const streamRef = useRef<MediaStream | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+
+  const toggleMicTest = async () => {
+    if (micTesting) {
+      streamRef.current?.getTracks().forEach(t => t.stop());
+      audioCtxRef.current?.close();
+      streamRef.current = null;
+      audioCtxRef.current = null;
+      setMicTesting(false);
+      return;
+    }
+
+    try {
+      const constraints: MediaStreamConstraints = {
+        audio: settings.inputDeviceId !== "default"
+          ? { deviceId: { exact: settings.inputDeviceId } }
+          : true,
+      };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      streamRef.current = stream;
+
+      // Create playback so user hears themselves
+      const ctx = new AudioContext();
+      audioCtxRef.current = ctx;
+      const source = ctx.createMediaStreamSource(stream);
+      const gain = ctx.createGain();
+      gain.gain.value = (settings.outputVolume ?? 100) / 100;
+      source.connect(gain);
+      gain.connect(ctx.destination);
+
+      setMicTesting(true);
+    } catch (err) {
+      console.error("Mic test failed:", err);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      streamRef.current?.getTracks().forEach(t => t.stop());
+      audioCtxRef.current?.close();
+    };
+  }, []);
+
   return (
     <div className="space-y-6">
       {/* Server Region */}
