@@ -83,10 +83,19 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
 
   const handleSend = async () => {
     if (!input.trim() && pendingFiles.length === 0) return;
+
+    const currentInput = input.trim();
+    const currentFiles = [...pendingFiles];
+
+    // Clear input immediately
+    setInput("");
+    setPendingFiles([]);
+    setAttachMenuOpen(false);
+
     setUploading(true);
 
     const attachmentUrls: { name: string; url: string; size: number; type: string }[] = [];
-    for (const pf of pendingFiles) {
+    for (const pf of currentFiles) {
       const path = `${conversationId}/${Date.now()}-${pf.file.name}`;
       const { error } = await supabase.storage.from("chat-attachments").upload(path, pf.file);
       if (!error) {
@@ -95,23 +104,19 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
       }
     }
 
-    let content = input.trim();
+    let content = currentInput;
     if (attachmentUrls.length > 0) {
       const attachmentMeta = JSON.stringify(attachmentUrls);
       content = content ? `${content}\n[attachments]${attachmentMeta}[/attachments]` : `[attachments]${attachmentMeta}[/attachments]`;
     }
 
     if (content) {
-      // Show bot typing indicator for bot conversations
       if (isBotConversation) {
         setBotTyping(true);
       }
       await sendMessage(content);
     }
 
-    setInput("");
-    setPendingFiles([]);
-    setAttachMenuOpen(false);
     setUploading(false);
   };
 
@@ -178,16 +183,18 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
+    <div className="flex flex-1 flex-col min-h-0">
       {/* Discord-style call panel */}
-      <CallPanel
-        conversationId={conversationId}
-        recipientName={recipientName}
-        recipientUserId={recipientUserId}
-      />
+      <div className="shrink-0">
+        <CallPanel
+          conversationId={conversationId}
+          recipientName={recipientName}
+          recipientUserId={recipientUserId}
+        />
+      </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4">
+      <div className="flex-1 overflow-y-auto min-h-0 px-4 py-4">
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#5865f2] border-t-transparent" />
