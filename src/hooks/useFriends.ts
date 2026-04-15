@@ -69,15 +69,16 @@ export function useFriends() {
   useEffect(() => {
     if (!user) return;
 
-    const channel = supabase.channel(`friendships-realtime:${user.id}`);
-
-    channel.on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "friendships" },
-      () => fetchRef.current(),
-    );
-
-    channel.subscribe();
+    const uniqueSuffix =
+      globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const channel = supabase
+      .channel(`friendships-realtime:${user.id}:${uniqueSuffix}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "friendships" },
+        () => fetchRef.current(),
+      )
+      .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
