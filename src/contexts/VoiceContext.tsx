@@ -580,6 +580,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
       channel.on("broadcast", { event: "voice-signal" }, async ({ payload }) => {
         if (payload.senderId === user.id) return;
+        console.log(`[Voice] 📥 Signal received: ${payload.type} from ${payload.senderId?.substring(0,8)}...`);
         const pc = pcRef.current;
 
         if (payload.type === "ready-for-offer") {
