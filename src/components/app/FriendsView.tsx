@@ -11,6 +11,7 @@ import addUserIcon from "@/assets/icons/add-user.svg";
 import removeUserIcon from "@/assets/icons/remove-user.svg";
 import blockUserIcon from "@/assets/icons/block-user.svg";
 import activityIcon from "@/assets/icons/activity.svg";
+import StatusIndicator from "@/components/app/StatusIndicator";
 
 type FriendTab = "online" | "all" | "pending" | "blocked" | "add";
 
@@ -20,12 +21,6 @@ interface FriendsViewProps {
   onOpenDM: (userId: string) => void;
 }
 
-const statusColors: Record<string, string> = {
-  online: "bg-[#3ba55c]",
-  idle: "bg-[#faa61a]",
-  dnd: "bg-[#ed4245]",
-  offline: "bg-[#747f8d]",
-};
 
 const emptyMessages: Record<string, string[]> = {
   online: [
@@ -241,7 +236,9 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM }: FriendsViewProps) =>
                       >
                         {friendship.profile.display_name.charAt(0).toUpperCase()}
                       </div>
-                      <div className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-[2.5px] border-[#313338] group-hover:border-[#404249] ${statusColors[friendship.profile.status]}`} />
+                      <div className="absolute -bottom-0.5 -right-0.5">
+                        <StatusIndicator status={friendship.profile.status} size="sm" borderColor="#313338" />
+                      </div>
                     </div>
                     <div className="flex-1 overflow-hidden">
                       <p className="text-sm font-semibold text-white leading-tight">{friendship.profile.display_name}</p>
