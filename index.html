@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" style="background:#1e1f22">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -26,6 +26,15 @@
 </head>
 
   <body>
+    <script>
+      // Apply saved theme BEFORE React renders to prevent white flash
+      try {
+        var t = localStorage.getItem('cubbly-theme');
+        if (t && ['default','onyx','white','cubbly'].includes(t)) {
+          document.documentElement.setAttribute('data-theme', t);
+        }
+      } catch(e) {}
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
