@@ -26,11 +26,24 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
   const displayName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "User";
   const username = user?.user_metadata?.username || displayName.toLowerCase();
   const profileColor = defaultProfileColor;
+
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("profiles")
+      .select("avatar_url")
+      .eq("user_id", user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.avatar_url) setAvatarUrl(data.avatar_url);
+      });
+  }, [user]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -62,10 +75,14 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="relative flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold text-white hover:opacity-80 transition-opacity cursor-pointer"
-        style={{ backgroundColor: profileColor.bg }}
+        className="relative flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold text-white hover:opacity-80 transition-opacity cursor-pointer overflow-hidden"
+        style={{ backgroundColor: avatarUrl ? undefined : profileColor.bg }}
       >
-        {displayName.charAt(0).toUpperCase()}
+        {avatarUrl ? (
+          <img src={avatarUrl} alt={displayName} className="h-full w-full object-cover" />
+        ) : (
+          displayName.charAt(0).toUpperCase()
+        )}
         <div className="absolute -bottom-0.5 -right-0.5">
           <StatusIndicator status={currentStatus} size="md" borderColor="var(--app-bg-accent, #232428)" />
         </div>
@@ -77,13 +94,17 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
           <div className="h-[60px]" style={{ background: profileColor.banner }} />
 
           {/* Avatar */}
-          <div className="px-4 -mt-6">
-            <div
-              className="flex h-[52px] w-[52px] items-center justify-center rounded-full border-[4px] border-[#111214] text-lg font-bold text-white"
-              style={{ backgroundColor: profileColor.bg }}
-            >
-              {displayName.charAt(0).toUpperCase()}
-            </div>
+          <div className="px-4 -mt-6 relative z-10">
+            {avatarUrl ? (
+              <img src={avatarUrl} alt={displayName} className="h-[52px] w-[52px] rounded-full border-[4px] border-[#111214] object-cover" />
+            ) : (
+              <div
+                className="flex h-[52px] w-[52px] items-center justify-center rounded-full border-[4px] border-[#111214] text-lg font-bold text-white"
+                style={{ backgroundColor: profileColor.bg }}
+              >
+                {displayName.charAt(0).toUpperCase()}
+              </div>
+            )}
           </div>
 
           {/* Info */}

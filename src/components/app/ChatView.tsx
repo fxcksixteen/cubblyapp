@@ -157,7 +157,7 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
 
   // Build grouped messages with time dividers
   type ChatItem = 
-    | { type: "messages"; sender_id: string; sender_name: string; messages: Message[]; timestamp: number }
+    | { type: "messages"; sender_id: string; sender_name: string; sender_avatar_url?: string | null; messages: Message[]; timestamp: number }
     | { type: "divider"; label: string; timestamp: number }
     | { type: "call-event"; event: typeof conversationCallEvents[0]; timestamp: number };
 
@@ -174,7 +174,7 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
     if (last && last.type === "messages" && last.sender_id === msg.sender_id) {
       last.messages.push(msg);
     } else {
-      items.push({ type: "messages", sender_id: msg.sender_id, sender_name: msg.sender_name || "Unknown", messages: [msg], timestamp: new Date(msg.created_at).getTime() });
+      items.push({ type: "messages", sender_id: msg.sender_id, sender_name: msg.sender_name || "Unknown", sender_avatar_url: msg.sender_avatar_url, messages: [msg], timestamp: new Date(msg.created_at).getTime() });
     }
   }
 
@@ -244,13 +244,22 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
 
               return (
                 <div key={idx} className="mt-4 first:mt-0 flex gap-3 hover:bg-[#2e3035] rounded px-2 py-1 relative group">
-                  <div
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white cursor-pointer hover:opacity-80 transition-opacity"
-                    style={{ backgroundColor: getAvatarColor(item.sender_id) }}
-                    onClick={(e) => handleAvatarClick(e, item.sender_id, item.sender_name)}
-                  >
-                    {item.sender_name.charAt(0).toUpperCase()}
-                  </div>
+                  {item.sender_avatar_url ? (
+                    <img
+                      src={item.sender_avatar_url}
+                      alt={item.sender_name}
+                      className="h-10 w-10 shrink-0 rounded-full object-cover cursor-pointer hover:opacity-80 transition-opacity"
+                      onClick={(e) => handleAvatarClick(e, item.sender_id, item.sender_name)}
+                    />
+                  ) : (
+                    <div
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white cursor-pointer hover:opacity-80 transition-opacity"
+                      style={{ backgroundColor: getAvatarColor(item.sender_id) }}
+                      onClick={(e) => handleAvatarClick(e, item.sender_id, item.sender_name)}
+                    >
+                      {item.sender_name.charAt(0).toUpperCase()}
+                    </div>
+                  )}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-baseline gap-2">
                       <span

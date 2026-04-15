@@ -13,6 +13,7 @@ export interface Message {
   content: string;
   created_at: string;
   sender_name?: string;
+  sender_avatar_url?: string | null;
   status?: MessageStatus;
 }
 
@@ -52,7 +53,7 @@ export function useMessages(conversationId: string | null) {
       const senderIds = [...new Set(data.map((message) => message.sender_id))];
       const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
-        .select("user_id, display_name")
+        .select("user_id, display_name, avatar_url")
         .in("user_id", senderIds);
 
       if (profilesError) {
@@ -60,11 +61,13 @@ export function useMessages(conversationId: string | null) {
       }
 
       const nameMap = new Map((profiles || []).map((profile) => [profile.user_id, profile.display_name]));
+      const avatarMap = new Map((profiles || []).map((profile) => [profile.user_id, profile.avatar_url]));
 
       setMessages(
         data.map((message) => ({
           ...message,
           sender_name: getSenderName(message.sender_id, nameMap.get(message.sender_id)),
+          sender_avatar_url: avatarMap.get(message.sender_id) || null,
           status: "delivered" as MessageStatus,
         })),
       );
@@ -88,7 +91,7 @@ export function useMessages(conversationId: string | null) {
             const newMessage = payload.new as Message;
             const { data: profile, error: profileError } = await supabase
               .from("profiles")
-              .select("display_name")
+              .select("display_name, avatar_url")
               .eq("user_id", newMessage.sender_id)
               .maybeSingle();
 
@@ -109,6 +112,7 @@ export function useMessages(conversationId: string | null) {
                 updated[optimisticIndex] = {
                   ...newMessage,
                   sender_name: getSenderName(newMessage.sender_id, profile?.display_name),
+                  sender_avatar_url: profile?.avatar_url || null,
                   status: "delivered",
                 };
                 return updated;
@@ -131,6 +135,7 @@ export function useMessages(conversationId: string | null) {
                 {
                   ...newMessage,
                   sender_name: getSenderName(newMessage.sender_id, profile?.display_name),
+                  sender_avatar_url: profile?.avatar_url || null,
                   status: "delivered",
                 },
               ];
