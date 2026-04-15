@@ -1,78 +1,57 @@
 
+Diagnosis
 
-# Fix Live Updates, Calling, and Ctrl+R Refresh
+- Yes — I know the main issue.
+- This is not primarily a TURN problem. TURN is configured and `get-turn-credentials` is returning relay servers successfully.
+- The real break is in `src/contexts/VoiceContext.tsx`: early ICE candidates are being dropped before the callee has a peer connection, and candidates can also arrive before `remoteDescription` is set. The code catches those failures but never retries them.
+- The caller re-sends the offer on `ready`, but does not re-send the already gathered ICE candidates. That can make the UI look connected while audio never actually flows.
 
-## Summary
-Five categories of bugs, all with clear root causes in the code.
+Implementation plan
 
----
+1. Rebuild the WebRTC signaling flow in `src/contexts/VoiceContext.tsx`
+- Add an incoming ICE queue so candidates received before `pcRef.current` or before `pc.remoteDescription` are stored and flushed later.
+- Add an outgoing ICE buffer so the caller can re-send early candidates after the callee signals `ready`.
+- Flush queued candidates immediately after `setRemoteDescription()` on both caller and callee.
+- Only mark the call as truly connected from actual peer connection state, not just from receiving an answer.
 
-## 1. Fix Calling (Critical — Calls Never Reach Recipient)
+2. Make hangup instant and one-way
+- Extract a shared teardown function for local cleanup.
+- When a remote `hangup` arrives, tear down locally without broadcasting `hangup` back.
+- End streams, audio elements, refs, and channel state synchronously so the call disappears immediately for both people.
 
-**Root cause**: When User A starts a call, `startCall()` subscribes to `voice-call:{conversationId}` and sends an offer there. But User B is only listening on `voice-global:{userId}` for an `incoming-call` event. **The caller never broadcasts to the recipient's global channel**, so the recipient never joins the signaling channel and never receives the offer.
+3. Fix call avatar reliability
+- Pass avatar URLs through call signaling state instead of relying on extra profile fetches alone.
+- Use `incomingCall.callerAvatarUrl` directly in `src/components/app/VoiceCallOverlay.tsx`.
+- Add fallback behavior so the in-call panel still shows avatars even if profile fetch timing is late.
 
-**Fix** in `VoiceContext.tsx` → `startCall()`:
-- After subscribing to the conversation signaling channel and sending the offer, also broadcast to the **recipient's** global channel: `voice-global:{peerId}` with event `incoming-call` containing `{ targetId: peerId, conversationId, callerId: user.id, callerName }`.
-- The existing global channel listener (line 851-861) will then call `setupSignaling(conversationId)` on the recipient's side, which subscribes them to the same `voice-call:{conversationId}` channel.
+4. Tighten typing indicator reliability
+- In `src/components/app/ChatView.tsx`, make typing broadcast resilient to channel subscription timing.
+- If the input already has text when the typing channel becomes ready, send a fresh typing event.
+- Keep stop-typing cleanup on blur/send/conversation switch.
 
-**Additional fix**: The `startCall` sends the offer **before** the recipient has joined the channel. Need to add a brief delay or re-send the offer after the recipient joins. Best approach: after `setupSignaling`, wait for channel subscription confirmation, **then** send the offer. Also, in the global channel handler, after `setupSignaling`, the recipient should be ready to receive offers that come after.
+5. Verify the full web flow end to end
+- Test: caller starts call -> callee receives overlay -> accepts -> offer/answer/candidates all settle -> both hear each other.
+- Test: either side hangs up -> both UIs close immediately.
+- Test: incoming call avatar and active call avatar render for both users.
+- Test: typing indicator appears live in the same DM.
 
-**Race condition fix**: The caller should send the offer with a small delay (e.g., 1-2 seconds) or the recipient's `setupSignaling` should request the offer by sending a `ready` signal, to which the caller responds by re-sending the offer.
+Files to change
 
----
+- `src/contexts/VoiceContext.tsx`
+- `src/components/app/VoiceCallOverlay.tsx`
+- `src/components/app/ChatView.tsx`
+- Possibly `src/pages/AppLayout.tsx` if I thread avatar data into `startCall(...)`
 
-## 2. Live Friend List Updates
+Technical details
 
-**Root cause**: `useFriends.ts` fetches friendships once on mount and on manual actions, but has **no Supabase Realtime subscription**. When the other user accepts a request, your app never knows.
+- Root bug: `addIceCandidate()` should not be treated as fire-and-forget; it must wait until the peer connection exists and the remote description is ready.
+- Current false-positive UI state: receiving an answer sets the call to connected too early.
+- No backend schema change is required for the core audio fix.
+- TURN is already present, so the next fix should be entirely in the client WebRTC signaling logic.
 
-**Fix** in `useFriends.ts`:
-- Add a `useEffect` with a Supabase Realtime channel subscribing to `postgres_changes` on the `friendships` table (filtered by user's ID via `or` filter or unfiltered with client-side check).
-- On any INSERT/UPDATE/DELETE event, call `fetchFriends()` to refresh.
-- Clean up channel on unmount.
+Expected result after implementation
 
----
-
-## 3. Live Profile/Status/Avatar Updates
-
-**Root cause**: `useConversations.ts` already has realtime on `messages` and `conversation_participants`, but **not on `profiles`**. When someone changes their avatar or status, it's stale until restart.
-
-**Fix** in `useConversations.ts`:
-- Add a realtime subscription on `profiles` table changes to the existing channel.
-- On profile UPDATE, call `fetchRef.current()` to refresh conversations with updated profile data.
-
----
-
-## 4. Conversation Ordering (Messages Pushing to Top)
-
-**Current state**: `useConversations.ts` already subscribes to `messages` changes and calls `fetchConversations()`. This *should* re-sort. But the issue is that `fetchConversations` does N+1 queries (one per conversation for last message), which is slow and may cause visible lag.
-
-**Fix**: The realtime handler already triggers a refetch. Verify it works — the sorting logic at line 117-121 sorts by `lastMessageAt` descending, which is correct. The issue may be that the refetch is slow. Optimize by updating the specific conversation's `lastMessage` and `lastMessageAt` directly in the realtime handler instead of doing a full refetch for every message.
-
----
-
-## 5. Ctrl+R Hard Refresh
-
-**Fix**: In the Electron `main.cjs`, register a global shortcut or handle the keyboard event to reload the window. In the web app, Ctrl+R already works natively in browsers.
-
-For Electron, add in `main.cjs`:
-```javascript
-mainWindow.webContents.on('before-input-event', (event, input) => {
-  if (input.control && input.key.toLowerCase() === 'r') {
-    mainWindow.reload();
-  }
-});
-```
-
-Or simply don't disable it — Electron by default allows Ctrl+R if dev tools are enabled. The real fix: ensure `mainWindow` doesn't suppress keyboard shortcuts. Check if there's a menu setup blocking it.
-
----
-
-## Files to Modify
-
-| File | Changes |
-|------|---------|
-| `src/contexts/VoiceContext.tsx` | Send `incoming-call` to recipient's global channel in `startCall()`. Add offer re-send on `ready` signal. |
-| `src/hooks/useFriends.ts` | Add Supabase Realtime subscription on `friendships` table |
-| `src/hooks/useConversations.ts` | Add realtime subscription on `profiles` table. Optimize message-triggered updates. |
-| `electron/main.cjs` | Ensure Ctrl+R reload works |
-
+- Web calls should finally carry audio both directions.
+- Hanging up from either side should end the call immediately.
+- Call avatars should show consistently.
+- Typing indicator should be more dependable.
