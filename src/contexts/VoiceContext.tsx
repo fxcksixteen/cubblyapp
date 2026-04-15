@@ -181,7 +181,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       prevCallStateRef.current = null;
       setCallEvents(prev => {
         const last = [...prev];
-        const ongoingIdx = last.findLastIndex(e => e.state === "ongoing");
+        let ongoingIdx = -1;
+        for (let i = last.length - 1; i >= 0; i--) { if (last[i].state === "ongoing") { ongoingIdx = i; break; } }
         if (ongoingIdx >= 0) {
           last[ongoingIdx] = { ...last[ongoingIdx], state: "ended", endedAt: new Date().toISOString() };
         }
