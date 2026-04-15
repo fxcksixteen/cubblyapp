@@ -22,6 +22,10 @@ const formatDuration = (ms: number) => {
   return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 };
 
+/** Speaking ring box-shadow — much more visible */
+const speakingRingShadow = (level: number) =>
+  `0 0 0 ${6 + level * 0.25}px rgba(59, 165, 92, ${0.7 + level * 0.003}), 0 0 ${16 + level * 0.6}px rgba(59, 165, 92, ${0.4 + level * 0.006})`;
+
 /** Discord-style call panel that renders inside the chat area */
 export const CallPanel = ({ conversationId, recipientName, recipientUserId }: {
   conversationId: string;
@@ -71,6 +75,10 @@ export const CallPanel = ({ conversationId, recipientName, recipientUserId }: {
   const isWaiting = activeCall.state === "calling" || activeCall.state === "ringing";
   const isRinging = activeCall.state === "ringing";
   const hasScreenShare = isScreenSharing || !!remoteScreenStream;
+
+  // Determine which badge to show: deafen takes priority over mute
+  const showDeafenBadge = activeCall.isDeafened;
+  const showMuteBadge = activeCall.isMuted && !activeCall.isDeafened;
 
   return (
     <div className="mx-4 mt-4 rounded-2xl overflow-hidden border" style={{ backgroundColor: "var(--app-bg-tertiary)", borderColor: "var(--app-border)" }}>
@@ -131,13 +139,20 @@ export const CallPanel = ({ conversationId, recipientName, recipientUserId }: {
               style={{
                 backgroundColor: callerColor.bg,
                 boxShadow: activeCall.state === "connected" && !activeCall.isMuted && audioLevel > 5
-                  ? `0 0 0 ${4 + audioLevel * 0.12}px rgba(59, 165, 92, ${0.5 + audioLevel * 0.005}), 0 0 ${10 + audioLevel * 0.4}px rgba(59, 165, 92, ${0.2 + audioLevel * 0.004})`
+                  ? speakingRingShadow(audioLevel)
                   : "0 0 0 0px transparent",
               }}
             >
               {displayName.charAt(0).toUpperCase()}
             </div>
-            {activeCall.isMuted && (
+            {/* Deafen badge (priority) */}
+            {showDeafenBadge && (
+              <div className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#ed4245] border-2" style={{ borderColor: "var(--app-bg-tertiary)" }}>
+                <img src={headphoneDeafenIcon} alt="Deafened" className="h-2.5 w-2.5" style={{ filter: "brightness(0) invert(1)" }} />
+              </div>
+            )}
+            {/* Mute badge (only when not deafened) */}
+            {showMuteBadge && (
               <div className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#ed4245] border-2" style={{ borderColor: "var(--app-bg-tertiary)" }}>
                 <img src={micMuteIcon} alt="Muted" className="h-2.5 w-2.5" style={{ filter: "brightness(0) invert(1)" }} />
               </div>
@@ -155,7 +170,7 @@ export const CallPanel = ({ conversationId, recipientName, recipientUserId }: {
                 backgroundColor: recipientColor.bg,
                 filter: isWaiting ? "grayscale(0.3)" : "none",
                 boxShadow: !isWaiting && activeCall.state === "connected" && remoteAudioLevel > 5
-                  ? `0 0 0 ${4 + remoteAudioLevel * 0.12}px rgba(59, 165, 92, ${0.5 + remoteAudioLevel * 0.005}), 0 0 ${10 + remoteAudioLevel * 0.4}px rgba(59, 165, 92, ${0.2 + remoteAudioLevel * 0.004})`
+                  ? speakingRingShadow(remoteAudioLevel)
                   : "0 0 0 0px transparent",
               }}
             >

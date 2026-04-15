@@ -2,8 +2,8 @@ import { useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { Eye, EyeOff, ChevronDown } from "lucide-react";
-import { getProfileColor } from "@/lib/profileColors";
+import { Eye, EyeOff } from "lucide-react";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 
 const months = [
   "January", "February", "March", "April", "May", "June",
@@ -63,9 +63,6 @@ const Register = () => {
     if (error) setError(error.message);
     setLoading(false);
   };
-
-  const selectClass =
-    "w-full appearance-none rounded-xl border border-border bg-background px-3 py-2.5 pr-8 text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary font-body cursor-pointer";
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4 font-body">
@@ -174,45 +171,44 @@ const Register = () => {
                 Date of Birth
               </label>
               <div className="grid grid-cols-3 gap-2">
-                <div className="relative">
-                  <select
-                    value={dobMonth}
-                    onChange={(e) => setDobMonth(e.target.value)}
-                    className={selectClass}
-                  >
-                    <option value="" disabled>Month</option>
+                <Select value={dobMonth} onValueChange={setDobMonth}>
+                  <SelectTrigger className="w-full rounded-xl border border-border bg-background text-sm text-foreground font-body">
+                    <SelectValue placeholder="Month" />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-xl border border-border bg-card shadow-xl max-h-[240px]">
                     {months.map((m, i) => (
-                      <option key={m} value={String(i + 1)}>{m}</option>
+                      <SelectItem key={m} value={String(i + 1)} className="rounded-lg text-sm cursor-pointer">
+                        {m}
+                      </SelectItem>
                     ))}
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                </div>
-                <div className="relative">
-                  <select
-                    value={dobDay}
-                    onChange={(e) => setDobDay(e.target.value)}
-                    className={selectClass}
-                  >
-                    <option value="" disabled>Day</option>
+                  </SelectContent>
+                </Select>
+
+                <Select value={dobDay} onValueChange={setDobDay}>
+                  <SelectTrigger className="w-full rounded-xl border border-border bg-background text-sm text-foreground font-body">
+                    <SelectValue placeholder="Day" />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-xl border border-border bg-card shadow-xl max-h-[240px]">
                     {days.map((d) => (
-                      <option key={d} value={String(d)}>{d}</option>
+                      <SelectItem key={d} value={String(d)} className="rounded-lg text-sm cursor-pointer">
+                        {d}
+                      </SelectItem>
                     ))}
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                </div>
-                <div className="relative">
-                  <select
-                    value={dobYear}
-                    onChange={(e) => setDobYear(e.target.value)}
-                    className={selectClass}
-                  >
-                    <option value="" disabled>Year</option>
+                  </SelectContent>
+                </Select>
+
+                <Select value={dobYear} onValueChange={setDobYear}>
+                  <SelectTrigger className="w-full rounded-xl border border-border bg-background text-sm text-foreground font-body">
+                    <SelectValue placeholder="Year" />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-xl border border-border bg-card shadow-xl max-h-[240px]">
                     {years.map((y) => (
-                      <option key={y} value={String(y)}>{y}</option>
+                      <SelectItem key={y} value={String(y)} className="rounded-lg text-sm cursor-pointer">
+                        {y}
+                      </SelectItem>
                     ))}
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                </div>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 

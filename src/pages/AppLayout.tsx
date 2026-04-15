@@ -18,6 +18,7 @@ import FriendsView from "@/components/app/FriendsView";
 import ChatView from "@/components/app/ChatView";
 import ShopView from "@/components/app/ShopView";
 import VoiceCallOverlay from "@/components/app/VoiceCallOverlay";
+import TitleBar from "@/components/app/TitleBar";
 import friendsIcon from "@/assets/icons/friends.svg";
 
 type FriendTab = "online" | "all" | "pending" | "blocked" | "add";
@@ -31,6 +32,8 @@ const statusColors: Record<string, string> = {
 };
 
 const BOT_USER_ID = "00000000-0000-0000-0000-000000000001";
+
+const isElectron = typeof window !== "undefined" && !!(window as any).electronAPI;
 
 const AppLayout = () => {
   const navigate = useNavigate();
@@ -193,99 +196,104 @@ const AppLayout = () => {
   const participantColor = activeParticipant ? getProfileColor(activeParticipant.user_id) : null;
 
   return (
-    <div className="app-themed flex h-screen w-full overflow-hidden font-body" style={{ backgroundColor: "var(--app-bg-primary)", color: "var(--app-text-primary)" }}>
-      <ServerSidebar isActive onHomeClick={() => {}} />
+    <div className="app-themed flex flex-col h-screen w-full overflow-hidden font-body" style={{ backgroundColor: "var(--app-bg-primary)", color: "var(--app-text-primary)" }}>
+      {/* Custom titlebar for Electron */}
+      {isElectron && <TitleBar />}
 
-      <DMSidebar
-        conversations={visibleConversations}
-        activeView={activeView}
-        setActiveView={(view) => {
-          if (view.startsWith("dm:")) {
-            const convId = view.replace("dm:", "");
-            navigate(`/@me/chat/${convId}`, { replace: true });
-          } else if (view === "shop") {
-            navigate("/@me/shop", { replace: true });
-          } else {
-            navigate(`/@me/${friendTab}`, { replace: true });
-          }
-        }}
-        onCloseConversation={handleCloseConversation}
-        onOpenDM={handleOpenDM}
-      />
+      <div className="flex flex-1 min-h-0">
+        <ServerSidebar isActive onHomeClick={() => {}} />
 
-      <div className="flex flex-1 flex-col">
-        <div className="flex h-14 items-center justify-between border-b px-5 shadow-sm" style={{ backgroundColor: "var(--app-bg-primary)", borderColor: "var(--app-border)" }}>
-          {isDM && activeConvId ? (
-            <>
-              <div className="flex items-center gap-3">
-                <div className="relative">
-                  {activeParticipant?.avatar_url ? (
-                    <img src={activeParticipant.avatar_url} alt={activeParticipant.display_name} className="h-8 w-8 rounded-full object-cover" />
-                  ) : (
-                    <div
-                      className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold text-white"
-                      style={{ backgroundColor: participantColor?.bg || "#5865f2" }}
-                    >
-                      {(activeParticipant?.display_name || "User").charAt(0).toUpperCase()}
+        <DMSidebar
+          conversations={visibleConversations}
+          activeView={activeView}
+          setActiveView={(view) => {
+            if (view.startsWith("dm:")) {
+              const convId = view.replace("dm:", "");
+              navigate(`/@me/chat/${convId}`, { replace: true });
+            } else if (view === "shop") {
+              navigate("/@me/shop", { replace: true });
+            } else {
+              navigate(`/@me/${friendTab}`, { replace: true });
+            }
+          }}
+          onCloseConversation={handleCloseConversation}
+          onOpenDM={handleOpenDM}
+        />
+
+        <div className="flex flex-1 flex-col">
+          <div className="flex h-14 items-center justify-between border-b px-5 shadow-sm" style={{ backgroundColor: "var(--app-bg-primary)", borderColor: "var(--app-border)" }}>
+            {isDM && activeConvId ? (
+              <>
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    {activeParticipant?.avatar_url ? (
+                      <img src={activeParticipant.avatar_url} alt={activeParticipant.display_name} className="h-8 w-8 rounded-full object-cover" />
+                    ) : (
+                      <div
+                        className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold text-white"
+                        style={{ backgroundColor: participantColor?.bg || "#5865f2" }}
+                      >
+                        {(activeParticipant?.display_name || "User").charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <div className="absolute -bottom-0.5 -right-0.5">
+                      <StatusIndicator status={activeParticipant?.status || "offline"} size="sm" borderColor="var(--app-bg-primary)" />
                     </div>
-                  )}
-                  <div className="absolute -bottom-0.5 -right-0.5">
-                    <StatusIndicator status={activeParticipant?.status || "offline"} size="sm" borderColor="var(--app-bg-primary)" />
                   </div>
+                  <span className="text-[15px] font-semibold" style={{ color: "var(--app-text-primary)" }}>
+                    {activeParticipant?.display_name || "Conversation"}
+                  </span>
                 </div>
-                <span className="text-[15px] font-semibold" style={{ color: "var(--app-text-primary)" }}>
-                  {activeParticipant?.display_name || "Conversation"}
-                </span>
-              </div>
-              <div className="flex items-center gap-2" style={{ color: "var(--app-text-secondary)" }}>
-                <button
-                  onClick={handleVoiceCall}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg transition-all"
-                  style={{ }}
-                  onMouseEnter={e => { e.currentTarget.style.backgroundColor = "var(--app-hover)"; }}
-                  onMouseLeave={e => { e.currentTarget.style.backgroundColor = ""; }}
-                  title={isInCall ? "End Voice Call" : "Start Voice Call"}
-                >
-                  <img
-                    src={isInCall ? callEndIcon : callIcon}
-                    alt={isInCall ? "End Call" : "Call"}
-                    className="h-5 w-5"
-                    style={{ filter: isInCall
-                      ? "brightness(0) saturate(100%) invert(29%) sepia(98%) saturate(2052%) hue-rotate(337deg) brightness(95%) contrast(92%)"
-                      : "brightness(0) invert(0.6)"
-                    }}
-                  />
-                </button>
-                <button
-                  className="flex h-8 w-8 items-center justify-center rounded-lg transition-all"
-                  onMouseEnter={e => { e.currentTarget.style.backgroundColor = "var(--app-hover)"; }}
-                  onMouseLeave={e => { e.currentTarget.style.backgroundColor = ""; }}
-                  title="Start Video Call"
-                >
-                  <img src={videoIcon} alt="Video" className="h-5 w-5" style={{ filter: "brightness(0) invert(0.6)" }} />
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="flex items-center gap-4">{renderHeader()}</div>
-              <div className="flex items-center gap-3" style={{ color: "var(--app-text-secondary)" }}>
-                {!activeNowOpen && !isDM && !isShop && (
+                <div className="flex items-center gap-2" style={{ color: "var(--app-text-secondary)" }}>
                   <button
-                    onClick={() => setActiveNowOpen(true)}
-                    className="transition-opacity duration-200 animate-fade-in"
-                    title="Show Active Now"
+                    onClick={handleVoiceCall}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg transition-all"
+                    style={{ }}
+                    onMouseEnter={e => { e.currentTarget.style.backgroundColor = "var(--app-hover)"; }}
+                    onMouseLeave={e => { e.currentTarget.style.backgroundColor = ""; }}
+                    title={isInCall ? "End Voice Call" : "Start Voice Call"}
                   >
-                    <img src={activityIcon} alt="Activity" className="h-5 w-5 invert opacity-60 hover:opacity-100 transition-opacity cursor-pointer" />
+                    <img
+                      src={isInCall ? callEndIcon : callIcon}
+                      alt={isInCall ? "End Call" : "Call"}
+                      className="h-5 w-5"
+                      style={{ filter: isInCall
+                        ? "brightness(0) saturate(100%) invert(29%) sepia(98%) saturate(2052%) hue-rotate(337deg) brightness(95%) contrast(92%)"
+                        : "brightness(0) invert(0.6)"
+                      }}
+                    />
                   </button>
-                )}
-                <img src={messagesInboxIcon} alt="Inbox" className="h-5 w-5 cursor-pointer invert opacity-60 hover:opacity-100 transition-opacity" />
-              </div>
-            </>
-          )}
-        </div>
+                  <button
+                    className="flex h-8 w-8 items-center justify-center rounded-lg transition-all"
+                    onMouseEnter={e => { e.currentTarget.style.backgroundColor = "var(--app-hover)"; }}
+                    onMouseLeave={e => { e.currentTarget.style.backgroundColor = ""; }}
+                    title="Start Video Call"
+                  >
+                    <img src={videoIcon} alt="Video" className="h-5 w-5" style={{ filter: "brightness(0) invert(0.6)" }} />
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-4">{renderHeader()}</div>
+                <div className="flex items-center gap-3" style={{ color: "var(--app-text-secondary)" }}>
+                  {!activeNowOpen && !isDM && !isShop && (
+                    <button
+                      onClick={() => setActiveNowOpen(true)}
+                      className="transition-opacity duration-200 animate-fade-in"
+                      title="Show Active Now"
+                    >
+                      <img src={activityIcon} alt="Activity" className="h-5 w-5 invert opacity-60 hover:opacity-100 transition-opacity cursor-pointer" />
+                    </button>
+                  )}
+                  <img src={messagesInboxIcon} alt="Inbox" className="h-5 w-5 cursor-pointer invert opacity-60 hover:opacity-100 transition-opacity" />
+                </div>
+              </>
+            )}
+          </div>
 
-        {renderContent()}
+          {renderContent()}
+        </div>
       </div>
 
       <VoiceCallOverlay />
