@@ -935,16 +935,21 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     if (!incomingCall || !user) return;
 
     const acceptedCall = incomingCall;
+    console.log("[Voice] ✅ Accepting call from", acceptedCall.callerName, "hasOffer:", !!acceptedCall.offer);
 
     try {
       const channel = await setupSignaling(acceptedCall.conversationId);
       const stream = await getUserMedia();
+      console.log("[Voice] ✅ Callee got media stream, tracks:", stream.getTracks().map(t => `${t.kind}:${t.label}:enabled=${t.enabled}`));
       setLocalStream(stream);
       localStreamRef.current = stream;
       startAudioLevelMonitor(stream);
 
       const pc = createPeerConnection();
-      stream.getTracks().forEach(track => pc.addTrack(track, stream));
+      stream.getTracks().forEach(track => {
+        pc.addTrack(track, stream);
+        console.log("[Voice] ➕ Callee added track:", track.kind, track.label);
+      });
 
       outgoingCandidateBuffer.current = [];
       incomingCandidateQueue.current = [];
@@ -952,6 +957,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
       pc.onicecandidate = (event) => {
         if (event.candidate) {
+          console.log("[Voice] 🧊 Callee ICE candidate:", event.candidate.type, event.candidate.protocol);
           channel.send({
             type: "broadcast",
             event: "voice-signal",
@@ -973,6 +979,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       setIncomingCall(null);
 
       if (acceptedCall.offer) {
+        console.log("[Voice] 📥 Callee has offer, setting remote description and creating answer...");
         remoteDescriptionSet.current = true;
         await pc.setRemoteDescription(new RTCSessionDescription(acceptedCall.offer));
         await flushQueuedIceCandidates(pc);
@@ -988,10 +995,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           event: "voice-signal",
           payload: { type: "answer", sdp: answer, senderId: user.id },
         });
+        console.log("[Voice] 📡 Answer sent to caller");
 
         acceptedIncomingCallRef.current = null;
         setActiveCall(prev => prev ? { ...prev, state: "calling" } : prev);
       } else {
+        console.log("[Voice] 📡 No offer yet, sending ready-for-offer to caller...");
         channel.send({
           type: "broadcast",
           event: "voice-signal",
