@@ -58,7 +58,7 @@ const shouldShowTimeDivider = (prevDate: string, currDate: string): boolean => {
 const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewProps) => {
   const { user } = useAuth();
   const { activeCall, callEvents } = useVoice();
-  const { messages, loading, sendMessage, deleteMessage } = useMessages(conversationId);
+  const { messages, loading, sendMessage } = useMessages(conversationId);
   const [input, setInput] = useState("");
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
