@@ -1,104 +1,78 @@
 
 
-# Fix Voice System, Desktop UI, and Call Indicators
+# Fix Live Updates, Calling, and Ctrl+R Refresh
 
 ## Summary
-Seven distinct issues across the voice pipeline, desktop app chrome, UI branding, and call overlay. All root causes identified in the codebase.
+Five categories of bugs, all with clear root causes in the code.
 
 ---
 
-## 1. Fix "underwater" mic quality + non-functional voice settings
+## 1. Fix Calling (Critical — Calls Never Reach Recipient)
 
-**Root cause**: The mic test in VoiceVideoSettings creates a raw `getUserMedia` stream with minimal constraints, then pipes it directly through `AudioContext` → `gain` → `destination`. Changing echo cancellation, noise suppression, or auto gain control in settings never calls `applyConstraints()` on the active stream, so toggling them does nothing. During actual calls, settings are baked in at `getUserMedia` time but never updated mid-call either.
+**Root cause**: When User A starts a call, `startCall()` subscribes to `voice-call:{conversationId}` and sends an offer there. But User B is only listening on `voice-global:{userId}` for an `incoming-call` event. **The caller never broadcasts to the recipient's global channel**, so the recipient never joins the signaling channel and never receives the offer.
 
-**Fix** (in `VoiceVideoSettings.tsx` and `VoiceContext.tsx`):
-- Mic test: pass `echoCancellation`, `noiseSuppression`, `autoGainControl` from current settings into the `getUserMedia` constraints
-- When settings change during an active call or mic test, call `track.applyConstraints()` on the live audio track to apply changes in real-time
-- Remove the gain node routing to `ctx.destination` in the mic test (this causes the "underwater" echo feedback loop) — instead use a separate analyser-only path for the level meter, and optionally play back through an `<audio>` element with proper constraints
-- Add a `useEffect` in VoiceContext that watches `echoCancellation`, `noiseSuppression`, `autoGainControl` and calls `applyConstraints` on `localStream` audio tracks
+**Fix** in `VoiceContext.tsx` → `startCall()`:
+- After subscribing to the conversation signaling channel and sending the offer, also broadcast to the **recipient's** global channel: `voice-global:{peerId}` with event `incoming-call` containing `{ targetId: peerId, conversationId, callerId: user.id, callerName }`.
+- The existing global channel listener (line 851-861) will then call `setupSignaling(conversationId)` on the recipient's side, which subscribes them to the same `voice-call:{conversationId}` channel.
 
-**Sensitivity threshold fix**: Currently the threshold is display-only. Add logic in the audio level monitor that actually mutes the outgoing track when `audioLevel < sensitivityThreshold` (when `autoSensitivity` is off).
+**Additional fix**: The `startCall` sends the offer **before** the recipient has joined the channel. Need to add a brief delay or re-send the offer after the recipient joins. Best approach: after `setupSignaling`, wait for channel subscription confirmation, **then** send the offer. Also, in the global channel handler, after `setupSignaling`, the recipient should be ready to receive offers that come after.
+
+**Race condition fix**: The caller should send the offer with a small delay (e.g., 1-2 seconds) or the recipient's `setupSignaling` should request the offer by sending a `ready` signal, to which the caller responds by re-sending the offer.
 
 ---
 
-## 2. Stronger green speaking ring on profile pictures
+## 2. Live Friend List Updates
 
-**Current formula** (VoiceCallOverlay lines 133-135):
+**Root cause**: `useFriends.ts` fetches friendships once on mount and on manual actions, but has **no Supabase Realtime subscription**. When the other user accepts a request, your app never knows.
+
+**Fix** in `useFriends.ts`:
+- Add a `useEffect` with a Supabase Realtime channel subscribing to `postgres_changes` on the `friendships` table (filtered by user's ID via `or` filter or unfiltered with client-side check).
+- On any INSERT/UPDATE/DELETE event, call `fetchFriends()` to refresh.
+- Clean up channel on unmount.
+
+---
+
+## 3. Live Profile/Status/Avatar Updates
+
+**Root cause**: `useConversations.ts` already has realtime on `messages` and `conversation_participants`, but **not on `profiles`**. When someone changes their avatar or status, it's stale until restart.
+
+**Fix** in `useConversations.ts`:
+- Add a realtime subscription on `profiles` table changes to the existing channel.
+- On profile UPDATE, call `fetchRef.current()` to refresh conversations with updated profile data.
+
+---
+
+## 4. Conversation Ordering (Messages Pushing to Top)
+
+**Current state**: `useConversations.ts` already subscribes to `messages` changes and calls `fetchConversations()`. This *should* re-sort. But the issue is that `fetchConversations` does N+1 queries (one per conversation for last message), which is slow and may cause visible lag.
+
+**Fix**: The realtime handler already triggers a refetch. Verify it works — the sorting logic at line 117-121 sorts by `lastMessageAt` descending, which is correct. The issue may be that the refetch is slow. Optimize by updating the specific conversation's `lastMessage` and `lastMessageAt` directly in the realtime handler instead of doing a full refetch for every message.
+
+---
+
+## 5. Ctrl+R Hard Refresh
+
+**Fix**: In the Electron `main.cjs`, register a global shortcut or handle the keyboard event to reload the window. In the web app, Ctrl+R already works natively in browsers.
+
+For Electron, add in `main.cjs`:
+```javascript
+mainWindow.webContents.on('before-input-event', (event, input) => {
+  if (input.control && input.key.toLowerCase() === 'r') {
+    mainWindow.reload();
+  }
+});
 ```
-boxShadow: 0 0 0 ${4 + level*0.12}px rgba(59,165,92, 0.5+level*0.005)
-```
-At max level (100), this gives ~16px spread at 0.55 opacity — very subtle.
 
-**New formula**: Much more visible ring:
-```
-boxShadow: 0 0 0 ${6 + level*0.25}px rgba(59,165,92, ${0.7 + level*0.003}),
-           0 0 ${16 + level*0.6}px rgba(59,165,92, ${0.4 + level*0.006})
-```
-Apply to both caller and recipient avatar `boxShadow` in `VoiceCallOverlay.tsx`.
+Or simply don't disable it — Electron by default allows Ctrl+R if dev tools are enabled. The real fix: ensure `mainWindow` doesn't suppress keyboard shortcuts. Check if there's a menu setup blocking it.
 
 ---
 
-## 3. Deafen indicator in call overlay + priority over mute
-
-**Current bug**: Line 140-144 in VoiceCallOverlay only renders a muted badge. No deafen badge exists.
-
-**Fix**:
-- Add deafen badge rendering (headphone-deafen icon in red circle)
-- Show deafen badge when `isDeafened` is true, regardless of `isMuted`
-- Only show mute badge when `isMuted && !isDeafened` (deafen takes priority)
-- In `toggleDeafen` (VoiceContext line 755): when deafening, also mute the mic (`localStream` audio tracks `enabled = false`); when undeafening, restore mic to previous mute state (need to track pre-deafen mute state)
-
----
-
-## 4. Custom branded dropdowns (Register DOB + Voice device selectors)
-
-**Approach**: Replace all native `<select>` elements with the existing Radix `Select` component from `src/components/ui/select.tsx`, styled to match the app's dark theme.
-
-**Files to change**:
-- `src/pages/Register.tsx`: Replace 3 native `<select>` elements (month, day, year) with themed `Select/SelectTrigger/SelectContent/SelectItem`
-- `src/components/app/settings/VoiceVideoSettings.tsx`: Replace 3 native `<select>` elements (server region, input device, output device) with themed Select components
-- Style the Select components with app theme CSS variables for backgrounds, borders, and text colors
-
----
-
-## 5. Custom Windows desktop titlebar
-
-**Current**: `electron/main.cjs` uses default OS frame (`frame` defaults to `true`).
-
-**Fix**:
-- Set `frame: false` and `titleBarStyle: 'hidden'` in `BrowserWindow` options
-- Add a `TitleBar.tsx` React component rendered at the top of `AppLayout.tsx` (only when running in Electron, detected via `navigator.userAgent` or a global flag)
-- The titlebar includes: app icon, "Cubbly" text, drag region (`-webkit-app-region: drag`), and minimize/maximize/close buttons (`-webkit-app-region: no-drag`)
-- Style using `--app-*` CSS variables so it adapts to all themes (default, onyx, white, cubbly)
-- Add `preload.cjs` script to expose `window.electronAPI` with `minimize()`, `maximize()`, `close()` via `ipcRenderer`
-- Add IPC handlers in `main.cjs` for these window control actions
-
----
-
-## 6. Fix screen sharing in desktop Electron app
-
-**Root cause**: Electron doesn't support `navigator.mediaDevices.getDisplayMedia()` by default the same way browsers do. In Electron, you need to use `desktopCapturer` API to enumerate sources, then pass the selected source ID as a `chromeMediaSourceId` constraint.
-
-**Fix**:
-- In `electron/main.cjs`: Add `webPreferences.contextIsolation: true` with a preload script
-- Create `electron/preload.cjs`: Expose `desktopCapturer.getSources()` via `contextBridge`
-- In `VoiceContext.tsx` `startScreenShare`: Detect Electron environment; if in Electron, call `window.electronAPI.getDesktopSources()` to get available screens/windows, then use `getUserMedia` with `chromeMediaSourceId` constraint instead of `getDisplayMedia`
-- The existing `ScreenSharePicker.tsx` UI already lets the user pick screen/window/tab — wire it to actually enumerate Electron sources and show them
-- Include `audio: true` via `chromeMediaSourceId` for system audio capture
-
----
-
-## 7. Files to modify
+## Files to Modify
 
 | File | Changes |
 |------|---------|
-| `src/contexts/VoiceContext.tsx` | applyConstraints on settings change, sensitivity gating, deafen=mute+deafen logic, Electron screen share path |
-| `src/components/app/settings/VoiceVideoSettings.tsx` | Fix mic test constraints, replace native selects with Radix Select |
-| `src/components/app/VoiceCallOverlay.tsx` | Stronger speaking ring, deafen badge with priority over mute |
-| `src/pages/Register.tsx` | Replace native selects with Radix Select |
-| `electron/main.cjs` | frame:false, preload script, IPC handlers, desktopCapturer setup |
-| `electron/preload.cjs` | New file — contextBridge for window controls + desktopCapturer |
-| `src/components/app/TitleBar.tsx` | New file — custom Windows titlebar component |
-| `src/pages/AppLayout.tsx` | Render TitleBar when in Electron |
-| `src/components/app/ScreenSharePicker.tsx` | Support Electron source enumeration |
+| `src/contexts/VoiceContext.tsx` | Send `incoming-call` to recipient's global channel in `startCall()`. Add offer re-send on `ready` signal. |
+| `src/hooks/useFriends.ts` | Add Supabase Realtime subscription on `friendships` table |
+| `src/hooks/useConversations.ts` | Add realtime subscription on `profiles` table. Optimize message-triggered updates. |
+| `electron/main.cjs` | Ensure Ctrl+R reload works |
 
