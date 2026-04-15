@@ -12,6 +12,8 @@ import MessageContextMenu from "./chat/MessageContextMenu";
 import UserProfileCard from "./chat/UserProfileCard";
 import sendIcon from "@/assets/icons/send.svg";
 import folderFileIcon from "@/assets/icons/folder-file.svg";
+import gifIcon from "@/assets/icons/gif.svg";
+import GifPicker from "./GifPicker";
 
 const BOT_USER_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -64,6 +66,7 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [botTyping, setBotTyping] = useState(false);
+  const [gifPickerOpen, setGifPickerOpen] = useState(false);
   const [profileCard, setProfileCard] = useState<{ userId: string; name: string; x: number; y: number } | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -119,6 +122,11 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
     }
 
     setUploading(false);
+  };
+
+  const handleGifSelect = async (gifUrl: string) => {
+    if (isBotConversation) setBotTyping(true);
+    await sendMessage(gifUrl);
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -291,9 +299,13 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
                               />
                             </div>
                             {text && (
-                              <p className={`text-[15px] leading-relaxed ${msg.status === "sending" ? "text-[#949ba4]/50" : "text-[#dbdee1]"}`}>
-                                {text}
-                              </p>
+                              /^https?:\/\/.*\.(gif|giphy)/i.test(text) ? (
+                                <img src={text} alt="GIF" className="max-h-[200px] rounded-lg mt-1" loading="lazy" />
+                              ) : (
+                                <p className={`text-[15px] leading-relaxed ${msg.status === "sending" ? "text-[#949ba4]/50" : "text-[#dbdee1]"}`}>
+                                  {text}
+                                </p>
+                              )
                             )}
                             {attachments.map((att, ai) => (
                               <a
@@ -388,6 +400,20 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
             placeholder={`Message @${recipientName}`}
             className="flex-1 bg-transparent text-sm text-[#dbdee1] outline-none placeholder:text-[#6d6f78]"
           />
+
+          <div className="relative">
+            <button
+              onClick={() => setGifPickerOpen(!gifPickerOpen)}
+              className="text-[#b5bac1] hover:text-[#dbdee1] transition-opacity"
+            >
+              <img src={gifIcon} alt="GIF" className="h-6 w-6 invert opacity-60 hover:opacity-100 transition-opacity" />
+            </button>
+            <GifPicker
+              isOpen={gifPickerOpen}
+              onClose={() => setGifPickerOpen(false)}
+              onSelect={handleGifSelect}
+            />
+          </div>
 
           <button
             onClick={handleSend}

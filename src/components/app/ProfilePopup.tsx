@@ -75,15 +75,15 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="relative flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold text-white hover:opacity-80 transition-opacity cursor-pointer overflow-hidden"
+        className="relative flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold text-white hover:opacity-80 transition-opacity cursor-pointer"
         style={{ backgroundColor: avatarUrl ? undefined : profileColor.bg }}
       >
         {avatarUrl ? (
-          <img src={avatarUrl} alt={displayName} className="h-full w-full object-cover" />
+          <img src={avatarUrl} alt={displayName} className="h-full w-full rounded-full object-cover" />
         ) : (
           displayName.charAt(0).toUpperCase()
         )}
-        <div className="absolute -bottom-0.5 -right-0.5">
+        <div className="absolute -bottom-0.5 -right-0.5 z-10 pointer-events-none">
           <StatusIndicator status={currentStatus} size="md" borderColor="var(--app-bg-accent, #232428)" />
         </div>
       </button>

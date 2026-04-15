@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Monitor, MonitorOff, Maximize2, Minimize2 } from "lucide-react";
+import { Maximize2, Minimize2, Monitor } from "lucide-react";
 import { useVoice, CallEvent } from "@/contexts/VoiceContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { defaultProfileColor, getProfileColor } from "@/lib/profileColors";
@@ -11,6 +11,7 @@ import headphoneDeafenIcon from "@/assets/icons/headphone-deafen.svg";
 import callIcon from "@/assets/icons/call.svg";
 import callEndIcon from "@/assets/icons/call-end.svg";
 import videoIcon from "@/assets/icons/video-camera.svg";
+import screenshareIcon from "@/assets/icons/screenshare.svg";
 
 const formatDuration = (ms: number) => {
   const secs = Math.floor(ms / 1000);
@@ -126,11 +127,11 @@ export const CallPanel = ({ conversationId, recipientName, recipientUserId }: {
         <div className="flex flex-col items-center gap-2">
           <div className="relative">
             <div
-              className={`flex items-center justify-center rounded-full font-bold text-white transition-shadow duration-200 ${hasScreenShare ? "h-12 w-12 text-lg" : "h-[72px] w-[72px] text-2xl"}`}
+              className={`flex items-center justify-center rounded-full font-bold text-white transition-all duration-150 ${hasScreenShare ? "h-12 w-12 text-lg" : "h-[72px] w-[72px] text-2xl"}`}
               style={{
                 backgroundColor: callerColor.bg,
-                boxShadow: activeCall.state === "connected" && !activeCall.isMuted && audioLevel > 8
-                  ? `0 0 0 ${3 + audioLevel * 0.05}px rgba(59, 165, 92, ${0.4 + audioLevel * 0.006})`
+                boxShadow: activeCall.state === "connected" && !activeCall.isMuted && audioLevel > 5
+                  ? `0 0 0 ${4 + audioLevel * 0.12}px rgba(59, 165, 92, ${0.5 + audioLevel * 0.005}), 0 0 ${10 + audioLevel * 0.4}px rgba(59, 165, 92, ${0.2 + audioLevel * 0.004})`
                   : "0 0 0 0px transparent",
               }}
             >
@@ -153,8 +154,8 @@ export const CallPanel = ({ conversationId, recipientName, recipientUserId }: {
               style={{
                 backgroundColor: recipientColor.bg,
                 filter: isWaiting ? "grayscale(0.3)" : "none",
-                boxShadow: !isWaiting && activeCall.state === "connected" && remoteAudioLevel > 8
-                  ? `0 0 0 ${3 + remoteAudioLevel * 0.05}px rgba(59, 165, 92, ${0.4 + remoteAudioLevel * 0.006})`
+                boxShadow: !isWaiting && activeCall.state === "connected" && remoteAudioLevel > 5
+                  ? `0 0 0 ${4 + remoteAudioLevel * 0.12}px rgba(59, 165, 92, ${0.5 + remoteAudioLevel * 0.005}), 0 0 ${10 + remoteAudioLevel * 0.4}px rgba(59, 165, 92, ${0.2 + remoteAudioLevel * 0.004})`
                   : "0 0 0 0px transparent",
               }}
             >
@@ -227,7 +228,12 @@ export const CallPanel = ({ conversationId, recipientName, recipientUserId }: {
           style={{ color: isScreenSharing ? "white" : "var(--app-text-primary)" }}
           title={isScreenSharing ? "Stop Sharing" : "Share Screen"}
         >
-          {isScreenSharing ? <MonitorOff className="h-5 w-5" /> : <Monitor className="h-5 w-5" />}
+          <img
+            src={screenshareIcon}
+            alt={isScreenSharing ? "Stop Sharing" : "Share Screen"}
+            className="h-5 w-5"
+            style={{ filter: "brightness(0) invert(1)" }}
+          />
         </button>
 
         <button
@@ -241,7 +247,7 @@ export const CallPanel = ({ conversationId, recipientName, recipientUserId }: {
 
         <button
           onClick={endCall}
-          className="flex h-10 px-5 items-center justify-center gap-2 rounded-full bg-[#ed4245] text-white hover:bg-[#c73b3e] transition-colors"
+          className="flex h-10 px-5 items-center justify-center gap-2 rounded-full bg-[#ed4245] text-white hover:bg-[#c73b3e] hover:scale-105 hover:shadow-lg hover:shadow-[#ed4245]/30 active:scale-95 transition-all duration-150"
           title="Disconnect"
         >
           <img src={callEndIcon} alt="End Call" className="h-5 w-5" style={{ filter: "brightness(0) invert(1)" }} />
