@@ -235,7 +235,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   }, [settings.inputVolume]);
 
   useEffect(() => {
-    if (outputGainRef.current) outputGainRef.current.gain.value = settings.outputVolume / 100;
+    // Update volume on all remote audio elements
+    document.querySelectorAll("audio").forEach((el: any) => {
+      if (el.__cubblyRemote) el.volume = settings.outputVolume / 100;
+    });
   }, [settings.outputVolume]);
 
   const startAudioLevelMonitor = useCallback((stream: MediaStream) => {
