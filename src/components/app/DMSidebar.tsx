@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import StatusIndicator from "@/components/app/StatusIndicator";
 import { useAuth } from "@/contexts/AuthContext";
 import { useVoice } from "@/contexts/VoiceContext";
 import { Conversation } from "@/hooks/useConversations";
@@ -38,13 +39,6 @@ interface DMSidebarProps {
   onOpenDM: (userId: string) => void;
 }
 
-const statusColors: Record<string, string> = {
-  online: "bg-[#3ba55c]",
-  idle: "bg-[#faa61a]",
-  dnd: "bg-[#ed4245]",
-  invisible: "bg-[#747f8d]",
-  offline: "bg-[#747f8d]",
-};
 
 const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversation, onOpenDM }: DMSidebarProps) => {
   const { user } = useAuth();
