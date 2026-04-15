@@ -1,6 +1,8 @@
-import { Reply, Smile, Copy, Trash2 } from "lucide-react";
+import { Reply, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import emojiReactIcon from "@/assets/icons/emoji-react.svg";
+import copyIcon from "@/assets/icons/copy.svg";
 
 interface MessageActionsProps {
   messageId: string;
@@ -37,14 +39,14 @@ const MessageActions = ({ messageId, messageContent, isOwnMessage, onReply }: Me
         className="flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-white/10"
         title="Add Reaction"
       >
-        <Smile className="h-4 w-4" style={{ color: "var(--app-text-secondary, #949ba4)" }} />
+        <img src={emojiReactIcon} alt="React" className="h-4 w-4 invert opacity-60" />
       </button>
       <button
         onClick={handleCopy}
         className="flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-white/10"
         title="Copy"
       >
-        <Copy className="h-4 w-4" style={{ color: "var(--app-text-secondary, #949ba4)" }} />
+        <img src={copyIcon} alt="Copy" className="h-4 w-4 invert opacity-60" />
       </button>
       {isOwnMessage && (
         <button
