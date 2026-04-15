@@ -27,6 +27,18 @@ function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, "..", "dist", "index.html"));
 
+  // Allow Ctrl+R / F5 to reload the app
+  mainWindow.webContents.on("before-input-event", (event, input) => {
+    if ((input.control || input.meta) && input.key.toLowerCase() === "r") {
+      mainWindow.reload();
+      event.preventDefault();
+    }
+    if (input.key === "F5") {
+      mainWindow.reload();
+      event.preventDefault();
+    }
+  });
+
   // Open external links in the default browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith("http")) {
