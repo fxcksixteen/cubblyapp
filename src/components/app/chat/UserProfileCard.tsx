@@ -20,6 +20,7 @@ interface UserProfileCardProps {
 
 interface ProfileData {
   avatar_url: string | null;
+  banner_url: string | null;
   username: string;
   bio: string | null;
   status: string;
@@ -38,11 +39,11 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
   useEffect(() => {
     supabase
       .from("profiles")
-      .select("avatar_url, username, bio, status")
+      .select("avatar_url, username, bio, status, banner_url")
       .eq("user_id", userId)
       .maybeSingle()
       .then(({ data }) => {
-        if (data) setProfile(data);
+        if (data) setProfile({ ...data, banner_url: (data as any).banner_url || null });
       });
 
     if (user && userId !== user.id) {
@@ -120,7 +121,7 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
           className="w-[440px] rounded-2xl overflow-hidden shadow-2xl border border-[#2b2d31] bg-[#111214] animate-in fade-in-0 zoom-in-95 duration-200"
         >
           {/* Banner */}
-           <div className="h-[100px] relative" style={{ background: color.banner }}>
+           <div className="h-[100px] relative" style={{ background: profile?.banner_url ? `url(${profile.banner_url}) center/cover no-repeat` : color.banner }}>
             <button onClick={onClose} className="absolute top-3 right-3 flex h-7 w-7 items-center justify-center rounded-full bg-black/40 text-white hover:bg-black/60 transition-colors">
               <X className="h-4 w-4" />
             </button>
@@ -196,7 +197,7 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
   return (
     <div ref={ref} style={style} className="w-[300px] rounded-xl overflow-hidden shadow-2xl border border-[#2b2d31] bg-[#111214] animate-in fade-in-0 zoom-in-95 duration-150">
       {/* Banner */}
-      <div className="h-[60px]" style={{ background: color.banner }} />
+      <div className="h-[60px]" style={{ background: profile?.banner_url ? `url(${profile.banner_url}) center/cover no-repeat` : color.banner }} />
 
       {/* Avatar - clickable to open full profile */}
       <div className="px-4 -mt-6 relative z-10">

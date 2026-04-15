@@ -109,7 +109,7 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
     const un = user.user_metadata?.username || dn.toLowerCase();
     supabase
       .from("profiles")
-      .select("bio, avatar_url")
+      .select("bio, avatar_url, banner_url")
       .eq("user_id", user.id)
       .maybeSingle()
       .then(({ data }) => {
@@ -119,7 +119,7 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
           email: user.email || "",
           bio: data?.bio || "",
           avatar_url: data?.avatar_url || null,
-          banner_url: null,
+          banner_url: (data as any)?.banner_url || null,
         });
       });
   }, [user]);
@@ -228,11 +228,12 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
       }
 
       // Update profiles table
-      const profileUpdates: { display_name?: string; username?: string; bio?: string; avatar_url?: string } = {};
+      const profileUpdates: { display_name?: string; username?: string; bio?: string; avatar_url?: string; banner_url?: string } = {};
       if (pendingChanges.display_name) profileUpdates.display_name = pendingChanges.display_name;
       if (pendingChanges.username) profileUpdates.username = pendingChanges.username;
       if (pendingChanges.bio !== undefined) profileUpdates.bio = pendingChanges.bio;
       if (pendingChanges.avatar_url) profileUpdates.avatar_url = pendingChanges.avatar_url;
+      if (pendingChanges.banner_url) profileUpdates.banner_url = pendingChanges.banner_url;
 
       if (Object.keys(profileUpdates).length > 0) {
         const { error } = await supabase.from("profiles").update(profileUpdates).eq("user_id", user.id);
@@ -273,14 +274,15 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/banner:opacity-100 transition-opacity flex items-center justify-center">
                   <Camera className="h-8 w-8 text-white/80" />
                 </div>
-                <input ref={bannerInputRef} type="file" accept="image/*" className="hidden" onChange={handleBannerUpload} />
+                <input ref={bannerInputRef} type="file" accept="image/*,.gif" className="hidden" onChange={handleBannerUpload} />
               </div>
 
               <div className="px-6 pb-6">
-                <div className="-mt-11 flex items-end gap-4">
+                {/* Avatar row - positioned properly below banner */}
+                <div className="flex items-start gap-4 pt-3">
                   {/* Avatar with hover overlay */}
                   <div
-                    className="relative group/avatar cursor-pointer shrink-0"
+                    className="relative group/avatar cursor-pointer shrink-0 -mt-14"
                     onClick={() => avatarInputRef.current?.click()}
                   >
                     {currentData.avatar_url ? (
@@ -301,9 +303,9 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
                     <div className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover/avatar:opacity-100 transition-opacity flex items-center justify-center">
                       <Camera className="h-6 w-6 text-white/80" />
                     </div>
-                    <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
+                    <input ref={avatarInputRef} type="file" accept="image/*,.gif" className="hidden" onChange={handleAvatarUpload} />
                   </div>
-                  <div className="pb-3">
+                  <div className="pt-1">
                     <p className="text-2xl font-bold leading-tight" style={{ color: "var(--app-text-primary)" }}>{currentData.display_name}</p>
                     <p className="text-sm" style={{ color: "var(--app-text-secondary)" }}>@{currentData.username}</p>
                   </div>

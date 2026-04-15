@@ -196,6 +196,26 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     detectBestRegion().then(setDetectedRegion);
   }, []);
 
+  // Load persisted call events from DB
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("call_events")
+      .select("*")
+      .order("started_at", { ascending: true })
+      .then(({ data }) => {
+        if (data) {
+          setCallEvents(data.map((e: any) => ({
+            id: e.id,
+            conversationId: e.conversation_id,
+            state: e.state as "ongoing" | "ended" | "missed",
+            startedAt: e.started_at,
+            endedAt: e.ended_at || undefined,
+          })));
+        }
+      });
+  }, [user]);
+
   const updateSettings = useCallback((partial: Partial<VoiceSettings>) => {
     setSettings(prev => {
       const next = { ...prev, ...partial };
@@ -487,12 +507,21 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         isDeafened: false,
       });
 
+      const callEventId = crypto.randomUUID();
       setCallEvents(prev => [...prev, {
-        id: `call-${Date.now()}`,
+        id: callEventId,
         conversationId,
         state: "ongoing",
         startedAt: new Date().toISOString(),
       }]);
+
+      // Persist to DB
+      supabase.from("call_events").insert({
+        id: callEventId,
+        conversation_id: conversationId,
+        caller_id: user.id,
+        state: "ongoing",
+      } as any).then(() => {});
     } catch (e) {
       console.error("Failed to start call:", e);
     }
@@ -547,8 +576,16 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       setCallEvents(prev => {
         const hasOngoing = prev.some(e => e.conversationId === incomingCall.conversationId && e.state === "ongoing");
         if (hasOngoing) return prev;
+        const callEventId = crypto.randomUUID();
+        // Persist to DB
+        supabase.from("call_events").insert({
+          id: callEventId,
+          conversation_id: incomingCall.conversationId,
+          caller_id: user.id,
+          state: "ongoing",
+        } as any).then(() => {});
         return [...prev, {
-          id: `call-${Date.now()}`,
+          id: callEventId,
           conversationId: incomingCall.conversationId,
           state: "ongoing",
           startedAt: new Date().toISOString(),
@@ -653,11 +690,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   }, [screenStream, user]);
 
   const endCall = useCallback(() => {
+    const endedAt = new Date().toISOString();
     setCallEvents(prev => {
       const updated = [...prev];
       for (let i = updated.length - 1; i >= 0; i--) {
         if (updated[i].state === "ongoing") {
-          updated[i] = { ...updated[i], state: "ended", endedAt: new Date().toISOString() };
+          const evt = updated[i];
+          updated[i] = { ...evt, state: "ended", endedAt };
+          // Persist to DB
+          supabase.from("call_events").update({ state: "ended", ended_at: endedAt } as any).eq("id", evt.id).then(() => {});
           break;
         }
       }
