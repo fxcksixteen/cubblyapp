@@ -3,6 +3,7 @@ import { Phone, PhoneOff, Monitor, MonitorOff, Video, Maximize2, Minimize2 } fro
 import { useVoice, CallEvent } from "@/contexts/VoiceContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { defaultProfileColor, getProfileColor } from "@/lib/profileColors";
+import ScreenSharePicker, { ScreenShareType } from "./ScreenSharePicker";
 import micIcon from "@/assets/icons/microphone.svg";
 import micMuteIcon from "@/assets/icons/microphone-mute.svg";
 import headphoneIcon from "@/assets/icons/headphone.svg";
