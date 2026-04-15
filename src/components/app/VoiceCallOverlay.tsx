@@ -262,9 +262,9 @@ export const CallPanel = ({ conversationId, recipientName, recipientUserId }: {
       <ScreenSharePicker
         isOpen={showScreenSharePicker}
         onClose={() => setShowScreenSharePicker(false)}
-        onSelect={(type: ScreenShareType) => {
+        onSelect={(type: ScreenShareType, options) => {
           setShowScreenSharePicker(false);
-          startScreenShare(type);
+          startScreenShare(type, options);
         }}
       />
     </div>

@@ -6,8 +6,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { X } from "lucide-react";
 import { defaultProfileColor, getProfileColor } from "@/lib/profileColors";
 import { CallPanel, CallEventMessage } from "./VoiceCallOverlay";
+import TypingIndicator from "./TypingIndicator";
 import sendIcon from "@/assets/icons/send.svg";
 import folderFileIcon from "@/assets/icons/folder-file.svg";
+
+const BOT_USER_ID = "00000000-0000-0000-0000-000000000001";
 
 const preloadIcons = [sendIcon, folderFileIcon];
 preloadIcons.forEach(src => { const img = new Image(); img.src = src; });
@@ -57,15 +60,26 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [botTyping, setBotTyping] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const isBotConversation = recipientUserId === BOT_USER_ID;
+
+  // Stop bot typing when a new bot message arrives
+  const lastMsgSenderId = messages.length > 0 ? messages[messages.length - 1].sender_id : null;
+  useEffect(() => {
+    if (lastMsgSenderId === BOT_USER_ID) {
+      setBotTyping(false);
+    }
+  }, [lastMsgSenderId, messages.length]);
 
   // Filter call events for this conversation
   const conversationCallEvents = callEvents.filter(e => e.conversationId === conversationId);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, conversationCallEvents]);
+  }, [messages, conversationCallEvents, botTyping]);
 
   const handleSend = async () => {
     if (!input.trim() && pendingFiles.length === 0) return;
@@ -87,7 +101,13 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
       content = content ? `${content}\n[attachments]${attachmentMeta}[/attachments]` : `[attachments]${attachmentMeta}[/attachments]`;
     }
 
-    if (content) await sendMessage(content);
+    if (content) {
+      // Show bot typing indicator for bot conversations
+      if (isBotConversation) {
+        setBotTyping(true);
+      }
+      await sendMessage(content);
+    }
 
     setInput("");
     setPendingFiles([]);
@@ -263,6 +283,9 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
             })}
           </>
         )}
+        <TypingIndicator
+          typingUsers={botTyping ? [{ id: BOT_USER_ID, name: recipientName }] : []}
+        />
         <div ref={bottomRef} />
       </div>
 
