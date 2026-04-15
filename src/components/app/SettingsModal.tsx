@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from "react";
-import { X, Check, LogOut, Pencil, Camera, Save } from "lucide-react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { X, Check, LogOut, Pencil, Camera } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme, ThemeName } from "@/contexts/ThemeContext";
 import { defaultProfileColor } from "@/lib/profileColors";
@@ -51,6 +51,15 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
+interface PendingChanges {
+  display_name?: string;
+  username?: string;
+  email?: string;
+  bio?: string;
+  avatar_url?: string;
+  banner_url?: string;
+}
+
 const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
   const [activeCategory, setActiveCategory] = useState<SettingsCategory>("my-account");
   const { user, signOut } = useAuth();
@@ -60,37 +69,65 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
   const backdropRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  // Editable account state
+  // Original profile data (source of truth)
+  const [originalData, setOriginalData] = useState({
+    display_name: "",
+    username: "",
+    email: "",
+    bio: "",
+    avatar_url: null as string | null,
+    banner_url: null as string | null,
+  });
+
+  // Pending changes (edits not yet applied)
+  const [pendingChanges, setPendingChanges] = useState<PendingChanges>({});
   const [editingField, setEditingField] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
-  const [bio, setBio] = useState("");
-  const [bioSaved, setBioSaved] = useState(true);
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-  const [bannerUrl, setBannerUrl] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
 
   const profileColor = defaultProfileColor;
 
+  const hasChanges = Object.keys(pendingChanges).length > 0;
+
+  // Compute current display values (original + pending)
+  const currentData = {
+    display_name: pendingChanges.display_name ?? originalData.display_name,
+    username: pendingChanges.username ?? originalData.username,
+    email: pendingChanges.email ?? originalData.email,
+    bio: pendingChanges.bio ?? originalData.bio,
+    avatar_url: pendingChanges.avatar_url ?? originalData.avatar_url,
+    banner_url: pendingChanges.banner_url ?? originalData.banner_url,
+  };
+
   // Fetch profile data
   useEffect(() => {
     if (!user) return;
+    const dn = user.user_metadata?.display_name || user.email?.split("@")[0] || "User";
+    const un = user.user_metadata?.username || dn.toLowerCase();
     supabase
       .from("profiles")
       .select("bio, avatar_url")
       .eq("user_id", user.id)
       .maybeSingle()
       .then(({ data }) => {
-        if (data) {
-          setBio(data.bio || "");
-          setAvatarUrl(data.avatar_url);
-        }
+        setOriginalData({
+          display_name: dn,
+          username: un,
+          email: user.email || "",
+          bio: data?.bio || "",
+          avatar_url: data?.avatar_url || null,
+          banner_url: null,
+        });
       });
   }, [user]);
 
   useEffect(() => {
     if (isOpen) {
       setVisible(true);
+      setPendingChanges({});
       requestAnimationFrame(() => {
         requestAnimationFrame(() => setAnimating(true));
       });
@@ -112,8 +149,6 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
 
   if (!visible) return null;
 
-  const displayName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "User";
-  const username = user?.user_metadata?.username || displayName.toLowerCase();
   const activeLabel = settingsSections.flatMap((section) => section.items).find((item) => item.id === activeCategory)?.label;
   const panelStyle = { backgroundColor: "var(--app-bg-secondary)", borderColor: "var(--app-border)" } as const;
   const cardStyle = { backgroundColor: "var(--app-bg-tertiary)", borderColor: "var(--app-border)" } as const;
@@ -128,38 +163,21 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
     setEditValue(currentValue);
   };
 
-  const saveEdit = async () => {
-    if (!editingField || !user) return;
-
-    if (editingField === "display_name") {
-      const { error } = await supabase.auth.updateUser({ data: { display_name: editValue } });
-      if (!error) {
-        await supabase.from("profiles").update({ display_name: editValue }).eq("user_id", user.id);
-        toast.success("Display name updated!");
-      } else toast.error("Failed to update display name");
-    } else if (editingField === "username") {
-      const { error } = await supabase.auth.updateUser({ data: { username: editValue } });
-      if (!error) {
-        await supabase.from("profiles").update({ username: editValue }).eq("user_id", user.id);
-        toast.success("Username updated!");
-      } else toast.error("Failed to update username");
-    } else if (editingField === "email") {
-      const { error } = await supabase.auth.updateUser({ email: editValue });
-      if (!error) {
-        toast.success("Verification email sent to your new address. Please confirm to complete the change.");
-      } else toast.error(error.message || "Failed to update email");
+  const confirmEdit = () => {
+    if (!editingField) return;
+    const key = editingField as keyof PendingChanges;
+    const origValue = originalData[key as keyof typeof originalData];
+    if (editValue === origValue) {
+      // No change, remove from pending
+      setPendingChanges(prev => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+    } else {
+      setPendingChanges(prev => ({ ...prev, [key]: editValue }));
     }
-
     setEditingField(null);
-  };
-
-  const saveBio = async () => {
-    if (!user) return;
-    const { error } = await supabase.from("profiles").update({ bio }).eq("user_id", user.id);
-    if (!error) {
-      setBioSaved(true);
-      toast.success("Bio updated!");
-    } else toast.error("Failed to save bio");
   };
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -169,9 +187,7 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
     const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
     if (error) { toast.error("Upload failed"); return; }
     const { data } = supabase.storage.from("avatars").getPublicUrl(path);
-    await supabase.from("profiles").update({ avatar_url: data.publicUrl }).eq("user_id", user.id);
-    setAvatarUrl(data.publicUrl);
-    toast.success("Profile picture updated!");
+    setPendingChanges(prev => ({ ...prev, avatar_url: data.publicUrl }));
   };
 
   const handleBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -181,14 +197,65 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
     const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
     if (error) { toast.error("Upload failed"); return; }
     const { data } = supabase.storage.from("avatars").getPublicUrl(path);
-    setBannerUrl(data.publicUrl);
-    toast.success("Banner updated!");
+    setPendingChanges(prev => ({ ...prev, banner_url: data.publicUrl }));
+  };
+
+  const discardChanges = () => {
+    setPendingChanges({});
+    setEditingField(null);
+  };
+
+  const applyChanges = async () => {
+    if (!user || !hasChanges) return;
+    setSaving(true);
+
+    try {
+      // Update auth metadata if display_name or username changed
+      const authUpdates: Record<string, string> = {};
+      if (pendingChanges.display_name) authUpdates.display_name = pendingChanges.display_name;
+      if (pendingChanges.username) authUpdates.username = pendingChanges.username;
+
+      if (Object.keys(authUpdates).length > 0) {
+        const { error } = await supabase.auth.updateUser({ data: authUpdates });
+        if (error) { toast.error("Failed to update profile"); setSaving(false); return; }
+      }
+
+      // Update email separately (requires verification)
+      if (pendingChanges.email) {
+        const { error } = await supabase.auth.updateUser({ email: pendingChanges.email });
+        if (error) { toast.error(error.message); setSaving(false); return; }
+        toast.success("Verification email sent to your new address.");
+      }
+
+      // Update profiles table
+      const profileUpdates: Record<string, string> = {};
+      if (pendingChanges.display_name) profileUpdates.display_name = pendingChanges.display_name;
+      if (pendingChanges.username) profileUpdates.username = pendingChanges.username;
+      if (pendingChanges.bio !== undefined) profileUpdates.bio = pendingChanges.bio;
+      if (pendingChanges.avatar_url) profileUpdates.avatar_url = pendingChanges.avatar_url;
+
+      if (Object.keys(profileUpdates).length > 0) {
+        const { error } = await supabase.from("profiles").update(profileUpdates).eq("user_id", user.id);
+        if (error) { toast.error("Failed to save changes"); setSaving(false); return; }
+      }
+
+      // Update originalData to reflect applied changes
+      setOriginalData(prev => ({
+        ...prev,
+        ...pendingChanges,
+      }));
+      setPendingChanges({});
+      toast.success("Changes saved!");
+    } catch {
+      toast.error("Something went wrong");
+    }
+    setSaving(false);
   };
 
   const accountCards = [
-    { label: "Display Name", value: displayName, field: "display_name" },
-    { label: "Username", value: username, field: "username" },
-    { label: "Email", value: user?.email || "—", field: "email" },
+    { label: "Display Name", value: currentData.display_name, field: "display_name" },
+    { label: "Username", value: currentData.username, field: "username" },
+    { label: "Email", value: currentData.email, field: "email" },
   ];
 
   const renderContent = () => {
@@ -200,7 +267,7 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
               {/* Banner with hover overlay */}
               <div
                 className="h-36 relative group/banner cursor-pointer"
-                style={{ background: bannerUrl ? `url(${bannerUrl}) center/cover` : profileColor.banner }}
+                style={{ background: currentData.banner_url ? `url(${currentData.banner_url}) center/cover` : profileColor.banner }}
                 onClick={() => bannerInputRef.current?.click()}
               >
                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/banner:opacity-100 transition-opacity flex items-center justify-center">
@@ -216,9 +283,9 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
                     className="relative group/avatar cursor-pointer shrink-0"
                     onClick={() => avatarInputRef.current?.click()}
                   >
-                    {avatarUrl ? (
+                    {currentData.avatar_url ? (
                       <img
-                        src={avatarUrl}
+                        src={currentData.avatar_url}
                         alt="Avatar"
                         className="h-[88px] w-[88px] rounded-full border-[6px] object-cover"
                         style={{ borderColor: "var(--app-bg-secondary)" }}
@@ -228,7 +295,7 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
                         className="flex h-[88px] w-[88px] items-center justify-center rounded-full border-[6px] text-3xl font-bold text-white"
                         style={{ backgroundColor: profileColor.bg, borderColor: "var(--app-bg-secondary)" }}
                       >
-                        {displayName.charAt(0).toUpperCase()}
+                        {currentData.display_name.charAt(0).toUpperCase()}
                       </div>
                     )}
                     <div className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover/avatar:opacity-100 transition-opacity flex items-center justify-center">
@@ -237,8 +304,8 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
                     <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
                   </div>
                   <div className="pb-3">
-                    <p className="text-2xl font-bold leading-tight" style={{ color: "var(--app-text-primary)" }}>{displayName}</p>
-                    <p className="text-sm" style={{ color: "var(--app-text-secondary)" }}>@{username}</p>
+                    <p className="text-2xl font-bold leading-tight" style={{ color: "var(--app-text-primary)" }}>{currentData.display_name}</p>
+                    <p className="text-sm" style={{ color: "var(--app-text-secondary)" }}>@{currentData.username}</p>
                   </div>
                 </div>
 
@@ -252,11 +319,11 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
                             autoFocus
                             value={editValue}
                             onChange={(e) => setEditValue(e.target.value)}
-                            onKeyDown={(e) => e.key === "Enter" && saveEdit()}
+                            onKeyDown={(e) => e.key === "Enter" && confirmEdit()}
                             className="flex-1 rounded-lg border px-2 py-1 text-sm outline-none"
                             style={{ backgroundColor: "var(--app-input)", borderColor: "var(--app-border)", color: "var(--app-text-primary)" }}
                           />
-                          <button onClick={saveEdit} className="text-[#3ba55c] hover:text-[#2d8049]">
+                          <button onClick={confirmEdit} className="text-[#3ba55c] hover:text-[#2d8049]">
                             <Check className="h-4 w-4" />
                           </button>
                           <button onClick={() => setEditingField(null)} className="text-[#ed4245] hover:text-[#c03537]">
@@ -282,19 +349,21 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
                 <div className="mt-5 rounded-[22px] border p-5" style={cardStyle}>
                   <div className="flex items-center justify-between mb-3">
                     <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: "var(--app-text-secondary)" }}>About Me</p>
-                    {!bioSaved && (
-                      <button
-                        onClick={saveBio}
-                        className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-white bg-[#5865f2] hover:bg-[#4752c4] transition-colors"
-                      >
-                        <Save className="h-3 w-3" />
-                        Save
-                      </button>
-                    )}
                   </div>
                   <textarea
-                    value={bio}
-                    onChange={(e) => { setBio(e.target.value); setBioSaved(false); }}
+                    value={currentData.bio}
+                    onChange={(e) => {
+                      const newBio = e.target.value;
+                      if (newBio === originalData.bio) {
+                        setPendingChanges(prev => {
+                          const next = { ...prev };
+                          delete next.bio;
+                          return next;
+                        });
+                      } else {
+                        setPendingChanges(prev => ({ ...prev, bio: newBio }));
+                      }
+                    }}
                     placeholder="Tell us about yourself..."
                     rows={4}
                     maxLength={300}
@@ -302,7 +371,7 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
                     style={{ backgroundColor: "var(--app-input)", borderColor: "var(--app-border)", color: "var(--app-text-primary)" }}
                   />
                   <p className="mt-1.5 text-[11px] text-right" style={{ color: "var(--app-text-muted, var(--app-text-secondary))" }}>
-                    {bio.length}/300
+                    {currentData.bio.length}/300
                   </p>
                 </div>
               </div>
@@ -415,7 +484,7 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
     >
       <div
         ref={panelRef}
-        className="flex h-[min(86vh,800px)] w-full max-w-[1160px] overflow-hidden rounded-[30px] border shadow-[0_32px_90px_rgba(0,0,0,0.45)] transition-all duration-250 ease-out"
+        className="flex h-[min(86vh,800px)] w-full max-w-[1160px] overflow-hidden rounded-[30px] border shadow-[0_32px_90px_rgba(0,0,0,0.45)] transition-all duration-250 ease-out relative"
         style={{
           backgroundColor: "var(--app-bg-primary)",
           borderColor: "var(--app-border)",
@@ -490,7 +559,39 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
             </button>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">{renderContent()}</div>
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6 pb-20">{renderContent()}</div>
+        </div>
+
+        {/* Unsaved changes bar */}
+        <div
+          className={`absolute bottom-0 left-0 right-0 flex items-center justify-between px-6 py-3.5 border-t transition-all duration-300 ease-out ${
+            hasChanges ? "translate-y-0 opacity-100" : "translate-y-full opacity-0 pointer-events-none"
+          }`}
+          style={{
+            backgroundColor: "var(--app-bg-tertiary)",
+            borderColor: "var(--app-border)",
+            boxShadow: "0 -8px 24px rgba(0,0,0,0.3)",
+          }}
+        >
+          <p className="text-sm font-medium" style={{ color: "var(--app-text-primary)" }}>
+            You have unsaved changes
+          </p>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={discardChanges}
+              className="rounded-full px-5 py-2 text-sm font-semibold transition-colors hover:underline"
+              style={{ color: "var(--app-text-secondary)" }}
+            >
+              Reset
+            </button>
+            <button
+              onClick={applyChanges}
+              disabled={saving}
+              className="rounded-full px-5 py-2 text-sm font-semibold text-white bg-[#3ba55c] hover:bg-[#2d8b4e] transition-colors disabled:opacity-50"
+            >
+              {saving ? "Saving..." : "Save Changes"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
