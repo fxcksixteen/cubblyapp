@@ -725,12 +725,112 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     });
   }, [user, initializeOutgoingConnection, flushQueuedIceCandidates]);
 
+  // Loopback ref for CubblyBot self-test
+  const loopbackPcRef = useRef<{ local: RTCPeerConnection; remote: RTCPeerConnection } | null>(null);
+
+  const startLoopbackTest = useCallback(async (conversationId: string) => {
+    console.log("[Voice][Loopback] 🔁 Starting loopback self-test...");
+    try {
+      const stream = await getUserMedia();
+      console.log("[Voice][Loopback] ✅ Got local media stream, tracks:", stream.getTracks().map(t => `${t.kind}:${t.label}:enabled=${t.enabled}`));
+      setLocalStream(stream);
+      localStreamRef.current = stream;
+      startAudioLevelMonitor(stream);
+
+      const localPc = new RTCPeerConnection({ iceServers: iceServersRef.current, iceTransportPolicy: "all" });
+      const remotePc = new RTCPeerConnection({ iceServers: iceServersRef.current, iceTransportPolicy: "all" });
+
+      // Wire ICE candidates between the two local peers
+      localPc.onicecandidate = (e) => {
+        if (e.candidate) {
+          console.log("[Voice][Loopback] localPc ICE candidate →", e.candidate.type, e.candidate.protocol);
+          remotePc.addIceCandidate(e.candidate).catch(err => console.warn("[Voice][Loopback] remotePc addIce failed:", err));
+        }
+      };
+      remotePc.onicecandidate = (e) => {
+        if (e.candidate) {
+          console.log("[Voice][Loopback] remotePc ICE candidate →", e.candidate.type, e.candidate.protocol);
+          localPc.addIceCandidate(e.candidate).catch(err => console.warn("[Voice][Loopback] localPc addIce failed:", err));
+        }
+      };
+
+      localPc.oniceconnectionstatechange = () => {
+        console.log("[Voice][Loopback] localPc ICE state:", localPc.iceConnectionState);
+        if (localPc.iceConnectionState === "connected" || localPc.iceConnectionState === "completed") {
+          console.log("[Voice][Loopback] ✅ ICE CONNECTED — loopback audio should be playing!");
+          setActiveCall(prev => prev ? { ...prev, state: "connected", startedAt: prev.startedAt || Date.now() } : prev);
+        }
+        if (localPc.iceConnectionState === "failed") {
+          console.error("[Voice][Loopback] ❌ ICE FAILED — TURN/STUN may not be working");
+        }
+      };
+
+      // When remotePc receives the track, play it back as audio
+      remotePc.ontrack = (event) => {
+        console.log("[Voice][Loopback] ✅ remotePc received track:", event.track.kind, event.track.label);
+        const remote = event.streams[0];
+        setRemoteStream(remote);
+        const audioEl = document.createElement("audio");
+        audioEl.srcObject = remote;
+        audioEl.autoplay = true;
+        audioEl.volume = settings.outputVolume / 100;
+        (audioEl as any).__cubblyRemote = true;
+        if (settings.outputDeviceId !== "default" && (audioEl as any).setSinkId) {
+          (audioEl as any).setSinkId(settings.outputDeviceId).catch(console.error);
+        }
+        audioEl.play().then(() => console.log("[Voice][Loopback] ✅ Audio element playing")).catch(e => console.error("[Voice][Loopback] ❌ Audio play failed:", e));
+        document.body.appendChild(audioEl);
+
+        // Remote audio level monitor
+        try {
+          const analyserCtx = new AudioContext();
+          const source = analyserCtx.createMediaStreamSource(remote);
+          const remoteAnalyser = analyserCtx.createAnalyser();
+          remoteAnalyser.fftSize = 256;
+          remoteAnalyser.smoothingTimeConstant = 0.5;
+          source.connect(remoteAnalyser);
+          remoteAnalyserRef.current = remoteAnalyser;
+          const remoteData = new Uint8Array(remoteAnalyser.frequencyBinCount);
+          const tickRemote = () => {
+            remoteAnalyser.getByteFrequencyData(remoteData);
+            const avg = remoteData.reduce((sum, v) => sum + v, 0) / remoteData.length;
+            setRemoteAudioLevel(avg / 255 * 100);
+            remoteAnimFrameRef.current = requestAnimationFrame(tickRemote);
+          };
+          tickRemote();
+        } catch {}
+      };
+
+      // Add tracks to localPc
+      stream.getTracks().forEach(track => localPc.addTrack(track, stream));
+
+      // Create and exchange offer/answer locally
+      const offer = await localPc.createOffer();
+      console.log("[Voice][Loopback] Offer created, setting local description...");
+      await localPc.setLocalDescription(offer);
+      await remotePc.setRemoteDescription(offer);
+      const answer = await remotePc.createAnswer();
+      await remotePc.setLocalDescription(answer);
+      await localPc.setRemoteDescription(answer);
+      console.log("[Voice][Loopback] ✅ Offer/Answer exchanged, waiting for ICE to connect...");
+
+      loopbackPcRef.current = { local: localPc, remote: remotePc };
+      // Store localPc so endCall can close it
+      pcRef.current = localPc;
+    } catch (e) {
+      console.error("[Voice][Loopback] ❌ Failed:", e);
+    }
+  }, [getUserMedia, startAudioLevelMonitor, settings.outputVolume, settings.outputDeviceId]);
+
   const startCall = useCallback(async (conversationId: string, peerId: string, peerName: string) => {
     if (!user) return;
+    const BOT_ID = "00000000-0000-0000-0000-000000000001";
+    const isBotCall = peerId === BOT_ID;
+
+    console.log(`[Voice] 📞 startCall — peer: ${peerName} (${peerId}), bot: ${isBotCall}`);
 
     try {
       const callEventId = crypto.randomUUID();
-      const channel = await setupSignaling(conversationId);
 
       incomingCandidateQueue.current = [];
       outgoingCandidateBuffer.current = [];
@@ -738,46 +838,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       pendingOfferRef.current = null;
       acceptedIncomingCallRef.current = null;
 
-      let callerAvatarUrl: string | undefined;
-      try {
-        const { data: profile } = await supabase.from("profiles").select("avatar_url").eq("user_id", user.id).maybeSingle();
-        callerAvatarUrl = profile?.avatar_url || undefined;
-      } catch {}
-
-      outgoingCallMetaRef.current = {
-        conversationId,
-        callEventId,
-        callerAvatarUrl,
-      };
-
-      const recipientGlobalChannel = supabase.channel(`voice-global:${peerId}`);
-      recipientGlobalChannel.subscribe(async (status) => {
-        if (status === "SUBSCRIBED") {
-          recipientGlobalChannel.send({
-            type: "broadcast",
-            event: "incoming-call",
-            payload: {
-              targetId: peerId,
-              conversationId,
-              callerId: user.id,
-              callerName: user.user_metadata?.display_name || "User",
-              callerAvatarUrl,
-              callEventId,
-            },
-          });
-          setTimeout(() => {
-            supabase.removeChannel(recipientGlobalChannel);
-          }, 3000);
-        }
-      });
-
-      const isBotCall = peerId === "00000000-0000-0000-0000-000000000001";
       setActiveCall({
         conversationId,
         peerId,
         peerName,
-        state: isBotCall ? "connected" : "calling",
-        startedAt: isBotCall ? Date.now() : undefined,
+        state: isBotCall ? "calling" : "calling",
+        startedAt: undefined,
         isMuted: false,
         isDeafened: false,
       });
@@ -796,11 +862,56 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         state: "ongoing",
       } as any).then(() => {});
 
+      if (isBotCall) {
+        // Loopback self-test: full WebRTC pipeline echoing your own voice
+        console.log("[Voice] 🤖 Bot call detected — starting loopback self-test");
+        await startLoopbackTest(conversationId);
+        return;
+      }
+
+      // Normal call flow
+      const channel = await setupSignaling(conversationId);
+
+      let callerAvatarUrl: string | undefined;
+      try {
+        const { data: profile } = await supabase.from("profiles").select("avatar_url").eq("user_id", user.id).maybeSingle();
+        callerAvatarUrl = profile?.avatar_url || undefined;
+      } catch {}
+
+      outgoingCallMetaRef.current = {
+        conversationId,
+        callEventId,
+        callerAvatarUrl,
+      };
+
+      const recipientGlobalChannel = supabase.channel(`voice-global:${peerId}`);
+      recipientGlobalChannel.subscribe(async (status) => {
+        if (status === "SUBSCRIBED") {
+          console.log("[Voice] 📡 Sending incoming-call notification to peer");
+          recipientGlobalChannel.send({
+            type: "broadcast",
+            event: "incoming-call",
+            payload: {
+              targetId: peerId,
+              conversationId,
+              callerId: user.id,
+              callerName: user.user_metadata?.display_name || "User",
+              callerAvatarUrl,
+              callEventId,
+            },
+          });
+          setTimeout(() => {
+            supabase.removeChannel(recipientGlobalChannel);
+          }, 3000);
+        }
+      });
+
+      console.log("[Voice] ⏳ Waiting for callee to accept and send ready-for-offer...");
       void channel;
     } catch (e) {
-      console.error("Failed to start call:", e);
+      console.error("[Voice] ❌ Failed to start call:", e);
     }
-  }, [user, setupSignaling]);
+  }, [user, setupSignaling, startLoopbackTest]);
 
   const acceptCall = useCallback(async () => {
     if (!incomingCall || !user) return;
