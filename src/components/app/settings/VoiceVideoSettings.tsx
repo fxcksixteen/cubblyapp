@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useVoice, SERVER_REGIONS } from "@/contexts/VoiceContext";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
-import { Mic, Globe, Monitor, MousePointer2, Zap, Film } from "lucide-react";
+import { Mic, Globe, Monitor, MousePointer2, Zap, Film, MicOff } from "lucide-react";
 
 interface Props {
   panelStyle: Record<string, string>;
