@@ -1168,6 +1168,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   }, [screenStream, user]);
 
   const endCall = useCallback(() => {
+    console.log("[Voice] 🔴 endCall — remote hangup:", isRemoteHangup.current);
     const endedAt = new Date().toISOString();
     setCallEvents(prev => {
       const updated = [...prev];
@@ -1192,6 +1193,14 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         event: "voice-signal",
         payload: { type: "hangup", senderId: user.id },
       });
+    }
+
+    // Clean up loopback peers if they exist
+    if (loopbackPcRef.current) {
+      console.log("[Voice][Loopback] Cleaning up loopback peers");
+      loopbackPcRef.current.local.close();
+      loopbackPcRef.current.remote.close();
+      loopbackPcRef.current = null;
     }
 
     pcRef.current?.close();
@@ -1224,6 +1233,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       supabase.removeChannel(channelRef.current);
       channelRef.current = null;
     }
+    console.log("[Voice] 🔴 Call ended, all resources cleaned up");
   }, [user, stopAudioLevelMonitor, stopScreenShare]);
 
   // Keep endCall ref always current
