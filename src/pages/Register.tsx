@@ -70,15 +70,22 @@ const Register = () => {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4 font-body">
       <div className="flex w-full max-w-[960px] overflow-hidden rounded-3xl shadow-2xl" style={{ aspectRatio: "16/9" }}>
-        {/* Left half — image placeholder */}
-        <div className="hidden md:flex w-1/2 items-center justify-center bg-gradient-to-br from-primary/30 via-primary/10 to-background relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-[hsl(32,80%,50%)]/20 via-[hsl(32,80%,35%)]/10 to-transparent" />
-          <div className="relative z-10 flex flex-col items-center gap-4 px-8 text-center">
-            <div className="text-6xl">🧸</div>
-            <h2 className="font-display text-3xl font-extrabold text-foreground">
+        {/* Left half — cozy animation */}
+        <div className="hidden md:flex w-1/2 flex-col items-center justify-center relative overflow-hidden bg-background">
+          <video
+            autoPlay
+            loop
+            muted
+            playsInline
+            className="absolute inset-0 w-full h-full object-cover"
+          >
+            <source src="/hero-bg-new.webm" type="video/webm" />
+          </video>
+          <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-background/20 to-transparent" />
+          <div className="relative z-10 mt-auto pb-10 px-8 text-center">
+            <h2 className="font-display text-3xl font-extrabold text-foreground drop-shadow-lg">
               Your <span style={{ color: "hsl(32, 80%, 42%)" }}>cozy</span> corner
             </h2>
-            <p className="text-sm text-muted-foreground font-body">Image or animation coming soon</p>
           </div>
         </div>
 
