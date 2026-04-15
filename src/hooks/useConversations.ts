@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -124,6 +124,9 @@ export function useConversations() {
     setLoading(false);
   }, [user]);
 
+  const fetchRef = useRef(fetchConversations);
+  fetchRef.current = fetchConversations;
+
   useEffect(() => {
     fetchConversations();
   }, [fetchConversations]);
@@ -133,14 +136,14 @@ export function useConversations() {
 
     const channel = supabase
       .channel(`conversation-updates:${user.id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "conversation_participants" }, fetchConversations)
-      .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, fetchConversations)
+      .on("postgres_changes", { event: "*", schema: "public", table: "conversation_participants" }, () => fetchRef.current())
+      .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, () => fetchRef.current())
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user, fetchConversations]);
+  }, [user]);
 
   const openOrCreateConversation = async (otherUserId: string): Promise<string | null> => {
     if (!user) return null;
