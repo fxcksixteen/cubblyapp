@@ -9,7 +9,6 @@ import { CallPanel, CallEventMessage } from "./VoiceCallOverlay";
 import sendIcon from "@/assets/icons/send.svg";
 import folderFileIcon from "@/assets/icons/folder-file.svg";
 
-// Preload icons to prevent lag
 const preloadIcons = [sendIcon, folderFileIcon];
 preloadIcons.forEach(src => { const img = new Image(); img.src = src; });
 
@@ -23,13 +22,6 @@ interface ChatViewProps {
 interface PendingFile {
   file: File;
   id: string;
-}
-
-interface CallEvent {
-  id: string;
-  state: "ongoing" | "ended" | "missed";
-  startedAt: string;
-  endedAt?: string;
 }
 
 const formatFileSize = (bytes: number) => {
@@ -59,43 +51,21 @@ const shouldShowTimeDivider = (prevDate: string, currDate: string): boolean => {
 
 const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewProps) => {
   const { user } = useAuth();
-  const { activeCall, startCall, endCall } = useVoice();
+  const { activeCall, callEvents } = useVoice();
   const { messages, loading, sendMessage } = useMessages(conversationId);
   const [input, setInput] = useState("");
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [callEvents, setCallEvents] = useState<CallEvent[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const prevCallRef = useRef<string | null>(null);
+
+  // Filter call events for this conversation
+  const conversationCallEvents = callEvents.filter(e => e.conversationId === conversationId);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, callEvents]);
-
-  // Track call events
-  const isInCall = activeCall?.conversationId === conversationId;
-
-  useEffect(() => {
-    if (isInCall && activeCall?.state === "connected" && !prevCallRef.current) {
-      // Call just started
-      const callId = `call-${Date.now()}`;
-      prevCallRef.current = callId;
-      setCallEvents(prev => [...prev, {
-        id: callId,
-        state: "ongoing",
-        startedAt: new Date().toISOString(),
-      }]);
-    } else if (!isInCall && prevCallRef.current) {
-      // Call just ended
-      const endedCallId = prevCallRef.current;
-      prevCallRef.current = null;
-      setCallEvents(prev => prev.map(e =>
-        e.id === endedCallId ? { ...e, state: "ended" as const, endedAt: new Date().toISOString() } : e
-      ));
-    }
-  }, [isInCall, activeCall?.state]);
+  }, [messages, conversationCallEvents]);
 
   const handleSend = async () => {
     if (!input.trim() && pendingFiles.length === 0) return;
@@ -155,7 +125,12 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
   };
 
   // Build grouped messages with time dividers
-  const items: ({ type: "messages"; sender_id: string; sender_name: string; messages: Message[] } | { type: "divider"; label: string })[] = [];
+  type ChatItem = 
+    | { type: "messages"; sender_id: string; sender_name: string; messages: Message[] }
+    | { type: "divider"; label: string }
+    | { type: "call-event"; event: typeof conversationCallEvents[0] };
+
+  const items: ChatItem[] = [];
 
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
@@ -170,6 +145,11 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
     } else {
       items.push({ type: "messages", sender_id: msg.sender_id, sender_name: msg.sender_name || "Unknown", messages: [msg] });
     }
+  }
+
+  // Append call events at the end
+  for (const evt of conversationCallEvents) {
+    items.push({ type: "call-event", event: evt });
   }
 
   return (
@@ -187,7 +167,7 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
           <div className="flex items-center justify-center py-16">
             <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#5865f2] border-t-transparent" />
           </div>
-        ) : messages.length === 0 && callEvents.length === 0 ? (
+        ) : messages.length === 0 && conversationCallEvents.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <div
               className="mb-3 flex h-16 w-16 items-center justify-center rounded-full text-2xl font-bold text-white"
@@ -210,6 +190,17 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
                     <span className="text-[11px] font-semibold text-[#949ba4] px-2 whitespace-nowrap">{item.label}</span>
                     <div className="flex-1 h-px bg-[#3f4147]" />
                   </div>
+                );
+              }
+
+              if (item.type === "call-event") {
+                return (
+                  <CallEventMessage
+                    key={item.event.id}
+                    state={item.event.state}
+                    startedAt={item.event.startedAt}
+                    endedAt={item.event.endedAt}
+                  />
                 );
               }
 
@@ -265,17 +256,6 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
                 </div>
               );
             })}
-
-            {/* Call events at the bottom of chat */}
-            {callEvents.map((evt) => (
-              <CallEventMessage
-                key={evt.id}
-                state={evt.state}
-                startedAt={evt.startedAt}
-                endedAt={evt.endedAt}
-                onJoin={evt.state === "ongoing" ? undefined : undefined}
-              />
-            ))}
           </>
         )}
         <div ref={bottomRef} />

@@ -5,13 +5,14 @@ import { useAuth } from "@/contexts/AuthContext";
 export interface VoiceSettings {
   inputDeviceId: string;
   outputDeviceId: string;
-  inputVolume: number; // 0-200
-  outputVolume: number; // 0-200
+  inputVolume: number;
+  outputVolume: number;
   echoCancellation: boolean;
   noiseSuppression: boolean;
   autoGainControl: boolean;
   autoSensitivity: boolean;
-  sensitivityThreshold: number; // 0-100
+  sensitivityThreshold: number;
+  serverRegion: string; // "auto" or specific region
 }
 
 const DEFAULT_SETTINGS: VoiceSettings = {
@@ -24,17 +25,54 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   autoGainControl: true,
   autoSensitivity: true,
   sensitivityThreshold: 50,
+  serverRegion: "auto",
 };
+
+export type CallState = "calling" | "ringing" | "connected" | "ended";
 
 export interface ActiveCall {
   conversationId: string;
   peerId: string;
   peerName: string;
-  state: "calling" | "ringing" | "connected" | "ended";
+  state: CallState;
   startedAt?: number;
   isMuted: boolean;
   isDeafened: boolean;
 }
+
+export interface CallEvent {
+  id: string;
+  conversationId: string;
+  state: "ongoing" | "ended" | "missed";
+  startedAt: string;
+  endedAt?: string;
+}
+
+export const SERVER_REGIONS = [
+  { id: "auto", label: "Automatic", description: "Best region for lowest ping" },
+  { id: "us-east", label: "US East", description: "New York" },
+  { id: "us-west", label: "US West", description: "San Francisco" },
+  { id: "eu-west", label: "Europe West", description: "Amsterdam" },
+  { id: "eu-central", label: "Europe Central", description: "Frankfurt" },
+  { id: "asia-east", label: "Asia East", description: "Tokyo" },
+  { id: "asia-south", label: "Asia South", description: "Singapore" },
+  { id: "south-america", label: "South America", description: "São Paulo" },
+  { id: "australia", label: "Australia", description: "Sydney" },
+];
+
+// TURN servers for NAT traversal + STUN fallbacks
+const ICE_SERVERS: RTCIceServer[] = [
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:stun1.l.google.com:19302" },
+  { urls: "stun:stun2.l.google.com:19302" },
+  { urls: "stun:stun3.l.google.com:19302" },
+  { urls: "stun:stun4.l.google.com:19302" },
+  // Free TURN servers from Open Relay (metered.ca)
+  { urls: "turn:a.relay.metered.ca:80", username: "e8dd65d92aee94de76f5c205", credential: "0YpDMwFOjVPxbSGO" },
+  { urls: "turn:a.relay.metered.ca:80?transport=tcp", username: "e8dd65d92aee94de76f5c205", credential: "0YpDMwFOjVPxbSGO" },
+  { urls: "turn:a.relay.metered.ca:443", username: "e8dd65d92aee94de76f5c205", credential: "0YpDMwFOjVPxbSGO" },
+  { urls: "turns:a.relay.metered.ca:443?transport=tcp", username: "e8dd65d92aee94de76f5c205", credential: "0YpDMwFOjVPxbSGO" },
+];
 
 interface VoiceContextType {
   settings: VoiceSettings;
@@ -51,18 +89,12 @@ interface VoiceContextType {
   audioLevel: number;
   availableDevices: { inputs: MediaDeviceInfo[]; outputs: MediaDeviceInfo[] };
   refreshDevices: () => void;
+  callEvents: CallEvent[];
+  detectedRegion: string;
 }
 
 const VoiceContext = createContext<VoiceContextType>({} as VoiceContextType);
 export const useVoice = () => useContext(VoiceContext);
-
-const ICE_SERVERS: RTCIceServer[] = [
-  { urls: "stun:stun.l.google.com:19302" },
-  { urls: "stun:stun1.l.google.com:19302" },
-  { urls: "stun:stun2.l.google.com:19302" },
-  { urls: "stun:stun3.l.google.com:19302" },
-  { urls: "stun:stun4.l.google.com:19302" },
-];
 
 function loadSettings(): VoiceSettings {
   try {
@@ -70,6 +102,38 @@ function loadSettings(): VoiceSettings {
     if (raw) return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
   } catch {}
   return { ...DEFAULT_SETTINGS };
+}
+
+// Ping test to detect best region
+async function detectBestRegion(): Promise<string> {
+  const endpoints: Record<string, string> = {
+    "us-east": "https://dynamodb.us-east-1.amazonaws.com/ping",
+    "us-west": "https://dynamodb.us-west-2.amazonaws.com/ping",
+    "eu-west": "https://dynamodb.eu-west-1.amazonaws.com/ping",
+    "eu-central": "https://dynamodb.eu-central-1.amazonaws.com/ping",
+    "asia-east": "https://dynamodb.ap-northeast-1.amazonaws.com/ping",
+    "asia-south": "https://dynamodb.ap-southeast-1.amazonaws.com/ping",
+    "south-america": "https://dynamodb.sa-east-1.amazonaws.com/ping",
+    "australia": "https://dynamodb.ap-southeast-2.amazonaws.com/ping",
+  };
+
+  const results: { region: string; latency: number }[] = [];
+
+  await Promise.allSettled(
+    Object.entries(endpoints).map(async ([region, url]) => {
+      const start = performance.now();
+      try {
+        await fetch(url, { method: "HEAD", mode: "no-cors", signal: AbortSignal.timeout(3000) });
+        results.push({ region, latency: performance.now() - start });
+      } catch {
+        // Region unreachable, skip
+      }
+    })
+  );
+
+  if (results.length === 0) return "us-east";
+  results.sort((a, b) => a.latency - b.latency);
+  return results[0].region;
 }
 
 export const VoiceProvider = ({ children }: { children: ReactNode }) => {
@@ -81,6 +145,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
   const [availableDevices, setAvailableDevices] = useState<{ inputs: MediaDeviceInfo[]; outputs: MediaDeviceInfo[] }>({ inputs: [], outputs: [] });
+  const [callEvents, setCallEvents] = useState<CallEvent[]>([]);
+  const [detectedRegion, setDetectedRegion] = useState("us-east");
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
@@ -89,8 +155,46 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const outputGainRef = useRef<GainNode | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const animFrameRef = useRef<number>(0);
+  const prevCallStateRef = useRef<string | null>(null);
 
-  // Persist settings
+  // Detect best region on mount
+  useEffect(() => {
+    detectBestRegion().then(setDetectedRegion);
+  }, []);
+
+  // Track call events for chat pills
+  useEffect(() => {
+    const isInCall = activeCall?.conversationId;
+    const callState = activeCall?.state;
+    const prevState = prevCallStateRef.current;
+
+    if (isInCall && callState === "connected" && prevState !== "connected") {
+      const callId = `call-${Date.now()}`;
+      prevCallStateRef.current = "connected";
+      setCallEvents(prev => [...prev, {
+        id: callId,
+        conversationId: activeCall.conversationId,
+        state: "ongoing",
+        startedAt: new Date().toISOString(),
+      }]);
+    } else if (!isInCall && prevState === "connected") {
+      prevCallStateRef.current = null;
+      setCallEvents(prev => {
+        const last = [...prev];
+        let ongoingIdx = -1;
+        for (let i = last.length - 1; i >= 0; i--) { if (last[i].state === "ongoing") { ongoingIdx = i; break; } }
+        if (ongoingIdx >= 0) {
+          last[ongoingIdx] = { ...last[ongoingIdx], state: "ended", endedAt: new Date().toISOString() };
+        }
+        return last;
+      });
+    } else if (isInCall && callState !== "connected") {
+      prevCallStateRef.current = callState || null;
+    } else if (!isInCall) {
+      prevCallStateRef.current = null;
+    }
+  }, [activeCall?.conversationId, activeCall?.state]);
+
   const updateSettings = useCallback((partial: Partial<VoiceSettings>) => {
     setSettings(prev => {
       const next = { ...prev, ...partial };
@@ -99,7 +203,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     });
   }, []);
 
-  // Device enumeration
   const refreshDevices = useCallback(async () => {
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
@@ -118,21 +221,14 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     return () => navigator.mediaDevices?.removeEventListener?.("devicechange", refreshDevices);
   }, [refreshDevices]);
 
-  // Apply input volume via gain node
   useEffect(() => {
-    if (gainNodeRef.current) {
-      gainNodeRef.current.gain.value = settings.inputVolume / 100;
-    }
+    if (gainNodeRef.current) gainNodeRef.current.gain.value = settings.inputVolume / 100;
   }, [settings.inputVolume]);
 
-  // Apply output volume
   useEffect(() => {
-    if (outputGainRef.current) {
-      outputGainRef.current.gain.value = settings.outputVolume / 100;
-    }
+    if (outputGainRef.current) outputGainRef.current.gain.value = settings.outputVolume / 100;
   }, [settings.outputVolume]);
 
-  // Audio level monitoring
   const startAudioLevelMonitor = useCallback((stream: MediaStream) => {
     const ctx = new AudioContext();
     audioContextRef.current = ctx;
@@ -142,7 +238,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     analyser.smoothingTimeConstant = 0.5;
     source.connect(analyser);
     analyserRef.current = analyser;
-
     const dataArray = new Uint8Array(analyser.frequencyBinCount);
     const tick = () => {
       analyser.getByteFrequencyData(dataArray);
@@ -161,7 +256,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     setAudioLevel(0);
   }, []);
 
-  // Get user media with high quality
   const getUserMedia = useCallback(async () => {
     const constraints: MediaStreamConstraints = {
       audio: {
@@ -175,20 +269,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       } as MediaTrackConstraints,
       video: false,
     };
-
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
-    return stream;
+    return navigator.mediaDevices.getUserMedia(constraints);
   }, [settings.inputDeviceId, settings.echoCancellation, settings.noiseSuppression, settings.autoGainControl]);
 
-  // Create peer connection with high quality audio
   const createPeerConnection = useCallback(() => {
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS, iceTransportPolicy: "all" });
 
     pc.ontrack = (event) => {
       const remote = event.streams[0];
       setRemoteStream(remote);
-
-      // Apply output volume via Web Audio
       try {
         const ctx = audioContextRef.current || new AudioContext();
         if (!audioContextRef.current) audioContextRef.current = ctx;
@@ -199,8 +288,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         source.connect(gain);
         const dest = ctx.createMediaStreamDestination();
         gain.connect(dest);
-
-        // Play through audio element for output device selection
         const audioEl = document.createElement("audio");
         audioEl.srcObject = dest.stream;
         audioEl.autoplay = true;
@@ -208,8 +295,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           (audioEl as any).setSinkId(settings.outputDeviceId).catch(console.error);
         }
         audioEl.play().catch(console.error);
-      } catch (e) {
-        // Fallback: direct playback
+      } catch {
         const audioEl = document.createElement("audio");
         audioEl.srcObject = remote;
         audioEl.autoplay = true;
@@ -227,7 +313,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     return pc;
   }, [settings.outputVolume, settings.outputDeviceId]);
 
-  // Set up signaling channel
   const setupSignaling = useCallback((conversationId: string) => {
     if (!user) return;
 
@@ -236,11 +321,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
     channel.on("broadcast", { event: "voice-signal" }, async ({ payload }) => {
       if (payload.senderId === user.id) return;
-
       const pc = pcRef.current;
 
       if (payload.type === "offer") {
-        // Incoming call
         setIncomingCall({
           conversationId,
           callerId: payload.senderId,
@@ -272,7 +355,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     return channel;
   }, [user]);
 
-  // Prefer high-quality Opus
   const setHighQualityOpus = (sdp: string): string => {
     return sdp.replace(
       /a=fmtp:111 /g,
@@ -282,7 +364,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
   const startCall = useCallback(async (conversationId: string, peerId: string, peerName: string) => {
     if (!user) return;
-
     try {
       const stream = await getUserMedia();
       setLocalStream(stream);
@@ -335,7 +416,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
   const acceptCall = useCallback(async () => {
     if (!incomingCall || !user) return;
-
     try {
       const stream = await getUserMedia();
       setLocalStream(stream);
@@ -357,7 +437,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       };
 
       await pc.setRemoteDescription(new RTCSessionDescription(incomingCall.offer));
-
       const answer = await pc.createAnswer();
       let sdp = answer.sdp || "";
       sdp = setHighQualityOpus(sdp);
@@ -379,7 +458,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         isMuted: false,
         isDeafened: false,
       });
-
       setIncomingCall(null);
     } catch (e) {
       console.error("Failed to accept call:", e);
@@ -387,7 +465,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   }, [incomingCall, user, getUserMedia, createPeerConnection, setupSignaling, startAudioLevelMonitor]);
 
   const endCall = useCallback(() => {
-    // Send hangup signal
     if (channelRef.current && user) {
       channelRef.current.send({
         type: "broadcast",
@@ -396,7 +473,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       });
     }
 
-    // Clean up
     pcRef.current?.close();
     pcRef.current = null;
 
@@ -415,29 +491,21 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
   const toggleMute = useCallback(() => {
     if (localStream) {
-      localStream.getAudioTracks().forEach(track => {
-        track.enabled = !track.enabled;
-      });
+      localStream.getAudioTracks().forEach(track => { track.enabled = !track.enabled; });
       setActiveCall(prev => prev ? { ...prev, isMuted: !prev.isMuted } : null);
     }
   }, [localStream]);
 
   const toggleDeafen = useCallback(() => {
     if (remoteStream) {
-      // Mute remote audio
       const audioElements = document.querySelectorAll("audio");
-      audioElements.forEach(el => {
-        if (el.srcObject) el.muted = !el.muted;
-      });
+      audioElements.forEach(el => { if (el.srcObject) el.muted = !el.muted; });
       setActiveCall(prev => prev ? { ...prev, isDeafened: !prev.isDeafened } : null);
     }
   }, [remoteStream]);
 
-  // Listen for incoming calls on all conversations
   useEffect(() => {
     if (!user) return;
-
-    // We'll listen on a global channel for call notifications
     const globalChannel = supabase.channel(`voice-global:${user.id}`);
     globalChannel.on("broadcast", { event: "incoming-call" }, ({ payload }) => {
       if (payload.targetId === user.id && !activeCall) {
@@ -445,28 +513,14 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       }
     });
     globalChannel.subscribe();
-
-    return () => {
-      supabase.removeChannel(globalChannel);
-    };
+    return () => { supabase.removeChannel(globalChannel); };
   }, [user, activeCall, setupSignaling]);
 
   return (
     <VoiceContext.Provider value={{
-      settings,
-      updateSettings,
-      activeCall,
-      startCall,
-      acceptCall,
-      endCall,
-      incomingCall,
-      toggleMute,
-      toggleDeafen,
-      localStream,
-      remoteStream,
-      audioLevel,
-      availableDevices,
-      refreshDevices,
+      settings, updateSettings, activeCall, startCall, acceptCall, endCall,
+      incomingCall, toggleMute, toggleDeafen, localStream, remoteStream,
+      audioLevel, availableDevices, refreshDevices, callEvents, detectedRegion,
     }}>
       {children}
     </VoiceContext.Provider>
