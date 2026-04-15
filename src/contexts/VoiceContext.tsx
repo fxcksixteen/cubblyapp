@@ -475,11 +475,14 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         },
       });
 
+      const isBotCall = peerId === "00000000-0000-0000-0000-000000000001";
+
       setActiveCall({
         conversationId,
         peerId,
         peerName,
-        state: "calling",
+        state: isBotCall ? "connected" : "calling",
+        startedAt: isBotCall ? Date.now() : undefined,
         isMuted: false,
         isDeafened: false,
       });
