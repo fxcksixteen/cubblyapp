@@ -255,7 +255,14 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
                         </div>
                       )}
                       <div className="absolute -bottom-0.5 -right-0.5">
-                        <StatusIndicator status={friendship.profile.status} size="sm" borderColor="var(--app-bg-primary, #313338)" />
+                        <StatusIndicator
+                          status={onlineUserIds.has(friendship.profile.user_id)
+                            ? (friendship.profile.status === "invisible" ? "online" : friendship.profile.status)
+                            : "offline"}
+                          size="sm"
+                          borderColor="var(--app-bg-primary, #313338)"
+                        />
+                      </div>
                       </div>
                     </div>
                     <div className="flex-1 overflow-hidden">
