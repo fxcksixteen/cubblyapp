@@ -11,6 +11,7 @@ import headphoneDeafenIcon from "@/assets/icons/headphone-deafen.svg";
 import callIcon from "@/assets/icons/call.svg";
 import callEndIcon from "@/assets/icons/call-end.svg";
 import videoIcon from "@/assets/icons/video-camera.svg";
+import screenshareIcon from "@/assets/icons/screenshare.svg";
 
 const formatDuration = (ms: number) => {
   const secs = Math.floor(ms / 1000);
