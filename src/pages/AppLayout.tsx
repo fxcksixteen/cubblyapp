@@ -5,6 +5,7 @@ import { useVoice } from "@/contexts/VoiceContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { getProfileColor } from "@/lib/profileColors";
+import { getEffectivePresenceStatus } from "@/lib/presence";
 import messagesInboxIcon from "@/assets/icons/messages.svg";
 import activityIcon from "@/assets/icons/activity.svg";
 import callIcon from "@/assets/icons/call.svg";
@@ -38,7 +39,7 @@ const isElectron = typeof window !== "undefined" && !!(window as any).electronAP
 const AppLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user } = useAuth();
+  const { user, onlineUserIds } = useAuth();
   const { activeCall, startCall, endCall } = useVoice();
 
   const pathParts = location.pathname.split("/").filter(Boolean);
@@ -194,6 +195,7 @@ const AppLayout = () => {
   };
 
   const participantColor = activeParticipant ? getProfileColor(activeParticipant.user_id) : null;
+  const activeParticipantStatus = getEffectivePresenceStatus(activeParticipant?.user_id, activeParticipant?.status, onlineUserIds);
 
   return (
     <div className="app-themed flex flex-col h-screen w-full overflow-hidden font-body" style={{ backgroundColor: "var(--app-bg-primary)", color: "var(--app-text-primary)" }}>
@@ -237,7 +239,7 @@ const AppLayout = () => {
                       </div>
                     )}
                     <div className="absolute -bottom-0.5 -right-0.5">
-                      <StatusIndicator status={activeParticipant?.status || "offline"} size="sm" borderColor="var(--app-bg-primary)" />
+                      <StatusIndicator status={activeParticipantStatus} size="sm" borderColor="var(--app-bg-primary)" />
                     </div>
                   </div>
                   <span className="text-[15px] font-semibold" style={{ color: "var(--app-text-primary)" }}>
