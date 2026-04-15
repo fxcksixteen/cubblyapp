@@ -467,11 +467,94 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     return pc;
   }, [settings.outputVolume, settings.outputDeviceId]);
 
+  const setHighQualityOpus = (sdp: string): string => {
+    return sdp.replace(
+      /a=fmtp:111 /g,
+      "a=fmtp:111 maxaveragebitrate=510000;stereo=1;sprop-stereo=1;useinbandfec=1;maxplaybackrate=48000;"
+    );
+  };
+
+  const flushQueuedIceCandidates = useCallback(async (pc: RTCPeerConnection) => {
+    if (incomingCandidateQueue.current.length === 0) return;
+
+    const queuedCandidates = [...incomingCandidateQueue.current];
+    incomingCandidateQueue.current = [];
+
+    for (const candidate of queuedCandidates) {
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      } catch (e) {
+        console.warn("[Voice] Flushing queued candidate failed:", e);
+      }
+    }
+  }, []);
+
+  // Store pending offer so we can re-send when recipient signals ready
+  const pendingOfferRef = useRef<{ offer: RTCSessionDescriptionInit; conversationId: string; callEventId: string } | null>(null);
+
+  const initializeOutgoingConnection = useCallback(async (channel: ReturnType<typeof supabase.channel>, conversationId: string) => {
+    if (!user) return;
+    if (pcRef.current || pendingOfferRef.current) return;
+
+    const outgoingCallMeta = outgoingCallMetaRef.current;
+    if (!outgoingCallMeta || outgoingCallMeta.conversationId !== conversationId) return;
+
+    const stream = await getUserMedia();
+    setLocalStream(stream);
+    localStreamRef.current = stream;
+    startAudioLevelMonitor(stream);
+
+    const pc = createPeerConnection();
+    stream.getTracks().forEach(track => pc.addTrack(track, stream));
+
+    outgoingCandidateBuffer.current = [];
+    incomingCandidateQueue.current = [];
+    remoteDescriptionSet.current = false;
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        const candidate = event.candidate.toJSON();
+        outgoingCandidateBuffer.current.push(candidate);
+        channel.send({
+          type: "broadcast",
+          event: "voice-signal",
+          payload: { type: "ice-candidate", candidate, senderId: user.id },
+        });
+      }
+    };
+
+    const offer = await pc.createOffer();
+    let sdp = offer.sdp || "";
+    sdp = setHighQualityOpus(sdp);
+    offer.sdp = sdp;
+    await pc.setLocalDescription(offer);
+
+    pendingOfferRef.current = {
+      offer,
+      conversationId,
+      callEventId: outgoingCallMeta.callEventId,
+    };
+
+    channel.send({
+      type: "broadcast",
+      event: "voice-signal",
+      payload: {
+        type: "offer",
+        sdp: offer,
+        senderId: user.id,
+        senderName: user.user_metadata?.display_name || "User",
+        callerAvatarUrl: outgoingCallMeta.callerAvatarUrl,
+        callEventId: outgoingCallMeta.callEventId,
+      },
+    });
+
+    setActiveCall(prev => prev && prev.conversationId === conversationId ? { ...prev, state: "ringing" } : prev);
+  }, [user, getUserMedia, createPeerConnection, startAudioLevelMonitor]);
+
   const setupSignaling = useCallback((conversationId: string): Promise<ReturnType<typeof supabase.channel>> => {
     return new Promise((resolve, reject) => {
       if (!user) { reject(new Error("No user")); return; }
 
-      // If already subscribed to this conversation, reuse
       if (channelRef.current) {
         resolve(channelRef.current);
         return;
@@ -484,8 +567,64 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         if (payload.senderId === user.id) return;
         const pc = pcRef.current;
 
+        if (payload.type === "ready-for-offer") {
+          try {
+            await initializeOutgoingConnection(channel, conversationId);
+          } catch (e) {
+            console.error("[Voice] Failed to initialize outgoing connection:", e);
+            endCallRef.current();
+          }
+          return;
+        }
+
         if (payload.type === "offer") {
-          // Store the offer for when user accepts — also reset candidate queue
+          const acceptedCall = acceptedIncomingCallRef.current;
+
+          if (acceptedCall && acceptedCall.conversationId === conversationId && pc) {
+            try {
+              remoteDescriptionSet.current = true;
+              await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+              await flushQueuedIceCandidates(pc);
+
+              const answer = await pc.createAnswer();
+              let sdp = answer.sdp || "";
+              sdp = setHighQualityOpus(sdp);
+              answer.sdp = sdp;
+              await pc.setLocalDescription(answer);
+
+              channel.send({
+                type: "broadcast",
+                event: "voice-signal",
+                payload: { type: "answer", sdp: answer, senderId: user.id },
+              });
+
+              setActiveCall(prev => prev && prev.conversationId === conversationId
+                ? {
+                    ...prev,
+                    peerId: payload.senderId,
+                    peerName: payload.senderName || acceptedCall.callerName,
+                    state: "calling",
+                  }
+                : {
+                    conversationId,
+                    peerId: payload.senderId,
+                    peerName: payload.senderName || acceptedCall.callerName,
+                    state: "calling",
+                    startedAt: undefined,
+                    isMuted: false,
+                    isDeafened: false,
+                  }
+              );
+
+              acceptedIncomingCallRef.current = null;
+              setIncomingCall(null);
+            } catch (e) {
+              console.error("[Voice] Failed handling accepted offer:", e);
+              endCallRef.current();
+            }
+            return;
+          }
+
           incomingCandidateQueue.current = [];
           remoteDescriptionSet.current = false;
           setIncomingCall({
@@ -496,42 +635,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             offer: payload.sdp,
             callEventId: payload.callEventId,
           });
-        }
-
-        // Recipient joined and is ready — re-send the offer AND all buffered ICE candidates
-        if (payload.type === "ready" && pc && pendingOfferRef.current?.conversationId === conversationId) {
-          channel.send({
-            type: "broadcast",
-            event: "voice-signal",
-            payload: {
-              type: "offer",
-              sdp: pendingOfferRef.current.offer,
-              senderId: user.id,
-              senderName: user.user_metadata?.display_name || "User",
-              callerAvatarUrl: user.user_metadata?.avatar_url,
-              callEventId: pendingOfferRef.current.callEventId,
-            },
-          });
-          // Re-send all buffered outgoing ICE candidates
-          for (const candidate of outgoingCandidateBuffer.current) {
-            channel.send({
-              type: "broadcast",
-              event: "voice-signal",
-              payload: { type: "ice-candidate", candidate, senderId: user.id },
-            });
-          }
+          return;
         }
 
         if (payload.type === "answer" && pc) {
           await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
           remoteDescriptionSet.current = true;
           pendingOfferRef.current = null;
-          // DON'T set connected here — wait for ICE connection state
-          // Flush any queued incoming ICE candidates
-          for (const candidate of incomingCandidateQueue.current) {
-            try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch (e) { console.warn("[Voice] Flushing queued candidate failed:", e); }
-          }
-          incomingCandidateQueue.current = [];
+          await flushQueuedIceCandidates(pc);
+          return;
         }
 
         if (payload.type === "ice-candidate") {
@@ -542,17 +654,17 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               console.warn("[Voice] addIceCandidate failed:", e);
             }
           } else {
-            // Queue it — will be flushed after setRemoteDescription
             console.log("[Voice] Queuing incoming ICE candidate (no remote desc yet)");
             incomingCandidateQueue.current.push(payload.candidate);
           }
+          return;
         }
 
         if (payload.type === "hangup") {
-          // Remote hangup — tear down locally without re-broadcasting
           isRemoteHangup.current = true;
           endCallRef.current();
           isRemoteHangup.current = false;
+          return;
         }
 
         if (payload.type === "screen-offer") {
@@ -578,10 +690,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             event: "voice-signal",
             payload: { type: "screen-answer", sdp: answer, senderId: user.id },
           });
+          return;
         }
 
         if (payload.type === "screen-answer" && screenPcRef.current) {
           await screenPcRef.current.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+          return;
         }
 
         if (payload.type === "screen-ice-candidate" && screenPcRef.current) {
@@ -590,6 +704,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           } catch (e) {
             console.error("Failed to add screen ICE candidate:", e);
           }
+          return;
         }
 
         if (payload.type === "screen-stop") {
@@ -608,80 +723,33 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         }
       });
     });
-  }, [user]);
-
-  const setHighQualityOpus = (sdp: string): string => {
-    return sdp.replace(
-      /a=fmtp:111 /g,
-      "a=fmtp:111 maxaveragebitrate=510000;stereo=1;sprop-stereo=1;useinbandfec=1;maxplaybackrate=48000;"
-    );
-  };
-
-  // Store pending offer so we can re-send when recipient signals ready
-  const pendingOfferRef = useRef<{ offer: RTCSessionDescriptionInit; conversationId: string; callEventId: string } | null>(null);
+  }, [user, initializeOutgoingConnection, flushQueuedIceCandidates]);
 
   const startCall = useCallback(async (conversationId: string, peerId: string, peerName: string) => {
     if (!user) return;
+
     try {
-      const stream = await getUserMedia();
-      setLocalStream(stream);
-      localStreamRef.current = stream;
-      startAudioLevelMonitor(stream);
-
-      const pc = createPeerConnection();
-      stream.getTracks().forEach(track => pc.addTrack(track, stream));
-
-      const channel = await setupSignaling(conversationId);
       const callEventId = crypto.randomUUID();
+      const channel = await setupSignaling(conversationId);
 
-      // Reset outgoing ICE buffer and remote desc flag
+      incomingCandidateQueue.current = [];
       outgoingCandidateBuffer.current = [];
       remoteDescriptionSet.current = false;
-      incomingCandidateQueue.current = [];
+      pendingOfferRef.current = null;
+      acceptedIncomingCallRef.current = null;
 
-      pc.onicecandidate = (event) => {
-        if (event.candidate) {
-          // Buffer the candidate so we can re-send on "ready"
-          outgoingCandidateBuffer.current.push(event.candidate.toJSON());
-          channel.send({
-            type: "broadcast",
-            event: "voice-signal",
-            payload: { type: "ice-candidate", candidate: event.candidate, senderId: user.id },
-          });
-        }
-      };
-
-      const offer = await pc.createOffer();
-      let sdp = offer.sdp || "";
-      sdp = setHighQualityOpus(sdp);
-      offer.sdp = sdp;
-      await pc.setLocalDescription(offer);
-
-      // Store offer for re-sending when recipient is ready
-      pendingOfferRef.current = { offer, conversationId, callEventId };
-
-      // Fetch our own avatar to include in signaling
       let callerAvatarUrl: string | undefined;
       try {
         const { data: profile } = await supabase.from("profiles").select("avatar_url").eq("user_id", user.id).maybeSingle();
         callerAvatarUrl = profile?.avatar_url || undefined;
       } catch {}
 
-      // Send offer on the conversation signaling channel
-      channel.send({
-        type: "broadcast",
-        event: "voice-signal",
-        payload: {
-          type: "offer",
-          sdp: offer,
-          senderId: user.id,
-          senderName: user.user_metadata?.display_name || "User",
-          callerAvatarUrl,
-          callEventId,
-        },
-      });
+      outgoingCallMetaRef.current = {
+        conversationId,
+        callEventId,
+        callerAvatarUrl,
+      };
 
-      // CRITICAL: Notify the recipient via their global channel so they join signaling
       const recipientGlobalChannel = supabase.channel(`voice-global:${peerId}`);
       recipientGlobalChannel.subscribe(async (status) => {
         if (status === "SUBSCRIBED") {
@@ -693,10 +761,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               conversationId,
               callerId: user.id,
               callerName: user.user_metadata?.display_name || "User",
+              callerAvatarUrl,
               callEventId,
             },
           });
-          // Keep channel alive briefly so the message goes through, then clean up
           setTimeout(() => {
             supabase.removeChannel(recipientGlobalChannel);
           }, 3000);
@@ -704,7 +772,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       });
 
       const isBotCall = peerId === "00000000-0000-0000-0000-000000000001";
-
       setActiveCall({
         conversationId,
         peerId,
@@ -728,14 +795,20 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         caller_id: user.id,
         state: "ongoing",
       } as any).then(() => {});
+
+      void channel;
     } catch (e) {
       console.error("Failed to start call:", e);
     }
-  }, [user, getUserMedia, createPeerConnection, setupSignaling, startAudioLevelMonitor]);
+  }, [user, setupSignaling]);
 
   const acceptCall = useCallback(async () => {
     if (!incomingCall || !user) return;
+
+    const acceptedCall = incomingCall;
+
     try {
+      const channel = await setupSignaling(acceptedCall.conversationId);
       const stream = await getUserMedia();
       setLocalStream(stream);
       localStreamRef.current = stream;
@@ -744,61 +817,73 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       const pc = createPeerConnection();
       stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
-      const channel = await setupSignaling(incomingCall.conversationId);
+      outgoingCandidateBuffer.current = [];
+      incomingCandidateQueue.current = [];
+      remoteDescriptionSet.current = false;
 
       pc.onicecandidate = (event) => {
         if (event.candidate) {
           channel.send({
             type: "broadcast",
             event: "voice-signal",
-            payload: { type: "ice-candidate", candidate: event.candidate, senderId: user.id },
+            payload: { type: "ice-candidate", candidate: event.candidate.toJSON(), senderId: user.id },
           });
         }
       };
 
-      // Set remote description (the offer) — this enables ICE candidate processing
-      remoteDescriptionSet.current = true;
-      await pc.setRemoteDescription(new RTCSessionDescription(incomingCall.offer));
-
-      // Flush any queued incoming ICE candidates that arrived before we had the pc + remote desc
-      for (const candidate of incomingCandidateQueue.current) {
-        try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch (e) { console.warn("[Voice] Flush queued candidate failed:", e); }
-      }
-      incomingCandidateQueue.current = [];
-
-      const answer = await pc.createAnswer();
-      let sdp = answer.sdp || "";
-      sdp = setHighQualityOpus(sdp);
-      answer.sdp = sdp;
-      await pc.setLocalDescription(answer);
-
-      channel.send({
-        type: "broadcast",
-        event: "voice-signal",
-        payload: { type: "answer", sdp: answer, senderId: user.id },
-      });
-
-      // Don't set "connected" here — wait for ICE connection state change
+      acceptedIncomingCallRef.current = acceptedCall;
       setActiveCall({
-        conversationId: incomingCall.conversationId,
-        peerId: incomingCall.callerId,
-        peerName: incomingCall.callerName,
-        state: "calling",
+        conversationId: acceptedCall.conversationId,
+        peerId: acceptedCall.callerId,
+        peerName: acceptedCall.callerName,
+        state: "ringing",
         startedAt: undefined,
         isMuted: false,
         isDeafened: false,
       });
       setIncomingCall(null);
 
+      if (acceptedCall.offer) {
+        remoteDescriptionSet.current = true;
+        await pc.setRemoteDescription(new RTCSessionDescription(acceptedCall.offer));
+        await flushQueuedIceCandidates(pc);
+
+        const answer = await pc.createAnswer();
+        let sdp = answer.sdp || "";
+        sdp = setHighQualityOpus(sdp);
+        answer.sdp = sdp;
+        await pc.setLocalDescription(answer);
+
+        channel.send({
+          type: "broadcast",
+          event: "voice-signal",
+          payload: { type: "answer", sdp: answer, senderId: user.id },
+        });
+
+        acceptedIncomingCallRef.current = null;
+        setActiveCall(prev => prev ? { ...prev, state: "calling" } : prev);
+      } else {
+        channel.send({
+          type: "broadcast",
+          event: "voice-signal",
+          payload: {
+            type: "ready-for-offer",
+            senderId: user.id,
+            senderName: user.user_metadata?.display_name || "User",
+            callEventId: acceptedCall.callEventId,
+          },
+        });
+      }
+
       setCallEvents(prev => {
-        const callEventId = incomingCall.callEventId || crypto.randomUUID();
+        const callEventId = acceptedCall.callEventId || crypto.randomUUID();
         const hasOngoing = prev.some(
-          e => e.id === callEventId || (e.conversationId === incomingCall.conversationId && e.state === "ongoing")
+          e => e.id === callEventId || (e.conversationId === acceptedCall.conversationId && e.state === "ongoing")
         );
         if (hasOngoing) return prev;
         return [...prev, {
           id: callEventId,
-          conversationId: incomingCall.conversationId,
+          conversationId: acceptedCall.conversationId,
           state: "ongoing",
           startedAt: new Date().toISOString(),
         }];
@@ -806,7 +891,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     } catch (e) {
       console.error("Failed to accept call:", e);
     }
-  }, [incomingCall, user, getUserMedia, createPeerConnection, setupSignaling, startAudioLevelMonitor]);
+  }, [incomingCall, user, setupSignaling, getUserMedia, createPeerConnection, startAudioLevelMonitor, flushQueuedIceCandidates]);
 
   // Screen sharing
   const startScreenShare = useCallback(async (type?: "screen" | "window" | "tab", options?: { audio?: boolean; fps?: number; quality?: string; sourceId?: string }) => {
