@@ -76,16 +76,9 @@ export const SERVER_REGIONS = [
   { id: "australia", label: "Australia", description: "Sydney" },
 ];
 
-const ICE_SERVERS: RTCIceServer[] = [
+const STUN_ONLY_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
-  { urls: "stun:stun2.l.google.com:19302" },
-  { urls: "stun:stun3.l.google.com:19302" },
-  { urls: "stun:stun4.l.google.com:19302" },
-  { urls: "turn:a.relay.metered.ca:80", username: "e8dd65d92aee94de76f5c205", credential: "0YpDMwFOjVPxbSGO" },
-  { urls: "turn:a.relay.metered.ca:80?transport=tcp", username: "e8dd65d92aee94de76f5c205", credential: "0YpDMwFOjVPxbSGO" },
-  { urls: "turn:a.relay.metered.ca:443", username: "e8dd65d92aee94de76f5c205", credential: "0YpDMwFOjVPxbSGO" },
-  { urls: "turns:a.relay.metered.ca:443?transport=tcp", username: "e8dd65d92aee94de76f5c205", credential: "0YpDMwFOjVPxbSGO" },
 ];
 
 interface VoiceContextType {
