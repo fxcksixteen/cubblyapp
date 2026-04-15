@@ -24,9 +24,12 @@ const statusColors: Record<string, string> = {
   offline: "bg-[#747f8d]",
 };
 
+const BOT_USER_ID = "00000000-0000-0000-0000-000000000001";
+
 const AppLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
   const { activeCall, startCall, endCall } = useVoice();
 
   const pathParts = location.pathname.split("/").filter(Boolean);
