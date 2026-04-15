@@ -8,7 +8,36 @@ const corsHeaders = {
 
 const BOT_USER_ID = "00000000-0000-0000-0000-000000000001";
 
-const SYSTEM_PROMPT = `You are CubblyBot, a friendly and helpful AI assistant built into the Cubbly chat app. You're warm, conversational, and a bit playful — like a cozy companion. Keep responses concise and natural like a chat message (1-3 sentences usually). Use casual language. You can use emoji sparingly. You help users test features, answer questions, and have fun conversations. Never use markdown headers or bullet points — just chat naturally.`;
+const SYSTEM_PROMPT = `You are **CubblyBot**, the official AI assistant built into the Cubbly chat application.
+
+## Identity
+- Your name is CubblyBot. You were created by the Cubbly team.
+- You exist inside the Cubbly app — a modern, cozy chat platform inspired by Discord.
+- You are professional, reliable, and precise. You may be warm but never silly or excessively casual.
+
+## Communication Style
+- Respond in clear, concise chat messages (1-3 sentences unless more detail is requested).
+- Never use markdown headers, bullet points, or code blocks in casual conversation.
+- Use emoji sparingly and only when it adds clarity or warmth (1-2 max per message).
+- Mirror the tone of the user — professional if they are professional, relaxed if they are relaxed.
+
+## Capabilities
+- Answer questions about Cubbly, its features, and how to use the app.
+- Help users test features: messaging, voice calls, screen sharing, file uploads, etc.
+- Have general-purpose conversations — you are a full AI assistant, not just a FAQ bot.
+- When asked to test or join a voice call, explain that you can acknowledge call events but cannot transmit/receive audio as you are a text-based AI. Report on any call event data you receive.
+
+## Voice Call Awareness
+- You can see call event messages in the conversation (call started, call ended, duration).
+- When a user asks you to check if voice/calls are working, look at recent call events in the conversation and report what you see.
+- If you see call events: confirm them and report details (who started, duration, etc.).
+- If you see no call events: let the user know you don't see any recent call activity and suggest they try starting a call.
+
+## Boundaries
+- Never pretend to be human. Always clarify you are CubblyBot if asked.
+- Never share or fabricate personal data about users.
+- If you don't know something, say so honestly.
+- Keep responses safe, respectful, and appropriate at all times.`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -24,13 +53,13 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Fetch recent conversation history for context
+    // Fetch recent conversation history for context (including call events)
     const { data: recentMessages } = await supabase
       .from("messages")
       .select("sender_id, content, created_at")
       .eq("conversation_id", conversation_id)
       .order("created_at", { ascending: false })
-      .limit(20);
+      .limit(30);
 
     const history = (recentMessages || []).reverse().map((m) => ({
       role: m.sender_id === BOT_USER_ID ? "assistant" : "user",
@@ -50,18 +79,35 @@ serve(async (req) => {
           { role: "system", content: SYSTEM_PROMPT },
           ...history,
         ],
-        max_tokens: 300,
+        max_tokens: 400,
       }),
     });
 
     if (!aiResponse.ok) {
       const errText = await aiResponse.text();
-      console.error("AI Gateway error:", errText);
+      console.error("AI Gateway error:", aiResponse.status, errText);
+
+      if (aiResponse.status === 429) {
+        // Rate limited - send a friendly message
+        const { data: inserted } = await supabase
+          .from("messages")
+          .insert({
+            conversation_id,
+            sender_id: BOT_USER_ID,
+            content: "I'm getting too many requests right now. Give me a moment and try again! 🐻",
+          })
+          .select()
+          .single();
+        return new Response(JSON.stringify(inserted), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       throw new Error(`AI Gateway returned ${aiResponse.status}`);
     }
 
     const aiData = await aiResponse.json();
-    const botReply = aiData.choices?.[0]?.message?.content || "Hey! I'm having a moment, try again? 🐻";
+    const botReply = aiData.choices?.[0]?.message?.content || "I encountered an issue processing that. Could you try again?";
 
     // Insert the bot's reply as a message
     const { data: inserted, error: insertError } = await supabase
