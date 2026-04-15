@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Monitor, MonitorOff, Maximize2, Minimize2 } from "lucide-react";
+import { Maximize2, Minimize2, Monitor } from "lucide-react";
 import { useVoice, CallEvent } from "@/contexts/VoiceContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { defaultProfileColor, getProfileColor } from "@/lib/profileColors";
