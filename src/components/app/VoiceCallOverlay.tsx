@@ -33,6 +33,7 @@ export const CallPanel = ({ conversationId, recipientName, recipientUserId }: {
   } = useVoice();
   const [elapsed, setElapsed] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showScreenSharePicker, setShowScreenSharePicker] = useState(false);
   const screenVideoRef = useRef<HTMLVideoElement>(null);
   const remoteScreenVideoRef = useRef<HTMLVideoElement>(null);
 
