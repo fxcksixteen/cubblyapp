@@ -949,11 +949,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => { endCallRef.current = endCall; }, [endCall]);
 
   const toggleMute = useCallback(() => {
-    if (localStream) {
-      localStream.getAudioTracks().forEach(track => { track.enabled = !track.enabled; });
+    const stream = localStreamRef.current;
+    if (stream) {
+      stream.getAudioTracks().forEach(track => { track.enabled = !track.enabled; });
       setActiveCall(prev => prev ? { ...prev, isMuted: !prev.isMuted } : null);
     }
-  }, [localStream]);
+  }, []);
 
   const toggleDeafen = useCallback(() => {
     setActiveCall(prev => {
@@ -967,20 +968,20 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       if (newDeafened) {
         // Save current mute state before deafening, then mute mic
         preMuteStateRef.current = prev.isMuted;
-        if (localStream) {
-          localStream.getAudioTracks().forEach(track => { track.enabled = false; });
+        if (localStreamRef.current) {
+          localStreamRef.current.getAudioTracks().forEach(track => { track.enabled = false; });
         }
         return { ...prev, isDeafened: true, isMuted: true };
       } else {
         // Restore pre-deafen mute state
         const restoreMuted = preMuteStateRef.current;
-        if (localStream) {
-          localStream.getAudioTracks().forEach(track => { track.enabled = !restoreMuted; });
+        if (localStreamRef.current) {
+          localStreamRef.current.getAudioTracks().forEach(track => { track.enabled = !restoreMuted; });
         }
         return { ...prev, isDeafened: false, isMuted: restoreMuted };
       }
     });
-  }, [localStream]);
+  }, []);
 
   useEffect(() => {
     if (!user) return;
