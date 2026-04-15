@@ -77,7 +77,7 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
 
   const getDisplayList = (): Friendship[] => {
     let list: Friendship[] = [];
-    if (activeTab === "online") list = friends.filter(f => f.profile.status !== "offline");
+    if (activeTab === "online") list = friends.filter(f => onlineUserIds.has(f.profile.user_id));
     else if (activeTab === "all") list = friends;
     else if (activeTab === "pending") list = pending;
     else if (activeTab === "blocked") list = blocked;
