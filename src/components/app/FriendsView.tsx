@@ -52,7 +52,7 @@ const emptyMessages: Record<string, string[]> = {
 };
 
 const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActiveNowOpen }: FriendsViewProps) => {
-  const { user } = useAuth();
+  const { user, onlineUserIds } = useAuth();
   const { friends, pending, blocked, sendFriendRequest, acceptRequest, declineRequest, unblockUser, removeFriend } = useFriends();
   const [addInput, setAddInput] = useState("");
   const [addStatus, setAddStatus] = useState<{ type: "success" | "error"; msg: string } | null>(null);
