@@ -373,19 +373,9 @@ export const CallEventMessage = ({ state, startedAt, endedAt }: {
 /** Incoming call notification overlay */
 const VoiceCallOverlay = () => {
   const { incomingCall, activeCall, acceptCall, endCall } = useVoice();
-  const [callerAvatar, setCallerAvatar] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!incomingCall) { setCallerAvatar(null); return; }
-    supabase
-      .from("profiles")
-      .select("avatar_url")
-      .eq("user_id", incomingCall.callerId)
-      .maybeSingle()
-      .then(({ data }) => setCallerAvatar(data?.avatar_url || null));
-  }, [incomingCall?.callerId]);
 
   if (incomingCall && !activeCall) {
+    const callerAvatar = incomingCall.callerAvatarUrl;
     return (
       <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-4 rounded-2xl border px-6 py-4 shadow-2xl animate-fade-in"
         style={{ backgroundColor: "var(--app-bg-secondary)", borderColor: "var(--app-border)" }}>

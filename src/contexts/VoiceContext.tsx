@@ -191,6 +191,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const localStreamRef = useRef<MediaStream | null>(null);
   const endCallRef = useRef<() => void>(() => {});
 
+  // ICE candidate queues to fix race conditions
+  const incomingCandidateQueue = useRef<RTCIceCandidateInit[]>([]);
+  const outgoingCandidateBuffer = useRef<RTCIceCandidateInit[]>([]);
+  const remoteDescriptionSet = useRef<boolean>(false);
+  // Flag to prevent re-broadcasting hangup when receiving one
+  const isRemoteHangup = useRef<boolean>(false);
+
   useEffect(() => {
     detectBestRegion().then(setDetectedRegion);
   }, []);
@@ -419,12 +426,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
     pc.oniceconnectionstatechange = () => {
       console.log("[Voice] ICE state:", pc.iceConnectionState);
-      if (pc.iceConnectionState === "connected") {
+      if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+        // Mark call as truly connected only when ICE transport is up
+        setActiveCall(prev => prev && prev.state !== "connected" ? { ...prev, state: "connected", startedAt: prev.startedAt || Date.now() } : prev);
         // Ensure ALL local audio tracks are enabled when connected
         const senders = pc.getSenders();
         senders.forEach(s => {
           if (s.track?.kind === "audio") {
-            // Always enable on connect — mute state is applied separately
             s.track.enabled = true;
             console.log("[Voice] Audio track enabled on ICE connected");
           }
@@ -432,11 +440,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       }
       if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed") {
         console.warn("[Voice] ICE connection failed/disconnected");
-        // Use a timeout to avoid acting on transient disconnects
         setTimeout(() => {
           if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed") {
             console.error("[Voice] ICE permanently failed, ending call");
-            // Clean up directly to avoid stale closure issues
             pc.close();
             pcRef.current = null;
             setActiveCall(null);
@@ -477,16 +483,20 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         const pc = pcRef.current;
 
         if (payload.type === "offer") {
+          // Store the offer for when user accepts — also reset candidate queue
+          incomingCandidateQueue.current = [];
+          remoteDescriptionSet.current = false;
           setIncomingCall({
             conversationId,
             callerId: payload.senderId,
             callerName: payload.senderName || "Unknown",
+            callerAvatarUrl: payload.callerAvatarUrl,
             offer: payload.sdp,
             callEventId: payload.callEventId,
           });
         }
 
-        // Recipient joined and is ready — re-send the offer
+        // Recipient joined and is ready — re-send the offer AND all buffered ICE candidates
         if (payload.type === "ready" && pc && pendingOfferRef.current?.conversationId === conversationId) {
           channel.send({
             type: "broadcast",
@@ -496,27 +506,51 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               sdp: pendingOfferRef.current.offer,
               senderId: user.id,
               senderName: user.user_metadata?.display_name || "User",
+              callerAvatarUrl: user.user_metadata?.avatar_url,
               callEventId: pendingOfferRef.current.callEventId,
             },
           });
+          // Re-send all buffered outgoing ICE candidates
+          for (const candidate of outgoingCandidateBuffer.current) {
+            channel.send({
+              type: "broadcast",
+              event: "voice-signal",
+              payload: { type: "ice-candidate", candidate, senderId: user.id },
+            });
+          }
         }
 
         if (payload.type === "answer" && pc) {
           await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+          remoteDescriptionSet.current = true;
           pendingOfferRef.current = null;
-          setActiveCall(prev => prev ? { ...prev, state: "connected", startedAt: Date.now() } : null);
+          // DON'T set connected here — wait for ICE connection state
+          // Flush any queued incoming ICE candidates
+          for (const candidate of incomingCandidateQueue.current) {
+            try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch (e) { console.warn("[Voice] Flushing queued candidate failed:", e); }
+          }
+          incomingCandidateQueue.current = [];
         }
 
-        if (payload.type === "ice-candidate" && pc) {
-          try {
-            await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
-          } catch (e) {
-            console.error("Failed to add ICE candidate:", e);
+        if (payload.type === "ice-candidate") {
+          if (pc && remoteDescriptionSet.current) {
+            try {
+              await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
+            } catch (e) {
+              console.warn("[Voice] addIceCandidate failed:", e);
+            }
+          } else {
+            // Queue it — will be flushed after setRemoteDescription
+            console.log("[Voice] Queuing incoming ICE candidate (no remote desc yet)");
+            incomingCandidateQueue.current.push(payload.candidate);
           }
         }
 
         if (payload.type === "hangup") {
+          // Remote hangup — tear down locally without re-broadcasting
+          isRemoteHangup.current = true;
           endCallRef.current();
+          isRemoteHangup.current = false;
         }
 
         if (payload.type === "screen-offer") {
@@ -598,8 +632,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       const channel = await setupSignaling(conversationId);
       const callEventId = crypto.randomUUID();
 
+      // Reset outgoing ICE buffer and remote desc flag
+      outgoingCandidateBuffer.current = [];
+      remoteDescriptionSet.current = false;
+      incomingCandidateQueue.current = [];
+
       pc.onicecandidate = (event) => {
         if (event.candidate) {
+          // Buffer the candidate so we can re-send on "ready"
+          outgoingCandidateBuffer.current.push(event.candidate.toJSON());
           channel.send({
             type: "broadcast",
             event: "voice-signal",
@@ -617,6 +658,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       // Store offer for re-sending when recipient is ready
       pendingOfferRef.current = { offer, conversationId, callEventId };
 
+      // Fetch our own avatar to include in signaling
+      let callerAvatarUrl: string | undefined;
+      try {
+        const { data: profile } = await supabase.from("profiles").select("avatar_url").eq("user_id", user.id).maybeSingle();
+        callerAvatarUrl = profile?.avatar_url || undefined;
+      } catch {}
+
       // Send offer on the conversation signaling channel
       channel.send({
         type: "broadcast",
@@ -626,6 +674,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           sdp: offer,
           senderId: user.id,
           senderName: user.user_metadata?.display_name || "User",
+          callerAvatarUrl,
           callEventId,
         },
       });
@@ -705,7 +754,16 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         }
       };
 
+      // Set remote description (the offer) — this enables ICE candidate processing
+      remoteDescriptionSet.current = true;
       await pc.setRemoteDescription(new RTCSessionDescription(incomingCall.offer));
+
+      // Flush any queued incoming ICE candidates that arrived before we had the pc + remote desc
+      for (const candidate of incomingCandidateQueue.current) {
+        try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch (e) { console.warn("[Voice] Flush queued candidate failed:", e); }
+      }
+      incomingCandidateQueue.current = [];
+
       const answer = await pc.createAnswer();
       let sdp = answer.sdp || "";
       sdp = setHighQualityOpus(sdp);
@@ -718,12 +776,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         payload: { type: "answer", sdp: answer, senderId: user.id },
       });
 
+      // Don't set "connected" here — wait for ICE connection state change
       setActiveCall({
         conversationId: incomingCall.conversationId,
         peerId: incomingCall.callerId,
         peerName: incomingCall.callerName,
-        state: "connected",
-        startedAt: Date.now(),
+        state: "calling",
+        startedAt: undefined,
         isMuted: false,
         isDeafened: false,
       });
@@ -912,7 +971,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     stopScreenShare();
     setRemoteScreenStream(null);
 
-    if (channelRef.current && user) {
+    // Only broadcast hangup if WE initiated it (not a remote hangup)
+    if (!isRemoteHangup.current && channelRef.current && user) {
       channelRef.current.send({
         type: "broadcast",
         event: "voice-signal",
@@ -923,7 +983,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     pcRef.current?.close();
     pcRef.current = null;
 
-    // Use ref to always have current stream
     localStreamRef.current?.getTracks().forEach(t => t.stop());
     localStreamRef.current = null;
     setLocalStream(null);
@@ -935,6 +994,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     remoteAnalyserRef.current = null;
     setRemoteAudioLevel(0);
 
+    // Reset ICE queues
+    incomingCandidateQueue.current = [];
+    outgoingCandidateBuffer.current = [];
+    remoteDescriptionSet.current = false;
+    pendingOfferRef.current = null;
+
     document.querySelectorAll("audio").forEach((el: any) => {
       if (el.__cubblyRemote) { el.pause(); el.srcObject = null; el.remove(); }
     });
@@ -943,7 +1008,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       supabase.removeChannel(channelRef.current);
       channelRef.current = null;
     }
-    pendingOfferRef.current = null;
   }, [user, stopAudioLevelMonitor, stopScreenShare]);
 
   // Keep endCall ref always current
