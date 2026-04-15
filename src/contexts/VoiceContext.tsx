@@ -1031,9 +1031,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [incomingCall, user, setupSignaling, getUserMedia, createPeerConnection, startAudioLevelMonitor, flushQueuedIceCandidates]);
 
+  // Screen share loopback ref for bot calls
+  const screenLoopbackPcRef = useRef<{ local: RTCPeerConnection; remote: RTCPeerConnection } | null>(null);
+
   // Screen sharing
   const startScreenShare = useCallback(async (type?: "screen" | "window" | "tab", options?: { audio?: boolean; fps?: number; quality?: string; sourceId?: string }) => {
-    if (!user || !activeCall || !channelRef.current) return;
+    if (!user || !activeCall) return;
+
+    const BOT_ID = "00000000-0000-0000-0000-000000000001";
+    const isBotCall = activeCall.peerId === BOT_ID;
 
     const effectiveAudio = options?.audio ?? screenShareSettings.audioShare;
     const effectiveFps = options?.fps ?? screenShareSettings.frameRate;
@@ -1074,7 +1080,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           video: videoConstraints,
         });
       } else if (isElectron && (window as any).electronAPI?.getDesktopSources) {
-        // Electron fallback without sourceId — pick first matching
         const sources = await (window as any).electronAPI.getDesktopSources();
         let selectedSource = sources[0];
         if (type === "screen") {
@@ -1128,6 +1133,68 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       setScreenStream(stream);
       setIsScreenSharing(true);
 
+      // Bot call → loopback screenshare (echo video + audio back to yourself)
+      if (isBotCall) {
+        console.log("[Voice][Loopback] 🖥️ Starting screenshare loopback self-test...");
+        console.log("[Voice][Loopback] Screen tracks:", stream.getTracks().map(t => `${t.kind}:${t.label}:enabled=${t.enabled}`));
+
+        const localPc = new RTCPeerConnection({ iceServers: iceServersRef.current });
+        const remotePc = new RTCPeerConnection({ iceServers: iceServersRef.current });
+
+        localPc.onicecandidate = (e) => {
+          if (e.candidate) remotePc.addIceCandidate(e.candidate).catch(() => {});
+        };
+        remotePc.onicecandidate = (e) => {
+          if (e.candidate) localPc.addIceCandidate(e.candidate).catch(() => {});
+        };
+
+        localPc.oniceconnectionstatechange = () => {
+          console.log("[Voice][Loopback] Screen localPc ICE:", localPc.iceConnectionState);
+          if (localPc.iceConnectionState === "connected" || localPc.iceConnectionState === "completed") {
+            console.log("[Voice][Loopback] ✅ Screenshare ICE CONNECTED — loopback should be playing!");
+          }
+          if (localPc.iceConnectionState === "failed") {
+            console.error("[Voice][Loopback] ❌ Screenshare ICE FAILED");
+          }
+        };
+
+        remotePc.ontrack = (event) => {
+          console.log("[Voice][Loopback] ✅ Screen remotePc received track:", event.track.kind, event.track.label);
+          if (event.track.kind === "video") {
+            setRemoteScreenStream(event.streams[0]);
+          } else if (event.track.kind === "audio") {
+            // Play screenshare audio back
+            const audioEl = document.createElement("audio");
+            audioEl.srcObject = event.streams[0];
+            audioEl.autoplay = true;
+            audioEl.volume = settings.outputVolume / 100;
+            (audioEl as any).__cubblyRemote = true;
+            audioEl.play().then(() => console.log("[Voice][Loopback] ✅ Screenshare audio playing")).catch(e => console.error("[Voice][Loopback] ❌ Screenshare audio play failed:", e));
+            document.body.appendChild(audioEl);
+          }
+        };
+
+        stream.getTracks().forEach(track => {
+          localPc.addTrack(track, stream);
+          track.onended = () => { stopScreenShare(); };
+        });
+
+        const offer = await localPc.createOffer();
+        await localPc.setLocalDescription(offer);
+        await remotePc.setRemoteDescription(offer);
+        const answer = await remotePc.createAnswer();
+        await remotePc.setLocalDescription(answer);
+        await localPc.setRemoteDescription(answer);
+        console.log("[Voice][Loopback] ✅ Screenshare offer/answer exchanged");
+
+        screenLoopbackPcRef.current = { local: localPc, remote: remotePc };
+        screenPcRef.current = localPc;
+        return;
+      }
+
+      // Normal call: send via signaling channel
+      if (!channelRef.current) return;
+
       const screenPc = new RTCPeerConnection({ iceServers: iceServersRef.current });
       screenPcRef.current = screenPc;
 
@@ -1160,12 +1227,22 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       console.error("Failed to start screen share:", e);
       setIsScreenSharing(false);
     }
-  }, [user, activeCall, screenShareSettings]);
+  }, [user, activeCall, screenShareSettings, settings.outputVolume]);
 
   const stopScreenShare = useCallback(() => {
     screenStream?.getTracks().forEach(t => t.stop());
     setScreenStream(null);
     setIsScreenSharing(false);
+    setRemoteScreenStream(null);
+
+    // Clean up screen loopback peers
+    if (screenLoopbackPcRef.current) {
+      console.log("[Voice][Loopback] Cleaning up screenshare loopback peers");
+      screenLoopbackPcRef.current.local.close();
+      screenLoopbackPcRef.current.remote.close();
+      screenLoopbackPcRef.current = null;
+    }
+
     screenPcRef.current?.close();
     screenPcRef.current = null;
 
