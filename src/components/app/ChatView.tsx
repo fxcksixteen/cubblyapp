@@ -1,8 +1,10 @@
 import { useState, useRef, useEffect } from "react";
 import { useMessages, Message, MessageStatus } from "@/hooks/useMessages";
 import { useAuth } from "@/contexts/AuthContext";
+import { useVoice } from "@/contexts/VoiceContext";
 import { supabase } from "@/integrations/supabase/client";
-import { X } from "lucide-react";
+import { X, Phone, PhoneOff } from "lucide-react";
+import { defaultProfileColor, getProfileColor } from "@/lib/profileColors";
 import sendIcon from "@/assets/icons/send.svg";
 import folderFileIcon from "@/assets/icons/folder-file.svg";
 
@@ -14,6 +16,7 @@ interface ChatViewProps {
   conversationId: string;
   recipientName: string;
   recipientAvatar?: string;
+  recipientUserId?: string;
 }
 
 interface PendingFile {
@@ -43,11 +46,12 @@ const formatDateDivider = (dateStr: string) => {
 const shouldShowTimeDivider = (prevDate: string, currDate: string): boolean => {
   const prev = new Date(prevDate).getTime();
   const curr = new Date(currDate).getTime();
-  return curr - prev >= 2 * 60 * 60 * 1000; // 2 hours
+  return curr - prev >= 2 * 60 * 60 * 1000;
 };
 
-const ChatView = ({ conversationId, recipientName }: ChatViewProps) => {
+const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewProps) => {
   const { user } = useAuth();
+  const { activeCall, startCall, endCall } = useVoice();
   const { messages, loading, sendMessage } = useMessages(conversationId);
   const [input, setInput] = useState("");
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
@@ -112,14 +116,27 @@ const ChatView = ({ conversationId, recipientName }: ChatViewProps) => {
     return { text, attachments };
   };
 
+  const getAvatarColor = (senderId: string) => {
+    if (senderId === user?.id) return defaultProfileColor.bg;
+    return getProfileColor(senderId).bg;
+  };
+
+  const handleVoiceCall = () => {
+    if (activeCall?.conversationId === conversationId) {
+      endCall();
+    } else if (recipientUserId) {
+      startCall(conversationId, recipientUserId, recipientName);
+    }
+  };
+
+  const isInCall = activeCall?.conversationId === conversationId;
+
   // Build grouped messages with time dividers
-  const grouped: { type: "messages"; sender_id: string; sender_name: string; messages: Message[] }[] | { type: "divider"; label: string }[] = [];
   const items: ({ type: "messages"; sender_id: string; sender_name: string; messages: Message[] } | { type: "divider"; label: string })[] = [];
 
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
 
-    // Check time gap
     if (i > 0 && shouldShowTimeDivider(messages[i - 1].created_at, msg.created_at)) {
       items.push({ type: "divider", label: formatDateDivider(msg.created_at) });
     }
@@ -142,7 +159,10 @@ const ChatView = ({ conversationId, recipientName }: ChatViewProps) => {
           </div>
         ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-[#5865f2] text-2xl font-bold text-white">
+            <div
+              className="mb-3 flex h-16 w-16 items-center justify-center rounded-full text-2xl font-bold text-white"
+              style={{ backgroundColor: recipientUserId ? getProfileColor(recipientUserId).bg : "#5865f2" }}
+            >
               {recipientName.charAt(0).toUpperCase()}
             </div>
             <h3 className="text-xl font-bold text-white">{recipientName}</h3>
@@ -164,7 +184,10 @@ const ChatView = ({ conversationId, recipientName }: ChatViewProps) => {
 
             return (
               <div key={idx} className="mt-4 first:mt-0 flex gap-3 hover:bg-[#2e3035] rounded px-2 py-1">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#5865f2] text-sm font-bold text-white">
+                <div
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white"
+                  style={{ backgroundColor: getAvatarColor(item.sender_id) }}
+                >
                   {item.sender_name.charAt(0).toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">

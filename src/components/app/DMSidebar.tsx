@@ -3,6 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Conversation } from "@/hooks/useConversations";
 import { supabase } from "@/integrations/supabase/client";
 import { Plus, X, ShoppingBag } from "lucide-react";
+import { getProfileColor } from "@/lib/profileColors";
 import ProfilePopup from "./ProfilePopup";
 import SettingsModal from "./SettingsModal";
 import SearchBar from "./SearchBar";
@@ -95,29 +96,35 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
 
         {/* DM list */}
         <div className="mt-1 flex flex-col gap-0.5">
-          {conversations.map((conv) => (
-            <button
-              key={conv.id}
-              onClick={() => setActiveView(`dm:${conv.id}`)}
-              className={`group flex w-full items-center gap-3 rounded-[4px] px-2 py-1.5 transition-colors cubbly-3d-nav ${
-                activeView === `dm:${conv.id}`
-                  ? "bg-[#404249] text-white"
-                  : "text-[#949ba4] hover:bg-[#35373c] hover:text-[#dbdee1]"
-              }`}
-            >
-              <div className="relative">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#5865f2] text-sm font-bold text-white">
-                  {conv.participant.display_name.charAt(0).toUpperCase()}
+          {conversations.map((conv) => {
+            const color = getProfileColor(conv.participant.user_id);
+            return (
+              <button
+                key={conv.id}
+                onClick={() => setActiveView(`dm:${conv.id}`)}
+                className={`group flex w-full items-center gap-3 rounded-[4px] px-2 py-1.5 transition-colors cubbly-3d-nav ${
+                  activeView === `dm:${conv.id}`
+                    ? "bg-[#404249] text-white"
+                    : "text-[#949ba4] hover:bg-[#35373c] hover:text-[#dbdee1]"
+                }`}
+              >
+                <div className="relative">
+                  <div
+                    className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold text-white"
+                    style={{ backgroundColor: color.bg }}
+                  >
+                    {conv.participant.display_name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-[2.5px] border-[#2b2d31] ${statusColors[conv.participant.status]}`} />
                 </div>
-                <div className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-[2.5px] border-[#2b2d31] ${statusColors[conv.participant.status]}`} />
-              </div>
-              <span className="truncate text-sm font-medium">{conv.participant.display_name}</span>
-              <X
-                onClick={(e) => { e.stopPropagation(); onCloseConversation(conv.id); }}
-                className="ml-auto h-4 w-4 shrink-0 opacity-0 group-hover:opacity-100 text-[#949ba4] hover:text-[#dbdee1]"
-              />
-            </button>
-          ))}
+                <span className="truncate text-sm font-medium">{conv.participant.display_name}</span>
+                <X
+                  onClick={(e) => { e.stopPropagation(); onCloseConversation(conv.id); }}
+                  className="ml-auto h-4 w-4 shrink-0 opacity-0 group-hover:opacity-100 text-[#949ba4] hover:text-[#dbdee1]"
+                />
+              </button>
+            );
+          })}
         </div>
       </div>
 

@@ -3,6 +3,7 @@ import { X, Check, LogOut } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme, ThemeName } from "@/contexts/ThemeContext";
 import { defaultProfileColor } from "@/lib/profileColors";
+import VoiceVideoSettings from "./settings/VoiceVideoSettings";
 
 const APP_VERSION = "0.1.0";
 
@@ -112,13 +113,6 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
                 </div>
               </div>
             </div>
-
-            <div className="rounded-[24px] border p-5" style={cardStyle}>
-              <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: "var(--app-text-secondary)" }}>Account Notes</p>
-              <p className="mt-3 text-sm leading-6" style={{ color: "var(--app-text-secondary)" }}>
-                Your theme choice is reflected inside this modal and across the entire app.
-              </p>
-            </div>
           </div>
         );
 
@@ -200,6 +194,9 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
             </div>
           </div>
         );
+
+      case "voice-video":
+        return <VoiceVideoSettings panelStyle={panelStyle as any} cardStyle={cardStyle as any} />;
 
       default:
         return (

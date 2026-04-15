@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useConversations } from "@/hooks/useConversations";
-import { Inbox, Phone, Video } from "lucide-react";
+import { useVoice } from "@/contexts/VoiceContext";
+import { Inbox, Phone, PhoneOff, Video } from "lucide-react";
+import { getProfileColor } from "@/lib/profileColors";
 import ServerSidebar from "@/components/app/ServerSidebar";
 import DMSidebar from "@/components/app/DMSidebar";
 import FriendsView from "@/components/app/FriendsView";
 import ChatView from "@/components/app/ChatView";
 import ShopView from "@/components/app/ShopView";
+import VoiceCallOverlay from "@/components/app/VoiceCallOverlay";
 import friendsIcon from "@/assets/icons/friends.svg";
 
 type FriendTab = "online" | "all" | "pending" | "blocked" | "add";
@@ -22,6 +25,7 @@ const statusColors: Record<string, string> = {
 const AppLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { activeCall, startCall, endCall } = useVoice();
 
   const pathParts = location.pathname.split("/").filter(Boolean);
   const isChatRoute = pathParts[1] === "chat" && pathParts[2];
@@ -79,6 +83,16 @@ const AppLayout = () => {
     (conversation) => conversation.lastMessage || tempDMs.includes(conversation.id) || conversation.id === activeConvId,
   );
 
+  const isInCall = activeCall?.conversationId === activeConvId;
+
+  const handleVoiceCall = () => {
+    if (isInCall) {
+      endCall();
+    } else if (activeParticipant) {
+      startCall(activeConvId!, activeParticipant.user_id, activeParticipant.display_name);
+    }
+  };
+
   const renderHeader = () => {
     if (isShop) {
       return <span className="font-semibold" style={{ color: "var(--app-text-primary)" }}>Shop</span>;
@@ -127,6 +141,7 @@ const AppLayout = () => {
           conversationId={activeConvId}
           recipientName={activeParticipant?.display_name || "User"}
           recipientAvatar={activeParticipant?.avatar_url || undefined}
+          recipientUserId={activeParticipant?.user_id}
         />
       );
     }
@@ -137,6 +152,8 @@ const AppLayout = () => {
 
     return <FriendsView activeTab={friendTab} setActiveTab={setFriendTab} onOpenDM={handleOpenDM} />;
   };
+
+  const participantColor = activeParticipant ? getProfileColor(activeParticipant.user_id) : null;
 
   return (
     <div className="app-themed flex h-screen w-full overflow-hidden font-body" style={{ backgroundColor: "var(--app-bg-primary)", color: "var(--app-text-primary)" }}>
@@ -168,7 +185,10 @@ const AppLayout = () => {
                   {activeParticipant?.avatar_url ? (
                     <img src={activeParticipant.avatar_url} alt={activeParticipant.display_name} className="h-8 w-8 rounded-full object-cover" />
                   ) : (
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#5865f2] text-sm font-bold text-white">
+                    <div
+                      className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold text-white"
+                      style={{ backgroundColor: participantColor?.bg || "#5865f2" }}
+                    >
                       {(activeParticipant?.display_name || "User").charAt(0).toUpperCase()}
                     </div>
                   )}
@@ -182,8 +202,13 @@ const AppLayout = () => {
                 </span>
               </div>
               <div className="flex items-center gap-4" style={{ color: "var(--app-text-secondary)" }}>
-                <button className="transition-opacity hover:opacity-100" style={{ opacity: 0.9 }} title="Start Voice Call">
-                  <Phone className="h-5 w-5" />
+                <button
+                  onClick={handleVoiceCall}
+                  className={`transition-all hover:opacity-100 ${isInCall ? "text-[#ed4245]" : ""}`}
+                  style={isInCall ? {} : { opacity: 0.9 }}
+                  title={isInCall ? "End Voice Call" : "Start Voice Call"}
+                >
+                  {isInCall ? <PhoneOff className="h-5 w-5" /> : <Phone className="h-5 w-5" />}
                 </button>
                 <button className="transition-opacity hover:opacity-100" style={{ opacity: 0.9 }} title="Start Video Call">
                   <Video className="h-5 w-5" />
@@ -202,6 +227,9 @@ const AppLayout = () => {
 
         {renderContent()}
       </div>
+
+      {/* Voice call overlay */}
+      <VoiceCallOverlay />
     </div>
   );
 };
