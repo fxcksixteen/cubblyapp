@@ -397,6 +397,20 @@ const ChatView = ({ conversationId, recipientName, recipientUserId }: ChatViewPr
             className="flex-1 bg-transparent text-sm text-[#dbdee1] outline-none placeholder:text-[#6d6f78]"
           />
 
+          <div className="relative">
+            <button
+              onClick={() => setGifPickerOpen(!gifPickerOpen)}
+              className="text-[#b5bac1] hover:text-[#dbdee1] transition-opacity"
+            >
+              <img src={gifIcon} alt="GIF" className="h-6 w-6 invert opacity-60 hover:opacity-100 transition-opacity" />
+            </button>
+            <GifPicker
+              isOpen={gifPickerOpen}
+              onClose={() => setGifPickerOpen(false)}
+              onSelect={handleGifSelect}
+            />
+          </div>
+
           <button
             onClick={handleSend}
             disabled={uploading || (!input.trim() && pendingFiles.length === 0)}
