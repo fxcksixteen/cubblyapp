@@ -1,7 +1,7 @@
-import { useVoice } from "@/contexts/VoiceContext";
+import { useVoice, SERVER_REGIONS } from "@/contexts/VoiceContext";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
-import { Mic, Volume2 } from "lucide-react";
+import { Mic, Globe } from "lucide-react";
 
 interface Props {
   panelStyle: Record<string, string>;
@@ -9,7 +9,11 @@ interface Props {
 }
 
 const VoiceVideoSettings = ({ panelStyle, cardStyle }: Props) => {
-  const { settings, updateSettings, availableDevices, audioLevel, refreshDevices } = useVoice();
+  const { settings, updateSettings, availableDevices, audioLevel, refreshDevices, detectedRegion } = useVoice();
+
+  const activeRegion = settings.serverRegion === "auto"
+    ? SERVER_REGIONS.find(r => r.id === detectedRegion) || SERVER_REGIONS[0]
+    : SERVER_REGIONS.find(r => r.id === settings.serverRegion) || SERVER_REGIONS[0];
 
   return (
     <div className="space-y-6">
@@ -18,6 +22,33 @@ const VoiceVideoSettings = ({ panelStyle, cardStyle }: Props) => {
         <p className="mt-2 text-sm" style={{ color: "var(--app-text-secondary)" }}>
           Configure your audio devices, volume, and voice processing.
         </p>
+      </div>
+
+      {/* Server Region */}
+      <div className="rounded-[24px] border p-5 space-y-4" style={cardStyle}>
+        <div className="flex items-center gap-2">
+          <Globe className="h-4 w-4" style={{ color: "var(--app-text-secondary)" }} />
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: "var(--app-text-secondary)" }}>
+            Server Region
+          </p>
+        </div>
+        <select
+          value={settings.serverRegion}
+          onChange={(e) => updateSettings({ serverRegion: e.target.value })}
+          className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none cursor-pointer"
+          style={{ backgroundColor: "var(--app-input)", borderColor: "var(--app-border)", color: "var(--app-text-primary)" }}
+        >
+          {SERVER_REGIONS.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.label} — {r.description}
+            </option>
+          ))}
+        </select>
+        {settings.serverRegion === "auto" && (
+          <p className="text-xs" style={{ color: "var(--app-text-secondary)" }}>
+            Detected best region: <span className="font-semibold" style={{ color: "var(--app-text-primary)" }}>{activeRegion.label}</span> ({activeRegion.description})
+          </p>
+        )}
       </div>
 
       {/* Input Device */}
@@ -122,10 +153,7 @@ const VoiceVideoSettings = ({ panelStyle, cardStyle }: Props) => {
             <p className="text-sm font-medium" style={{ color: "var(--app-text-primary)" }}>Echo Cancellation</p>
             <p className="text-xs mt-0.5" style={{ color: "var(--app-text-secondary)" }}>Reduces echo from your speakers</p>
           </div>
-          <Switch
-            checked={settings.echoCancellation}
-            onCheckedChange={(v) => updateSettings({ echoCancellation: v })}
-          />
+          <Switch checked={settings.echoCancellation} onCheckedChange={(v) => updateSettings({ echoCancellation: v })} />
         </div>
 
         <div className="h-px" style={{ backgroundColor: "var(--app-border)" }} />
@@ -135,10 +163,7 @@ const VoiceVideoSettings = ({ panelStyle, cardStyle }: Props) => {
             <p className="text-sm font-medium" style={{ color: "var(--app-text-primary)" }}>Noise Suppression</p>
             <p className="text-xs mt-0.5" style={{ color: "var(--app-text-secondary)" }}>Filters background noise from your microphone</p>
           </div>
-          <Switch
-            checked={settings.noiseSuppression}
-            onCheckedChange={(v) => updateSettings({ noiseSuppression: v })}
-          />
+          <Switch checked={settings.noiseSuppression} onCheckedChange={(v) => updateSettings({ noiseSuppression: v })} />
         </div>
 
         <div className="h-px" style={{ backgroundColor: "var(--app-border)" }} />
@@ -148,10 +173,7 @@ const VoiceVideoSettings = ({ panelStyle, cardStyle }: Props) => {
             <p className="text-sm font-medium" style={{ color: "var(--app-text-primary)" }}>Automatic Gain Control</p>
             <p className="text-xs mt-0.5" style={{ color: "var(--app-text-secondary)" }}>Automatically adjusts your microphone volume</p>
           </div>
-          <Switch
-            checked={settings.autoGainControl}
-            onCheckedChange={(v) => updateSettings({ autoGainControl: v })}
-          />
+          <Switch checked={settings.autoGainControl} onCheckedChange={(v) => updateSettings({ autoGainControl: v })} />
         </div>
       </div>
 
@@ -165,15 +187,10 @@ const VoiceVideoSettings = ({ panelStyle, cardStyle }: Props) => {
           <div>
             <p className="text-sm font-medium" style={{ color: "var(--app-text-primary)" }}>Automatically determine input sensitivity</p>
             <p className="text-xs mt-0.5" style={{ color: "var(--app-text-secondary)" }}>
-              {settings.autoSensitivity
-                ? "Cubbly will automatically pick up your voice"
-                : "Manually set the threshold for voice detection"}
+              {settings.autoSensitivity ? "Cubbly will automatically pick up your voice" : "Manually set the threshold for voice detection"}
             </p>
           </div>
-          <Switch
-            checked={settings.autoSensitivity}
-            onCheckedChange={(v) => updateSettings({ autoSensitivity: v })}
-          />
+          <Switch checked={settings.autoSensitivity} onCheckedChange={(v) => updateSettings({ autoSensitivity: v })} />
         </div>
 
         {!settings.autoSensitivity && (
@@ -193,7 +210,6 @@ const VoiceVideoSettings = ({ panelStyle, cardStyle }: Props) => {
                 step={1}
                 className="w-full"
               />
-              {/* Live level indicator on the slider track */}
               <div className="mt-2 h-1.5 w-full rounded-full overflow-hidden" style={{ backgroundColor: "var(--app-input)" }}>
                 <div
                   className="h-full rounded-full transition-all duration-100"
@@ -219,7 +235,7 @@ const VoiceVideoSettings = ({ panelStyle, cardStyle }: Props) => {
         </p>
         <p className="mt-3 text-sm leading-6" style={{ color: "var(--app-text-secondary)" }}>
           Cubbly uses Opus codec at up to 510 kbps with 48 kHz stereo audio for the highest possible voice quality.
-          This exceeds the quality of most voice chat applications.
+          Connections are secured with TURN relay servers for reliable connectivity behind strict NATs and firewalls.
         </p>
       </div>
     </div>
