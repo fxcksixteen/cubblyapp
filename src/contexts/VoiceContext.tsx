@@ -1110,11 +1110,17 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           video: videoConstraints,
         });
       } else {
-        // Browser path: standard getDisplayMedia
+        // Browser path: standard getDisplayMedia.
+        // Only attempt audio when user is sharing an entire screen — window/tab cannot
+        // capture system audio, and trying to do so causes massive quality degradation
+        // and lag in some browsers (the OS forces a low-quality capture path).
+        const allowAudio = effectiveAudio && type === "screen";
+
         const videoConstraints: any = {
-          cursor: screenShareSettings.showCursor ? "always" : "never",
-          frameRate: { ideal: effectiveFps },
-          ...(res ? { width: { ideal: res.width }, height: { ideal: res.height } } : {}),
+          frameRate: { ideal: effectiveFps, max: effectiveFps },
+          ...(res
+            ? { width: { ideal: res.width }, height: { ideal: res.height } }
+            : { width: { ideal: 1920 }, height: { ideal: 1080 } }),
         };
 
         if (type === "tab") {
@@ -1125,19 +1131,23 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           videoConstraints.displaySurface = "monitor";
         }
 
-        // Only include system audio for full-screen shares; window/tab don't get system audio
-        const audioConstraint = !effectiveAudio
-          ? false
-          : type === "screen"
-            ? { systemAudio: "include" as const }
-            : type === "tab"
-              ? true  // browser captures tab audio natively
-              : false; // window shares have no individual audio
+        const audioConstraint = allowAudio
+          ? ({ systemAudio: "include" } as any)
+          : false;
 
         stream = await navigator.mediaDevices.getDisplayMedia({
           video: videoConstraints,
           audio: audioConstraint,
+          // @ts-ignore - non-standard but supported in Chromium
+          surfaceSwitching: "include",
+          selfBrowserSurface: "exclude",
         } as any);
+
+        // Hard guard: if for some reason audio tracks slipped through on a window/tab
+        // share, strip them out so we don't leak system audio.
+        if (!allowAudio) {
+          stream.getAudioTracks().forEach(t => { t.stop(); stream.removeTrack(t); });
+        }
       }
 
       setScreenStream(stream);
