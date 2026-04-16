@@ -87,6 +87,23 @@ export const SERVER_REGIONS = [
   { id: "australia", label: "Australia", description: "Sydney" },
 ];
 
+/**
+ * Bump the maxBitrate on a screenshare video sender. Called right after
+ * addTrack() so encoding parameters reflect the user's Optimization preset.
+ */
+async function applyScreenBitrate(sender: RTCRtpSender, maxBitrate: number) {
+  try {
+    const params = sender.getParameters();
+    if (!params.encodings || params.encodings.length === 0) {
+      params.encodings = [{}];
+    }
+    params.encodings[0].maxBitrate = maxBitrate;
+    await sender.setParameters(params);
+  } catch (e) {
+    console.warn("[Voice] Could not set screen encoding bitrate:", e);
+  }
+}
+
 const STUN_ONLY_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
@@ -1200,6 +1217,21 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       setScreenStream(stream);
       setIsScreenSharing(true);
 
+      // Apply Optimization preset to the actual video track:
+      //   ultra   → contentHint='detail'  + max bitrate boost (best of both worlds)
+      //   clarity → contentHint='detail'
+      //   motion  → contentHint='motion'
+      // contentHint hints the encoder/scaler about temporal vs spatial quality tradeoffs.
+      const opt = screenShareSettings.optimizeFor;
+      const hint = opt === "motion" ? "motion" : "detail"; // ultra & clarity → detail
+      const maxBitrate =
+        opt === "ultra" ? 8_000_000 : // 8 Mbps — premium
+        opt === "motion" ? 5_000_000 : // 5 Mbps — smoothness
+        4_000_000;                     // 4 Mbps — clarity
+      stream.getVideoTracks().forEach((t) => {
+        try { (t as any).contentHint = hint; } catch { /* unsupported */ }
+      });
+
       // Bot call → loopback screenshare (echo video + audio back to yourself)
       if (isBotCall) {
         console.log("[Voice][Loopback] 🖥️ Starting screenshare loopback self-test...");
@@ -1242,7 +1274,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         };
 
         stream.getTracks().forEach(track => {
-          localPc.addTrack(track, stream);
+          const sender = localPc.addTrack(track, stream);
+          if (track.kind === "video") applyScreenBitrate(sender, maxBitrate);
           track.onended = () => { stopScreenShare(); };
         });
 
@@ -1266,7 +1299,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       screenPcRef.current = screenPc;
 
       stream.getTracks().forEach(track => {
-        screenPc.addTrack(track, stream);
+        const sender = screenPc.addTrack(track, stream);
+        if (track.kind === "video") applyScreenBitrate(sender, maxBitrate);
         track.onended = () => {
           stopScreenShare();
         };
