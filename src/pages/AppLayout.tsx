@@ -303,8 +303,8 @@ const AppLayout = () => {
             </div>
           ) : null}
 
-          {/* Page content (with bottom padding so nav doesn't overlap) */}
-          <div className="flex-1 min-h-0 overflow-hidden" style={{ paddingBottom: isYou ? 0 : "calc(56px + env(safe-area-inset-bottom, 0px))" }}>
+          {/* Page content (with bottom padding so nav doesn't overlap — but no padding inside a chat since the nav is hidden there) */}
+          <div className="flex-1 min-h-0 overflow-hidden flex flex-col" style={{ paddingBottom: (isYou || isDM) ? 0 : "calc(56px + env(safe-area-inset-bottom, 0px))" }}>
             {renderContent()}
           </div>
         </div>
@@ -372,8 +372,8 @@ const AppLayout = () => {
           </div>
         )}
 
-        {/* Bottom nav (hide while a call overlay is fullscreen) */}
-        <MobileBottomNav hidden={!!activeCall && !isYou && false /* keep visible always */} />
+        {/* Bottom nav (hidden inside chats so the input bar can sit at the bottom) */}
+        <MobileBottomNav hidden={isDM} />
 
         {/* Call UI: fullscreen on mobile */}
         {activeCall && (
