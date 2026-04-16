@@ -11,6 +11,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getDesktopSources: () => ipcRenderer.invoke("get-desktop-sources"),
   isElectron: true,
 
+  // Activity / process scanning
+  getRunningProcesses: () => ipcRenderer.invoke("get-running-processes"),
+  pickGameExe: () => ipcRenderer.invoke("pick-game-exe"),
+
   // Auto-updater
   installUpdate: () => ipcRenderer.send("install-update"),
   checkForUpdates: () => ipcRenderer.send("check-for-updates"),

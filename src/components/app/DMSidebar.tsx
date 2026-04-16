@@ -3,6 +3,7 @@ import StatusIndicator from "@/components/app/StatusIndicator";
 import GroupAvatar from "@/components/app/GroupAvatar";
 import { useAuth } from "@/contexts/AuthContext";
 import { useVoice } from "@/contexts/VoiceContext";
+import { useActivity } from "@/contexts/ActivityContext";
 import { Conversation } from "@/hooks/useConversations";
 import { supabase } from "@/integrations/supabase/client";
 import { Plus, X, Users } from "lucide-react";
@@ -45,6 +46,7 @@ interface DMSidebarProps {
 const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversation, onOpenDM, onCreateGroup }: DMSidebarProps) => {
   const { user, onlineUserIds } = useAuth();
   const { activeCall, toggleMute, toggleDeafen } = useVoice();
+  const { getActivity } = useActivity();
   const displayName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "User";
   const username = user?.user_metadata?.username || displayName.toLowerCase();
 
@@ -150,9 +152,10 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
             const displayName = conv.is_group
               ? (conv.name || conv.members.map((m) => m.display_name).slice(0, 3).join(", ") || "Group")
               : conv.participant.display_name;
+            const dmActivity = !conv.is_group ? getActivity(conv.participant.user_id) : undefined;
             const subtitle = conv.is_group
               ? `${conv.members.length + 1} members`
-              : null;
+              : (dmActivity?.name ? `Playing ${dmActivity.name}` : null);
             return (
               <ContextMenu key={conv.id}>
                 <ContextMenuTrigger asChild>
@@ -189,7 +192,10 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                     <div className="flex-1 min-w-0 text-left">
                       <p className="truncate text-sm font-medium leading-tight">{displayName}</p>
                       {subtitle && (
-                        <p className="truncate text-[11px] leading-tight" style={{ color: "var(--app-text-secondary, #949ba4)" }}>
+                        <p
+                          className="truncate text-[11px] leading-tight"
+                          style={{ color: dmActivity?.name ? "#3ba55c" : "var(--app-text-secondary, #949ba4)" }}
+                        >
                           {subtitle}
                         </p>
                       )}

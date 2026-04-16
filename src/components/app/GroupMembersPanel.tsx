@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Conversation } from "@/hooks/useConversations";
 import { useAuth } from "@/contexts/AuthContext";
+import { useActivity } from "@/contexts/ActivityContext";
 import { supabase } from "@/integrations/supabase/client";
 import { getProfileColor } from "@/lib/profileColors";
 import { getEffectivePresenceStatus } from "@/lib/presence";
@@ -27,6 +28,7 @@ interface GroupMembersPanelProps {
 
 const GroupMembersPanel = ({ conversation, onClose, onLeftGroup }: GroupMembersPanelProps) => {
   const { user, onlineUserIds } = useAuth();
+  const { getActivity } = useActivity();
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(conversation.name || "");
   const [savingName, setSavingName] = useState(false);
@@ -225,6 +227,17 @@ const GroupMembersPanel = ({ conversation, onClose, onLeftGroup }: GroupMembersP
                   </p>
                   {memberIsOwner && <Crown className="h-3 w-3 shrink-0" style={{ color: "#faa61a" }} />}
                 </div>
+                {(() => {
+                  const act = getActivity(m.user_id);
+                  if (act?.name) {
+                    return (
+                      <p className="truncate text-[11px] leading-tight" style={{ color: "#3ba55c" }}>
+                        Playing {act.name}
+                      </p>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
               {isOwner && !m.isYou && (
                 <button

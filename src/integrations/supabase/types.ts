@@ -289,6 +289,60 @@ export type Database = {
         }
         Relationships: []
       }
+      user_activities: {
+        Row: {
+          activity_type: string
+          details: string | null
+          name: string | null
+          privacy_visible: boolean
+          started_at: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          activity_type?: string
+          details?: string | null
+          name?: string | null
+          privacy_visible?: boolean
+          started_at?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          activity_type?: string
+          details?: string | null
+          name?: string | null
+          privacy_visible?: boolean
+          started_at?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_games: {
+        Row: {
+          created_at: string
+          display_name: string
+          id: string
+          process_name: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          display_name: string
+          id?: string
+          process_name: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string
+          id?: string
+          process_name?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

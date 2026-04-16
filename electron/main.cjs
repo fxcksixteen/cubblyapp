@@ -1,5 +1,6 @@
-const { app, BrowserWindow, shell, Menu, ipcMain, desktopCapturer } = require("electron");
+const { app, BrowserWindow, shell, Menu, ipcMain, desktopCapturer, dialog } = require("electron");
 const path = require("path");
+const { exec } = require("child_process");
 const { autoUpdater } = require("electron-updater");
 const log = require("electron-log");
 
@@ -135,6 +136,74 @@ ipcMain.on("check-for-updates", () => {
 ipcMain.on("install-update", () => {
   log.info("[updater] user requested install");
   autoUpdater.quitAndInstall(false, true);
+});
+
+// ----- Activity / Process scanner -----
+// Returns a list of running process names (lowercase, without .exe) currently on the system.
+// Used by the renderer to detect "Playing X" activity.
+function listRunningProcesses() {
+  return new Promise((resolve) => {
+    if (process.platform === "win32") {
+      // tasklist is preinstalled on every Windows install
+      exec('tasklist /fo csv /nh', { maxBuffer: 4 * 1024 * 1024 }, (err, stdout) => {
+        if (err) return resolve([]);
+        const names = new Set();
+        stdout.split(/\r?\n/).forEach(line => {
+          const match = line.match(/^"([^"]+)"/);
+          if (match) {
+            const name = match[1].toLowerCase().replace(/\.exe$/, "");
+            if (name) names.add(name);
+          }
+        });
+        resolve(Array.from(names));
+      });
+    } else if (process.platform === "darwin" || process.platform === "linux") {
+      exec("ps -A -o comm=", { maxBuffer: 4 * 1024 * 1024 }, (err, stdout) => {
+        if (err) return resolve([]);
+        const names = new Set();
+        stdout.split(/\r?\n/).forEach(line => {
+          const trimmed = line.trim();
+          if (!trimmed) return;
+          const base = trimmed.split("/").pop().toLowerCase();
+          if (base) names.add(base);
+        });
+        resolve(Array.from(names));
+      });
+    } else {
+      resolve([]);
+    }
+  });
+}
+
+ipcMain.handle("get-running-processes", async () => {
+  try {
+    return await listRunningProcesses();
+  } catch (e) {
+    log.warn("[activity] process list failed:", e?.message || e);
+    return [];
+  }
+});
+
+// Open a file picker so user can manually pick a game .exe
+ipcMain.handle("pick-game-exe", async () => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: "Choose game executable",
+    properties: ["openFile"],
+    filters: process.platform === "win32"
+      ? [{ name: "Executables", extensions: ["exe"] }]
+      : [{ name: "All files", extensions: ["*"] }],
+  });
+  if (result.canceled || !result.filePaths[0]) return null;
+  const fullPath = result.filePaths[0];
+  const fileName = path.basename(fullPath);
+  const processName = fileName.toLowerCase().replace(/\.exe$/, "");
+  // Default display name = filename without extension, prettified
+  const displayGuess = fileName
+    .replace(/\.exe$/i, "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+  return { processName, displayName: displayGuess, fullPath };
 });
 
 // Desktop capturer for screen sharing
