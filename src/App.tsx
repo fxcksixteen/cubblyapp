@@ -12,6 +12,7 @@ import Login from "./pages/Login.tsx";
 import Register from "./pages/Register.tsx";
 import AppLayout from "./pages/AppLayout.tsx";
 import NotFound from "./pages/NotFound.tsx";
+import UpdateModal from "./components/app/UpdateModal";
 
 const queryClient = new QueryClient();
 
@@ -41,6 +42,7 @@ const App = () => (
               />
               <Route path="*" element={<NotFound />} />
             </Routes>
+            <UpdateModal />
           </VoiceProvider>
         </AuthProvider>
       </Router>

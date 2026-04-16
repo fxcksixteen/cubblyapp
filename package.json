@@ -1,9 +1,20 @@
 {
   "name": "cubbly",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "main": "electron/main.cjs",
+  "build": {
+    "appId": "app.cubbly.desktop",
+    "productName": "Cubbly",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "fxcksixteen",
+        "repo": "cubblyapp"
+      }
+    ]
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
