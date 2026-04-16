@@ -444,6 +444,196 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
   );
 }
 
+/* ─── Camera Section (used inside Video Tab) ─── */
+function CameraSection({ settings, updateSettings, availableDevices, cardStyle }: any) {
+  const [testing, setTesting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  const stopTest = () => {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
+    setTesting(false);
+  };
+
+  const startTest = async () => {
+    setError(null);
+    try {
+      const resMap: Record<string, { width: number; height: number }> = {
+        "480p": { width: 854, height: 480 },
+        "720p": { width: 1280, height: 720 },
+        "1080p": { width: 1920, height: 1080 },
+      };
+      const res = resMap[settings.videoResolution] || resMap["720p"];
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          deviceId: settings.videoDeviceId !== "default" ? { exact: settings.videoDeviceId } : undefined,
+          width: { ideal: res.width },
+          height: { ideal: res.height },
+          frameRate: { ideal: settings.videoFrameRate, max: settings.videoFrameRate },
+        },
+        audio: false,
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(() => {});
+      }
+      setTesting(true);
+    } catch (e: any) {
+      setError(e?.message || "Could not access camera");
+    }
+  };
+
+  useEffect(() => () => stopTest(), []);
+
+  // Restart test when device/resolution/fps changes mid-test
+  useEffect(() => {
+    if (!testing) return;
+    stopTest();
+    startTest();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.videoDeviceId, settings.videoResolution, settings.videoFrameRate]);
+
+  return (
+    <div className="rounded-[24px] border p-5 space-y-5" style={cardStyle}>
+      <div className="flex items-center gap-2">
+        <Camera className="h-4 w-4" style={{ color: "var(--app-text-secondary)" }} />
+        <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: "var(--app-text-secondary)" }}>
+          Camera
+        </p>
+      </div>
+
+      {/* Camera device picker */}
+      <Select value={settings.videoDeviceId} onValueChange={(v) => updateSettings({ videoDeviceId: v })}>
+        <SelectTrigger
+          className="w-full rounded-xl border text-sm"
+          style={{ backgroundColor: "var(--app-input)", borderColor: "var(--app-border)", color: "var(--app-text-primary)" }}
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent
+          className="rounded-xl border shadow-xl z-[9999]"
+          style={{ backgroundColor: "var(--app-bg-secondary)", borderColor: "var(--app-border)" }}
+        >
+          <SelectItem value="default" className="rounded-lg text-sm cursor-pointer" style={{ color: "var(--app-text-primary)" }}>
+            Default
+          </SelectItem>
+          {(availableDevices.cameras || []).map((d: MediaDeviceInfo) => (
+            <SelectItem
+              key={d.deviceId}
+              value={d.deviceId}
+              className="rounded-lg text-sm cursor-pointer"
+              style={{ color: "var(--app-text-primary)" }}
+            >
+              {d.label || `Camera (${d.deviceId.slice(0, 8)})`}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      {/* Resolution */}
+      <div>
+        <p className="text-sm font-medium mb-2" style={{ color: "var(--app-text-primary)" }}>Resolution</p>
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            { id: "480p", label: "480p", desc: "854×480" },
+            { id: "720p", label: "720p", desc: "1280×720" },
+            { id: "1080p", label: "1080p", desc: "1920×1080" },
+          ].map((opt) => (
+            <button
+              key={opt.id}
+              onClick={() => updateSettings({ videoResolution: opt.id })}
+              className="rounded-xl border p-3 text-left transition-all"
+              style={{
+                backgroundColor: settings.videoResolution === opt.id ? "var(--app-active)" : "var(--app-input)",
+                borderColor: settings.videoResolution === opt.id ? "#5865f2" : "var(--app-border)",
+              }}
+            >
+              <p className="text-sm font-semibold" style={{ color: "var(--app-text-primary)" }}>{opt.label}</p>
+              <p className="text-[11px]" style={{ color: "var(--app-text-secondary)" }}>{opt.desc}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Frame rate */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-sm font-medium" style={{ color: "var(--app-text-primary)" }}>Frame Rate</span>
+          <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: "var(--app-input)", color: "var(--app-text-secondary)" }}>
+            {settings.videoFrameRate} FPS
+          </span>
+        </div>
+        <div className="flex gap-2">
+          {[15, 30, 60].map((fps) => (
+            <button
+              key={fps}
+              onClick={() => updateSettings({ videoFrameRate: fps })}
+              className="flex-1 rounded-xl border py-2.5 text-sm font-semibold transition-all"
+              style={{
+                backgroundColor: settings.videoFrameRate === fps ? "var(--app-active)" : "var(--app-input)",
+                borderColor: settings.videoFrameRate === fps ? "#5865f2" : "var(--app-border)",
+                color: "var(--app-text-primary)",
+              }}
+            >
+              {fps} FPS
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Mirror self-view */}
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium" style={{ color: "var(--app-text-primary)" }}>Mirror My Video</p>
+          <p className="text-xs mt-0.5" style={{ color: "var(--app-text-secondary)" }}>
+            Flip your own preview horizontally so it feels like a mirror. Doesn't affect what others see.
+          </p>
+        </div>
+        <Switch checked={settings.mirrorSelfView} onCheckedChange={(v) => updateSettings({ mirrorSelfView: v })} />
+      </div>
+
+      {/* Test preview */}
+      <div className="rounded-2xl overflow-hidden border" style={{ borderColor: "var(--app-border)", backgroundColor: "#000" }}>
+        <div className="aspect-video w-full flex items-center justify-center">
+          {testing ? (
+            <video
+              ref={videoRef}
+              autoPlay
+              muted
+              playsInline
+              className="h-full w-full object-cover"
+              style={{ transform: settings.mirrorSelfView ? "scaleX(-1)" : "none" }}
+            />
+          ) : (
+            <div className="flex flex-col items-center gap-2 opacity-50">
+              <Camera className="h-8 w-8 text-white" />
+              <span className="text-xs text-white">Camera preview off</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {error && (
+        <p className="text-xs text-[#ed4245]">{error}</p>
+      )}
+
+      <button
+        onClick={() => (testing ? stopTest() : startTest())}
+        className={`flex w-full items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold transition-colors ${
+          testing ? "bg-[#ed4245] text-white hover:bg-[#c03537]" : "bg-[#5865f2] text-white hover:bg-[#4752c4]"
+        }`}
+      >
+        {testing ? <VideoOff className="h-4 w-4" /> : <Video className="h-4 w-4" />}
+        {testing ? "Stop Camera Test" : "Test Camera"}
+      </button>
+    </div>
+  );
+}
+
 /* ─── Video Tab (Camera + Screen Sharing Settings) ─── */
 function VideoTab({ settings, updateSettings, availableDevices, screenShareSettings, updateScreenShareSettings, cardStyle }: any) {
   return (
