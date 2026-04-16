@@ -60,8 +60,8 @@ const WhatsNewModal = ({ forceVersion, onClose }: WhatsNewModalProps) => {
   }, [forceVersion, version, user, authLoading]);
 
   const handleClose = () => {
-    if (!forceVersion) {
-      try { localStorage.setItem(storageKey(version), new Date().toISOString()); } catch {}
+    if (!forceVersion && user) {
+      try { localStorage.setItem(`${storageKey(version)}:${user.id}`, new Date().toISOString()); } catch {}
     }
     setVisible(false);
     // Wait for exit animation, then unmount
