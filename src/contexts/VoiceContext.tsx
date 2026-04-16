@@ -867,6 +867,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         isDeafened: false,
       });
 
+      // Outgoing ring sound (skipped for bot self-test calls)
+      if (!isBotCall) {
+        playLooping("outgoingRing", { volume: 0.4 });
+      }
+
       setCallEvents(prev => [...prev, {
         id: callEventId,
         conversationId,
@@ -1278,6 +1283,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const endCall = useCallback(() => {
     console.log("[Voice] 🔴 endCall — remote hangup:", isRemoteHangup.current);
     const endedAt = new Date().toISOString();
+
+    // Stop all ringtones immediately
+    stopLooping("outgoingRing");
+    stopLooping("incomingCall");
+    // Play leave-call sound (only if we were actually in/joining a call)
+    if (activeCall || incomingCall) {
+      playSound("leaveCall", { volume: 0.45 });
+    }
+
     setCallEvents(prev => {
       const updated = [...prev];
       for (let i = updated.length - 1; i >= 0; i--) {
@@ -1285,6 +1299,16 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           const evt = updated[i];
           updated[i] = { ...evt, state: "ended", endedAt };
           supabase.from("call_events").update({ state: "ended", ended_at: endedAt } as any).eq("id", evt.id).then(() => {});
+          // Mark our participant row as left
+          if (user) {
+            supabase
+              .from("call_participants")
+              .update({ left_at: endedAt })
+              .eq("call_event_id", evt.id)
+              .eq("user_id", user.id)
+              .is("left_at", null)
+              .then(() => {});
+          }
           break;
         }
       }
@@ -1342,7 +1366,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       channelRef.current = null;
     }
     console.log("[Voice] 🔴 Call ended, all resources cleaned up");
-  }, [user, stopAudioLevelMonitor, stopScreenShare]);
+  }, [user, stopAudioLevelMonitor, stopScreenShare, activeCall, incomingCall]);
 
   // Keep endCall ref always current
   useEffect(() => { endCallRef.current = endCall; }, [endCall]);
