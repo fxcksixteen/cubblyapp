@@ -127,14 +127,8 @@ const AppLayout = () => {
   const handleVoiceCall = async () => {
     if (isInCall) {
       endCall();
-    } else if (activeConv) {
-      // Group call
-      if (activeConv.is_group) {
-        const groupName = activeConv.name || activeConv.members.map((m) => m.display_name).slice(0, 2).join(", ") || "Group";
-        startCall(activeConv.id, activeConv.id, groupName);
-        return;
-      }
-      if (activeParticipant?.user_id === BOT_USER_ID && !isAdmin) {
+    } else if (activeConv && !activeConv.is_group && activeParticipant) {
+      if (activeParticipant.user_id === BOT_USER_ID && !isAdmin) {
         try {
           const { data: { session } } = await supabase.auth.getSession();
           await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat-with-bot`, {
@@ -154,9 +148,7 @@ const AppLayout = () => {
         }
         return;
       }
-      if (activeParticipant) {
-        startCall(activeConvId!, activeParticipant.user_id, activeParticipant.display_name);
-      }
+      startCall(activeConvId!, activeParticipant.user_id, activeParticipant.display_name);
     }
   };
 
