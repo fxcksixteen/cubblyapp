@@ -345,6 +345,7 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
           position={{ x: profileCard.x, y: profileCard.y }}
           onClose={() => setProfileCard(null)}
           onSendMessage={(uid) => { setProfileCard(null); onOpenDM(uid); }}
+          startExpanded
         />
       )}
     </div>
