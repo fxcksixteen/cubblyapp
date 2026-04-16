@@ -14,6 +14,11 @@ export interface VoiceSettings {
   autoSensitivity: boolean;
   sensitivityThreshold: number;
   serverRegion: string;
+  // Video / camera
+  videoDeviceId: string;
+  videoResolution: string; // "480p" | "720p" | "1080p"
+  videoFrameRate: number; // 15 | 30 | 60
+  mirrorSelfView: boolean;
 }
 
 export interface ScreenShareSettings {
@@ -35,6 +40,10 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   autoSensitivity: true,
   sensitivityThreshold: 50,
   serverRegion: "auto",
+  videoDeviceId: "default",
+  videoResolution: "720p",
+  videoFrameRate: 30,
+  mirrorSelfView: true,
 };
 
 const DEFAULT_SCREEN_SHARE_SETTINGS: ScreenShareSettings = {
@@ -55,6 +64,7 @@ export interface ActiveCall {
   startedAt?: number;
   isMuted: boolean;
   isDeafened: boolean;
+  isVideoOn: boolean;
 }
 
 export interface CallEvent {
@@ -94,11 +104,16 @@ interface VoiceContextType {
   incomingCall: { conversationId: string; callerId: string; callerName: string; callerAvatarUrl?: string; offer?: RTCSessionDescriptionInit; callEventId?: string } | null;
   toggleMute: () => void;
   toggleDeafen: () => void;
+  toggleVideo: () => Promise<void>;
   localStream: MediaStream | null;
   remoteStream: MediaStream | null;
+  /** Local camera stream (separate from mic stream) */
+  localVideoStream: MediaStream | null;
+  /** Remote peer's camera stream */
+  remoteVideoStream: MediaStream | null;
   audioLevel: number;
   remoteAudioLevel: number;
-  availableDevices: { inputs: MediaDeviceInfo[]; outputs: MediaDeviceInfo[] };
+  availableDevices: { inputs: MediaDeviceInfo[]; outputs: MediaDeviceInfo[]; cameras: MediaDeviceInfo[] };
   refreshDevices: () => void;
   callEvents: CallEvent[];
   detectedRegion: string;
