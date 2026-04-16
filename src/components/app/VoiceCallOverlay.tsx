@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Maximize2, Minimize2, Monitor } from "lucide-react";
 import { useVoice, CallEvent } from "@/contexts/VoiceContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { defaultProfileColor, getProfileColor } from "@/lib/profileColors";
+import { useCallParticipants } from "@/hooks/useCallParticipants";
 import ScreenSharePicker, { ScreenShareType } from "./ScreenSharePicker";
 import micIcon from "@/assets/icons/microphone.svg";
 import micMuteIcon from "@/assets/icons/microphone-mute.svg";
@@ -43,7 +44,15 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
     isScreenSharing, startScreenShare, stopScreenShare,
     screenStream, remoteScreenStream,
     localVideoStream, remoteVideoStream,
+    callEvents,
   } = useVoice();
+  // Find the active call event for this conversation so we can read peer state
+  const activeCallEventId = useMemo(() => {
+    const ev = callEvents.find(e => e.conversationId === conversationId && e.state === "ongoing");
+    return ev?.id ?? null;
+  }, [callEvents, conversationId]);
+  const { getPeerState } = useCallParticipants(activeCallEventId);
+  const peerState = getPeerState();
   const [elapsed, setElapsed] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showScreenSharePicker, setShowScreenSharePicker] = useState(false);
