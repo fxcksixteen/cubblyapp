@@ -191,6 +191,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const [remoteScreenStream, setRemoteScreenStream] = useState<MediaStream | null>(null);
 
+  // Video / camera (sent over the same audio PC via a video transceiver)
+  const [localVideoStream, setLocalVideoStream] = useState<MediaStream | null>(null);
+  const [remoteVideoStream, setRemoteVideoStream] = useState<MediaStream | null>(null);
+  const localVideoStreamRef = useRef<MediaStream | null>(null);
+  const videoTransceiverRef = useRef<RTCRtpTransceiver | null>(null);
+
   const iceServersRef = useRef<RTCIceServer[]>(STUN_ONLY_SERVERS);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const screenPcRef = useRef<RTCPeerConnection | null>(null);
@@ -300,12 +306,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     });
   }, []);
 
+  const [availableDevices, setAvailableDevices] = useState<{ inputs: MediaDeviceInfo[]; outputs: MediaDeviceInfo[]; cameras: MediaDeviceInfo[] }>({ inputs: [], outputs: [], cameras: [] });
+
   const refreshDevices = useCallback(async () => {
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
       setAvailableDevices({
         inputs: devices.filter(d => d.kind === "audioinput"),
         outputs: devices.filter(d => d.kind === "audiooutput"),
+        cameras: devices.filter(d => d.kind === "videoinput"),
       });
     } catch (e) {
       console.error("Failed to enumerate devices:", e);
