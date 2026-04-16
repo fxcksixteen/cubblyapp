@@ -27,7 +27,6 @@ const YouPage = () => {
   const [profile, setProfile] = useState<any>(null);
   const [status, setStatus] = useState("online");
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsSection, setSettingsSection] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     if (!user) return;
@@ -55,8 +54,7 @@ const YouPage = () => {
   const username = profile?.username || user?.user_metadata?.username || "user";
   const color = user ? getProfileColor(user.id) : { bg: "#5865f2" };
 
-  const openSettings = (section?: string) => {
-    setSettingsSection(section);
+  const openSettings = (_section?: string) => {
     setSettingsOpen(true);
   };
 
@@ -156,7 +154,7 @@ const YouPage = () => {
         </button>
       </div>
 
-      <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} initialSection={settingsSection} />
+      <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
 };
