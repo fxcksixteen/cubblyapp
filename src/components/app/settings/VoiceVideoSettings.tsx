@@ -521,7 +521,9 @@ function CameraSection({ settings, updateSettings, availableDevices, cardStyle }
           <SelectItem value="default" className="rounded-lg text-sm cursor-pointer" style={{ color: "var(--app-text-primary)" }}>
             Default
           </SelectItem>
-          {(availableDevices.cameras || []).map((d: MediaDeviceInfo) => (
+          {(availableDevices.cameras || [])
+            .filter((d: MediaDeviceInfo) => d.deviceId && d.deviceId !== "default" && d.deviceId !== "communications")
+            .map((d: MediaDeviceInfo) => (
             <SelectItem
               key={d.deviceId}
               value={d.deviceId}
