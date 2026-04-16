@@ -10,9 +10,9 @@ interface StatusIndicatorProps {
 }
 
 const sizeMap = {
-  sm: { container: "h-3 w-3", icon: "h-2 w-2", border: "border-[2.5px]" },
-  md: { container: "h-3.5 w-3.5", icon: "h-2.5 w-2.5", border: "border-[3px]" },
-  lg: { container: "h-5 w-5", icon: "h-3 w-3", border: "border-[3px]" },
+  sm: { container: "h-3.5 w-3.5", icon: "h-2.5 w-2.5", border: "border-[2.5px]" },
+  md: { container: "h-4 w-4", icon: "h-3 w-3", border: "border-[3px]" },
+  lg: { container: "h-5 w-5", icon: "h-3.5 w-3.5", border: "border-[3px]" },
 };
 
 const statusIconMap: Record<string, string> = {

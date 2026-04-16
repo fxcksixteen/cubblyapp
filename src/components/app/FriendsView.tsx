@@ -12,6 +12,7 @@ import removeUserIcon from "@/assets/icons/remove-user.svg";
 import blockUserIcon from "@/assets/icons/block-user.svg";
 import activityIcon from "@/assets/icons/activity.svg";
 import StatusIndicator from "@/components/app/StatusIndicator";
+import UserProfileCard from "@/components/app/chat/UserProfileCard";
 
 type FriendTab = "online" | "all" | "pending" | "blocked" | "add";
 
@@ -58,6 +59,7 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
   const [addInput, setAddInput] = useState("");
   const [addStatus, setAddStatus] = useState<{ type: "success" | "error"; msg: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [profileCard, setProfileCard] = useState<{ userId: string; name: string; x: number; y: number } | null>(null);
 
   const randomMessage = useMemo(() => {
     const msgs = emptyMessages[activeTab] || emptyMessages.online;
@@ -121,7 +123,7 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
     if (activeTab === "pending") {
       const isIncoming = friendship.addressee_id === user?.id;
       return (
-        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100">
+        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100" onClick={e => e.stopPropagation()}>
           {isIncoming && (
             <button
               onClick={() => acceptRequest(friendship.id)}
@@ -146,7 +148,7 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
 
     if (activeTab === "blocked") {
       return (
-        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100">
+        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100" onClick={e => e.stopPropagation()}>
           <button
             onClick={() => unblockUser(friendship.id)}
             className="flex h-9 w-9 items-center justify-center rounded-full cubbly-3d-circle"
@@ -160,7 +162,7 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
     }
 
     return (
-      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100">
+      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100" onClick={e => e.stopPropagation()}>
         <button
           onClick={() => onOpenDM(friendship.profile.user_id)}
           className="flex h-9 w-9 items-center justify-center rounded-full transition-colors cubbly-3d-circle"
@@ -253,10 +255,18 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
                 {displayList.map((friendship) => (
                   <div
                     key={friendship.id}
-                    className="group flex items-center gap-3 rounded-lg border-t px-2 py-3 transition-colors"
+                    className="group flex items-center gap-3 rounded-lg border-t px-2 py-3 transition-colors cursor-pointer"
                     style={{ borderColor: "var(--app-border, #3f4147)" }}
                     onMouseEnter={e => { e.currentTarget.style.backgroundColor = "var(--app-active, #404249)"; }}
                     onMouseLeave={e => { e.currentTarget.style.backgroundColor = ""; }}
+                    onClick={(e) => {
+                      setProfileCard({
+                        userId: friendship.profile.user_id,
+                        name: friendship.profile.display_name,
+                        x: e.clientX,
+                        y: e.clientY,
+                      });
+                    }}
                   >
                     <div className="relative">
                       {friendship.profile.avatar_url ? (
@@ -326,6 +336,15 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
           </div>
         </div>
       </div>
+      {profileCard && (
+        <UserProfileCard
+          userId={profileCard.userId}
+          displayName={profileCard.name}
+          position={{ x: profileCard.x, y: profileCard.y }}
+          onClose={() => setProfileCard(null)}
+          onSendMessage={(userId) => { setProfileCard(null); onOpenDM(userId); }}
+        />
+      )}
     </div>
   );
 };
