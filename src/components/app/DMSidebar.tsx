@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
 import StatusIndicator from "@/components/app/StatusIndicator";
+import GroupAvatar from "@/components/app/GroupAvatar";
 import { useAuth } from "@/contexts/AuthContext";
 import { useVoice } from "@/contexts/VoiceContext";
 import { Conversation } from "@/hooks/useConversations";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, X } from "lucide-react";
+import { Plus, X, Users } from "lucide-react";
 import { getProfileColor } from "@/lib/profileColors";
 import { toast } from "sonner";
 import {
@@ -37,10 +38,11 @@ interface DMSidebarProps {
   setActiveView: (view: string) => void;
   onCloseConversation: (convId: string) => void;
   onOpenDM: (userId: string) => void;
+  onCreateGroup: () => void;
 }
 
 
-const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversation, onOpenDM }: DMSidebarProps) => {
+const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversation, onOpenDM, onCreateGroup }: DMSidebarProps) => {
   const { user, onlineUserIds } = useAuth();
   const { activeCall, toggleMute, toggleDeafen } = useVoice();
   const displayName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "User";
@@ -130,7 +132,15 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
           <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--app-text-secondary, #949ba4)" }}>
             Direct Messages
           </span>
-          <Plus className="h-4 w-4 cursor-pointer" style={{ color: "var(--app-text-secondary, #949ba4)" }} />
+          <button
+            onClick={onCreateGroup}
+            title="Create Group DM"
+            className="rounded p-0.5 transition-colors"
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--app-hover, #35373c)")}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "")}
+          >
+            <Plus className="h-4 w-4 cursor-pointer" style={{ color: "var(--app-text-secondary, #949ba4)" }} />
+          </button>
         </div>
 
         {/* DM list */}
