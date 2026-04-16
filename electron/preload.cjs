@@ -10,4 +10,23 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
   getDesktopSources: () => ipcRenderer.invoke("get-desktop-sources"),
   isElectron: true,
+
+  // Auto-updater
+  installUpdate: () => ipcRenderer.send("install-update"),
+  checkForUpdates: () => ipcRenderer.send("check-for-updates"),
+  onUpdateAvailable: (cb) => {
+    const listener = () => cb();
+    ipcRenderer.on("update-available", listener);
+    return () => ipcRenderer.removeListener("update-available", listener);
+  },
+  onUpdateProgress: (cb) => {
+    const listener = (_e, percent) => cb(percent);
+    ipcRenderer.on("update-progress", listener);
+    return () => ipcRenderer.removeListener("update-progress", listener);
+  },
+  onUpdateDownloaded: (cb) => {
+    const listener = (_e, info) => cb(info);
+    ipcRenderer.on("update-downloaded", listener);
+    return () => ipcRenderer.removeListener("update-downloaded", listener);
+  },
 });

@@ -1,7 +1,15 @@
 const { app, BrowserWindow, shell, Menu, ipcMain, desktopCapturer } = require("electron");
 const path = require("path");
+const { autoUpdater } = require("electron-updater");
+const log = require("electron-log");
 
 app.name = "Cubbly";
+
+// Configure logging for the auto-updater (helps debug update issues)
+log.transports.file.level = "info";
+autoUpdater.logger = log;
+autoUpdater.autoDownload = true;       // Download new versions in the background
+autoUpdater.autoInstallOnAppQuit = true; // Fallback: install on quit if user never restarts
 
 let mainWindow;
 
@@ -27,7 +35,6 @@ function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, "..", "dist", "index.html"));
 
-  // Allow Ctrl+R / F5 to reload the app
   mainWindow.webContents.on("before-input-event", (event, input) => {
     if ((input.control || input.meta) && input.key.toLowerCase() === "r") {
       mainWindow.reload();
@@ -39,7 +46,6 @@ function createWindow() {
     }
   });
 
-  // Open external links in the default browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith("http")) {
       shell.openExternal(url);
@@ -48,7 +54,6 @@ function createWindow() {
     return { action: "allow" };
   });
 
-  // Notify renderer of maximize/unmaximize
   mainWindow.on("maximize", () => {
     mainWindow.webContents.send("window-maximize-changed", true);
   });
@@ -59,6 +64,41 @@ function createWindow() {
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
+
+  // ----- Auto-updater wiring (only after window exists) -----
+  // Forward update lifecycle events to renderer so the glassmorphism modal can react.
+  autoUpdater.on("update-available", (info) => {
+    log.info("[updater] update-available", info?.version);
+    mainWindow?.webContents.send("update-available", { version: info?.version });
+  });
+  autoUpdater.on("download-progress", (progress) => {
+    mainWindow?.webContents.send("update-progress", progress?.percent ?? 0);
+  });
+  autoUpdater.on("update-downloaded", (info) => {
+    log.info("[updater] update-downloaded", info?.version);
+    mainWindow?.webContents.send("update-downloaded", { version: info?.version });
+  });
+  autoUpdater.on("error", (err) => {
+    log.error("[updater] error", err?.message || err);
+  });
+
+  // Initial check (silently fails if no internet / no release / dev mode)
+  setTimeout(() => {
+    try {
+      autoUpdater.checkForUpdatesAndNotify();
+    } catch (e) {
+      log.warn("[updater] initial check failed:", e?.message || e);
+    }
+  }, 4000);
+
+  // Re-check every hour
+  setInterval(() => {
+    try {
+      autoUpdater.checkForUpdates();
+    } catch (e) {
+      log.warn("[updater] periodic check failed:", e?.message || e);
+    }
+  }, 60 * 60 * 1000);
 }
 
 // IPC handlers for window controls
@@ -80,6 +120,21 @@ ipcMain.on("window-close", () => {
 
 ipcMain.handle("window-is-maximized", () => {
   return mainWindow?.isMaximized() ?? false;
+});
+
+// Manual "check for updates" (e.g. wired to a Settings button later)
+ipcMain.on("check-for-updates", () => {
+  try {
+    autoUpdater.checkForUpdates();
+  } catch (e) {
+    log.warn("[updater] manual check failed:", e?.message || e);
+  }
+});
+
+// User clicked "Restart & Update" in the modal
+ipcMain.on("install-update", () => {
+  log.info("[updater] user requested install");
+  autoUpdater.quitAndInstall(false, true);
 });
 
 // Desktop capturer for screen sharing
