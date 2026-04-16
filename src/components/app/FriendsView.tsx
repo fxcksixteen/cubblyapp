@@ -342,12 +342,59 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
               <X className="h-4 w-4" />
             </button>
           </div>
-          <div className="flex flex-1 flex-col items-center justify-center text-center">
-            <p className="text-sm font-semibold text-white">It's quiet for now...</p>
-            <p className="mt-1 text-sm" style={{ color: "var(--app-text-secondary, #949ba4)" }}>
-              When a friend starts an activity—like playing a game or hanging out on voice—we'll show it here!
-            </p>
-          </div>
+          {(() => {
+            const activeFriends = friends.filter((f) => {
+              const act = getActivity(f.profile.user_id);
+              return act?.name && isActuallyOnline(f.profile.user_id);
+            });
+            if (activeFriends.length === 0) {
+              return (
+                <div className="flex flex-1 flex-col items-center justify-center text-center">
+                  <p className="text-sm font-semibold text-white">It's quiet for now...</p>
+                  <p className="mt-1 text-sm" style={{ color: "var(--app-text-secondary, #949ba4)" }}>
+                    When a friend starts an activity—like playing a game or hanging out on voice—we'll show it here!
+                  </p>
+                </div>
+              );
+            }
+            return (
+              <div className="flex flex-col gap-2">
+                {activeFriends.map((f) => {
+                  const act = getActivity(f.profile.user_id)!;
+                  return (
+                    <button
+                      key={f.id}
+                      onClick={(e) => setProfileCard({ userId: f.profile.user_id, name: f.profile.display_name, x: e.clientX, y: e.clientY })}
+                      className="flex items-start gap-3 rounded-lg border p-3 text-left transition-colors"
+                      style={{ borderColor: "var(--app-border, #3f4147)", backgroundColor: "var(--app-bg-secondary, #2b2d31)" }}
+                      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "var(--app-active, #404249)"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "var(--app-bg-secondary, #2b2d31)"; }}
+                    >
+                      <div className="relative shrink-0">
+                        {f.profile.avatar_url ? (
+                          <img src={f.profile.avatar_url} alt={f.profile.display_name} className="h-9 w-9 rounded-full object-cover" />
+                        ) : (
+                          <div className="flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold text-white" style={{ backgroundColor: getProfileColor(f.profile.user_id).bg }}>
+                            {f.profile.display_name.charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                        <div className="absolute -bottom-0.5 -right-0.5">
+                          <StatusIndicator status={getEffectiveStatus(f)} size="sm" borderColor="var(--app-bg-secondary, #2b2d31)" />
+                        </div>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-white leading-tight">{f.profile.display_name}</p>
+                        <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-wide" style={{ color: "#3ba55c" }}>
+                          Playing
+                        </p>
+                        <p className="truncate text-sm" style={{ color: "var(--app-text-primary, #dbdee1)" }}>{act.name}</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
       </div>
       {profileCard && (
