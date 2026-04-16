@@ -14,6 +14,8 @@ import Register from "./pages/Register.tsx";
 import AppLayout from "./pages/AppLayout.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import UpdateModal from "./components/app/UpdateModal";
+import WhatsNewModal from "./components/app/WhatsNewModal";
+import GlobalCallIndicator from "./components/app/GlobalCallIndicator";
 
 const queryClient = new QueryClient();
 
@@ -45,6 +47,8 @@ const App = () => (
                 <Route path="*" element={<NotFound />} />
               </Routes>
               <UpdateModal />
+              <WhatsNewModal />
+              <GlobalCallIndicator />
             </ActivityProvider>
           </VoiceProvider>
         </AuthProvider>
