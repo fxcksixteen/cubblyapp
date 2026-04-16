@@ -37,16 +37,20 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
   const [callerAvatarUrl, setCallerAvatarUrl] = useState<string | null>(null);
   const { user } = useAuth();
   const {
-    activeCall, endCall, toggleMute, toggleDeafen,
+    settings,
+    activeCall, endCall, toggleMute, toggleDeafen, toggleVideo,
     audioLevel, remoteAudioLevel,
     isScreenSharing, startScreenShare, stopScreenShare,
     screenStream, remoteScreenStream,
+    localVideoStream, remoteVideoStream,
   } = useVoice();
   const [elapsed, setElapsed] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showScreenSharePicker, setShowScreenSharePicker] = useState(false);
   const screenVideoRef = useRef<HTMLVideoElement>(null);
   const remoteScreenVideoRef = useRef<HTMLVideoElement>(null);
+  const localCamRef = useRef<HTMLVideoElement>(null);
+  const remoteCamRef = useRef<HTMLVideoElement>(null);
 
   // Fetch current user's avatar
   useEffect(() => {
@@ -80,6 +84,19 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
       remoteScreenVideoRef.current.srcObject = remoteScreenStream;
     }
   }, [remoteScreenStream]);
+
+  // Wire camera streams to <video> elements
+  useEffect(() => {
+    if (localCamRef.current) {
+      localCamRef.current.srcObject = localVideoStream;
+    }
+  }, [localVideoStream]);
+
+  useEffect(() => {
+    if (remoteCamRef.current) {
+      remoteCamRef.current.srcObject = remoteVideoStream;
+    }
+  }, [remoteVideoStream]);
 
   if (!isThisCall || !activeCall) return null;
 
