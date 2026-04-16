@@ -60,6 +60,7 @@ const AppLayout = () => {
   const [tempDMs, setTempDMs] = useState<string[]>([]);
   const [activeNowOpen, setActiveNowOpen] = useState(true);
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
+  const [showMembersPanel, setShowMembersPanel] = useState(true);
 
   // Sorted unread conversations for the ServerSidebar pills
   const unreadList = useMemo(() => {
@@ -216,6 +217,11 @@ const AppLayout = () => {
           recipientName={headerName}
           recipientAvatar={isGroup ? activeConv.picture_url || undefined : activeParticipant?.avatar_url || undefined}
           recipientUserId={isGroup ? undefined : activeParticipant?.user_id}
+          showGroupMembers={isGroup && showMembersPanel}
+          onLeftGroup={() => {
+            navigate("/@me/online", { replace: true });
+            refetchConvs();
+          }}
         />
       );
     }
