@@ -24,8 +24,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "electron:dev": "vite build && electron .",
-    "build:electron": "vite build && npx @electron/packager . Cubbly --platform=win32 --arch=x64 --out=electron-release --overwrite --icon=electron/icon.ico --prune=true --ignore=^/src$ --ignore=^/public$ --ignore=^/electron-release$ --ignore=^/supabase$ --ignore=^/dev-server$",
-    "electron:package:win": "vite build && npx @electron/packager . Cubbly --platform=win32 --arch=x64 --out=electron-release --overwrite --prune=true --ignore=^/src$ --ignore=^/public$ --ignore=^/electron-release$ --ignore=^/supabase$",
+    "build:electron": "node scripts/build-electron.cjs",
+    "electron:package:win": "node scripts/build-electron.cjs",
     "electron:package:linux": "vite build && npx @electron/packager . Cubbly --platform=linux --arch=x64 --out=electron-release --overwrite --prune=true --ignore=^/src$ --ignore=^/public$ --ignore=^/electron-release$ --ignore=^/supabase$",
     "electron:package:mac": "vite build && npx @electron/packager . Cubbly --platform=darwin --arch=x64 --out=electron-release --overwrite --prune=true --ignore=^/src$ --ignore=^/public$ --ignore=^/electron-release$ --ignore=^/supabase$"
   },
