@@ -22,6 +22,8 @@ import ChatView from "@/components/app/ChatView";
 import ShopView from "@/components/app/ShopView";
 import VoiceCallOverlay from "@/components/app/VoiceCallOverlay";
 import TitleBar from "@/components/app/TitleBar";
+import CreateGroupModal from "@/components/app/CreateGroupModal";
+import GroupAvatar from "@/components/app/GroupAvatar";
 import friendsIcon from "@/assets/icons/friends.svg";
 
 type FriendTab = "online" | "all" | "pending" | "blocked" | "add";
@@ -51,12 +53,14 @@ const AppLayout = () => {
   const validTabs: FriendTab[] = ["online", "all", "pending", "blocked", "add"];
   const friendTab: FriendTab = urlTab && validTabs.includes(urlTab) ? urlTab : "online";
 
-  const { conversations, openOrCreateConversation, closeConversation, refetch: refetchConvs } = useConversations();
+  const { conversations, openOrCreateConversation, createGroupConversation, closeConversation, refetch: refetchConvs } = useConversations();
   const { unreadByConv } = useUnreadCounts(chatIdFromUrl);
   const { pending } = useFriends();
   const incomingPendingCount = pending.filter((p) => p.addressee_id === user?.id).length;
   const [tempDMs, setTempDMs] = useState<string[]>([]);
   const [activeNowOpen, setActiveNowOpen] = useState(true);
+  const [createGroupOpen, setCreateGroupOpen] = useState(false);
+  const [showMembersPanel, setShowMembersPanel] = useState(true);
 
   // Sorted unread conversations for the ServerSidebar pills
   const unreadList = useMemo(() => {
@@ -107,8 +111,13 @@ const AppLayout = () => {
   const activeConv = conversations.find((conversation) => conversation.id === activeConvId);
   const activeParticipant = activeConv?.participant;
 
+  // Groups always show in the sidebar; DMs only when they have a message, are pinned (tempDMs), or are active
   const visibleConversations = conversations.filter(
-    (conversation) => conversation.lastMessage || tempDMs.includes(conversation.id) || conversation.id === activeConvId,
+    (conversation) =>
+      conversation.is_group ||
+      conversation.lastMessage ||
+      tempDMs.includes(conversation.id) ||
+      conversation.id === activeConvId,
   );
 
   const isInCall = activeCall?.conversationId === activeConvId;
@@ -119,7 +128,7 @@ const AppLayout = () => {
   const handleVoiceCall = async () => {
     if (isInCall) {
       endCall();
-    } else if (activeParticipant) {
+    } else if (activeConv && !activeConv.is_group && activeParticipant) {
       if (activeParticipant.user_id === BOT_USER_ID && !isAdmin) {
         try {
           const { data: { session } } = await supabase.auth.getSession();
@@ -196,13 +205,23 @@ const AppLayout = () => {
   };
 
   const renderContent = () => {
-    if (isDM && activeConvId) {
+    if (isDM && activeConvId && activeConv) {
+      const isGroup = activeConv.is_group;
+      const headerName = isGroup
+        ? (activeConv.name || activeConv.members.map((m) => m.display_name).slice(0, 3).join(", ") || "Group")
+        : activeParticipant?.display_name || "User";
       return (
         <ChatView
+          conversation={activeConv}
           conversationId={activeConvId}
-          recipientName={activeParticipant?.display_name || "User"}
-          recipientAvatar={activeParticipant?.avatar_url || undefined}
-          recipientUserId={activeParticipant?.user_id}
+          recipientName={headerName}
+          recipientAvatar={isGroup ? activeConv.picture_url || undefined : activeParticipant?.avatar_url || undefined}
+          recipientUserId={isGroup ? undefined : activeParticipant?.user_id}
+          showGroupMembers={isGroup && showMembersPanel}
+          onLeftGroup={() => {
+            navigate("/@me/online", { replace: true });
+            refetchConvs();
+          }}
         />
       );
     }
@@ -245,59 +264,77 @@ const AppLayout = () => {
           }}
           onCloseConversation={handleCloseConversation}
           onOpenDM={handleOpenDM}
+          onCreateGroup={() => setCreateGroupOpen(true)}
         />
 
         <div className="flex flex-1 flex-col">
           <div className="flex h-14 items-center justify-between border-b px-5 shadow-sm" style={{ backgroundColor: "var(--app-bg-primary)", borderColor: "var(--app-border)" }}>
-            {isDM && activeConvId ? (
+            {isDM && activeConvId && activeConv ? (
               <>
-                <div className="flex items-center gap-3">
-                  <div className="relative">
-                    {activeParticipant?.avatar_url ? (
-                      <img src={activeParticipant.avatar_url} alt={activeParticipant.display_name} className="h-8 w-8 rounded-full object-cover" />
-                    ) : (
-                      <div
-                        className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold text-white"
-                        style={{ backgroundColor: participantColor?.bg || "#5865f2" }}
-                      >
-                        {(activeParticipant?.display_name || "User").charAt(0).toUpperCase()}
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="relative shrink-0">
+                    <GroupAvatar conversation={activeConv} size={32} />
+                    {!activeConv.is_group && (
+                      <div className="absolute -bottom-0.5 -right-0.5">
+                        <StatusIndicator status={activeParticipantStatus} size="sm" borderColor="var(--app-bg-primary)" />
                       </div>
                     )}
-                    <div className="absolute -bottom-0.5 -right-0.5">
-                      <StatusIndicator status={activeParticipantStatus} size="sm" borderColor="var(--app-bg-primary)" />
-                    </div>
                   </div>
-                  <span className="text-[15px] font-semibold" style={{ color: "var(--app-text-primary)" }}>
-                    {activeParticipant?.display_name || "Conversation"}
-                  </span>
+                  <div className="min-w-0">
+                    <p className="truncate text-[15px] font-semibold leading-tight" style={{ color: "var(--app-text-primary)" }}>
+                      {activeConv.is_group
+                        ? (activeConv.name || activeConv.members.map((m) => m.display_name).slice(0, 3).join(", ") || "Group")
+                        : activeParticipant?.display_name || "Conversation"}
+                    </p>
+                    {activeConv.is_group && (
+                      <p className="text-[11px] leading-tight" style={{ color: "var(--app-text-secondary)" }}>
+                        {activeConv.members.length + 1} members
+                      </p>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-2" style={{ color: "var(--app-text-secondary)" }}>
-                  <button
-                    onClick={handleVoiceCall}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg transition-all"
-                    style={{ }}
-                    onMouseEnter={e => { e.currentTarget.style.backgroundColor = "var(--app-hover)"; }}
-                    onMouseLeave={e => { e.currentTarget.style.backgroundColor = ""; }}
-                    title={isInCall ? "End Voice Call" : "Start Voice Call"}
-                  >
-                    <img
-                      src={isInCall ? callEndIcon : callIcon}
-                      alt={isInCall ? "End Call" : "Call"}
-                      className="h-5 w-5"
-                      style={{ filter: isInCall
-                        ? "brightness(0) saturate(100%) invert(29%) sepia(98%) saturate(2052%) hue-rotate(337deg) brightness(95%) contrast(92%)"
-                        : "brightness(0) invert(0.6)"
-                      }}
-                    />
-                  </button>
-                  <button
-                    className="flex h-8 w-8 items-center justify-center rounded-lg transition-all"
-                    onMouseEnter={e => { e.currentTarget.style.backgroundColor = "var(--app-hover)"; }}
-                    onMouseLeave={e => { e.currentTarget.style.backgroundColor = ""; }}
-                    title="Start Video Call"
-                  >
-                    <img src={videoIcon} alt="Video" className="h-5 w-5" style={{ filter: "brightness(0) invert(0.6)" }} />
-                  </button>
+                  {!activeConv.is_group && (
+                    <>
+                      <button
+                        onClick={handleVoiceCall}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg transition-all"
+                        onMouseEnter={e => { e.currentTarget.style.backgroundColor = "var(--app-hover)"; }}
+                        onMouseLeave={e => { e.currentTarget.style.backgroundColor = ""; }}
+                        title={isInCall ? "End Voice Call" : "Start Voice Call"}
+                      >
+                        <img
+                          src={isInCall ? callEndIcon : callIcon}
+                          alt={isInCall ? "End Call" : "Call"}
+                          className="h-5 w-5"
+                          style={{ filter: isInCall
+                            ? "brightness(0) saturate(100%) invert(29%) sepia(98%) saturate(2052%) hue-rotate(337deg) brightness(95%) contrast(92%)"
+                            : "brightness(0) invert(0.6)"
+                          }}
+                        />
+                      </button>
+                      <button
+                        className="flex h-8 w-8 items-center justify-center rounded-lg transition-all"
+                        onMouseEnter={e => { e.currentTarget.style.backgroundColor = "var(--app-hover)"; }}
+                        onMouseLeave={e => { e.currentTarget.style.backgroundColor = ""; }}
+                        title="Start Video Call"
+                      >
+                        <img src={videoIcon} alt="Video" className="h-5 w-5" style={{ filter: "brightness(0) invert(0.6)" }} />
+                      </button>
+                    </>
+                  )}
+                  {activeConv.is_group && (
+                    <button
+                      onClick={() => setShowMembersPanel((prev) => !prev)}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg transition-all"
+                      onMouseEnter={e => { e.currentTarget.style.backgroundColor = "var(--app-hover)"; }}
+                      onMouseLeave={e => { e.currentTarget.style.backgroundColor = ""; }}
+                      title={showMembersPanel ? "Hide Members" : "Show Members"}
+                      style={{ backgroundColor: showMembersPanel ? "var(--app-hover)" : undefined }}
+                    >
+                      <img src={friendsIcon} alt="Members" className="h-5 w-5 invert opacity-60" />
+                    </button>
+                  )}
                 </div>
               </>
             ) : (
@@ -324,6 +361,15 @@ const AppLayout = () => {
       </div>
 
       <VoiceCallOverlay />
+
+      <CreateGroupModal
+        isOpen={createGroupOpen}
+        onClose={() => setCreateGroupOpen(false)}
+        onCreated={(convId) => {
+          navigate(`/@me/chat/${convId}`, { replace: true });
+        }}
+        createGroupConversation={createGroupConversation}
+      />
     </div>
   );
 };

@@ -12,6 +12,7 @@ import MessageContextMenu from "./chat/MessageContextMenu";
 import UserProfileCard from "./chat/UserProfileCard";
 import AttachmentItem from "./chat/AttachmentItem";
 import InlineGif from "./chat/InlineGif";
+import GroupMembersPanel from "./GroupMembersPanel";
 import sendIcon from "@/assets/icons/send.svg";
 import folderFileIcon from "@/assets/icons/folder-file.svg";
 import gifIcon from "@/assets/icons/gif.svg";
@@ -27,6 +28,11 @@ interface ChatViewProps {
   recipientName: string;
   recipientAvatar?: string;
   recipientUserId?: string;
+  /** Optional: if present and is_group, the group members panel is rendered. */
+  conversation?: import("@/hooks/useConversations").Conversation;
+  /** Whether the group members side panel should be visible (controlled by parent). */
+  showGroupMembers?: boolean;
+  onLeftGroup?: () => void;
 }
 
 interface PendingFile {
@@ -59,7 +65,7 @@ const shouldShowTimeDivider = (prevDate: string, currDate: string): boolean => {
   return curr - prev >= 2 * 60 * 60 * 1000;
 };
 
-const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUserId }: ChatViewProps) => {
+const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUserId, conversation, showGroupMembers, onLeftGroup }: ChatViewProps) => {
   const { user } = useAuth();
   const { activeCall, callEvents } = useVoice();
   const { messages, loading, sendMessage } = useMessages(conversationId);
@@ -341,8 +347,11 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
     items.splice(insertIdx, 0, { type: "call-event", event: evt, timestamp: ts });
   }
 
+  const showMembersPanel = !!(showGroupMembers && conversation?.is_group);
+
   return (
-    <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
+    <div className="flex flex-1 min-h-0 overflow-hidden">
+      <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
       {/* Discord-style call panel */}
       <div className="shrink-0 max-h-[50vh] overflow-y-auto">
         <CallPanel
@@ -582,6 +591,14 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
           displayName={profileCard.name}
           position={{ x: profileCard.x, y: profileCard.y }}
           onClose={() => setProfileCard(null)}
+        />
+      )}
+    </div>
+      {showMembersPanel && conversation && (
+        <GroupMembersPanel
+          conversation={conversation}
+          onClose={() => {}}
+          onLeftGroup={() => onLeftGroup?.()}
         />
       )}
     </div>

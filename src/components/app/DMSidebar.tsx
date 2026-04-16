@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
 import StatusIndicator from "@/components/app/StatusIndicator";
+import GroupAvatar from "@/components/app/GroupAvatar";
 import { useAuth } from "@/contexts/AuthContext";
 import { useVoice } from "@/contexts/VoiceContext";
 import { Conversation } from "@/hooks/useConversations";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, X } from "lucide-react";
+import { Plus, X, Users } from "lucide-react";
 import { getProfileColor } from "@/lib/profileColors";
 import { toast } from "sonner";
 import {
@@ -37,10 +38,11 @@ interface DMSidebarProps {
   setActiveView: (view: string) => void;
   onCloseConversation: (convId: string) => void;
   onOpenDM: (userId: string) => void;
+  onCreateGroup: () => void;
 }
 
 
-const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversation, onOpenDM }: DMSidebarProps) => {
+const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversation, onOpenDM, onCreateGroup }: DMSidebarProps) => {
   const { user, onlineUserIds } = useAuth();
   const { activeCall, toggleMute, toggleDeafen } = useVoice();
   const displayName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "User";
@@ -130,14 +132,27 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
           <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--app-text-secondary, #949ba4)" }}>
             Direct Messages
           </span>
-          <Plus className="h-4 w-4 cursor-pointer" style={{ color: "var(--app-text-secondary, #949ba4)" }} />
+          <button
+            onClick={onCreateGroup}
+            title="Create Group DM"
+            className="rounded p-0.5 transition-colors"
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--app-hover, #35373c)")}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "")}
+          >
+            <Plus className="h-4 w-4 cursor-pointer" style={{ color: "var(--app-text-secondary, #949ba4)" }} />
+          </button>
         </div>
 
         {/* DM list */}
         <div className="mt-1 flex flex-col gap-0.5">
           {conversations.map((conv) => {
-            const color = getProfileColor(conv.participant.user_id);
             const isActive = activeView === `dm:${conv.id}`;
+            const displayName = conv.is_group
+              ? (conv.name || conv.members.map((m) => m.display_name).slice(0, 3).join(", ") || "Group")
+              : conv.participant.display_name;
+            const subtitle = conv.is_group
+              ? `${conv.members.length + 1} members`
+              : null;
             return (
               <ContextMenu key={conv.id}>
                 <ContextMenuTrigger asChild>
@@ -153,32 +168,32 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                     onMouseEnter={e => { if (!isActive) e.currentTarget.style.backgroundColor = "var(--app-hover, #35373c)"; }}
                     onMouseLeave={e => { if (!isActive) e.currentTarget.style.backgroundColor = ""; }}
                   >
-                    <div className="relative">
-                      {conv.participant.avatar_url ? (
-                        <img src={conv.participant.avatar_url} alt="" className="h-8 w-8 rounded-full object-cover" />
-                      ) : (
-                        <div
-                          className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold text-white"
-                          style={{ backgroundColor: color.bg }}
-                        >
-                          {conv.participant.display_name.charAt(0).toUpperCase()}
+                    <div className="relative shrink-0">
+                      <GroupAvatar conversation={conv} size={32} />
+                      {!conv.is_group && (
+                        <div className="absolute -bottom-0.5 -right-0.5">
+                          <StatusIndicator
+                            status={
+                              conv.participant.user_id === "00000000-0000-0000-0000-000000000001"
+                                ? "online"
+                                : onlineUserIds.has(conv.participant.user_id)
+                                  ? (conv.participant.status === "invisible" ? "online" : conv.participant.status)
+                                  : "offline"
+                            }
+                            size="sm"
+                            borderColor="var(--app-bg-secondary, #2b2d31)"
+                          />
                         </div>
                       )}
-                      <div className="absolute -bottom-0.5 -right-0.5">
-                        <StatusIndicator
-                          status={
-                            conv.participant.user_id === "00000000-0000-0000-0000-000000000001"
-                              ? "online"
-                              : onlineUserIds.has(conv.participant.user_id)
-                                ? (conv.participant.status === "invisible" ? "online" : conv.participant.status)
-                                : "offline"
-                          }
-                          size="sm"
-                          borderColor="var(--app-bg-secondary, #2b2d31)"
-                        />
-                      </div>
                     </div>
-                    <span className="truncate text-sm font-medium">{conv.participant.display_name}</span>
+                    <div className="flex-1 min-w-0 text-left">
+                      <p className="truncate text-sm font-medium leading-tight">{displayName}</p>
+                      {subtitle && (
+                        <p className="truncate text-[11px] leading-tight" style={{ color: "var(--app-text-secondary, #949ba4)" }}>
+                          {subtitle}
+                        </p>
+                      )}
+                    </div>
                     <X
                       onClick={(e) => { e.stopPropagation(); onCloseConversation(conv.id); }}
                       className="ml-auto h-4 w-4 shrink-0 opacity-0 group-hover:opacity-100"
@@ -195,38 +210,44 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                     className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer"
                   >
                     <img src={friendsIcon} alt="" className="h-4 w-4 invert opacity-70" />
-                    Profile
+                    {conv.is_group ? "Open" : "Profile"}
                   </ContextMenuItem>
-                  <ContextMenuItem
-                    onClick={() => handleRemoveFriend(conv.participant.user_id)}
-                    className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer"
-                  >
-                    <img src={removeUserIcon} alt="" className="h-4 w-4 invert opacity-70" />
-                    Remove Friend
-                  </ContextMenuItem>
+                  {!conv.is_group && (
+                    <ContextMenuItem
+                      onClick={() => handleRemoveFriend(conv.participant.user_id)}
+                      className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer"
+                    >
+                      <img src={removeUserIcon} alt="" className="h-4 w-4 invert opacity-70" />
+                      Remove Friend
+                    </ContextMenuItem>
+                  )}
                   <ContextMenuItem
                     onClick={() => onCloseConversation(conv.id)}
                     className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer"
                   >
                     <X className="h-4 w-4" />
-                    Close DM
+                    {conv.is_group ? "Hide Group" : "Close DM"}
                   </ContextMenuItem>
-                  <ContextMenuSeparator className="my-1" style={{ backgroundColor: "var(--app-border, #2b2d31)" }} />
-                  <ContextMenuItem
-                    onClick={() => handleBlockUser(conv.participant.user_id)}
-                    className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#ed4245] hover:bg-[#ed4245] hover:text-white cursor-pointer"
-                  >
-                    <img src={blockUserIcon} alt="" className="h-4 w-4" style={{ filter: "invert(36%) sepia(93%) saturate(7471%) hue-rotate(348deg) brightness(101%) contrast(88%)" }} />
-                    Block
-                  </ContextMenuItem>
-                  <ContextMenuSeparator className="my-1" style={{ backgroundColor: "var(--app-border, #2b2d31)" }} />
-                  <ContextMenuItem
-                    onClick={() => handleCopyUserId(conv.participant.user_id)}
-                    className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer"
-                  >
-                    <img src={copyIcon} alt="" className="h-4 w-4 invert opacity-70" />
-                    Copy User ID
-                  </ContextMenuItem>
+                  {!conv.is_group && (
+                    <>
+                      <ContextMenuSeparator className="my-1" style={{ backgroundColor: "var(--app-border, #2b2d31)" }} />
+                      <ContextMenuItem
+                        onClick={() => handleBlockUser(conv.participant.user_id)}
+                        className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#ed4245] hover:bg-[#ed4245] hover:text-white cursor-pointer"
+                      >
+                        <img src={blockUserIcon} alt="" className="h-4 w-4" style={{ filter: "invert(36%) sepia(93%) saturate(7471%) hue-rotate(348deg) brightness(101%) contrast(88%)" }} />
+                        Block
+                      </ContextMenuItem>
+                      <ContextMenuSeparator className="my-1" style={{ backgroundColor: "var(--app-border, #2b2d31)" }} />
+                      <ContextMenuItem
+                        onClick={() => handleCopyUserId(conv.participant.user_id)}
+                        className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer"
+                      >
+                        <img src={copyIcon} alt="" className="h-4 w-4 invert opacity-70" />
+                        Copy User ID
+                      </ContextMenuItem>
+                    </>
+                  )}
                 </ContextMenuContent>
               </ContextMenu>
             );
