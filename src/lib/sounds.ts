@@ -41,10 +41,23 @@ function getAudio(key: SoundKey): HTMLAudioElement {
   return audio;
 }
 
+// Call-related sounds get an exception: they're only suppressed when the user
+// has explicitly opted in to "also suppress calls and screenshares".
+const CALL_SOUNDS: SoundKey[] = ["outgoingRing", "incomingCall", "leaveCall"];
+
+function isGamingSuppressed(key: SoundKey): boolean {
+  if (typeof window === "undefined") return false;
+  const general = (window as any).__cubblySuppress;
+  if (!general) return false;
+  if (CALL_SOUNDS.includes(key)) {
+    return !!(window as any).__cubblySuppressCalls;
+  }
+  return true;
+}
+
 export function playSound(key: SoundKey, options?: { force?: boolean; volume?: number }) {
   if (dndActive && !options?.force) return;
-  // Gaming Mode suppression — set by GamingModeContext on the window object
-  if (!options?.force && typeof window !== "undefined" && (window as any).__cubblySuppress) return;
+  if (!options?.force && isGamingSuppressed(key)) return;
   try {
     const base = getAudio(key);
     // Clone the node so overlapping plays don't truncate each other
@@ -58,7 +71,7 @@ export function playSound(key: SoundKey, options?: { force?: boolean; volume?: n
 
 export function playLooping(key: SoundKey, options?: { force?: boolean; volume?: number }) {
   if (dndActive && !options?.force) return;
-  if (!options?.force && typeof window !== "undefined" && (window as any).__cubblySuppress) return;
+  if (!options?.force && isGamingSuppressed(key)) return;
   stopLooping(key);
   try {
     const audio = new Audio(SOUND_PATHS[key]);
