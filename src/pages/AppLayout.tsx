@@ -66,6 +66,12 @@ const AppLayout = () => {
   const [mobilePanel, setMobilePanel] = useState<"none" | "dms" | "members">("none");
   // Close panels whenever the route changes
   useEffect(() => { setMobilePanel("none"); }, [location.pathname]);
+  // Listen for the bottom-nav "Home" tap to open the DM panel
+  useEffect(() => {
+    const handler = () => setMobilePanel("dms");
+    window.addEventListener("cubbly:open-mobile-dms", handler);
+    return () => window.removeEventListener("cubbly:open-mobile-dms", handler);
+  }, []);
 
   const unreadList = useMemo(() => {
     return Array.from(unreadByConv.entries())
