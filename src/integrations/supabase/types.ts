@@ -52,23 +52,70 @@ export type Database = {
           },
         ]
       }
+      call_participants: {
+        Row: {
+          call_event_id: string
+          id: string
+          is_deafened: boolean
+          is_muted: boolean
+          is_screen_sharing: boolean
+          is_video_on: boolean
+          joined_at: string
+          left_at: string | null
+          user_id: string
+        }
+        Insert: {
+          call_event_id: string
+          id?: string
+          is_deafened?: boolean
+          is_muted?: boolean
+          is_screen_sharing?: boolean
+          is_video_on?: boolean
+          joined_at?: string
+          left_at?: string | null
+          user_id: string
+        }
+        Update: {
+          call_event_id?: string
+          id?: string
+          is_deafened?: boolean
+          is_muted?: boolean
+          is_screen_sharing?: boolean
+          is_video_on?: boolean
+          joined_at?: string
+          left_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "call_participants_call_event_id_fkey"
+            columns: ["call_event_id"]
+            isOneToOne: false
+            referencedRelation: "call_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       conversation_participants: {
         Row: {
           conversation_id: string
           created_at: string
           id: string
+          last_read_at: string
           user_id: string
         }
         Insert: {
           conversation_id: string
           created_at?: string
           id?: string
+          last_read_at?: string
           user_id: string
         }
         Update: {
           conversation_id?: string
           created_at?: string
           id?: string
+          last_read_at?: string
           user_id?: string
         }
         Relationships: [
@@ -242,6 +289,10 @@ export type Database = {
       is_conversation_participant: {
         Args: { _conversation_id: string; _user_id: string }
         Returns: boolean
+      }
+      mark_conversation_read: {
+        Args: { _conversation_id: string }
+        Returns: undefined
       }
       send_test_bot_reply: {
         Args: { _conversation_id: string }
