@@ -17,18 +17,17 @@ autoUpdater.autoInstallOnAppQuit = true; // Fallback: install on quit if user ne
 // (we'll wire that to a setting in a future build). On macOS this uses Login
 // Items; on Windows it adds a registry key under HKCU\...\Run; Linux is a
 // no-op because each distro handles startup differently.
+// Auto-launch on login is OFF by default. We previously force-enabled it on
+// every start, which (a) silently relaunched a broken build in the background
+// and held a file lock on the install folder, and (b) is bad UX — users
+// should opt in from Settings. Explicitly clear any prior login item so
+// existing v0.1.x installs stop auto-starting after upgrading.
 try {
   if (process.platform === "win32" || process.platform === "darwin") {
-    app.setLoginItemSettings({
-      openAtLogin: true,
-      openAsHidden: false, // Show window on login (set to true if we want silent start)
-      // On Windows, electron-updater rewrites the executable path on update;
-      // explicitly passing path keeps us pointed at the current install.
-      path: process.execPath,
-    });
+    app.setLoginItemSettings({ openAtLogin: false });
   }
 } catch (e) {
-  log.warn("[startup] failed to configure login item:", e?.message || e);
+  log.warn("[startup] failed to clear login item:", e?.message || e);
 }
 
 let mainWindow;
