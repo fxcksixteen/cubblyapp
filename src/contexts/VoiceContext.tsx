@@ -208,6 +208,79 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const outgoingCallMetaRef = useRef<{ conversationId: string; callEventId: string; callerAvatarUrl?: string } | null>(null);
   // Flag to prevent re-broadcasting hangup when receiving one
   const isRemoteHangup = useRef<boolean>(false);
+  // Currently-active call event id (for participants tracking)
+  const activeCallEventIdRef = useRef<string | null>(null);
+  // Lone-user-in-call timer (auto-hangup after LONE_USER_TIMEOUT_MS)
+  const loneUserTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Outgoing-ring timer (auto-cancel if no answer)
+  const ringTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Incoming ring timer (caller-side guard against infinite ringing target)
+  const incomingRingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearLoneUserTimer = () => {
+    if (loneUserTimerRef.current) {
+      clearTimeout(loneUserTimerRef.current);
+      loneUserTimerRef.current = null;
+    }
+  };
+  const clearRingTimer = () => {
+    if (ringTimerRef.current) {
+      clearTimeout(ringTimerRef.current);
+      ringTimerRef.current = null;
+    }
+  };
+  const clearIncomingRingTimer = () => {
+    if (incomingRingTimerRef.current) {
+      clearTimeout(incomingRingTimerRef.current);
+      incomingRingTimerRef.current = null;
+    }
+  };
+
+  // Persist mute/deafen state of myself to call_participants so the peer sees it
+  const upsertMyParticipantState = useCallback(
+    async (patch: Partial<{ is_muted: boolean; is_deafened: boolean; is_video_on: boolean; is_screen_sharing: boolean }>) => {
+      const callEventId = activeCallEventIdRef.current;
+      if (!callEventId || !user) return;
+      try {
+        const { data: existing } = await supabase
+          .from("call_participants")
+          .select("id")
+          .eq("call_event_id", callEventId)
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        if (existing) {
+          await supabase.from("call_participants").update(patch).eq("id", existing.id);
+        } else {
+          await supabase.from("call_participants").insert({
+            call_event_id: callEventId,
+            user_id: user.id,
+            is_muted: false,
+            is_deafened: false,
+            is_video_on: false,
+            is_screen_sharing: false,
+            ...patch,
+          });
+        }
+      } catch (e) {
+        console.warn("[Voice] Failed to update call_participants:", e);
+      }
+    },
+    [user]
+  );
+
+  // Mark me as left in call_participants
+  const markMyParticipantLeft = useCallback(async () => {
+    const callEventId = activeCallEventIdRef.current;
+    if (!callEventId || !user) return;
+    try {
+      await supabase
+        .from("call_participants")
+        .update({ left_at: new Date().toISOString() })
+        .eq("call_event_id", callEventId)
+        .eq("user_id", user.id);
+    } catch {}
+  }, [user]);
 
   useEffect(() => {
     detectBestRegion().then(setDetectedRegion);
