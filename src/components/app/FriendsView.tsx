@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useFriends, Friendship } from "@/hooks/useFriends";
 import { useAuth } from "@/contexts/AuthContext";
+import { useActivity } from "@/contexts/ActivityContext";
 import { Check, X } from "lucide-react";
 import { getProfileColor } from "@/lib/profileColors";
 import messagesHoverIcon from "@/assets/icons/messages-3.svg";
