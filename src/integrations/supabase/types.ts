@@ -132,16 +132,28 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          is_group: boolean
+          name: string | null
+          owner_id: string | null
+          picture_url: string | null
           updated_at: string
         }
         Insert: {
           created_at?: string
           id?: string
+          is_group?: boolean
+          name?: string | null
+          owner_id?: string | null
+          picture_url?: string | null
           updated_at?: string
         }
         Update: {
           created_at?: string
           id?: string
+          is_group?: boolean
+          name?: string | null
+          owner_id?: string | null
+          picture_url?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -284,6 +296,10 @@ export type Database = {
     Functions: {
       create_dm_conversation: {
         Args: { other_user_id: string }
+        Returns: string
+      }
+      create_group_conversation: {
+        Args: { _member_ids: string[]; _name: string }
         Returns: string
       }
       is_conversation_participant: {

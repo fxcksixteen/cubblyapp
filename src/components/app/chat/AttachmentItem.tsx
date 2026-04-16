@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import folderFileIcon from "@/assets/icons/folder-file.svg";
+import ImageLightbox from "@/components/app/ImageLightbox";
 
 interface Attachment {
   name: string;
@@ -74,37 +75,47 @@ const AttachmentItem = ({ attachment }: AttachmentItemProps) => {
     };
   }, [attachment.url]);
 
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   const isImage = attachment.type.startsWith("image/");
 
   if (isImage) {
     return (
-      <a href={url} target="_blank" rel="noopener noreferrer" className="block mt-1 max-w-sm">
-        {!errored ? (
-          <img
-            src={url}
-            alt={attachment.name}
-            className="max-h-[400px] max-w-full rounded-lg object-contain"
-            onError={() => setErrored(true)}
-            loading="lazy"
-          />
-        ) : (
-          <div
-            className="flex items-center gap-2 rounded-lg border p-3"
-            style={{
-              borderColor: "var(--app-border, #1e1f22)",
-              backgroundColor: "var(--app-bg-secondary, #2b2d31)",
-            }}
-          >
-            <img src={folderFileIcon} alt="" className="h-8 w-8 invert opacity-60 shrink-0" />
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-[#00a8fc] truncate">{attachment.name}</p>
-              <p className="text-[11px]" style={{ color: "var(--app-text-secondary, #949ba4)" }}>
-                {formatFileSize(attachment.size)}
-              </p>
+      <>
+        <button
+          type="button"
+          onClick={() => setLightboxOpen(true)}
+          className="block mt-1 max-w-sm cursor-zoom-in"
+        >
+          {!errored ? (
+            <img
+              src={url}
+              alt={attachment.name}
+              className="max-h-[400px] max-w-full rounded-lg object-contain hover:brightness-90 transition-[filter]"
+              onError={() => setErrored(true)}
+              loading="lazy"
+            />
+          ) : (
+            <div
+              className="flex items-center gap-2 rounded-lg border p-3"
+              style={{
+                borderColor: "var(--app-border, #1e1f22)",
+                backgroundColor: "var(--app-bg-secondary, #2b2d31)",
+              }}
+            >
+              <img src={folderFileIcon} alt="" className="h-8 w-8 invert opacity-60 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-[#00a8fc] truncate">{attachment.name}</p>
+                <p className="text-[11px]" style={{ color: "var(--app-text-secondary, #949ba4)" }}>
+                  {formatFileSize(attachment.size)}
+                </p>
+              </div>
             </div>
-          </div>
+          )}
+        </button>
+        {lightboxOpen && (
+          <ImageLightbox url={url} name={attachment.name} onClose={() => setLightboxOpen(false)} />
         )}
-      </a>
+      </>
     );
   }
 

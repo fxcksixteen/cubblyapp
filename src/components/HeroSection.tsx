@@ -1,7 +1,7 @@
 import { useEffect, useRef, useMemo } from "react";
 import { Monitor, Apple, Download } from "lucide-react";
 
-const APP_VERSION = "0.1.0";
+const APP_VERSION = "0.2.0";
 
 const HeroSection = () => {
   const videoRef = useRef<HTMLVideoElement>(null);

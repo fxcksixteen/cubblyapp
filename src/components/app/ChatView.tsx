@@ -11,6 +11,7 @@ import MessageActions from "./chat/MessageActions";
 import MessageContextMenu from "./chat/MessageContextMenu";
 import UserProfileCard from "./chat/UserProfileCard";
 import AttachmentItem from "./chat/AttachmentItem";
+import InlineGif from "./chat/InlineGif";
 import sendIcon from "@/assets/icons/send.svg";
 import folderFileIcon from "@/assets/icons/folder-file.svg";
 import gifIcon from "@/assets/icons/gif.svg";
@@ -450,7 +451,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                             </div>
                             {text && (
                               /^https?:\/\/.*\.(gif|giphy)/i.test(text) ? (
-                                <img src={text} alt="GIF" className="max-h-[200px] rounded-lg mt-1" loading="lazy" />
+                                <InlineGif url={text} />
                               ) : (
                                 <p className={`text-[15px] leading-relaxed ${msg.status === "sending" ? "opacity-50" : ""}`} style={{ color: "var(--app-text-primary, #dbdee1)" }}>
                                   {text}
