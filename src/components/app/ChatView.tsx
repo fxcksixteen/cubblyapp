@@ -27,6 +27,11 @@ interface ChatViewProps {
   recipientName: string;
   recipientAvatar?: string;
   recipientUserId?: string;
+  /** Optional: if present and is_group, the group members panel is rendered. */
+  conversation?: import("@/hooks/useConversations").Conversation;
+  /** Whether the group members side panel should be visible (controlled by parent). */
+  showGroupMembers?: boolean;
+  onLeftGroup?: () => void;
 }
 
 interface PendingFile {
@@ -59,7 +64,7 @@ const shouldShowTimeDivider = (prevDate: string, currDate: string): boolean => {
   return curr - prev >= 2 * 60 * 60 * 1000;
 };
 
-const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUserId }: ChatViewProps) => {
+const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUserId, conversation, showGroupMembers, onLeftGroup }: ChatViewProps) => {
   const { user } = useAuth();
   const { activeCall, callEvents } = useVoice();
   const { messages, loading, sendMessage } = useMessages(conversationId);
