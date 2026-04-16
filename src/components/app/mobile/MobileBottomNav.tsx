@@ -78,6 +78,14 @@ const MobileBottomNav = ({ hidden }: Props) => {
             >
               {t.label}
             </span>
+            {t.id === "friends" && incomingPendingCount > 0 && (
+              <span
+                className="absolute top-1 right-1/2 translate-x-[14px] flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-[#ed4245] px-1 text-[9px] font-bold text-white border-2 animate-fade-in"
+                style={{ borderColor: "var(--app-bg-secondary)" }}
+              >
+                {incomingPendingCount > 9 ? "9+" : incomingPendingCount}
+              </span>
+            )}
           </button>
         );
       })}
