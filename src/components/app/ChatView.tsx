@@ -12,6 +12,7 @@ import MessageContextMenu from "./chat/MessageContextMenu";
 import UserProfileCard from "./chat/UserProfileCard";
 import AttachmentItem from "./chat/AttachmentItem";
 import InlineGif from "./chat/InlineGif";
+import GroupMembersPanel from "./GroupMembersPanel";
 import sendIcon from "@/assets/icons/send.svg";
 import folderFileIcon from "@/assets/icons/folder-file.svg";
 import gifIcon from "@/assets/icons/gif.svg";
