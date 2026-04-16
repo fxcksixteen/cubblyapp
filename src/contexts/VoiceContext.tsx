@@ -493,6 +493,17 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       console.log("[Voice] Connection state:", pc.connectionState);
     };
 
+    // Pre-create a bidirectional video transceiver so we can hot-swap a camera
+    // track in/out via replaceTrack() without ever needing to renegotiate.
+    // Both sides do this symmetrically — the SDP carries an m=video line from
+    // the very first offer/answer, even before either user enables their camera.
+    try {
+      videoTransceiverRef.current = pc.addTransceiver("video", { direction: "sendrecv" });
+    } catch (e) {
+      console.warn("[Voice] Failed to add video transceiver:", e);
+      videoTransceiverRef.current = null;
+    }
+
     pcRef.current = pc;
     return pc;
   }, [settings.outputVolume, settings.outputDeviceId]);
