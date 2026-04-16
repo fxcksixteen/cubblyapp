@@ -215,7 +215,12 @@ const AppLayout = () => {
       {isElectron && <TitleBar />}
 
       <div className="flex flex-1 min-h-0">
-        <ServerSidebar isActive onHomeClick={() => {}} />
+        <ServerSidebar
+          isActive
+          onHomeClick={() => {}}
+          unreadConversations={unreadList}
+          onJumpToConversation={(convId) => navigate(`/@me/chat/${convId}`, { replace: true })}
+        />
 
         <DMSidebar
           conversations={visibleConversations}
