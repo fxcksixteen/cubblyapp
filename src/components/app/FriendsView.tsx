@@ -323,7 +323,7 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
       </div>
 
       <div
-        className={`hidden xl:flex flex-shrink-0 flex-col border-l transition-all duration-300 ease-in-out overflow-hidden ${
+        className={`hidden lg:flex flex-shrink-0 flex-col border-l transition-all duration-300 ease-in-out overflow-hidden ${
           activeNowOpen ? "w-[340px] px-4 py-4 opacity-100" : "w-0 px-0 py-0 opacity-0 border-l-0"
         }`}
         style={{ borderColor: "var(--app-border, #3f4147)" }}
