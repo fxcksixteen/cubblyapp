@@ -1360,6 +1360,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     stopScreenShare();
     setRemoteScreenStream(null);
 
+    // Stop local camera
+    localVideoStreamRef.current?.getTracks().forEach(t => t.stop());
+    localVideoStreamRef.current = null;
+    setLocalVideoStream(null);
+    setRemoteVideoStream(null);
+    videoTransceiverRef.current = null;
+
     // Only broadcast hangup if WE initiated it (not a remote hangup)
     if (!isRemoteHangup.current && channelRef.current && user) {
       channelRef.current.send({
@@ -1492,6 +1499,102 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       return { ...prev, isDeafened: newDeafened, isMuted: nextMuted };
     });
   }, [syncCallParticipantState]);
+
+  /**
+   * Toggle the local camera on/off. Uses replaceTrack on the pre-allocated video
+   * transceiver so no SDP renegotiation is required — the peer instantly sees
+   * the new track (or a black frame when we set it back to null).
+   */
+  const toggleVideo = useCallback(async () => {
+    const transceiver = videoTransceiverRef.current;
+    if (!transceiver) {
+      console.warn("[Voice] Cannot toggle video — no transceiver. Are you in a call?");
+      return;
+    }
+    const sender = transceiver.sender;
+    const currentlyOn = !!sender.track;
+
+    if (currentlyOn) {
+      // Turn off
+      await sender.replaceTrack(null);
+      localVideoStreamRef.current?.getTracks().forEach(t => t.stop());
+      localVideoStreamRef.current = null;
+      setLocalVideoStream(null);
+      setActiveCall(prev => prev ? { ...prev, isVideoOn: false } : prev);
+      // Sync to call_participants
+      const ongoing = [...callEvents].reverse().find(e => e.state === "ongoing");
+      if (ongoing && user) {
+        supabase
+          .from("call_participants")
+          .update({ is_video_on: false })
+          .eq("call_event_id", ongoing.id)
+          .eq("user_id", user.id)
+          .is("left_at", null)
+          .then(() => {});
+      }
+      return;
+    }
+
+    // Turn on — get camera stream
+    try {
+      const resMap: Record<string, { width: number; height: number }> = {
+        "480p": { width: 854, height: 480 },
+        "720p": { width: 1280, height: 720 },
+        "1080p": { width: 1920, height: 1080 },
+      };
+      const res = resMap[settings.videoResolution] || resMap["720p"];
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          deviceId: settings.videoDeviceId !== "default" ? { exact: settings.videoDeviceId } : undefined,
+          width: { ideal: res.width },
+          height: { ideal: res.height },
+          frameRate: { ideal: settings.videoFrameRate, max: settings.videoFrameRate },
+        },
+        audio: false,
+      });
+      const videoTrack = stream.getVideoTracks()[0];
+      if (!videoTrack) throw new Error("No video track from camera");
+
+      await sender.replaceTrack(videoTrack);
+
+      // Apply higher bitrate so video looks crisp
+      try {
+        const params = sender.getParameters();
+        if (!params.encodings || params.encodings.length === 0) {
+          params.encodings = [{}];
+        }
+        params.encodings[0].maxBitrate = 2_500_000; // 2.5 Mbps
+        await sender.setParameters(params);
+      } catch (e) {
+        console.warn("[Voice] Could not set video encoding params:", e);
+      }
+
+      videoTrack.onended = () => {
+        // User pulled the cable / OS revoked permission → reflect off in UI
+        setLocalVideoStream(null);
+        localVideoStreamRef.current = null;
+        setActiveCall(prev => prev ? { ...prev, isVideoOn: false } : prev);
+        sender.replaceTrack(null).catch(() => {});
+      };
+
+      localVideoStreamRef.current = stream;
+      setLocalVideoStream(stream);
+      setActiveCall(prev => prev ? { ...prev, isVideoOn: true } : prev);
+
+      const ongoing = [...callEvents].reverse().find(e => e.state === "ongoing");
+      if (ongoing && user) {
+        supabase
+          .from("call_participants")
+          .update({ is_video_on: true })
+          .eq("call_event_id", ongoing.id)
+          .eq("user_id", user.id)
+          .is("left_at", null)
+          .then(() => {});
+      }
+    } catch (e) {
+      console.error("[Voice] Failed to start camera:", e);
+    }
+  }, [settings.videoDeviceId, settings.videoResolution, settings.videoFrameRate, callEvents, user]);
 
   useEffect(() => {
     if (!user) return;
