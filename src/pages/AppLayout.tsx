@@ -52,8 +52,18 @@ const AppLayout = () => {
   const friendTab: FriendTab = urlTab && validTabs.includes(urlTab) ? urlTab : "online";
 
   const { conversations, openOrCreateConversation, closeConversation, refetch: refetchConvs } = useConversations();
+  const { unreadByConv } = useUnreadCounts(chatIdFromUrl);
+  const { pending } = useFriends();
+  const incomingPendingCount = pending.filter((p) => p.addressee_id === user?.id).length;
   const [tempDMs, setTempDMs] = useState<string[]>([]);
   const [activeNowOpen, setActiveNowOpen] = useState(true);
+
+  // Sorted unread conversations for the ServerSidebar pills
+  const unreadList = useMemo(() => {
+    return Array.from(unreadByConv.entries())
+      .map(([conversationId, info]) => ({ conversationId, info }))
+      .sort((a, b) => (b.info.lastMessageAt || "").localeCompare(a.info.lastMessageAt || ""));
+  }, [unreadByConv]);
 
   useEffect(() => {
     if (location.pathname === "/@me" || location.pathname === "/@me/") {
