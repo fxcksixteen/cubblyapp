@@ -61,7 +61,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const user = session?.user;
     if (!user) {
       setMyStatusState("online");
-      setDndActive(false);
+      syncDnd(false);
       return;
     }
     let cancelled = false;
@@ -74,7 +74,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (cancelled) return;
         const status = data?.status || "online";
         setMyStatusState(status);
-        setDndActive(status === "dnd");
+        syncDnd(status === "dnd");
       });
     return () => { cancelled = true; };
   }, [session?.user?.id]);
@@ -91,7 +91,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         (payload) => {
           const newStatus = (payload.new as any)?.status || "online";
           setMyStatusState(newStatus);
-          setDndActive(newStatus === "dnd");
+          syncDnd(newStatus === "dnd");
         }
       )
       .subscribe();
@@ -101,7 +101,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const setMyStatus = async (status: string) => {
     const user = session?.user;
     setMyStatusState(status);
-    setDndActive(status === "dnd");
+    syncDnd(status === "dnd");
     if (user) {
       await supabase.from("profiles").update({ status }).eq("user_id", user.id);
     }
