@@ -594,6 +594,14 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
         />
       )}
     </div>
+      {showMembersPanel && conversation && (
+        <GroupMembersPanel
+          conversation={conversation}
+          onClose={() => {}}
+          onLeftGroup={() => onLeftGroup?.()}
+        />
+      )}
+    </div>
   );
 };
 
