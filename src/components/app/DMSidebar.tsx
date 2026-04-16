@@ -19,6 +19,7 @@ import {
 import ProfilePopup from "./ProfilePopup";
 import SettingsModal from "./SettingsModal";
 import SearchBar from "./SearchBar";
+import UserProfileCard from "./chat/UserProfileCard";
 import friendsIcon from "@/assets/icons/friends.svg";
 import shopIcon from "@/assets/icons/shop.svg";
 import micIcon from "@/assets/icons/microphone.svg";
@@ -54,6 +55,7 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
   const [localDeafened, setLocalDeafened] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [userStatus, setUserStatus] = useState("online");
+  const [profileCard, setProfileCard] = useState<{ userId: string; name: string; x: number; y: number } | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -212,11 +214,23 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                   style={{ backgroundColor: "#111214", borderColor: "var(--app-border, #2b2d31)" }}
                 >
                   <ContextMenuItem
-                    onClick={() => setActiveView(`dm:${conv.id}`)}
+                    onClick={() => {
+                      if (conv.is_group) {
+                        setActiveView(`dm:${conv.id}`);
+                      } else {
+                        // Open the user's full profile popup (not the chat)
+                        setProfileCard({
+                          userId: conv.participant.user_id,
+                          name: conv.participant.display_name,
+                          x: window.innerWidth / 2,
+                          y: window.innerHeight / 2,
+                        });
+                      }
+                    }}
                     className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer"
                   >
                     <img src={friendsIcon} alt="" className="h-4 w-4 invert opacity-70" />
-                    {conv.is_group ? "Open" : "Profile"}
+                    {conv.is_group ? "Open" : "View Profile"}
                   </ContextMenuItem>
                   {!conv.is_group && (
                     <ContextMenuItem
@@ -324,6 +338,15 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
       </div>
 
       <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      {profileCard && (
+        <UserProfileCard
+          userId={profileCard.userId}
+          displayName={profileCard.name}
+          position={{ x: profileCard.x, y: profileCard.y }}
+          onClose={() => setProfileCard(null)}
+          onSendMessage={(uid) => { setProfileCard(null); onOpenDM(uid); }}
+        />
+      )}
     </div>
   );
 };
