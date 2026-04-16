@@ -1124,10 +1124,19 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           videoConstraints.displaySurface = "monitor";
         }
 
+        // Only include system audio for full-screen shares; window/tab don't get system audio
+        const audioConstraint = !effectiveAudio
+          ? false
+          : type === "screen"
+            ? { systemAudio: "include" as const }
+            : type === "tab"
+              ? true  // browser captures tab audio natively
+              : false; // window shares have no individual audio
+
         stream = await navigator.mediaDevices.getDisplayMedia({
           video: videoConstraints,
-          audio: effectiveAudio,
-        });
+          audio: audioConstraint,
+        } as any);
       }
 
       setScreenStream(stream);

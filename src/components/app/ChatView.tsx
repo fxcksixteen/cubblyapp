@@ -71,6 +71,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
   const [peerTyping, setPeerTyping] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const messageInputRef = useRef<HTMLInputElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const userHasScrolledUpRef = useRef(false);
   const prevMessageCountRef = useRef(0);
@@ -118,17 +119,43 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
     prevMessageCountRef.current = n;
   }, [messages.length, messages, user?.id, scrollToBottom]);
 
-  // Scroll to bottom on initial load and conversation switch
+  // Scroll to bottom on initial load and conversation switch + auto-focus input
   useEffect(() => {
     if (!loading && messages.length > 0) {
       // Reset scroll-up flag on conversation switch
       userHasScrolledUpRef.current = false;
       scrollToBottom();
-      // Extra delayed scroll for long conversations where DOM takes time to render
-      const t = setTimeout(() => scrollToBottom(), 200);
-      return () => clearTimeout(t);
+      // Extra delayed scrolls for long conversations where DOM takes time to render
+      const t1 = setTimeout(() => scrollToBottom(), 150);
+      const t2 = setTimeout(() => scrollToBottom(), 400);
+      return () => { clearTimeout(t1); clearTimeout(t2); };
     }
   }, [loading, conversationId, scrollToBottom]);
+
+  // Auto-focus message input on conversation switch
+  useEffect(() => {
+    setTimeout(() => messageInputRef.current?.focus(), 50);
+  }, [conversationId]);
+
+  // Press Enter anywhere on the page to focus the message input
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (
+        e.key === "Enter" &&
+        !e.shiftKey &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        document.activeElement !== messageInputRef.current &&
+        !(document.activeElement instanceof HTMLInputElement) &&
+        !(document.activeElement instanceof HTMLTextAreaElement)
+      ) {
+        e.preventDefault();
+        messageInputRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
 
   useEffect(() => {
     if (botTyping && !userHasScrolledUpRef.current) scrollToBottom();
@@ -528,6 +555,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
           </div>
 
           <input
+            ref={messageInputRef}
             type="text"
             value={input}
             onChange={(e) => {
