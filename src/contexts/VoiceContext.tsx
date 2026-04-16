@@ -657,6 +657,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
         if (payload.type === "answer" && pc) {
           console.log("[Voice] 📥 Answer received, setting remote description...");
+          stopLooping("outgoingRing"); // peer picked up — stop ringing
           await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
           remoteDescriptionSet.current = true;
           pendingOfferRef.current = null;
@@ -1465,6 +1466,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             callerAvatarUrl: payload.callerAvatarUrl,
             callEventId: payload.callEventId,
           });
+          // Incoming call ringtone (respects DND inside playLooping)
+          playLooping("incomingCall", { volume: 0.5 });
         } catch (e) {
           console.error("Failed to setup signaling for incoming call:", e);
         }
@@ -1473,6 +1476,45 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     globalChannel.subscribe();
     return () => { supabase.removeChannel(globalChannel); };
   }, [user, activeCall, setupSignaling]);
+
+  // Stop incoming ringtone as soon as we accept (incomingCall cleared) or it's superseded.
+  useEffect(() => {
+    if (!incomingCall) {
+      stopLooping("incomingCall");
+    }
+  }, [incomingCall]);
+
+  // Stop outgoing ring once the call is connected (or ended)
+  useEffect(() => {
+    if (!activeCall || activeCall.state === "connected") {
+      stopLooping("outgoingRing");
+    }
+  }, [activeCall?.state]);
+
+  // Auto-end call if it's been "calling/ringing" for 3 minutes with no answer,
+  // OR if we've been alone in a connected call for 3 minutes.
+  // Also auto-stop incoming ringtone after 45s if user doesn't respond (don't ring forever).
+  useEffect(() => {
+    if (!activeCall) return;
+    const startedRinging = Date.now();
+    const lonelyTimer = setTimeout(() => {
+      // If still not connected after 3 minutes → auto-hangup
+      if (activeCall.state === "calling" || activeCall.state === "ringing") {
+        console.log("[Voice] ⏰ 3-minute ring timeout — auto-ending call");
+        endCallRef.current();
+      }
+    }, 3 * 60 * 1000);
+    return () => clearTimeout(lonelyTimer);
+  }, [activeCall?.conversationId, activeCall?.state]);
+
+  // Auto-stop *incoming* ringtone after 45s — don't ring the user forever
+  useEffect(() => {
+    if (!incomingCall) return;
+    const t = setTimeout(() => {
+      stopLooping("incomingCall");
+    }, 45_000);
+    return () => clearTimeout(t);
+  }, [incomingCall?.callEventId]);
 
   return (
     <VoiceContext.Provider value={{
