@@ -50,7 +50,7 @@ const DEFAULT_SCREEN_SHARE_SETTINGS: ScreenShareSettings = {
   resolution: "auto",
   frameRate: 30,
   audioShare: true,
-  optimizeFor: "clarity",
+  optimizeFor: "ultra",
   showCursor: true,
 };
 

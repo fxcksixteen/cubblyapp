@@ -726,7 +726,28 @@ function VideoTab({ settings, updateSettings, availableDevices, screenShareSetti
           </p>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-3">
+          <button
+            onClick={() => updateScreenShareSettings({ optimizeFor: "ultra" })}
+            className="rounded-xl border p-4 text-left transition-all relative"
+            style={{
+              backgroundColor: screenShareSettings.optimizeFor === "ultra" ? "var(--app-active)" : "var(--app-input)",
+              borderColor: screenShareSettings.optimizeFor === "ultra" ? "#5865f2" : "var(--app-border)",
+            }}
+          >
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-semibold" style={{ color: "var(--app-text-primary)" }}>Ultra</p>
+              <span
+                className="rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white"
+                style={{ background: "linear-gradient(135deg, hsl(265 80% 60%), hsl(220 80% 55%))" }}
+              >
+                Rec.
+              </span>
+            </div>
+            <p className="text-[11px] mt-1 leading-4" style={{ color: "var(--app-text-secondary)" }}>
+              Best of both worlds — sharp <em>and</em> smooth. Recommended for everything.
+            </p>
+          </button>
           <button
             onClick={() => updateScreenShareSettings({ optimizeFor: "clarity" })}
             className="rounded-xl border p-4 text-left transition-all"
