@@ -1,15 +1,29 @@
 import { Plus } from "lucide-react";
 import cubblyWordmark from "@/assets/cubbly-wordmark-white.png";
 import cubblyLogo from "@/assets/cubbly-logo.png";
+import { UnreadInfo } from "@/hooks/useUnreadCounts";
+import { getProfileColor } from "@/lib/profileColors";
 
 interface ServerSidebarProps {
   isActive?: boolean;
   onHomeClick: () => void;
+  /** Per-conversation unread info (most recent first). Each shown as a stacked pill under the logo. */
+  unreadConversations?: { conversationId: string; info: UnreadInfo }[];
+  /** Called when a user clicks an unread pill */
+  onJumpToConversation?: (conversationId: string) => void;
 }
 
-const ServerSidebar = ({ onHomeClick, isActive = false }: ServerSidebarProps) => {
+const ServerSidebar = ({
+  onHomeClick,
+  isActive = false,
+  unreadConversations = [],
+  onJumpToConversation,
+}: ServerSidebarProps) => {
   return (
-    <div className="flex w-[84px] flex-shrink-0 flex-col items-center gap-3 py-4 sidebar-tertiary" style={{ backgroundColor: "var(--app-bg-tertiary)" }}>
+    <div
+      className="flex w-[84px] flex-shrink-0 flex-col items-center gap-3 py-4 sidebar-tertiary overflow-y-auto"
+      style={{ backgroundColor: "var(--app-bg-tertiary)" }}
+    >
       <div className="mb-1">
         <img src={cubblyWordmark} alt="Cubbly" className="h-8 w-auto" />
       </div>
@@ -23,7 +37,11 @@ const ServerSidebar = ({ onHomeClick, isActive = false }: ServerSidebarProps) =>
         className="group relative flex h-14 w-14 items-center justify-center overflow-visible transition-all duration-200 hover:scale-[1.03]"
         aria-current={isActive ? "page" : undefined}
       >
-        <div className={`absolute -left-4 w-1 rounded-r-full bg-white transition-all duration-200 ${isActive ? "h-8 opacity-100" : "h-0 opacity-0 group-hover:h-6 group-hover:opacity-100"}`} />
+        <div
+          className={`absolute -left-4 w-1 rounded-r-full bg-white transition-all duration-200 ${
+            isActive ? "h-8 opacity-100" : "h-0 opacity-0 group-hover:h-6 group-hover:opacity-100"
+          }`}
+        />
         <img
           src={cubblyLogo}
           alt="Home"
@@ -32,6 +50,48 @@ const ServerSidebar = ({ onHomeClick, isActive = false }: ServerSidebarProps) =>
           }`}
         />
       </button>
+
+      {/* Unread message indicators — stacked under the logo, animated in */}
+      {unreadConversations.length > 0 && (
+        <div className="flex flex-col items-center gap-2 mt-1">
+          {unreadConversations.slice(0, 6).map(({ conversationId, info }) => {
+            const color = info.lastSenderId ? getProfileColor(info.lastSenderId) : { bg: "#5865f2" };
+            const initial = (info.lastSenderName || "?").charAt(0).toUpperCase();
+            return (
+              <button
+                key={conversationId}
+                onClick={() => onJumpToConversation?.(conversationId)}
+                className="group relative flex h-12 w-12 items-center justify-center transition-all duration-200 hover:scale-[1.05] animate-fade-in"
+                title={`${info.lastSenderName || "New message"} • ${info.count} new`}
+              >
+                {/* Active-style left pill indicator */}
+                <div className="absolute -left-4 h-6 w-1 rounded-r-full bg-white opacity-100" />
+                {info.lastSenderAvatar ? (
+                  <img
+                    src={info.lastSenderAvatar}
+                    alt={info.lastSenderName || ""}
+                    className="h-12 w-12 rounded-full object-cover transition-all duration-200 group-hover:rounded-[16px]"
+                  />
+                ) : (
+                  <div
+                    className="flex h-12 w-12 items-center justify-center rounded-full text-base font-bold text-white transition-all duration-200 group-hover:rounded-[16px]"
+                    style={{ backgroundColor: color.bg }}
+                  >
+                    {initial}
+                  </div>
+                )}
+                {/* Red unread count badge */}
+                <div
+                  className="absolute -bottom-0.5 -right-0.5 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[#ed4245] px-1.5 text-[11px] font-bold text-white border-2"
+                  style={{ borderColor: "var(--app-bg-tertiary)" }}
+                >
+                  {info.count > 99 ? "99+" : info.count}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       <div className="mx-auto h-[2px] w-8 rounded-full bg-[#35363c]" />
 

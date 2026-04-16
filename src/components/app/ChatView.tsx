@@ -10,6 +10,7 @@ import TypingIndicator from "./TypingIndicator";
 import MessageActions from "./chat/MessageActions";
 import MessageContextMenu from "./chat/MessageContextMenu";
 import UserProfileCard from "./chat/UserProfileCard";
+import AttachmentItem from "./chat/AttachmentItem";
 import sendIcon from "@/assets/icons/send.svg";
 import folderFileIcon from "@/assets/icons/folder-file.svg";
 import gifIcon from "@/assets/icons/gif.svg";
@@ -457,31 +458,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                               )
                             )}
                             {attachments.map((att, ai) => (
-                              <a
-                                key={ai}
-                                href={att.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="mt-1 flex items-center gap-2 rounded-lg border p-3 max-w-sm transition-colors"
-                                style={{
-                                  borderColor: "var(--app-border, #1e1f22)",
-                                  backgroundColor: "var(--app-bg-secondary, #2b2d31)",
-                                }}
-                                onMouseEnter={e => (e.currentTarget.style.backgroundColor = "var(--app-hover, #32353b)")}
-                                onMouseLeave={e => (e.currentTarget.style.backgroundColor = "var(--app-bg-secondary, #2b2d31)")}
-                              >
-                                {att.type.startsWith("image/") ? (
-                                  <img src={att.url} alt={att.name} className="max-h-[200px] max-w-full rounded" />
-                                ) : (
-                                  <>
-                                    <img src={folderFileIcon} alt="" className="h-8 w-8 invert opacity-60 shrink-0" />
-                                    <div className="min-w-0">
-                                      <p className="text-sm font-medium text-[#00a8fc] truncate">{att.name}</p>
-                                      <p className="text-[11px]" style={{ color: "var(--app-text-secondary, #949ba4)" }}>{formatFileSize(att.size)}</p>
-                                    </div>
-                                  </>
-                                )}
-                              </a>
+                              <AttachmentItem key={ai} attachment={att} />
                             ))}
                           </div>
                         </MessageContextMenu>

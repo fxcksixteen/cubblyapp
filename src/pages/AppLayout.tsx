@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useConversations } from "@/hooks/useConversations";
 import { useVoice } from "@/contexts/VoiceContext";
+import { useUnreadCounts } from "@/hooks/useUnreadCounts";
+import { useFriends } from "@/hooks/useFriends";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { getProfileColor } from "@/lib/profileColors";
@@ -50,8 +52,18 @@ const AppLayout = () => {
   const friendTab: FriendTab = urlTab && validTabs.includes(urlTab) ? urlTab : "online";
 
   const { conversations, openOrCreateConversation, closeConversation, refetch: refetchConvs } = useConversations();
+  const { unreadByConv } = useUnreadCounts(chatIdFromUrl);
+  const { pending } = useFriends();
+  const incomingPendingCount = pending.filter((p) => p.addressee_id === user?.id).length;
   const [tempDMs, setTempDMs] = useState<string[]>([]);
   const [activeNowOpen, setActiveNowOpen] = useState(true);
+
+  // Sorted unread conversations for the ServerSidebar pills
+  const unreadList = useMemo(() => {
+    return Array.from(unreadByConv.entries())
+      .map(([conversationId, info]) => ({ conversationId, info }))
+      .sort((a, b) => (b.info.lastMessageAt || "").localeCompare(a.info.lastMessageAt || ""));
+  }, [unreadByConv]);
 
   useEffect(() => {
     if (location.pathname === "/@me" || location.pathname === "/@me/") {
@@ -149,7 +161,7 @@ const AppLayout = () => {
             <button
               key={tab}
               onClick={() => setFriendTab(tab)}
-              className="rounded px-2.5 py-1 text-sm font-medium capitalize transition-colors"
+              className="relative rounded px-2.5 py-1 text-sm font-medium capitalize transition-colors"
               style={{
                 backgroundColor: friendTab === tab && activeView === "friends" ? "var(--app-active, #404249)" : undefined,
                 color: friendTab === tab && activeView === "friends" ? "white" : "var(--app-text-secondary, #b5bac1)",
@@ -158,6 +170,14 @@ const AppLayout = () => {
               onMouseLeave={e => { if (!(friendTab === tab && activeView === "friends")) e.currentTarget.style.backgroundColor = ""; }}
             >
               {tab}
+              {tab === "pending" && incomingPendingCount > 0 && (
+                <span
+                  className="absolute -top-1 -right-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#ed4245] px-1 text-[10px] font-bold text-white border-2 animate-fade-in"
+                  style={{ borderColor: "var(--app-bg-primary)" }}
+                >
+                  {incomingPendingCount > 9 ? "9+" : incomingPendingCount}
+                </span>
+              )}
             </button>
           ))}
           <button
@@ -203,7 +223,12 @@ const AppLayout = () => {
       {isElectron && <TitleBar />}
 
       <div className="flex flex-1 min-h-0">
-        <ServerSidebar isActive onHomeClick={() => {}} />
+        <ServerSidebar
+          isActive
+          onHomeClick={() => {}}
+          unreadConversations={unreadList}
+          onJumpToConversation={(convId) => navigate(`/@me/chat/${convId}`, { replace: true })}
+        />
 
         <DMSidebar
           conversations={visibleConversations}

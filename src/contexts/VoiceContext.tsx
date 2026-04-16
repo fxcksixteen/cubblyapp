@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useCallback, useRef, useEffect, ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { playSound, playLooping, stopLooping } from "@/lib/sounds";
 
 export interface VoiceSettings {
   inputDeviceId: string;
@@ -656,6 +657,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
         if (payload.type === "answer" && pc) {
           console.log("[Voice] 📥 Answer received, setting remote description...");
+          stopLooping("outgoingRing"); // peer picked up — stop ringing
           await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
           remoteDescriptionSet.current = true;
           pendingOfferRef.current = null;
@@ -865,6 +867,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         isMuted: false,
         isDeafened: false,
       });
+
+      // Outgoing ring sound (skipped for bot self-test calls)
+      if (!isBotCall) {
+        playLooping("outgoingRing", { volume: 0.4 });
+      }
 
       setCallEvents(prev => [...prev, {
         id: callEventId,
@@ -1109,11 +1116,17 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           video: videoConstraints,
         });
       } else {
-        // Browser path: standard getDisplayMedia
+        // Browser path: standard getDisplayMedia.
+        // Only attempt audio when user is sharing an entire screen — window/tab cannot
+        // capture system audio, and trying to do so causes massive quality degradation
+        // and lag in some browsers (the OS forces a low-quality capture path).
+        const allowAudio = effectiveAudio && type === "screen";
+
         const videoConstraints: any = {
-          cursor: screenShareSettings.showCursor ? "always" : "never",
-          frameRate: { ideal: effectiveFps },
-          ...(res ? { width: { ideal: res.width }, height: { ideal: res.height } } : {}),
+          frameRate: { ideal: effectiveFps, max: effectiveFps },
+          ...(res
+            ? { width: { ideal: res.width }, height: { ideal: res.height } }
+            : { width: { ideal: 1920 }, height: { ideal: 1080 } }),
         };
 
         if (type === "tab") {
@@ -1124,19 +1137,23 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           videoConstraints.displaySurface = "monitor";
         }
 
-        // Only include system audio for full-screen shares; window/tab don't get system audio
-        const audioConstraint = !effectiveAudio
-          ? false
-          : type === "screen"
-            ? { systemAudio: "include" as const }
-            : type === "tab"
-              ? true  // browser captures tab audio natively
-              : false; // window shares have no individual audio
+        const audioConstraint = allowAudio
+          ? ({ systemAudio: "include" } as any)
+          : false;
 
         stream = await navigator.mediaDevices.getDisplayMedia({
           video: videoConstraints,
           audio: audioConstraint,
+          // @ts-ignore - non-standard but supported in Chromium
+          surfaceSwitching: "include",
+          selfBrowserSurface: "exclude",
         } as any);
+
+        // Hard guard: if for some reason audio tracks slipped through on a window/tab
+        // share, strip them out so we don't leak system audio.
+        if (!allowAudio) {
+          stream.getAudioTracks().forEach(t => { t.stop(); stream.removeTrack(t); });
+        }
       }
 
       setScreenStream(stream);
@@ -1267,6 +1284,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const endCall = useCallback(() => {
     console.log("[Voice] 🔴 endCall — remote hangup:", isRemoteHangup.current);
     const endedAt = new Date().toISOString();
+
+    // Stop all ringtones immediately
+    stopLooping("outgoingRing");
+    stopLooping("incomingCall");
+    // Play leave-call sound (only if we were actually in/joining a call)
+    if (activeCall || incomingCall) {
+      playSound("leaveCall", { volume: 0.45 });
+    }
+
     setCallEvents(prev => {
       const updated = [...prev];
       for (let i = updated.length - 1; i >= 0; i--) {
@@ -1274,6 +1300,16 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           const evt = updated[i];
           updated[i] = { ...evt, state: "ended", endedAt };
           supabase.from("call_events").update({ state: "ended", ended_at: endedAt } as any).eq("id", evt.id).then(() => {});
+          // Mark our participant row as left
+          if (user) {
+            supabase
+              .from("call_participants")
+              .update({ left_at: endedAt })
+              .eq("call_event_id", evt.id)
+              .eq("user_id", user.id)
+              .is("left_at", null)
+              .then(() => {});
+          }
           break;
         }
       }
@@ -1331,45 +1367,90 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       channelRef.current = null;
     }
     console.log("[Voice] 🔴 Call ended, all resources cleaned up");
-  }, [user, stopAudioLevelMonitor, stopScreenShare]);
+  }, [user, stopAudioLevelMonitor, stopScreenShare, activeCall, incomingCall]);
 
   // Keep endCall ref always current
   useEffect(() => { endCallRef.current = endCall; }, [endCall]);
 
-  const toggleMute = useCallback(() => {
-    const stream = localStreamRef.current;
-    if (stream) {
-      stream.getAudioTracks().forEach(track => { track.enabled = !track.enabled; });
-      setActiveCall(prev => prev ? { ...prev, isMuted: !prev.isMuted } : null);
+  /** Push my current mute/deafen state to call_participants so peers see it live */
+  const syncCallParticipantState = useCallback(async (overrides?: { is_muted?: boolean; is_deafened?: boolean }) => {
+    if (!user) return;
+    // Find the most recent ongoing call event
+    const ongoing = [...callEvents].reverse().find(e => e.state === "ongoing");
+    if (!ongoing) return;
+    const currentMuted = overrides?.is_muted ?? activeCall?.isMuted ?? false;
+    const currentDeafened = overrides?.is_deafened ?? activeCall?.isDeafened ?? false;
+    try {
+      // Upsert: insert if first time, otherwise update
+      const { data: existing } = await supabase
+        .from("call_participants")
+        .select("id")
+        .eq("call_event_id", ongoing.id)
+        .eq("user_id", user.id)
+        .is("left_at", null)
+        .maybeSingle();
+      if (existing) {
+        await supabase
+          .from("call_participants")
+          .update({ is_muted: currentMuted, is_deafened: currentDeafened })
+          .eq("id", existing.id);
+      } else {
+        await supabase.from("call_participants").insert({
+          call_event_id: ongoing.id,
+          user_id: user.id,
+          is_muted: currentMuted,
+          is_deafened: currentDeafened,
+        });
+      }
+    } catch (e) {
+      console.warn("[Voice] Failed to sync call participant state:", e);
     }
-  }, []);
+  }, [user, callEvents, activeCall]);
+
+  const toggleMute = useCallback(() => {
+    setActiveCall(prev => {
+      if (!prev) return null;
+      const newMuted = !prev.isMuted;
+      // Set ALL tracks to the same enabled state (don't invert each individually)
+      if (localStreamRef.current) {
+        localStreamRef.current.getAudioTracks().forEach(track => { track.enabled = !newMuted; });
+      }
+      // Fire-and-forget DB sync
+      syncCallParticipantState({ is_muted: newMuted, is_deafened: prev.isDeafened });
+      return { ...prev, isMuted: newMuted };
+    });
+  }, [syncCallParticipantState]);
 
   const toggleDeafen = useCallback(() => {
     setActiveCall(prev => {
       if (!prev) return null;
       const newDeafened = !prev.isDeafened;
-      
+
       // Mute/unmute remote audio
       const audioElements = document.querySelectorAll("audio");
       audioElements.forEach((el: any) => { if (el.__cubblyRemote) el.muted = newDeafened; });
-      
+
+      let nextMuted: boolean;
       if (newDeafened) {
         // Save current mute state before deafening, then mute mic
         preMuteStateRef.current = prev.isMuted;
         if (localStreamRef.current) {
           localStreamRef.current.getAudioTracks().forEach(track => { track.enabled = false; });
         }
-        return { ...prev, isDeafened: true, isMuted: true };
+        nextMuted = true;
       } else {
         // Restore pre-deafen mute state
         const restoreMuted = preMuteStateRef.current;
         if (localStreamRef.current) {
           localStreamRef.current.getAudioTracks().forEach(track => { track.enabled = !restoreMuted; });
         }
-        return { ...prev, isDeafened: false, isMuted: restoreMuted };
+        nextMuted = restoreMuted;
       }
+
+      syncCallParticipantState({ is_muted: nextMuted, is_deafened: newDeafened });
+      return { ...prev, isDeafened: newDeafened, isMuted: nextMuted };
     });
-  }, []);
+  }, [syncCallParticipantState]);
 
   useEffect(() => {
     if (!user) return;
@@ -1385,6 +1466,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             callerAvatarUrl: payload.callerAvatarUrl,
             callEventId: payload.callEventId,
           });
+          // Incoming call ringtone (respects DND inside playLooping)
+          playLooping("incomingCall", { volume: 0.5 });
         } catch (e) {
           console.error("Failed to setup signaling for incoming call:", e);
         }
@@ -1393,6 +1476,45 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     globalChannel.subscribe();
     return () => { supabase.removeChannel(globalChannel); };
   }, [user, activeCall, setupSignaling]);
+
+  // Stop incoming ringtone as soon as we accept (incomingCall cleared) or it's superseded.
+  useEffect(() => {
+    if (!incomingCall) {
+      stopLooping("incomingCall");
+    }
+  }, [incomingCall]);
+
+  // Stop outgoing ring once the call is connected (or ended)
+  useEffect(() => {
+    if (!activeCall || activeCall.state === "connected") {
+      stopLooping("outgoingRing");
+    }
+  }, [activeCall?.state]);
+
+  // Auto-end call if it's been "calling/ringing" for 3 minutes with no answer,
+  // OR if we've been alone in a connected call for 3 minutes.
+  // Also auto-stop incoming ringtone after 45s if user doesn't respond (don't ring forever).
+  useEffect(() => {
+    if (!activeCall) return;
+    const startedRinging = Date.now();
+    const lonelyTimer = setTimeout(() => {
+      // If still not connected after 3 minutes → auto-hangup
+      if (activeCall.state === "calling" || activeCall.state === "ringing") {
+        console.log("[Voice] ⏰ 3-minute ring timeout — auto-ending call");
+        endCallRef.current();
+      }
+    }, 3 * 60 * 1000);
+    return () => clearTimeout(lonelyTimer);
+  }, [activeCall?.conversationId, activeCall?.state]);
+
+  // Auto-stop *incoming* ringtone after 45s — don't ring the user forever
+  useEffect(() => {
+    if (!incomingCall) return;
+    const t = setTimeout(() => {
+      stopLooping("incomingCall");
+    }, 45_000);
+    return () => clearTimeout(t);
+  }, [incomingCall?.callEventId]);
 
   return (
     <VoiceContext.Provider value={{
