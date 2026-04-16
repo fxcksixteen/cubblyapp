@@ -7,6 +7,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { VoiceProvider } from "@/contexts/VoiceContext";
 import { ActivityProvider } from "@/contexts/ActivityContext";
+import { GamingModeProvider } from "@/contexts/GamingModeContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Index from "./pages/Index.tsx";
 import Login from "./pages/Login.tsx";
@@ -32,6 +33,7 @@ const App = () => (
         <AuthProvider>
           <VoiceProvider>
             <ActivityProvider>
+              <GamingModeProvider>
               <Routes>
                 <Route path="/" element={<Index />} />
                 <Route path="/login" element={<Login />} />
@@ -49,6 +51,7 @@ const App = () => (
               <UpdateModal />
               <WhatsNewModal />
               <GlobalCallIndicator />
+              </GamingModeProvider>
             </ActivityProvider>
           </VoiceProvider>
         </AuthProvider>

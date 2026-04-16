@@ -43,6 +43,8 @@ function getAudio(key: SoundKey): HTMLAudioElement {
 
 export function playSound(key: SoundKey, options?: { force?: boolean; volume?: number }) {
   if (dndActive && !options?.force) return;
+  // Gaming Mode suppression — set by GamingModeContext on the window object
+  if (!options?.force && typeof window !== "undefined" && (window as any).__cubblySuppress) return;
   try {
     const base = getAudio(key);
     // Clone the node so overlapping plays don't truncate each other
@@ -56,6 +58,7 @@ export function playSound(key: SoundKey, options?: { force?: boolean; volume?: n
 
 export function playLooping(key: SoundKey, options?: { force?: boolean; volume?: number }) {
   if (dndActive && !options?.force) return;
+  if (!options?.force && typeof window !== "undefined" && (window as any).__cubblySuppress) return;
   stopLooping(key);
   try {
     const audio = new Audio(SOUND_PATHS[key]);
