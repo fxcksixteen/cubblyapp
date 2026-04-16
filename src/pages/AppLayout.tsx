@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useConversations } from "@/hooks/useConversations";
 import { useVoice } from "@/contexts/VoiceContext";
@@ -8,6 +8,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { getProfileColor } from "@/lib/profileColors";
 import { getEffectivePresenceStatus } from "@/lib/presence";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { useSwipe } from "@/hooks/useSwipe";
 import messagesInboxIcon from "@/assets/icons/messages.svg";
 import activityIcon from "@/assets/icons/activity.svg";
 import callIcon from "@/assets/icons/call.svg";
@@ -25,19 +27,15 @@ import TitleBar from "@/components/app/TitleBar";
 import CreateGroupModal from "@/components/app/CreateGroupModal";
 import GroupAvatar from "@/components/app/GroupAvatar";
 import friendsIcon from "@/assets/icons/friends.svg";
+import MobileBottomNav from "@/components/app/mobile/MobileBottomNav";
+import MobileChatHeader from "@/components/app/mobile/MobileChatHeader";
+import MobileCallOverlay from "@/components/app/mobile/MobileCallOverlay";
+import YouPage from "@/pages/YouPage";
+import GroupMembersPanel from "@/components/app/GroupMembersPanel";
 
 type FriendTab = "online" | "all" | "pending" | "blocked" | "add";
 
-const statusColors: Record<string, string> = {
-  online: "online",
-  idle: "idle",
-  dnd: "dnd",
-  invisible: "invisible",
-  offline: "offline",
-};
-
 const BOT_USER_ID = "00000000-0000-0000-0000-000000000001";
-
 const isElectron = typeof window !== "undefined" && !!(window as any).electronAPI;
 
 const AppLayout = () => {
@@ -45,10 +43,12 @@ const AppLayout = () => {
   const location = useLocation();
   const { user, onlineUserIds } = useAuth();
   const { activeCall, startCall, endCall } = useVoice();
+  const isMobile = useIsMobile();
 
   const pathParts = location.pathname.split("/").filter(Boolean);
   const isChatRoute = pathParts[1] === "chat" && pathParts[2];
   const chatIdFromUrl = isChatRoute ? pathParts[2] : null;
+  const isYouRoute = pathParts[1] === "you";
   const urlTab = pathParts[1] as FriendTab | undefined;
   const validTabs: FriendTab[] = ["online", "all", "pending", "blocked", "add"];
   const friendTab: FriendTab = urlTab && validTabs.includes(urlTab) ? urlTab : "online";
@@ -62,7 +62,11 @@ const AppLayout = () => {
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [showMembersPanel, setShowMembersPanel] = useState(true);
 
-  // Sorted unread conversations for the ServerSidebar pills
+  // Mobile: which panel is currently slid open ("none" = main view visible)
+  const [mobilePanel, setMobilePanel] = useState<"none" | "dms" | "members">("none");
+  // Close panels whenever the route changes
+  useEffect(() => { setMobilePanel("none"); }, [location.pathname]);
+
   const unreadList = useMemo(() => {
     return Array.from(unreadByConv.entries())
       .map(([conversationId, info]) => ({ conversationId, info }))
@@ -75,7 +79,11 @@ const AppLayout = () => {
     }
   }, [location.pathname, navigate]);
 
-  const activeView = chatIdFromUrl ? `dm:${chatIdFromUrl}` : pathParts[1] === "shop" ? "shop" : "friends";
+  const activeView = chatIdFromUrl
+    ? `dm:${chatIdFromUrl}`
+    : pathParts[1] === "shop" ? "shop"
+    : isYouRoute ? "you"
+    : "friends";
 
   const setFriendTab = (tab: FriendTab) => {
     navigate(`/@me/${tab}`, { replace: true });
@@ -92,14 +100,12 @@ const AppLayout = () => {
 
   const handleCloseConversation = (convId: string) => {
     const conversation = conversations.find((item) => item.id === convId);
-
     if (conversation && !conversation.lastMessage) {
       closeConversation(convId);
       setTempDMs((previous) => previous.filter((id) => id !== convId));
     } else {
       closeConversation(convId);
     }
-
     if (chatIdFromUrl === convId) {
       navigate("/@me/online", { replace: true });
     }
@@ -107,11 +113,11 @@ const AppLayout = () => {
 
   const isDM = activeView.startsWith("dm:");
   const isShop = activeView === "shop";
+  const isYou = activeView === "you";
   const activeConvId = isDM ? activeView.replace("dm:", "") : null;
   const activeConv = conversations.find((conversation) => conversation.id === activeConvId);
   const activeParticipant = activeConv?.participant;
 
-  // Groups always show in the sidebar; DMs only when they have a message, are pinned (tempDMs), or are active
   const visibleConversations = conversations.filter(
     (conversation) =>
       conversation.is_group ||
@@ -153,11 +159,25 @@ const AppLayout = () => {
     }
   };
 
+  // Mobile swipe target: the main chat content area
+  // - In DM view: swipe right → open DMs panel; swipe left → open members (if group)
+  // - In friends/shop view: swipe right → open DMs panel
+  const swipeRef = useSwipe<HTMLDivElement>({
+    disabled: !isMobile || isYou,
+    onSwipeRight: () => {
+      if (mobilePanel === "members") setMobilePanel("none");
+      else setMobilePanel("dms");
+    },
+    onSwipeLeft: () => {
+      if (mobilePanel === "dms") setMobilePanel("none");
+      else if (isDM && activeConv?.is_group) setMobilePanel("members");
+    },
+  });
+
   const renderHeader = () => {
     if (isShop) {
       return <span className="font-semibold" style={{ color: "var(--app-text-primary)" }}>Shop</span>;
     }
-
     return (
       <>
         <div className="flex items-center gap-2">
@@ -165,12 +185,12 @@ const AppLayout = () => {
           <span className="font-semibold" style={{ color: "var(--app-text-primary)" }}>Friends</span>
         </div>
         <div className="h-6 w-px" style={{ backgroundColor: "var(--app-border, #3f4147)" }} />
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 overflow-x-auto">
           {(["online", "all", "pending", "blocked"] as FriendTab[]).map((tab) => (
             <button
               key={tab}
               onClick={() => setFriendTab(tab)}
-              className="relative rounded px-2.5 py-1 text-sm font-medium capitalize transition-colors"
+              className="relative rounded px-2.5 py-1 text-sm font-medium capitalize transition-colors shrink-0"
               style={{
                 backgroundColor: friendTab === tab && activeView === "friends" ? "var(--app-active, #404249)" : undefined,
                 color: friendTab === tab && activeView === "friends" ? "white" : "var(--app-text-secondary, #b5bac1)",
@@ -191,7 +211,7 @@ const AppLayout = () => {
           ))}
           <button
             onClick={() => setFriendTab("add")}
-            className={`rounded px-2.5 py-1 text-sm font-medium transition-colors ${
+            className={`rounded px-2.5 py-1 text-sm font-medium transition-colors shrink-0 ${
               friendTab === "add" && activeView === "friends"
                 ? "bg-transparent text-[#3ba55c]"
                 : "bg-[#3ba55c] text-white hover:bg-[#2d8b4e]"
@@ -205,6 +225,9 @@ const AppLayout = () => {
   };
 
   const renderContent = () => {
+    if (isYou) {
+      return <YouPage />;
+    }
     if (isDM && activeConvId && activeConv) {
       const isGroup = activeConv.is_group;
       const headerName = isGroup
@@ -217,7 +240,7 @@ const AppLayout = () => {
           recipientName={headerName}
           recipientAvatar={isGroup ? activeConv.picture_url || undefined : activeParticipant?.avatar_url || undefined}
           recipientUserId={isGroup ? undefined : activeParticipant?.user_id}
-          showGroupMembers={isGroup && showMembersPanel}
+          showGroupMembers={isGroup && showMembersPanel && !isMobile}
           onLeftGroup={() => {
             navigate("/@me/online", { replace: true });
             refetchConvs();
@@ -225,20 +248,154 @@ const AppLayout = () => {
         />
       );
     }
-
     if (isShop) {
       return <ShopView />;
     }
-
     return <FriendsView activeTab={friendTab} setActiveTab={setFriendTab} onOpenDM={handleOpenDM} activeNowOpen={activeNowOpen} setActiveNowOpen={setActiveNowOpen} />;
   };
 
   const participantColor = activeParticipant ? getProfileColor(activeParticipant.user_id) : null;
   const activeParticipantStatus = getEffectivePresenceStatus(activeParticipant?.user_id, activeParticipant?.status, onlineUserIds);
 
+  // === MOBILE LAYOUT ===
+  if (isMobile) {
+    return (
+      <div
+        className="app-themed flex flex-col h-screen w-full overflow-hidden font-body relative"
+        style={{ backgroundColor: "var(--app-bg-primary)", color: "var(--app-text-primary)" }}
+      >
+        {/* Main view (full-screen on mobile) */}
+        <div ref={swipeRef} className="flex flex-col flex-1 min-h-0 relative">
+          {/* Header */}
+          {isDM && activeConv ? (
+            <MobileChatHeader
+              conversation={activeConv}
+              participant={activeParticipant}
+              participantStatus={activeParticipantStatus}
+              isInCall={!!isInCall}
+              onBack={() => navigate("/@me/online", { replace: true })}
+              onCall={handleVoiceCall}
+              onShowMembers={activeConv.is_group ? () => setMobilePanel("members") : undefined}
+            />
+          ) : !isYou ? (
+            <div
+              className="flex h-14 items-center gap-2 border-b px-3 shrink-0"
+              style={{
+                backgroundColor: "var(--app-bg-primary)",
+                borderColor: "var(--app-border)",
+                paddingTop: "env(safe-area-inset-top, 0px)",
+              }}
+            >
+              <button
+                onClick={() => setMobilePanel("dms")}
+                className="flex h-10 w-10 items-center justify-center rounded-full active:bg-[var(--app-hover)] touch-manipulation shrink-0"
+                aria-label="Open chats"
+              >
+                <img src={messagesInboxIcon} alt="" className="h-5 w-5 invert opacity-70" />
+              </button>
+              <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">{renderHeader()}</div>
+            </div>
+          ) : null}
+
+          {/* Page content (with bottom padding so nav doesn't overlap) */}
+          <div className="flex-1 min-h-0 overflow-hidden" style={{ paddingBottom: isYou ? 0 : "calc(56px + env(safe-area-inset-bottom, 0px))" }}>
+            {renderContent()}
+          </div>
+        </div>
+
+        {/* Backdrop (shared by both panels) */}
+        {mobilePanel !== "none" && (
+          <div
+            className="fixed inset-0 z-30 bg-black mobile-backdrop"
+            style={{ opacity: 0.5 }}
+            onClick={() => setMobilePanel("none")}
+          />
+        )}
+
+        {/* Sliding DM panel (left) */}
+        <div
+          className="fixed inset-y-0 left-0 z-40 flex mobile-panel mobile-chrome"
+          style={{
+            width: "85vw",
+            maxWidth: 360,
+            transform: mobilePanel === "dms" ? "translateX(0)" : "translateX(-100%)",
+            paddingTop: "env(safe-area-inset-top, 0px)",
+          }}
+        >
+          <ServerSidebar
+            isActive
+            onHomeClick={() => {}}
+            unreadConversations={unreadList}
+            onJumpToConversation={(convId) => { navigate(`/@me/chat/${convId}`, { replace: true }); setMobilePanel("none"); }}
+          />
+          <DMSidebar
+            conversations={visibleConversations}
+            activeView={activeView}
+            setActiveView={(view) => {
+              if (view.startsWith("dm:")) {
+                const convId = view.replace("dm:", "");
+                navigate(`/@me/chat/${convId}`, { replace: true });
+              } else if (view === "shop") {
+                navigate("/@me/shop", { replace: true });
+              } else {
+                navigate(`/@me/${friendTab}`, { replace: true });
+              }
+              setMobilePanel("none");
+            }}
+            onCloseConversation={handleCloseConversation}
+            onOpenDM={handleOpenDM}
+            onCreateGroup={() => setCreateGroupOpen(true)}
+          />
+        </div>
+
+        {/* Sliding members panel (right) — only useful on group DMs */}
+        {isDM && activeConv?.is_group && (
+          <div
+            className="fixed inset-y-0 right-0 z-40 mobile-panel mobile-chrome"
+            style={{
+              width: "85vw",
+              maxWidth: 320,
+              transform: mobilePanel === "members" ? "translateX(0)" : "translateX(100%)",
+              backgroundColor: "var(--app-bg-secondary)",
+              paddingTop: "env(safe-area-inset-top, 0px)",
+            }}
+          >
+            {/* GroupMembersPanel is rendered inside ChatView already; here we render a separate instance */}
+            {/* Lazy-import to avoid heavy bundle: use a wrapper */}
+            <MembersPanelWrapper conversation={activeConv} onClose={() => setMobilePanel("none")} />
+          </div>
+        )}
+
+        {/* Bottom nav (hide while a call overlay is fullscreen) */}
+        <MobileBottomNav hidden={!!activeCall && !isYou && false /* keep visible always */} />
+
+        {/* Call UI: fullscreen on mobile */}
+        {activeCall && (
+          <MobileCallOverlay
+            conversationId={activeCall.conversationId}
+            recipientName={activeCall.peerName}
+            recipientUserId={activeCall.peerId}
+          />
+        )}
+
+        {/* Incoming-call toast still shows */}
+        <VoiceCallOverlay />
+
+        <CreateGroupModal
+          isOpen={createGroupOpen}
+          onClose={() => setCreateGroupOpen(false)}
+          onCreated={(convId) => {
+            navigate(`/@me/chat/${convId}`, { replace: true });
+          }}
+          createGroupConversation={createGroupConversation}
+        />
+      </div>
+    );
+  }
+
+  // === DESKTOP LAYOUT (unchanged) ===
   return (
     <div className="app-themed flex flex-col h-screen w-full overflow-hidden font-body" style={{ backgroundColor: "var(--app-bg-primary)", color: "var(--app-text-primary)" }}>
-      {/* Custom titlebar for Electron */}
       {isElectron && <TitleBar />}
 
       <div className="flex flex-1 min-h-0">
@@ -370,6 +527,21 @@ const AppLayout = () => {
         }}
         createGroupConversation={createGroupConversation}
       />
+    </div>
+  );
+};
+
+/** Lightweight wrapper to render the group members list inside the mobile slide-out panel. */
+const MembersPanelWrapper = ({ conversation, onClose }: { conversation: any; onClose: () => void }) => {
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between px-4 h-14 border-b shrink-0" style={{ borderColor: "var(--app-border)" }}>
+        <span className="font-semibold text-sm" style={{ color: "var(--app-text-primary)" }}>Members</span>
+        <button onClick={onClose} className="text-sm" style={{ color: "var(--app-text-secondary)" }}>Close</button>
+      </div>
+      <div className="flex-1 overflow-y-auto">
+        <GroupMembersPanel conversation={conversation} onClose={onClose} onLeftGroup={onClose} />
+      </div>
     </div>
   );
 };
