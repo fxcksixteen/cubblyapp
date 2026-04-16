@@ -10,6 +10,7 @@ import TypingIndicator from "./TypingIndicator";
 import MessageActions from "./chat/MessageActions";
 import MessageContextMenu from "./chat/MessageContextMenu";
 import UserProfileCard from "./chat/UserProfileCard";
+import { useTypeToFocus } from "@/hooks/useTypeToFocus";
 import AttachmentItem from "./chat/AttachmentItem";
 import InlineGif from "./chat/InlineGif";
 import GroupMembersPanel from "./GroupMembersPanel";
@@ -145,7 +146,9 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
     setTimeout(() => messageInputRef.current?.focus(), 50);
   }, [conversationId]);
 
-  // Press Enter anywhere on the page to focus the message input
+  // Discord-style "type to focus": pressing any printable key anywhere routes
+  // it into the message input. Also keep Enter-anywhere as a no-op focuser.
+  useTypeToFocus(messageInputRef);
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (

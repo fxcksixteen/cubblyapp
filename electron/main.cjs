@@ -12,6 +12,25 @@ autoUpdater.logger = log;
 autoUpdater.autoDownload = true;       // Download new versions in the background
 autoUpdater.autoInstallOnAppQuit = true; // Fallback: install on quit if user never restarts
 
+// ----- Auto-launch on system startup (Discord-style) -----
+// Enabled by default for every install. Users can disable it later via Settings
+// (we'll wire that to a setting in a future build). On macOS this uses Login
+// Items; on Windows it adds a registry key under HKCU\...\Run; Linux is a
+// no-op because each distro handles startup differently.
+try {
+  if (process.platform === "win32" || process.platform === "darwin") {
+    app.setLoginItemSettings({
+      openAtLogin: true,
+      openAsHidden: false, // Show window on login (set to true if we want silent start)
+      // On Windows, electron-updater rewrites the executable path on update;
+      // explicitly passing path keeps us pointed at the current install.
+      path: process.execPath,
+    });
+  }
+} catch (e) {
+  log.warn("[startup] failed to configure login item:", e?.message || e);
+}
+
 let mainWindow;
 
 function createWindow() {

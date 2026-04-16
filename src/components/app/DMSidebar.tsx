@@ -4,6 +4,7 @@ import GroupAvatar from "@/components/app/GroupAvatar";
 import { useAuth } from "@/contexts/AuthContext";
 import { useVoice } from "@/contexts/VoiceContext";
 import { useActivity } from "@/contexts/ActivityContext";
+import { useFriends } from "@/hooks/useFriends";
 import { Conversation } from "@/hooks/useConversations";
 import { supabase } from "@/integrations/supabase/client";
 import { Plus, X, Users } from "lucide-react";
@@ -19,6 +20,7 @@ import {
 import ProfilePopup from "./ProfilePopup";
 import SettingsModal from "./SettingsModal";
 import SearchBar from "./SearchBar";
+import UserProfileCard from "./chat/UserProfileCard";
 import friendsIcon from "@/assets/icons/friends.svg";
 import shopIcon from "@/assets/icons/shop.svg";
 import micIcon from "@/assets/icons/microphone.svg";
@@ -47,6 +49,8 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
   const { user, onlineUserIds } = useAuth();
   const { activeCall, toggleMute, toggleDeafen } = useVoice();
   const { getActivity } = useActivity();
+  const { pending } = useFriends();
+  const incomingPendingCount = pending.filter((p) => p.addressee_id === user?.id).length;
   const displayName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "User";
   const username = user?.user_metadata?.username || displayName.toLowerCase();
 
@@ -54,6 +58,7 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
   const [localDeafened, setLocalDeafened] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [userStatus, setUserStatus] = useState("online");
+  const [profileCard, setProfileCard] = useState<{ userId: string; name: string; x: number; y: number } | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -112,7 +117,7 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
           <button
             key={item.id}
             onClick={() => setActiveView(item.id)}
-            className={`flex w-full items-center gap-3 rounded-[4px] px-3 py-2 text-[15px] font-medium transition-colors cubbly-3d-nav ${
+            className={`relative flex w-full items-center gap-3 rounded-[4px] px-3 py-2 text-[15px] font-medium transition-colors cubbly-3d-nav ${
               activeView === item.id
                 ? "text-white"
                 : "hover:text-[#dbdee1]"
@@ -126,6 +131,14 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
           >
             <img src={item.icon} alt="" className="h-5 w-5 shrink-0 invert opacity-80" />
             {item.label}
+            {item.id === "friends" && incomingPendingCount > 0 && (
+              <span
+                className="ml-auto flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#ed4245] px-1 text-[10px] font-bold text-white animate-fade-in"
+                title={`${incomingPendingCount} pending friend request${incomingPendingCount === 1 ? "" : "s"}`}
+              >
+                {incomingPendingCount > 9 ? "9+" : incomingPendingCount}
+              </span>
+            )}
           </button>
         ))}
 
@@ -212,11 +225,23 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                   style={{ backgroundColor: "#111214", borderColor: "var(--app-border, #2b2d31)" }}
                 >
                   <ContextMenuItem
-                    onClick={() => setActiveView(`dm:${conv.id}`)}
+                    onClick={() => {
+                      if (conv.is_group) {
+                        setActiveView(`dm:${conv.id}`);
+                      } else {
+                        // Open the user's full profile popup (not the chat)
+                        setProfileCard({
+                          userId: conv.participant.user_id,
+                          name: conv.participant.display_name,
+                          x: window.innerWidth / 2,
+                          y: window.innerHeight / 2,
+                        });
+                      }
+                    }}
                     className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer"
                   >
                     <img src={friendsIcon} alt="" className="h-4 w-4 invert opacity-70" />
-                    {conv.is_group ? "Open" : "Profile"}
+                    {conv.is_group ? "Open" : "View Profile"}
                   </ContextMenuItem>
                   {!conv.is_group && (
                     <ContextMenuItem
@@ -324,6 +349,16 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
       </div>
 
       <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      {profileCard && (
+        <UserProfileCard
+          userId={profileCard.userId}
+          displayName={profileCard.name}
+          position={{ x: profileCard.x, y: profileCard.y }}
+          onClose={() => setProfileCard(null)}
+          onSendMessage={(uid) => { setProfileCard(null); onOpenDM(uid); }}
+          startExpanded
+        />
+      )}
     </div>
   );
 };

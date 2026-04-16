@@ -17,6 +17,8 @@ interface UserProfileCardProps {
   position: { x: number; y: number };
   onClose: () => void;
   onSendMessage?: (userId: string) => void;
+  /** When true, opens directly in the full-profile (centered modal) view. */
+  startExpanded?: boolean;
 }
 
 interface ProfileData {
@@ -27,12 +29,12 @@ interface ProfileData {
   status: string;
 }
 
-const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage }: UserProfileCardProps) => {
+const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage, startExpanded = false }: UserProfileCardProps) => {
   const { user, onlineUserIds } = useAuth();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [friendshipStatus, setFriendshipStatus] = useState<string | null>(null);
   const [friendshipId, setFriendshipId] = useState<string | null>(null);
-  const [showFullProfile, setShowFullProfile] = useState(false);
+  const [showFullProfile, setShowFullProfile] = useState(startExpanded);
   const ref = useRef<HTMLDivElement>(null);
   const color = getProfileColor(userId);
   const isOwnProfile = userId === user?.id;
