@@ -56,6 +56,7 @@ const emptyMessages: Record<string, string[]> = {
 
 const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActiveNowOpen }: FriendsViewProps) => {
   const { user, onlineUserIds } = useAuth();
+  const { getActivity } = useActivity();
   const { friends, pending, blocked, sendFriendRequest, acceptRequest, declineRequest, unblockUser, removeFriend } = useFriends();
   const [addInput, setAddInput] = useState("");
   const [addStatus, setAddStatus] = useState<{ type: "success" | "error"; msg: string } | null>(null);
@@ -294,11 +295,23 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
                     </div>
                     <div className="flex-1 overflow-hidden">
                       <p className="text-sm font-semibold leading-tight text-white">{friendship.profile.display_name}</p>
-                      <p className="truncate text-xs leading-tight" style={{ color: "var(--app-text-secondary, #949ba4)" }}>
-                        {activeTab === "pending"
-                          ? (friendship.addressee_id === user?.id ? "Incoming Friend Request" : "Outgoing Friend Request")
-                          : getStatusLabel(friendship)}
-                      </p>
+                      {(() => {
+                        const act = getActivity(friendship.profile.user_id);
+                        if (activeTab !== "pending" && act?.name) {
+                          return (
+                            <p className="truncate text-xs leading-tight" style={{ color: "#3ba55c" }}>
+                              Playing {act.name}
+                            </p>
+                          );
+                        }
+                        return (
+                          <p className="truncate text-xs leading-tight" style={{ color: "var(--app-text-secondary, #949ba4)" }}>
+                            {activeTab === "pending"
+                              ? (friendship.addressee_id === user?.id ? "Incoming Friend Request" : "Outgoing Friend Request")
+                              : getStatusLabel(friendship)}
+                          </p>
+                        );
+                      })()}
                     </div>
                     {renderFriendActions(friendship)}
                   </div>
