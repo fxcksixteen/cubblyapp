@@ -81,11 +81,12 @@ export const GamingModeProvider = ({ children }: { children: ReactNode }) => {
   const isSuppressing = enabled && isGaming;
   const isSuppressingCalls = isSuppressing && affectCallsAndShare;
 
-  // Push the suppression flag onto a global so non-React modules (sounds.ts,
-  // notifications.ts) can cheaply check it without subscribing to React.
+  // Push the suppression flags onto globals so non-React modules (sounds.ts,
+  // notifications.ts) can cheaply check them without subscribing to React.
   useEffect(() => {
     (window as any).__cubblySuppress = isSuppressing;
-  }, [isSuppressing]);
+    (window as any).__cubblySuppressCalls = isSuppressingCalls;
+  }, [isSuppressing, isSuppressingCalls]);
 
   const value = useMemo<GamingModeContextValue>(
     () => ({
