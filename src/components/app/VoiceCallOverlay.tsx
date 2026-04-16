@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Maximize2, Minimize2, Monitor } from "lucide-react";
 import { useVoice, CallEvent } from "@/contexts/VoiceContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { defaultProfileColor, getProfileColor } from "@/lib/profileColors";
+import { useCallParticipants } from "@/hooks/useCallParticipants";
 import ScreenSharePicker, { ScreenShareType } from "./ScreenSharePicker";
 import micIcon from "@/assets/icons/microphone.svg";
 import micMuteIcon from "@/assets/icons/microphone-mute.svg";
@@ -43,7 +44,15 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
     isScreenSharing, startScreenShare, stopScreenShare,
     screenStream, remoteScreenStream,
     localVideoStream, remoteVideoStream,
+    callEvents,
   } = useVoice();
+  // Find the active call event for this conversation so we can read peer state
+  const activeCallEventId = useMemo(() => {
+    const ev = callEvents.find(e => e.conversationId === conversationId && e.state === "ongoing");
+    return ev?.id ?? null;
+  }, [callEvents, conversationId]);
+  const { getPeerState } = useCallParticipants(activeCallEventId);
+  const peerState = getPeerState();
   const [elapsed, setElapsed] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showScreenSharePicker, setShowScreenSharePicker] = useState(false);
@@ -224,14 +233,14 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
         {/* Recipient */}
         <div className="flex flex-col items-center gap-2">
           <div className="relative">
-            {!isWaiting && remoteVideoStream ? (
+            {!isWaiting && peerState?.is_video_on && remoteVideoStream ? (
               <div
                 className={`relative overflow-hidden rounded-2xl bg-black transition-all duration-300 ${
                   hasScreenShare ? "h-20 w-28" : "h-[140px] w-[200px]"
                 }`}
                 style={{
                   boxShadow:
-                    activeCall.state === "connected" && remoteAudioLevel > 5
+                    activeCall.state === "connected" && !peerState?.is_muted && remoteAudioLevel > 5
                       ? "0 0 0 3px rgba(59, 165, 92, 0.85), 0 0 14px rgba(59, 165, 92, 0.5)"
                       : "0 4px 14px rgba(0,0,0,0.4)",
                 }}
@@ -244,7 +253,7 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
                 style={{
                   backgroundColor: recipientColor.bg,
                   filter: isWaiting ? "grayscale(0.3)" : "none",
-                  boxShadow: !isWaiting && activeCall.state === "connected" && remoteAudioLevel > 5
+                  boxShadow: !isWaiting && activeCall.state === "connected" && !peerState?.is_muted && remoteAudioLevel > 5
                     ? speakingRingShadow(remoteAudioLevel)
                     : "0 0 0 0px transparent",
                 }}
@@ -254,6 +263,18 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
                 ) : (
                   recipientName.charAt(0).toUpperCase()
                 )}
+              </div>
+            )}
+            {/* Peer deafen badge (priority) */}
+            {peerState?.is_deafened && (
+              <div className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#ed4245] border-2" style={{ borderColor: "var(--app-bg-tertiary)" }}>
+                <img src={headphoneDeafenIcon} alt="Deafened" className="h-2.5 w-2.5" style={{ filter: "brightness(0) invert(1)" }} />
+              </div>
+            )}
+            {/* Peer mute badge (only when not deafened) */}
+            {peerState?.is_muted && !peerState?.is_deafened && (
+              <div className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#ed4245] border-2" style={{ borderColor: "var(--app-bg-tertiary)" }}>
+                <img src={micMuteIcon} alt="Muted" className="h-2.5 w-2.5" style={{ filter: "brightness(0) invert(1)" }} />
               </div>
             )}
             {isRinging && (
