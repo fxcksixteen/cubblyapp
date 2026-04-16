@@ -31,6 +31,7 @@ import MobileBottomNav from "@/components/app/mobile/MobileBottomNav";
 import MobileChatHeader from "@/components/app/mobile/MobileChatHeader";
 import MobileCallOverlay from "@/components/app/mobile/MobileCallOverlay";
 import YouPage from "@/pages/YouPage";
+import GroupMembersPanel from "@/components/app/GroupMembersPanel";
 
 type FriendTab = "online" | "all" | "pending" | "blocked" | "add";
 
@@ -532,8 +533,6 @@ const AppLayout = () => {
 
 /** Lightweight wrapper to render the group members list inside the mobile slide-out panel. */
 const MembersPanelWrapper = ({ conversation, onClose }: { conversation: any; onClose: () => void }) => {
-  // Reuse the existing GroupMembersPanel component
-  const GroupMembersPanel = require("@/components/app/GroupMembersPanel").default;
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-4 h-14 border-b shrink-0" style={{ borderColor: "var(--app-border)" }}>
@@ -541,7 +540,7 @@ const MembersPanelWrapper = ({ conversation, onClose }: { conversation: any; onC
         <button onClick={onClose} className="text-sm" style={{ color: "var(--app-text-secondary)" }}>Close</button>
       </div>
       <div className="flex-1 overflow-y-auto">
-        <GroupMembersPanel conversation={conversation} onLeftGroup={onClose} />
+        <GroupMembersPanel conversation={conversation} onClose={onClose} onLeftGroup={onClose} />
       </div>
     </div>
   );
