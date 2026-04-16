@@ -1200,6 +1200,21 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       setScreenStream(stream);
       setIsScreenSharing(true);
 
+      // Apply Optimization preset to the actual video track:
+      //   ultra   → contentHint='detail'  + max bitrate boost (best of both worlds)
+      //   clarity → contentHint='detail'
+      //   motion  → contentHint='motion'
+      // contentHint hints the encoder/scaler about temporal vs spatial quality tradeoffs.
+      const opt = screenShareSettings.optimizeFor;
+      const hint = opt === "motion" ? "motion" : "detail"; // ultra & clarity → detail
+      const maxBitrate =
+        opt === "ultra" ? 8_000_000 : // 8 Mbps — premium
+        opt === "motion" ? 5_000_000 : // 5 Mbps — smoothness
+        4_000_000;                     // 4 Mbps — clarity
+      stream.getVideoTracks().forEach((t) => {
+        try { (t as any).contentHint = hint; } catch { /* unsupported */ }
+      });
+
       // Bot call → loopback screenshare (echo video + audio back to yourself)
       if (isBotCall) {
         console.log("[Voice][Loopback] 🖥️ Starting screenshare loopback self-test...");
