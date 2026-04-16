@@ -41,21 +41,34 @@ if (dryRun) {
   process.exit(0);
 }
 
+console.log(`[build:electron] Step 1/2: running vite build...`);
 const buildResult = spawnSync(npmCmd, ["run", "build"], {
   cwd: rootDir,
   stdio: "inherit",
 });
 
+if (buildResult.error) {
+  console.error(`[build:electron] FAILED to spawn '${npmCmd} run build':`, buildResult.error.message);
+  process.exit(1);
+}
 if (buildResult.status !== 0) {
+  console.error(`[build:electron] vite build exited with status ${buildResult.status}`);
   process.exit(buildResult.status ?? 1);
 }
 
+console.log(`[build:electron] Step 2/2: running @electron/packager...`);
+console.log(`[build:electron] Command: ${npxCmd} ${packagerArgs.join(" ")}`);
 const packagerResult = spawnSync(npxCmd, packagerArgs, {
   cwd: rootDir,
   stdio: "inherit",
 });
 
+if (packagerResult.error) {
+  console.error(`[build:electron] FAILED to spawn '${npxCmd}':`, packagerResult.error.message);
+  process.exit(1);
+}
 if (packagerResult.status !== 0) {
+  console.error(`[build:electron] packager exited with status ${packagerResult.status}`);
   process.exit(packagerResult.status ?? 1);
 }
 
