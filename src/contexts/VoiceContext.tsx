@@ -1337,40 +1337,85 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   // Keep endCall ref always current
   useEffect(() => { endCallRef.current = endCall; }, [endCall]);
 
-  const toggleMute = useCallback(() => {
-    const stream = localStreamRef.current;
-    if (stream) {
-      stream.getAudioTracks().forEach(track => { track.enabled = !track.enabled; });
-      setActiveCall(prev => prev ? { ...prev, isMuted: !prev.isMuted } : null);
+  /** Push my current mute/deafen state to call_participants so peers see it live */
+  const syncCallParticipantState = useCallback(async (overrides?: { is_muted?: boolean; is_deafened?: boolean }) => {
+    if (!user) return;
+    // Find the most recent ongoing call event
+    const ongoing = [...callEvents].reverse().find(e => e.state === "ongoing");
+    if (!ongoing) return;
+    const currentMuted = overrides?.is_muted ?? activeCall?.isMuted ?? false;
+    const currentDeafened = overrides?.is_deafened ?? activeCall?.isDeafened ?? false;
+    try {
+      // Upsert: insert if first time, otherwise update
+      const { data: existing } = await supabase
+        .from("call_participants")
+        .select("id")
+        .eq("call_event_id", ongoing.id)
+        .eq("user_id", user.id)
+        .is("left_at", null)
+        .maybeSingle();
+      if (existing) {
+        await supabase
+          .from("call_participants")
+          .update({ is_muted: currentMuted, is_deafened: currentDeafened })
+          .eq("id", existing.id);
+      } else {
+        await supabase.from("call_participants").insert({
+          call_event_id: ongoing.id,
+          user_id: user.id,
+          is_muted: currentMuted,
+          is_deafened: currentDeafened,
+        });
+      }
+    } catch (e) {
+      console.warn("[Voice] Failed to sync call participant state:", e);
     }
-  }, []);
+  }, [user, callEvents, activeCall]);
+
+  const toggleMute = useCallback(() => {
+    setActiveCall(prev => {
+      if (!prev) return null;
+      const newMuted = !prev.isMuted;
+      // Set ALL tracks to the same enabled state (don't invert each individually)
+      if (localStreamRef.current) {
+        localStreamRef.current.getAudioTracks().forEach(track => { track.enabled = !newMuted; });
+      }
+      // Fire-and-forget DB sync
+      syncCallParticipantState({ is_muted: newMuted, is_deafened: prev.isDeafened });
+      return { ...prev, isMuted: newMuted };
+    });
+  }, [syncCallParticipantState]);
 
   const toggleDeafen = useCallback(() => {
     setActiveCall(prev => {
       if (!prev) return null;
       const newDeafened = !prev.isDeafened;
-      
+
       // Mute/unmute remote audio
       const audioElements = document.querySelectorAll("audio");
       audioElements.forEach((el: any) => { if (el.__cubblyRemote) el.muted = newDeafened; });
-      
+
+      let nextMuted: boolean;
       if (newDeafened) {
         // Save current mute state before deafening, then mute mic
         preMuteStateRef.current = prev.isMuted;
         if (localStreamRef.current) {
           localStreamRef.current.getAudioTracks().forEach(track => { track.enabled = false; });
         }
-        return { ...prev, isDeafened: true, isMuted: true };
+        nextMuted = true;
       } else {
         // Restore pre-deafen mute state
         const restoreMuted = preMuteStateRef.current;
         if (localStreamRef.current) {
           localStreamRef.current.getAudioTracks().forEach(track => { track.enabled = !restoreMuted; });
         }
-        return { ...prev, isDeafened: false, isMuted: restoreMuted };
+        nextMuted = restoreMuted;
       }
+
+      syncCallParticipantState({ is_muted: nextMuted, is_deafened: newDeafened });
+      return { ...prev, isDeafened: newDeafened, isMuted: nextMuted };
     });
-  }, []);
+  }, [syncCallParticipantState]);
 
   useEffect(() => {
     if (!user) return;
