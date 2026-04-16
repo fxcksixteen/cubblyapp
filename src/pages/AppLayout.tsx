@@ -294,32 +294,47 @@ const AppLayout = () => {
                   </div>
                 </div>
                 <div className="flex items-center gap-2" style={{ color: "var(--app-text-secondary)" }}>
-                  <button
-                    onClick={handleVoiceCall}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg transition-all"
-                    style={{ }}
-                    onMouseEnter={e => { e.currentTarget.style.backgroundColor = "var(--app-hover)"; }}
-                    onMouseLeave={e => { e.currentTarget.style.backgroundColor = ""; }}
-                    title={isInCall ? "End Voice Call" : "Start Voice Call"}
-                  >
-                    <img
-                      src={isInCall ? callEndIcon : callIcon}
-                      alt={isInCall ? "End Call" : "Call"}
-                      className="h-5 w-5"
-                      style={{ filter: isInCall
-                        ? "brightness(0) saturate(100%) invert(29%) sepia(98%) saturate(2052%) hue-rotate(337deg) brightness(95%) contrast(92%)"
-                        : "brightness(0) invert(0.6)"
-                      }}
-                    />
-                  </button>
-                  <button
-                    className="flex h-8 w-8 items-center justify-center rounded-lg transition-all"
-                    onMouseEnter={e => { e.currentTarget.style.backgroundColor = "var(--app-hover)"; }}
-                    onMouseLeave={e => { e.currentTarget.style.backgroundColor = ""; }}
-                    title="Start Video Call"
-                  >
-                    <img src={videoIcon} alt="Video" className="h-5 w-5" style={{ filter: "brightness(0) invert(0.6)" }} />
-                  </button>
+                  {!activeConv.is_group && (
+                    <>
+                      <button
+                        onClick={handleVoiceCall}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg transition-all"
+                        onMouseEnter={e => { e.currentTarget.style.backgroundColor = "var(--app-hover)"; }}
+                        onMouseLeave={e => { e.currentTarget.style.backgroundColor = ""; }}
+                        title={isInCall ? "End Voice Call" : "Start Voice Call"}
+                      >
+                        <img
+                          src={isInCall ? callEndIcon : callIcon}
+                          alt={isInCall ? "End Call" : "Call"}
+                          className="h-5 w-5"
+                          style={{ filter: isInCall
+                            ? "brightness(0) saturate(100%) invert(29%) sepia(98%) saturate(2052%) hue-rotate(337deg) brightness(95%) contrast(92%)"
+                            : "brightness(0) invert(0.6)"
+                          }}
+                        />
+                      </button>
+                      <button
+                        className="flex h-8 w-8 items-center justify-center rounded-lg transition-all"
+                        onMouseEnter={e => { e.currentTarget.style.backgroundColor = "var(--app-hover)"; }}
+                        onMouseLeave={e => { e.currentTarget.style.backgroundColor = ""; }}
+                        title="Start Video Call"
+                      >
+                        <img src={videoIcon} alt="Video" className="h-5 w-5" style={{ filter: "brightness(0) invert(0.6)" }} />
+                      </button>
+                    </>
+                  )}
+                  {activeConv.is_group && (
+                    <button
+                      onClick={() => setShowMembersPanel((prev) => !prev)}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg transition-all"
+                      onMouseEnter={e => { e.currentTarget.style.backgroundColor = "var(--app-hover)"; }}
+                      onMouseLeave={e => { e.currentTarget.style.backgroundColor = ""; }}
+                      title={showMembersPanel ? "Hide Members" : "Show Members"}
+                      style={{ backgroundColor: showMembersPanel ? "var(--app-hover)" : undefined }}
+                    >
+                      <img src={friendsIcon} alt="Members" className="h-5 w-5 invert opacity-60" />
+                    </button>
+                  )}
                 </div>
               </>
             ) : (
