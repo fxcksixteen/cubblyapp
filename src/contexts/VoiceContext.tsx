@@ -414,9 +414,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       const remote = event.streams[0];
       const isVideo = event.track.kind === "video";
       console.log(`[Voice] 🎵 ontrack: kind=${event.track.kind}, label=${event.track.label}, enabled=${event.track.enabled}`);
-      
+
       if (isVideo) {
-        setRemoteScreenStream(remote);
+        // The main PC carries the camera video — screen share uses a separate PC (screenPcRef)
+        setRemoteVideoStream(remote);
+        // Listen for the track ending so the tile disappears when the peer turns off camera
+        event.track.onended = () => setRemoteVideoStream(null);
+        event.track.onmute = () => setRemoteVideoStream((s) => s); // keep but UI can dim
         return;
       }
 
@@ -653,6 +657,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
                     startedAt: undefined,
                     isMuted: false,
                     isDeafened: false,
+                    isVideoOn: false,
                   }
               );
 
@@ -889,6 +894,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         startedAt: undefined,
         isMuted: false,
         isDeafened: false,
+        isVideoOn: false,
       });
 
       // Outgoing ring sound (skipped for bot self-test calls)
@@ -1005,6 +1011,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         startedAt: undefined,
         isMuted: false,
         isDeafened: false,
+        isVideoOn: false,
       });
       setIncomingCall(null);
 
