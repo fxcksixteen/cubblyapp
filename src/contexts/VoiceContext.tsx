@@ -87,6 +87,23 @@ export const SERVER_REGIONS = [
   { id: "australia", label: "Australia", description: "Sydney" },
 ];
 
+/**
+ * Bump the maxBitrate on a screenshare video sender. Called right after
+ * addTrack() so encoding parameters reflect the user's Optimization preset.
+ */
+async function applyScreenBitrate(sender: RTCRtpSender, maxBitrate: number) {
+  try {
+    const params = sender.getParameters();
+    if (!params.encodings || params.encodings.length === 0) {
+      params.encodings = [{}];
+    }
+    params.encodings[0].maxBitrate = maxBitrate;
+    await sender.setParameters(params);
+  } catch (e) {
+    console.warn("[Voice] Could not set screen encoding bitrate:", e);
+  }
+}
+
 const STUN_ONLY_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
