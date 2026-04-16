@@ -161,7 +161,7 @@ const AppLayout = () => {
             <button
               key={tab}
               onClick={() => setFriendTab(tab)}
-              className="rounded px-2.5 py-1 text-sm font-medium capitalize transition-colors"
+              className="relative rounded px-2.5 py-1 text-sm font-medium capitalize transition-colors"
               style={{
                 backgroundColor: friendTab === tab && activeView === "friends" ? "var(--app-active, #404249)" : undefined,
                 color: friendTab === tab && activeView === "friends" ? "white" : "var(--app-text-secondary, #b5bac1)",
@@ -170,6 +170,14 @@ const AppLayout = () => {
               onMouseLeave={e => { if (!(friendTab === tab && activeView === "friends")) e.currentTarget.style.backgroundColor = ""; }}
             >
               {tab}
+              {tab === "pending" && incomingPendingCount > 0 && (
+                <span
+                  className="absolute -top-1 -right-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#ed4245] px-1 text-[10px] font-bold text-white border-2 animate-fade-in"
+                  style={{ borderColor: "var(--app-bg-primary)" }}
+                >
+                  {incomingPendingCount > 9 ? "9+" : incomingPendingCount}
+                </span>
+              )}
             </button>
           ))}
           <button
