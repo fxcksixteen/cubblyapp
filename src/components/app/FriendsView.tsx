@@ -123,7 +123,7 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
     if (activeTab === "pending") {
       const isIncoming = friendship.addressee_id === user?.id;
       return (
-        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100">
+        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100" onClick={e => e.stopPropagation()}>
           {isIncoming && (
             <button
               onClick={() => acceptRequest(friendship.id)}
@@ -148,7 +148,7 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
 
     if (activeTab === "blocked") {
       return (
-        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100">
+        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100" onClick={e => e.stopPropagation()}>
           <button
             onClick={() => unblockUser(friendship.id)}
             className="flex h-9 w-9 items-center justify-center rounded-full cubbly-3d-circle"
@@ -162,7 +162,7 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
     }
 
     return (
-      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100">
+      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100" onClick={e => e.stopPropagation()}>
         <button
           onClick={() => onOpenDM(friendship.profile.user_id)}
           className="flex h-9 w-9 items-center justify-center rounded-full transition-colors cubbly-3d-circle"
