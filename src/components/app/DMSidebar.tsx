@@ -192,7 +192,10 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                     <div className="flex-1 min-w-0 text-left">
                       <p className="truncate text-sm font-medium leading-tight">{displayName}</p>
                       {subtitle && (
-                        <p className="truncate text-[11px] leading-tight" style={{ color: "var(--app-text-secondary, #949ba4)" }}>
+                        <p
+                          className="truncate text-[11px] leading-tight"
+                          style={{ color: dmActivity?.name ? "#3ba55c" : "var(--app-text-secondary, #949ba4)" }}
+                        >
                           {subtitle}
                         </p>
                       )}
