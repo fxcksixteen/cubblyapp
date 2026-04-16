@@ -7,10 +7,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import VoiceVideoSettings from "./settings/VoiceVideoSettings";
 import ActivityPrivacySettings from "./settings/ActivityPrivacySettings";
+import GamingModeSettings from "./settings/GamingModeSettings";
+import UpdateLogsSettings from "./settings/UpdateLogsSettings";
 
 const APP_VERSION = "0.2.0";
 
-type SettingsCategory = "my-account" | "content-social" | "data-privacy" | "notifications" | "appearance" | "accessibility" | "voice-video" | "chat" | "keybinds" | "language-time" | "advanced" | "activity-privacy";
+type SettingsCategory = "my-account" | "content-social" | "data-privacy" | "notifications" | "appearance" | "accessibility" | "voice-video" | "chat" | "keybinds" | "language-time" | "advanced" | "activity-privacy" | "gaming-mode" | "update-logs";
 
 const settingsSections = [
   {
@@ -36,7 +38,14 @@ const settingsSections = [
   },
   {
     label: "Activity Settings",
-    items: [{ id: "activity-privacy" as SettingsCategory, label: "Activity Privacy" }],
+    items: [
+      { id: "activity-privacy" as SettingsCategory, label: "Activity Privacy" },
+      { id: "gaming-mode" as SettingsCategory, label: "Gaming Mode" },
+    ],
+  },
+  {
+    label: "About",
+    items: [{ id: "update-logs" as SettingsCategory, label: "Update Logs" }],
   },
 ];
 
@@ -466,6 +475,12 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
 
       case "activity-privacy":
         return <ActivityPrivacySettings cardStyle={cardStyle as any} />;
+
+      case "gaming-mode":
+        return <GamingModeSettings cardStyle={cardStyle as any} />;
+
+      case "update-logs":
+        return <UpdateLogsSettings cardStyle={cardStyle as any} />;
 
       default:
         return (

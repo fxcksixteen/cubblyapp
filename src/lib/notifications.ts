@@ -44,6 +44,8 @@ export function notify(options: NotifyOptions) {
   if (typeof Notification === "undefined") return;
   if (permissionStatus !== "granted") return;
   if (dndActive) return;
+  // Gaming Mode suppression
+  if (typeof window !== "undefined" && (window as any).__cubblySuppress) return;
   // Don't disturb when the window is already focused
   if (typeof document !== "undefined" && document.hasFocus()) return;
 
