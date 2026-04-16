@@ -14,6 +14,11 @@ export interface VoiceSettings {
   autoSensitivity: boolean;
   sensitivityThreshold: number;
   serverRegion: string;
+  // Video / camera
+  videoDeviceId: string;
+  videoResolution: string; // "480p" | "720p" | "1080p"
+  videoFrameRate: number; // 15 | 30 | 60
+  mirrorSelfView: boolean;
 }
 
 export interface ScreenShareSettings {
@@ -35,6 +40,10 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   autoSensitivity: true,
   sensitivityThreshold: 50,
   serverRegion: "auto",
+  videoDeviceId: "default",
+  videoResolution: "720p",
+  videoFrameRate: 30,
+  mirrorSelfView: true,
 };
 
 const DEFAULT_SCREEN_SHARE_SETTINGS: ScreenShareSettings = {
@@ -55,6 +64,7 @@ export interface ActiveCall {
   startedAt?: number;
   isMuted: boolean;
   isDeafened: boolean;
+  isVideoOn: boolean;
 }
 
 export interface CallEvent {
@@ -94,11 +104,16 @@ interface VoiceContextType {
   incomingCall: { conversationId: string; callerId: string; callerName: string; callerAvatarUrl?: string; offer?: RTCSessionDescriptionInit; callEventId?: string } | null;
   toggleMute: () => void;
   toggleDeafen: () => void;
+  toggleVideo: () => Promise<void>;
   localStream: MediaStream | null;
   remoteStream: MediaStream | null;
+  /** Local camera stream (separate from mic stream) */
+  localVideoStream: MediaStream | null;
+  /** Remote peer's camera stream */
+  remoteVideoStream: MediaStream | null;
   audioLevel: number;
   remoteAudioLevel: number;
-  availableDevices: { inputs: MediaDeviceInfo[]; outputs: MediaDeviceInfo[] };
+  availableDevices: { inputs: MediaDeviceInfo[]; outputs: MediaDeviceInfo[]; cameras: MediaDeviceInfo[] };
   refreshDevices: () => void;
   callEvents: CallEvent[];
   detectedRegion: string;
@@ -168,13 +183,18 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
   const [remoteAudioLevel, setRemoteAudioLevel] = useState(0);
-  const [availableDevices, setAvailableDevices] = useState<{ inputs: MediaDeviceInfo[]; outputs: MediaDeviceInfo[] }>({ inputs: [], outputs: [] });
   const [callEvents, setCallEvents] = useState<CallEvent[]>([]);
   const [detectedRegion, setDetectedRegion] = useState("us-east");
 
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const [remoteScreenStream, setRemoteScreenStream] = useState<MediaStream | null>(null);
+
+  // Video / camera (sent over the same audio PC via a video transceiver)
+  const [localVideoStream, setLocalVideoStream] = useState<MediaStream | null>(null);
+  const [remoteVideoStream, setRemoteVideoStream] = useState<MediaStream | null>(null);
+  const localVideoStreamRef = useRef<MediaStream | null>(null);
+  const videoTransceiverRef = useRef<RTCRtpTransceiver | null>(null);
 
   const iceServersRef = useRef<RTCIceServer[]>(STUN_ONLY_SERVERS);
   const pcRef = useRef<RTCPeerConnection | null>(null);
@@ -285,12 +305,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     });
   }, []);
 
+  const [availableDevices, setAvailableDevices] = useState<{ inputs: MediaDeviceInfo[]; outputs: MediaDeviceInfo[]; cameras: MediaDeviceInfo[] }>({ inputs: [], outputs: [], cameras: [] });
+
   const refreshDevices = useCallback(async () => {
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
       setAvailableDevices({
         inputs: devices.filter(d => d.kind === "audioinput"),
         outputs: devices.filter(d => d.kind === "audiooutput"),
+        cameras: devices.filter(d => d.kind === "videoinput"),
       });
     } catch (e) {
       console.error("Failed to enumerate devices:", e);
@@ -391,9 +414,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       const remote = event.streams[0];
       const isVideo = event.track.kind === "video";
       console.log(`[Voice] 🎵 ontrack: kind=${event.track.kind}, label=${event.track.label}, enabled=${event.track.enabled}`);
-      
+
       if (isVideo) {
-        setRemoteScreenStream(remote);
+        // The main PC carries the camera video — screen share uses a separate PC (screenPcRef)
+        setRemoteVideoStream(remote);
+        // Listen for the track ending so the tile disappears when the peer turns off camera
+        event.track.onended = () => setRemoteVideoStream(null);
+        event.track.onmute = () => setRemoteVideoStream((s) => s); // keep but UI can dim
         return;
       }
 
@@ -465,6 +492,17 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     pc.onconnectionstatechange = () => {
       console.log("[Voice] Connection state:", pc.connectionState);
     };
+
+    // Pre-create a bidirectional video transceiver so we can hot-swap a camera
+    // track in/out via replaceTrack() without ever needing to renegotiate.
+    // Both sides do this symmetrically — the SDP carries an m=video line from
+    // the very first offer/answer, even before either user enables their camera.
+    try {
+      videoTransceiverRef.current = pc.addTransceiver("video", { direction: "sendrecv" });
+    } catch (e) {
+      console.warn("[Voice] Failed to add video transceiver:", e);
+      videoTransceiverRef.current = null;
+    }
 
     pcRef.current = pc;
     return pc;
@@ -630,6 +668,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
                     startedAt: undefined,
                     isMuted: false,
                     isDeafened: false,
+                    isVideoOn: false,
                   }
               );
 
@@ -866,6 +905,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         startedAt: undefined,
         isMuted: false,
         isDeafened: false,
+        isVideoOn: false,
       });
 
       // Outgoing ring sound (skipped for bot self-test calls)
@@ -982,6 +1022,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         startedAt: undefined,
         isMuted: false,
         isDeafened: false,
+        isVideoOn: false,
       });
       setIncomingCall(null);
 
@@ -1319,6 +1360,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     stopScreenShare();
     setRemoteScreenStream(null);
 
+    // Stop local camera
+    localVideoStreamRef.current?.getTracks().forEach(t => t.stop());
+    localVideoStreamRef.current = null;
+    setLocalVideoStream(null);
+    setRemoteVideoStream(null);
+    videoTransceiverRef.current = null;
+
     // Only broadcast hangup if WE initiated it (not a remote hangup)
     if (!isRemoteHangup.current && channelRef.current && user) {
       channelRef.current.send({
@@ -1452,6 +1500,102 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     });
   }, [syncCallParticipantState]);
 
+  /**
+   * Toggle the local camera on/off. Uses replaceTrack on the pre-allocated video
+   * transceiver so no SDP renegotiation is required — the peer instantly sees
+   * the new track (or a black frame when we set it back to null).
+   */
+  const toggleVideo = useCallback(async () => {
+    const transceiver = videoTransceiverRef.current;
+    if (!transceiver) {
+      console.warn("[Voice] Cannot toggle video — no transceiver. Are you in a call?");
+      return;
+    }
+    const sender = transceiver.sender;
+    const currentlyOn = !!sender.track;
+
+    if (currentlyOn) {
+      // Turn off
+      await sender.replaceTrack(null);
+      localVideoStreamRef.current?.getTracks().forEach(t => t.stop());
+      localVideoStreamRef.current = null;
+      setLocalVideoStream(null);
+      setActiveCall(prev => prev ? { ...prev, isVideoOn: false } : prev);
+      // Sync to call_participants
+      const ongoing = [...callEvents].reverse().find(e => e.state === "ongoing");
+      if (ongoing && user) {
+        supabase
+          .from("call_participants")
+          .update({ is_video_on: false })
+          .eq("call_event_id", ongoing.id)
+          .eq("user_id", user.id)
+          .is("left_at", null)
+          .then(() => {});
+      }
+      return;
+    }
+
+    // Turn on — get camera stream
+    try {
+      const resMap: Record<string, { width: number; height: number }> = {
+        "480p": { width: 854, height: 480 },
+        "720p": { width: 1280, height: 720 },
+        "1080p": { width: 1920, height: 1080 },
+      };
+      const res = resMap[settings.videoResolution] || resMap["720p"];
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          deviceId: settings.videoDeviceId !== "default" ? { exact: settings.videoDeviceId } : undefined,
+          width: { ideal: res.width },
+          height: { ideal: res.height },
+          frameRate: { ideal: settings.videoFrameRate, max: settings.videoFrameRate },
+        },
+        audio: false,
+      });
+      const videoTrack = stream.getVideoTracks()[0];
+      if (!videoTrack) throw new Error("No video track from camera");
+
+      await sender.replaceTrack(videoTrack);
+
+      // Apply higher bitrate so video looks crisp
+      try {
+        const params = sender.getParameters();
+        if (!params.encodings || params.encodings.length === 0) {
+          params.encodings = [{}];
+        }
+        params.encodings[0].maxBitrate = 2_500_000; // 2.5 Mbps
+        await sender.setParameters(params);
+      } catch (e) {
+        console.warn("[Voice] Could not set video encoding params:", e);
+      }
+
+      videoTrack.onended = () => {
+        // User pulled the cable / OS revoked permission → reflect off in UI
+        setLocalVideoStream(null);
+        localVideoStreamRef.current = null;
+        setActiveCall(prev => prev ? { ...prev, isVideoOn: false } : prev);
+        sender.replaceTrack(null).catch(() => {});
+      };
+
+      localVideoStreamRef.current = stream;
+      setLocalVideoStream(stream);
+      setActiveCall(prev => prev ? { ...prev, isVideoOn: true } : prev);
+
+      const ongoing = [...callEvents].reverse().find(e => e.state === "ongoing");
+      if (ongoing && user) {
+        supabase
+          .from("call_participants")
+          .update({ is_video_on: true })
+          .eq("call_event_id", ongoing.id)
+          .eq("user_id", user.id)
+          .is("left_at", null)
+          .then(() => {});
+      }
+    } catch (e) {
+      console.error("[Voice] Failed to start camera:", e);
+    }
+  }, [settings.videoDeviceId, settings.videoResolution, settings.videoFrameRate, callEvents, user]);
+
   useEffect(() => {
     if (!user) return;
     const globalChannel = supabase.channel(`voice-global:${user.id}`);
@@ -1520,7 +1664,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     <VoiceContext.Provider value={{
       settings, updateSettings, screenShareSettings, updateScreenShareSettings,
       activeCall, startCall, acceptCall, endCall,
-      incomingCall, toggleMute, toggleDeafen, localStream, remoteStream,
+      incomingCall, toggleMute, toggleDeafen, toggleVideo,
+      localStream, remoteStream, localVideoStream, remoteVideoStream,
       audioLevel, remoteAudioLevel, availableDevices, refreshDevices, callEvents, detectedRegion,
       isScreenSharing, screenStream, remoteScreenStream, startScreenShare, stopScreenShare,
     }}>

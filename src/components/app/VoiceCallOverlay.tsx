@@ -37,16 +37,20 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
   const [callerAvatarUrl, setCallerAvatarUrl] = useState<string | null>(null);
   const { user } = useAuth();
   const {
-    activeCall, endCall, toggleMute, toggleDeafen,
+    settings,
+    activeCall, endCall, toggleMute, toggleDeafen, toggleVideo,
     audioLevel, remoteAudioLevel,
     isScreenSharing, startScreenShare, stopScreenShare,
     screenStream, remoteScreenStream,
+    localVideoStream, remoteVideoStream,
   } = useVoice();
   const [elapsed, setElapsed] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showScreenSharePicker, setShowScreenSharePicker] = useState(false);
   const screenVideoRef = useRef<HTMLVideoElement>(null);
   const remoteScreenVideoRef = useRef<HTMLVideoElement>(null);
+  const localCamRef = useRef<HTMLVideoElement>(null);
+  const remoteCamRef = useRef<HTMLVideoElement>(null);
 
   // Fetch current user's avatar
   useEffect(() => {
@@ -80,6 +84,19 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
       remoteScreenVideoRef.current.srcObject = remoteScreenStream;
     }
   }, [remoteScreenStream]);
+
+  // Wire camera streams to <video> elements
+  useEffect(() => {
+    if (localCamRef.current) {
+      localCamRef.current.srcObject = localVideoStream;
+    }
+  }, [localVideoStream]);
+
+  useEffect(() => {
+    if (remoteCamRef.current) {
+      remoteCamRef.current.srcObject = remoteVideoStream;
+    }
+  }, [remoteVideoStream]);
 
   if (!isThisCall || !activeCall) return null;
 
@@ -148,21 +165,46 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
         {/* Current user */}
         <div className="flex flex-col items-center gap-2">
           <div className="relative">
-            <div
-              className={`flex items-center justify-center rounded-full font-bold text-white transition-all duration-150 ${hasScreenShare ? "h-12 w-12 text-lg" : "h-[72px] w-[72px] text-2xl"}`}
-              style={{
-                backgroundColor: callerColor.bg,
-                boxShadow: activeCall.state === "connected" && !activeCall.isMuted && audioLevel > 5
-                  ? speakingRingShadow(audioLevel)
-                  : "0 0 0 0px transparent",
-              }}
-            >
-              {callerAvatarUrl ? (
-                <img src={callerAvatarUrl} alt={displayName} className="h-full w-full rounded-full object-cover" />
-              ) : (
-                displayName.charAt(0).toUpperCase()
-              )}
-            </div>
+            {/* When my camera is on, show the live video tile in place of the avatar circle */}
+            {activeCall.isVideoOn && localVideoStream ? (
+              <div
+                className={`relative overflow-hidden rounded-2xl bg-black transition-all duration-150 ${
+                  hasScreenShare ? "h-20 w-28" : "h-[140px] w-[200px]"
+                }`}
+                style={{
+                  boxShadow:
+                    activeCall.state === "connected" && !activeCall.isMuted && audioLevel > 5
+                      ? "0 0 0 3px rgba(59, 165, 92, 0.85), 0 0 14px rgba(59, 165, 92, 0.5)"
+                      : "0 4px 14px rgba(0,0,0,0.4)",
+                }}
+              >
+                <video
+                  ref={localCamRef}
+                  autoPlay
+                  muted
+                  playsInline
+                  className="h-full w-full object-cover"
+                  style={{ transform: settings.mirrorSelfView ? "scaleX(-1)" : "none" }}
+                />
+              </div>
+            ) : (
+              <div
+                className={`flex items-center justify-center rounded-full font-bold text-white transition-all duration-150 ${hasScreenShare ? "h-12 w-12 text-lg" : "h-[72px] w-[72px] text-2xl"}`}
+                style={{
+                  backgroundColor: callerColor.bg,
+                  boxShadow:
+                    activeCall.state === "connected" && !activeCall.isMuted && audioLevel > 5
+                      ? speakingRingShadow(audioLevel)
+                      : "0 0 0 0px transparent",
+                }}
+              >
+                {callerAvatarUrl ? (
+                  <img src={callerAvatarUrl} alt={displayName} className="h-full w-full rounded-full object-cover" />
+                ) : (
+                  displayName.charAt(0).toUpperCase()
+                )}
+              </div>
+            )}
             {/* Deafen badge (priority) */}
             {showDeafenBadge && (
               <div className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#ed4245] border-2" style={{ borderColor: "var(--app-bg-tertiary)" }}>
@@ -182,22 +224,38 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
         {/* Recipient */}
         <div className="flex flex-col items-center gap-2">
           <div className="relative">
-            <div
-              className={`flex items-center justify-center rounded-full font-bold text-white transition-all duration-300 ${hasScreenShare ? "h-12 w-12 text-lg" : "h-[72px] w-[72px] text-2xl"} ${isWaiting ? "opacity-40" : ""}`}
-              style={{
-                backgroundColor: recipientColor.bg,
-                filter: isWaiting ? "grayscale(0.3)" : "none",
-                boxShadow: !isWaiting && activeCall.state === "connected" && remoteAudioLevel > 5
-                  ? speakingRingShadow(remoteAudioLevel)
-                  : "0 0 0 0px transparent",
-              }}
-            >
-              {recipientAvatar ? (
-                <img src={recipientAvatar} alt={recipientName} className="h-full w-full rounded-full object-cover" />
-              ) : (
-                recipientName.charAt(0).toUpperCase()
-              )}
-            </div>
+            {!isWaiting && remoteVideoStream ? (
+              <div
+                className={`relative overflow-hidden rounded-2xl bg-black transition-all duration-300 ${
+                  hasScreenShare ? "h-20 w-28" : "h-[140px] w-[200px]"
+                }`}
+                style={{
+                  boxShadow:
+                    activeCall.state === "connected" && remoteAudioLevel > 5
+                      ? "0 0 0 3px rgba(59, 165, 92, 0.85), 0 0 14px rgba(59, 165, 92, 0.5)"
+                      : "0 4px 14px rgba(0,0,0,0.4)",
+                }}
+              >
+                <video ref={remoteCamRef} autoPlay playsInline className="h-full w-full object-cover" />
+              </div>
+            ) : (
+              <div
+                className={`flex items-center justify-center rounded-full font-bold text-white transition-all duration-300 ${hasScreenShare ? "h-12 w-12 text-lg" : "h-[72px] w-[72px] text-2xl"} ${isWaiting ? "opacity-40" : ""}`}
+                style={{
+                  backgroundColor: recipientColor.bg,
+                  filter: isWaiting ? "grayscale(0.3)" : "none",
+                  boxShadow: !isWaiting && activeCall.state === "connected" && remoteAudioLevel > 5
+                    ? speakingRingShadow(remoteAudioLevel)
+                    : "0 0 0 0px transparent",
+                }}
+              >
+                {recipientAvatar ? (
+                  <img src={recipientAvatar} alt={recipientName} className="h-full w-full rounded-full object-cover" />
+                ) : (
+                  recipientName.charAt(0).toUpperCase()
+                )}
+              </div>
+            )}
             {isRinging && (
               <>
                 <div className="absolute inset-0 rounded-full animate-ping" style={{ backgroundColor: recipientColor.bg, opacity: 0.2 }} />
@@ -274,8 +332,11 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
         </button>
 
         <button
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 hover:bg-white/20 transition-colors"
-          title="Video (coming soon)"
+          onClick={() => { toggleVideo(); }}
+          className={`flex h-10 w-10 items-center justify-center rounded-full transition-all duration-150 ${
+            activeCall.isVideoOn ? "bg-[#3ba55c] hover:bg-[#2d8b4e]" : "bg-white/10 hover:bg-white/20"
+          }`}
+          title={activeCall.isVideoOn ? "Turn off camera" : "Turn on camera"}
         >
           <img src={videoIcon} alt="Video" className="h-5 w-5" style={{ filter: "brightness(0) invert(1)" }} />
         </button>
