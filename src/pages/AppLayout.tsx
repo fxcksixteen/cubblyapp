@@ -372,8 +372,8 @@ const AppLayout = () => {
           </div>
         )}
 
-        {/* Bottom nav (hide while a call overlay is fullscreen) */}
-        <MobileBottomNav hidden={!!activeCall && !isYou && false /* keep visible always */} />
+        {/* Bottom nav (hidden inside chats so the input bar can sit at the bottom) */}
+        <MobileBottomNav hidden={isDM} />
 
         {/* Call UI: fullscreen on mobile */}
         {activeCall && (
