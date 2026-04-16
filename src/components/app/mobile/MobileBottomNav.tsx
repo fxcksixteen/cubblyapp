@@ -7,8 +7,8 @@ import shopIcon from "@/assets/icons/shop.svg";
 import { User } from "lucide-react";
 
 const tabs = [
-  { id: "home", label: "Home", route: "/@me/online", matches: ["online", "all", "chat"], icon: messagesIcon, iconType: "img" as const },
-  { id: "friends", label: "Friends", route: "/@me/all", matches: ["pending", "blocked", "add"], icon: friendsIcon, iconType: "img" as const },
+  { id: "home", label: "Home", route: "__open_dms__", matches: ["chat"], icon: messagesIcon, iconType: "img" as const },
+  { id: "friends", label: "Friends", route: "/@me/online", matches: ["online", "all", "pending", "blocked", "add"], icon: friendsIcon, iconType: "img" as const },
   { id: "shop", label: "Shop", route: "/@me/shop", matches: ["shop"], icon: shopIcon, iconType: "img" as const },
   { id: "you", label: "You", route: "/@me/you", matches: ["you"], icon: null, iconType: "lucide" as const },
 ];
@@ -31,8 +31,9 @@ const MobileBottomNav = ({ hidden }: Props) => {
   const activeId = (() => {
     if (parts.includes("you")) return "you";
     if (parts.includes("shop")) return "shop";
-    if (["pending", "blocked", "add", "all"].includes(seg)) return "friends";
-    return "home"; // default: online + chat + everything else
+    if (parts.includes("chat")) return "home";
+    if (["online", "all", "pending", "blocked", "add"].includes(seg)) return "friends";
+    return "friends";
   })();
 
   if (hidden) return null;
@@ -51,7 +52,13 @@ const MobileBottomNav = ({ hidden }: Props) => {
         return (
           <button
             key={t.id}
-            onClick={() => navigate(t.route, { replace: true })}
+            onClick={() => {
+              if (t.route === "__open_dms__") {
+                window.dispatchEvent(new CustomEvent("cubbly:open-mobile-dms"));
+              } else {
+                navigate(t.route, { replace: true });
+              }
+            }}
             className="relative flex-1 flex flex-col items-center justify-center gap-0.5 py-2 active:opacity-60 transition-opacity touch-manipulation"
             aria-current={isActive ? "page" : undefined}
           >
