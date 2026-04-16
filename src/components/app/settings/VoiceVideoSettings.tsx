@@ -477,11 +477,14 @@ function CameraSection({ settings, updateSettings, availableDevices, cardStyle }
         audio: false,
       });
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play().catch(() => {});
-      }
       setTesting(true);
+      // Wait for the <video> to mount, then attach + play
+      requestAnimationFrame(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play().catch(() => {});
+        }
+      });
     } catch (e: any) {
       setError(e?.message || "Could not access camera");
     }
