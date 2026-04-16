@@ -45,6 +45,7 @@ console.log(`[build:electron] Step 1/2: running vite build...`);
 const buildResult = spawnSync(npmCmd, ["run", "build"], {
   cwd: rootDir,
   stdio: "inherit",
+  shell: true,
 });
 
 if (buildResult.error) {
@@ -61,6 +62,7 @@ console.log(`[build:electron] Command: ${npxCmd} ${packagerArgs.join(" ")}`);
 const packagerResult = spawnSync(npxCmd, packagerArgs, {
   cwd: rootDir,
   stdio: "inherit",
+  shell: true,
 });
 
 if (packagerResult.error) {
