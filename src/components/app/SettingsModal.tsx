@@ -6,6 +6,7 @@ import { defaultProfileColor } from "@/lib/profileColors";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import VoiceVideoSettings from "./settings/VoiceVideoSettings";
+import ActivityPrivacySettings from "./settings/ActivityPrivacySettings";
 
 const APP_VERSION = "0.2.0";
 
@@ -462,6 +463,9 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
 
       case "voice-video":
         return <VoiceVideoSettings panelStyle={panelStyle as any} cardStyle={cardStyle as any} />;
+
+      case "activity-privacy":
+        return <ActivityPrivacySettings cardStyle={cardStyle as any} />;
 
       default:
         return (
