@@ -66,6 +66,12 @@ const AppLayout = () => {
   const [mobilePanel, setMobilePanel] = useState<"none" | "dms" | "members">("none");
   // Close panels whenever the route changes
   useEffect(() => { setMobilePanel("none"); }, [location.pathname]);
+  // Listen for the bottom-nav "Home" tap to open the DM panel
+  useEffect(() => {
+    const handler = () => setMobilePanel("dms");
+    window.addEventListener("cubbly:open-mobile-dms", handler);
+    return () => window.removeEventListener("cubbly:open-mobile-dms", handler);
+  }, []);
 
   const unreadList = useMemo(() => {
     return Array.from(unreadByConv.entries())
@@ -180,17 +186,17 @@ const AppLayout = () => {
     }
     return (
       <>
-        <div className="flex items-center gap-2">
+        <div className="hidden sm:flex items-center gap-2">
           <img src={friendsIcon} alt="" className="h-5 w-5 invert opacity-60" />
           <span className="font-semibold" style={{ color: "var(--app-text-primary)" }}>Friends</span>
         </div>
-        <div className="h-6 w-px" style={{ backgroundColor: "var(--app-border, #3f4147)" }} />
-        <div className="flex items-center gap-1 overflow-x-auto">
+        <div className="hidden sm:block h-6 w-px" style={{ backgroundColor: "var(--app-border, #3f4147)" }} />
+        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar flex-1 min-w-0">
           {(["online", "all", "pending", "blocked"] as FriendTab[]).map((tab) => (
             <button
               key={tab}
               onClick={() => setFriendTab(tab)}
-              className="relative rounded px-2.5 py-1 text-sm font-medium capitalize transition-colors shrink-0"
+              className="relative rounded px-2 sm:px-2.5 py-1 text-xs sm:text-sm font-medium capitalize transition-colors shrink-0"
               style={{
                 backgroundColor: friendTab === tab && activeView === "friends" ? "var(--app-active, #404249)" : undefined,
                 color: friendTab === tab && activeView === "friends" ? "white" : "var(--app-text-secondary, #b5bac1)",
@@ -201,7 +207,7 @@ const AppLayout = () => {
               {tab}
               {tab === "pending" && incomingPendingCount > 0 && (
                 <span
-                  className="absolute -top-1 -right-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#ed4245] px-1 text-[10px] font-bold text-white border-2 animate-fade-in"
+                  className="absolute -top-1 -right-1 flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-[#ed4245] px-1 text-[9px] font-bold text-white border-2 animate-fade-in"
                   style={{ borderColor: "var(--app-bg-primary)" }}
                 >
                   {incomingPendingCount > 9 ? "9+" : incomingPendingCount}
@@ -211,7 +217,7 @@ const AppLayout = () => {
           ))}
           <button
             onClick={() => setFriendTab("add")}
-            className={`rounded px-2.5 py-1 text-sm font-medium transition-colors shrink-0 ${
+            className={`rounded px-2 sm:px-2.5 py-1 text-xs sm:text-sm font-medium transition-colors shrink-0 whitespace-nowrap ${
               friendTab === "add" && activeView === "friends"
                 ? "bg-transparent text-[#3ba55c]"
                 : "bg-[#3ba55c] text-white hover:bg-[#2d8b4e]"
