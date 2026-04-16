@@ -22,6 +22,8 @@ import ChatView from "@/components/app/ChatView";
 import ShopView from "@/components/app/ShopView";
 import VoiceCallOverlay from "@/components/app/VoiceCallOverlay";
 import TitleBar from "@/components/app/TitleBar";
+import CreateGroupModal from "@/components/app/CreateGroupModal";
+import GroupAvatar from "@/components/app/GroupAvatar";
 import friendsIcon from "@/assets/icons/friends.svg";
 
 type FriendTab = "online" | "all" | "pending" | "blocked" | "add";
@@ -51,12 +53,13 @@ const AppLayout = () => {
   const validTabs: FriendTab[] = ["online", "all", "pending", "blocked", "add"];
   const friendTab: FriendTab = urlTab && validTabs.includes(urlTab) ? urlTab : "online";
 
-  const { conversations, openOrCreateConversation, closeConversation, refetch: refetchConvs } = useConversations();
+  const { conversations, openOrCreateConversation, createGroupConversation, closeConversation, refetch: refetchConvs } = useConversations();
   const { unreadByConv } = useUnreadCounts(chatIdFromUrl);
   const { pending } = useFriends();
   const incomingPendingCount = pending.filter((p) => p.addressee_id === user?.id).length;
   const [tempDMs, setTempDMs] = useState<string[]>([]);
   const [activeNowOpen, setActiveNowOpen] = useState(true);
+  const [createGroupOpen, setCreateGroupOpen] = useState(false);
 
   // Sorted unread conversations for the ServerSidebar pills
   const unreadList = useMemo(() => {
