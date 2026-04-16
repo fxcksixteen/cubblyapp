@@ -271,27 +271,29 @@ const AppLayout = () => {
 
         <div className="flex flex-1 flex-col">
           <div className="flex h-14 items-center justify-between border-b px-5 shadow-sm" style={{ backgroundColor: "var(--app-bg-primary)", borderColor: "var(--app-border)" }}>
-            {isDM && activeConvId ? (
+            {isDM && activeConvId && activeConv ? (
               <>
-                <div className="flex items-center gap-3">
-                  <div className="relative">
-                    {activeParticipant?.avatar_url ? (
-                      <img src={activeParticipant.avatar_url} alt={activeParticipant.display_name} className="h-8 w-8 rounded-full object-cover" />
-                    ) : (
-                      <div
-                        className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold text-white"
-                        style={{ backgroundColor: participantColor?.bg || "#5865f2" }}
-                      >
-                        {(activeParticipant?.display_name || "User").charAt(0).toUpperCase()}
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="relative shrink-0">
+                    <GroupAvatar conversation={activeConv} size={32} />
+                    {!activeConv.is_group && (
+                      <div className="absolute -bottom-0.5 -right-0.5">
+                        <StatusIndicator status={activeParticipantStatus} size="sm" borderColor="var(--app-bg-primary)" />
                       </div>
                     )}
-                    <div className="absolute -bottom-0.5 -right-0.5">
-                      <StatusIndicator status={activeParticipantStatus} size="sm" borderColor="var(--app-bg-primary)" />
-                    </div>
                   </div>
-                  <span className="text-[15px] font-semibold" style={{ color: "var(--app-text-primary)" }}>
-                    {activeParticipant?.display_name || "Conversation"}
-                  </span>
+                  <div className="min-w-0">
+                    <p className="truncate text-[15px] font-semibold leading-tight" style={{ color: "var(--app-text-primary)" }}>
+                      {activeConv.is_group
+                        ? (activeConv.name || activeConv.members.map((m) => m.display_name).slice(0, 3).join(", ") || "Group")
+                        : activeParticipant?.display_name || "Conversation"}
+                    </p>
+                    {activeConv.is_group && (
+                      <p className="text-[11px] leading-tight" style={{ color: "var(--app-text-secondary)" }}>
+                        {activeConv.members.length + 1} members
+                      </p>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-2" style={{ color: "var(--app-text-secondary)" }}>
                   <button
@@ -346,6 +348,15 @@ const AppLayout = () => {
       </div>
 
       <VoiceCallOverlay />
+
+      <CreateGroupModal
+        isOpen={createGroupOpen}
+        onClose={() => setCreateGroupOpen(false)}
+        onCreated={(convId) => {
+          navigate(`/@me/chat/${convId}`, { replace: true });
+        }}
+        createGroupConversation={createGroupConversation}
+      />
     </div>
   );
 };
