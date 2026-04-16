@@ -1,15 +1,6 @@
 import { createContext, useContext, useState, useCallback, useRef, useEffect, ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { playSound, playLooping, stopLooping } from "@/lib/sounds";
-
-// How long a user can be alone in a call before it auto-ends (ms)
-const LONE_USER_TIMEOUT_MS = 3 * 60 * 1000;
-// How long an outgoing ring lasts before auto-cancelling (ms)
-const RING_TIMEOUT_MS = 35 * 1000;
-// How long the call stays "ringing" on the callee side before auto-ending (ms)
-// Even if user does nothing — prevents infinite ringing.
-const INCOMING_RING_TIMEOUT_MS = 35 * 1000;
 
 export interface VoiceSettings {
   inputDeviceId: string;
