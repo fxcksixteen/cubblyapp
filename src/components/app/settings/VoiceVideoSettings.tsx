@@ -3,7 +3,7 @@ import { useVoice, SERVER_REGIONS } from "@/contexts/VoiceContext";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
-import { Mic, Globe, Monitor, MousePointer2, Zap, Film, MicOff } from "lucide-react";
+import { Mic, Globe, Monitor, MousePointer2, Zap, Film, MicOff, Video, VideoOff, Camera } from "lucide-react";
 
 interface Props {
   panelStyle: Record<string, string>;
@@ -67,6 +67,9 @@ const VoiceVideoSettings = ({ panelStyle, cardStyle }: Props) => {
         />
       ) : (
         <VideoTab
+          settings={settings}
+          updateSettings={updateSettings}
+          availableDevices={availableDevices}
           screenShareSettings={screenShareSettings}
           updateScreenShareSettings={updateScreenShareSettings}
           cardStyle={cardStyle}
@@ -441,10 +444,16 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
   );
 }
 
-/* ─── Video Tab (Screen Sharing Settings) ─── */
-function VideoTab({ screenShareSettings, updateScreenShareSettings, cardStyle }: any) {
+/* ─── Video Tab (Camera + Screen Sharing Settings) ─── */
+function VideoTab({ settings, updateSettings, availableDevices, screenShareSettings, updateScreenShareSettings, cardStyle }: any) {
   return (
     <div className="space-y-6">
+      <CameraSection
+        settings={settings}
+        updateSettings={updateSettings}
+        availableDevices={availableDevices}
+        cardStyle={cardStyle}
+      />
       {/* Screen Share Resolution */}
       <div className="rounded-[24px] border p-5 space-y-4" style={cardStyle}>
         <div className="flex items-center gap-2">
