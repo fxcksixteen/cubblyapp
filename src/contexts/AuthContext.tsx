@@ -2,6 +2,12 @@ import { createContext, useContext, useEffect, useState, useRef, ReactNode } fro
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { setDndActive } from "@/lib/sounds";
+import { setNotificationDnd } from "@/lib/notifications";
+
+const syncDnd = (isDnd: boolean) => {
+  setDndActive(isDnd);
+  setNotificationDnd(isDnd);
+};
 
 interface AuthContextType {
   session: Session | null;
