@@ -1,6 +1,7 @@
-import { createContext, useContext, useEffect, useState, useRef, useCallback, ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, useRef, ReactNode } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { setDndActive } from "@/lib/sounds";
 
 interface AuthContextType {
   session: Session | null;
@@ -8,6 +9,10 @@ interface AuthContextType {
   loading: boolean;
   signOut: () => Promise<void>;
   onlineUserIds: Set<string>;
+  /** Current user's status from profiles table (online/idle/dnd/invisible) */
+  myStatus: string;
+  /** Update my status both locally + in DB */
+  setMyStatus: (status: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -16,6 +21,8 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   signOut: async () => {},
   onlineUserIds: new Set(),
+  myStatus: "online",
+  setMyStatus: async () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -24,6 +31,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
+  const [myStatus, setMyStatusState] = useState<string>("online");
   const presenceChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   useEffect(() => {
@@ -41,6 +49,57 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Fetch my own profile status whenever auth changes
+  useEffect(() => {
+    const user = session?.user;
+    if (!user) {
+      setMyStatusState("online");
+      setDndActive(false);
+      return;
+    }
+    let cancelled = false;
+    supabase
+      .from("profiles")
+      .select("status")
+      .eq("user_id", user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (cancelled) return;
+        const status = data?.status || "online";
+        setMyStatusState(status);
+        setDndActive(status === "dnd");
+      });
+    return () => { cancelled = true; };
+  }, [session?.user?.id]);
+
+  // Realtime: listen for changes to my own status row (could be edited from another tab)
+  useEffect(() => {
+    const user = session?.user;
+    if (!user) return;
+    const channel = supabase
+      .channel(`my-profile-status:${user.id}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "profiles", filter: `user_id=eq.${user.id}` },
+        (payload) => {
+          const newStatus = (payload.new as any)?.status || "online";
+          setMyStatusState(newStatus);
+          setDndActive(newStatus === "dnd");
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [session?.user?.id]);
+
+  const setMyStatus = async (status: string) => {
+    const user = session?.user;
+    setMyStatusState(status);
+    setDndActive(status === "dnd");
+    if (user) {
+      await supabase.from("profiles").update({ status }).eq("user_id", user.id);
+    }
+  };
 
   // Presence tracking — broadcast that we're online and track who else is
   useEffect(() => {
@@ -88,7 +147,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ session, user: session?.user ?? null, loading, signOut, onlineUserIds }}>
+    <AuthContext.Provider
+      value={{
+        session,
+        user: session?.user ?? null,
+        loading,
+        signOut,
+        onlineUserIds,
+        myStatus,
+        setMyStatus,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
