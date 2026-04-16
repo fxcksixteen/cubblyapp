@@ -110,8 +110,13 @@ const AppLayout = () => {
   const activeConv = conversations.find((conversation) => conversation.id === activeConvId);
   const activeParticipant = activeConv?.participant;
 
+  // Groups always show in the sidebar; DMs only when they have a message, are pinned (tempDMs), or are active
   const visibleConversations = conversations.filter(
-    (conversation) => conversation.lastMessage || tempDMs.includes(conversation.id) || conversation.id === activeConvId,
+    (conversation) =>
+      conversation.is_group ||
+      conversation.lastMessage ||
+      tempDMs.includes(conversation.id) ||
+      conversation.id === activeConvId,
   );
 
   const isInCall = activeCall?.conversationId === activeConvId;
@@ -122,8 +127,14 @@ const AppLayout = () => {
   const handleVoiceCall = async () => {
     if (isInCall) {
       endCall();
-    } else if (activeParticipant) {
-      if (activeParticipant.user_id === BOT_USER_ID && !isAdmin) {
+    } else if (activeConv) {
+      // Group call
+      if (activeConv.is_group) {
+        const groupName = activeConv.name || activeConv.members.map((m) => m.display_name).slice(0, 2).join(", ") || "Group";
+        startCall(activeConv.id, activeConv.id, groupName);
+        return;
+      }
+      if (activeParticipant?.user_id === BOT_USER_ID && !isAdmin) {
         try {
           const { data: { session } } = await supabase.auth.getSession();
           await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat-with-bot`, {
@@ -143,7 +154,9 @@ const AppLayout = () => {
         }
         return;
       }
-      startCall(activeConvId!, activeParticipant.user_id, activeParticipant.display_name);
+      if (activeParticipant) {
+        startCall(activeConvId!, activeParticipant.user_id, activeParticipant.display_name);
+      }
     }
   };
 
@@ -199,13 +212,18 @@ const AppLayout = () => {
   };
 
   const renderContent = () => {
-    if (isDM && activeConvId) {
+    if (isDM && activeConvId && activeConv) {
+      const isGroup = activeConv.is_group;
+      const headerName = isGroup
+        ? (activeConv.name || activeConv.members.map((m) => m.display_name).slice(0, 3).join(", ") || "Group")
+        : activeParticipant?.display_name || "User";
       return (
         <ChatView
+          conversation={activeConv}
           conversationId={activeConvId}
-          recipientName={activeParticipant?.display_name || "User"}
-          recipientAvatar={activeParticipant?.avatar_url || undefined}
-          recipientUserId={activeParticipant?.user_id}
+          recipientName={headerName}
+          recipientAvatar={isGroup ? activeConv.picture_url || undefined : activeParticipant?.avatar_url || undefined}
+          recipientUserId={isGroup ? undefined : activeParticipant?.user_id}
         />
       );
     }
@@ -248,6 +266,7 @@ const AppLayout = () => {
           }}
           onCloseConversation={handleCloseConversation}
           onOpenDM={handleOpenDM}
+          onCreateGroup={() => setCreateGroupOpen(true)}
         />
 
         <div className="flex flex-1 flex-col">
