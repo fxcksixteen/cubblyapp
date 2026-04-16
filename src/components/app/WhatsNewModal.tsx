@@ -1,79 +1,92 @@
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
-import bearImage from "@/assets/whats-new-bear.png";
+import { CHANGELOG, CURRENT_VERSION, getChangelogEntry } from "@/lib/changelog";
 
 /**
- * Reusable "What's New" / changelog modal.
+ * "What's New" / changelog modal.
  *
- * Shows ONCE per user per version (tracked in localStorage so we don't need a
- * new DB table). To ship a new changelog, just bump CURRENT_VERSION + edit
- * NEW_FEATURES / BUG_FIXES below — every user will see it once on next load.
+ * Two modes:
+ *  1. Auto mode (default, mounted at app root) — shows the latest version
+ *     ONCE per user (tracked via localStorage flag keyed by version).
+ *  2. Viewer mode (`forceVersion` prop) — used by the Update Logs settings
+ *     tab to re-open any past patch's modal without touching the seen-flag.
+ *
+ * Animations: smooth scale + fade in, smooth scale + fade out (250ms).
  */
 
-const CURRENT_VERSION = "0.2.0";
-const STORAGE_KEY = `cubbly-whats-new-seen:${CURRENT_VERSION}`;
+interface WhatsNewModalProps {
+  /** When provided, opens immediately for THIS version and never writes the seen flag. */
+  forceVersion?: string;
+  /** Called when modal is dismissed (used in viewer mode). */
+  onClose?: () => void;
+}
 
-const NEW_FEATURES: string[] = [
-  "Auto-updater — desktop app now updates itself in the background",
-  "Activity status — Cubbly auto-detects games you're playing (or add your own .exe)",
-  "Video calling — toggle your webcam mid-call with picture-in-picture tiles",
-  "Voice & Video settings — camera picker, resolution, FPS, mirror toggle, live test",
-  "Full mobile rework — swipe gestures, bottom nav, and fullscreen call screen",
-  "Auto-launch on startup — Cubbly opens automatically when you sign in to your PC",
-  "Type-to-focus — start typing anywhere and it lands in the message box",
-  "Global in-call indicator — see your active call no matter where you are in the app",
-  "Friends tab badge — pending requests now show a red dot on the Friends tab too",
-];
+const storageKey = (version: string) => `cubbly-whats-new-seen:${version}`;
 
-const BUG_FIXES: string[] = [
-  "Fixed camera test preview staying black after clicking Test Camera",
-  "Fixed right-click → View Profile in DM list opening the chat instead of the profile",
-  "Fixed Voice & Video settings crashing on machines with default-only camera entries",
-  "Active Now sidebar now actually lists friends with live activities",
-  "Various performance improvements and small visual polish across the app",
-];
+const WhatsNewModal = ({ forceVersion, onClose }: WhatsNewModalProps) => {
+  // Which version are we showing?
+  const version = forceVersion ?? CURRENT_VERSION;
+  const entry = getChangelogEntry(version) ?? CHANGELOG[0];
 
-const WhatsNewModal = () => {
-  const [open, setOpen] = useState(false);
+  // `mounted` controls render presence. `visible` controls the animation state.
+  const [mounted, setMounted] = useState(false);
+  const [visible, setVisible] = useState(false);
 
+  // Decide whether to open
   useEffect(() => {
+    if (forceVersion) {
+      setMounted(true);
+      // next frame → trigger entrance animation
+      requestAnimationFrame(() => requestAnimationFrame(() => setVisible(true)));
+      return;
+    }
     try {
-      if (!localStorage.getItem(STORAGE_KEY)) {
-        // Tiny delay so we don't fight the loading splash
-        const t = setTimeout(() => setOpen(true), 800);
+      if (!localStorage.getItem(storageKey(version))) {
+        const t = setTimeout(() => {
+          setMounted(true);
+          requestAnimationFrame(() => requestAnimationFrame(() => setVisible(true)));
+        }, 800);
         return () => clearTimeout(t);
       }
     } catch {}
-  }, []);
+  }, [forceVersion, version]);
 
   const handleClose = () => {
-    try {
-      localStorage.setItem(STORAGE_KEY, new Date().toISOString());
-    } catch {}
-    setOpen(false);
+    if (!forceVersion) {
+      try { localStorage.setItem(storageKey(version), new Date().toISOString()); } catch {}
+    }
+    setVisible(false);
+    // Wait for exit animation, then unmount
+    setTimeout(() => {
+      setMounted(false);
+      onClose?.();
+    }, 250);
   };
 
-  if (!open) return null;
+  if (!mounted) return null;
 
   return (
     <div
-      className="fixed inset-0 z-[210] flex items-center justify-center animate-fade-in p-4"
+      className="fixed inset-0 z-[210] flex items-center justify-center p-4 transition-all duration-250 ease-out"
       style={{
-        backgroundColor: "rgba(15, 10, 6, 0.65)",
-        backdropFilter: "blur(20px) saturate(140%)",
-        WebkitBackdropFilter: "blur(20px) saturate(140%)",
+        backgroundColor: visible ? "rgba(15, 10, 6, 0.65)" : "rgba(15, 10, 6, 0)",
+        backdropFilter: visible ? "blur(20px) saturate(140%)" : "blur(0px)",
+        WebkitBackdropFilter: visible ? "blur(20px) saturate(140%)" : "blur(0px)",
       }}
       onClick={handleClose}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="relative w-[480px] max-w-full max-h-[88vh] overflow-y-auto rounded-2xl shadow-2xl animate-scale-in"
+        className="relative w-[480px] max-w-full max-h-[88vh] overflow-y-auto rounded-2xl shadow-2xl transition-all ease-out"
         style={{
           background:
             "linear-gradient(160deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.015))",
           border: "1px solid rgba(255, 255, 255, 0.12)",
           boxShadow:
             "0 24px 70px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.08)",
+          transform: visible ? "scale(1) translateY(0)" : "scale(0.92) translateY(16px)",
+          opacity: visible ? 1 : 0,
+          transitionDuration: "250ms",
         }}
       >
         {/* Title pill in top-right */}
@@ -86,7 +99,7 @@ const WhatsNewModal = () => {
               border: "1px solid rgba(255,255,255,0.12)",
             }}
           >
-            Update Log v{CURRENT_VERSION}
+            Update Log v{entry.version}
           </span>
           <button
             onClick={handleClose}
@@ -102,7 +115,7 @@ const WhatsNewModal = () => {
           </button>
         </div>
 
-        {/* Hero image — rectangular, smooth-edged frame */}
+        {/* Hero image */}
         <div className="p-4 pb-0">
           <div
             className="relative overflow-hidden rounded-2xl"
@@ -113,8 +126,8 @@ const WhatsNewModal = () => {
             }}
           >
             <img
-              src={bearImage}
-              alt="Cubbly mascot with a wrench"
+              src={entry.hero}
+              alt="Cubbly mascot"
               className="h-full w-full object-cover"
               draggable={false}
             />
@@ -122,11 +135,9 @@ const WhatsNewModal = () => {
         </div>
 
         <div className="px-6 pb-6 pt-5">
-          {/* WHAT'S NEW divider */}
           <SectionDivider label="WHAT'S NEW" color="#3ba55c" />
-
           <ul className="mt-4 space-y-2.5">
-            {NEW_FEATURES.map((item, i) => (
+            {entry.newFeatures.map((item, i) => (
               <li key={i} className="flex gap-2.5 text-sm leading-snug" style={{ color: "rgba(255,255,255,0.85)" }}>
                 <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: "#3ba55c" }} />
                 <span>{item}</span>
@@ -134,13 +145,11 @@ const WhatsNewModal = () => {
             ))}
           </ul>
 
-          {/* BUG FIXES & QOL divider */}
           <div className="mt-7">
             <SectionDivider label="BUG FIXES & QOL" color="#5865f2" />
           </div>
-
           <ul className="mt-4 space-y-2.5">
-            {BUG_FIXES.map((item, i) => (
+            {entry.bugFixes.map((item, i) => (
               <li key={i} className="flex gap-2.5 text-sm leading-snug" style={{ color: "rgba(255,255,255,0.85)" }}>
                 <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: "#5865f2" }} />
                 <span>{item}</span>
@@ -167,10 +176,7 @@ const WhatsNewModal = () => {
 const SectionDivider = ({ label, color }: { label: string; color: string }) => (
   <div className="flex items-center gap-3">
     <div className="h-px flex-1" style={{ backgroundColor: color, opacity: 0.55 }} />
-    <span
-      className="text-[11px] font-bold tracking-[0.2em] px-2"
-      style={{ color }}
-    >
+    <span className="text-[11px] font-bold tracking-[0.2em] px-2" style={{ color }}>
       {label}
     </span>
     <div className="h-px flex-1" style={{ backgroundColor: color, opacity: 0.55 }} />
