@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Maximize2, Minimize2, X } from "lucide-react";
-import { CallPanel } from "./VoiceCallOverlay";
+import { CallPanel } from "../VoiceCallOverlay";
 import { useVoice } from "@/contexts/VoiceContext";
 
 interface Props {
