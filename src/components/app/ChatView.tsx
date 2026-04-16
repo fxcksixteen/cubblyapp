@@ -347,8 +347,11 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
     items.splice(insertIdx, 0, { type: "call-event", event: evt, timestamp: ts });
   }
 
+  const showMembersPanel = !!(showGroupMembers && conversation?.is_group);
+
   return (
-    <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
+    <div className="flex flex-1 min-h-0 overflow-hidden">
+      <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
       {/* Discord-style call panel */}
       <div className="shrink-0 max-h-[50vh] overflow-y-auto">
         <CallPanel
