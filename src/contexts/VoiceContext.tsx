@@ -1257,7 +1257,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         };
 
         stream.getTracks().forEach(track => {
-          localPc.addTrack(track, stream);
+          const sender = localPc.addTrack(track, stream);
+          if (track.kind === "video") applyScreenBitrate(sender, maxBitrate);
           track.onended = () => { stopScreenShare(); };
         });
 
@@ -1281,7 +1282,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       screenPcRef.current = screenPc;
 
       stream.getTracks().forEach(track => {
-        screenPc.addTrack(track, stream);
+        const sender = screenPc.addTrack(track, stream);
+        if (track.kind === "video") applyScreenBitrate(sender, maxBitrate);
         track.onended = () => {
           stopScreenShare();
         };
