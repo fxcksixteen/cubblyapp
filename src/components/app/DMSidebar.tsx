@@ -4,6 +4,7 @@ import GroupAvatar from "@/components/app/GroupAvatar";
 import { useAuth } from "@/contexts/AuthContext";
 import { useVoice } from "@/contexts/VoiceContext";
 import { useActivity } from "@/contexts/ActivityContext";
+import { useFriends } from "@/hooks/useFriends";
 import { Conversation } from "@/hooks/useConversations";
 import { supabase } from "@/integrations/supabase/client";
 import { Plus, X, Users } from "lucide-react";
@@ -48,6 +49,8 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
   const { user, onlineUserIds } = useAuth();
   const { activeCall, toggleMute, toggleDeafen } = useVoice();
   const { getActivity } = useActivity();
+  const { pending } = useFriends();
+  const incomingPendingCount = pending.filter((p) => p.addressee_id === user?.id).length;
   const displayName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "User";
   const username = user?.user_metadata?.username || displayName.toLowerCase();
 
@@ -114,7 +117,7 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
           <button
             key={item.id}
             onClick={() => setActiveView(item.id)}
-            className={`flex w-full items-center gap-3 rounded-[4px] px-3 py-2 text-[15px] font-medium transition-colors cubbly-3d-nav ${
+            className={`relative flex w-full items-center gap-3 rounded-[4px] px-3 py-2 text-[15px] font-medium transition-colors cubbly-3d-nav ${
               activeView === item.id
                 ? "text-white"
                 : "hover:text-[#dbdee1]"
@@ -128,6 +131,14 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
           >
             <img src={item.icon} alt="" className="h-5 w-5 shrink-0 invert opacity-80" />
             {item.label}
+            {item.id === "friends" && incomingPendingCount > 0 && (
+              <span
+                className="ml-auto flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#ed4245] px-1 text-[10px] font-bold text-white animate-fade-in"
+                title={`${incomingPendingCount} pending friend request${incomingPendingCount === 1 ? "" : "s"}`}
+              >
+                {incomingPendingCount > 9 ? "9+" : incomingPendingCount}
+              </span>
+            )}
           </button>
         ))}
 
