@@ -29,6 +29,9 @@ const WhatsNewModal = ({ forceVersion, onClose }: WhatsNewModalProps) => {
   const version = forceVersion ?? CURRENT_VERSION;
   const entry = getChangelogEntry(version) ?? CHANGELOG[0];
 
+  // Only auto-show to authenticated users. Viewer mode (forceVersion) bypasses this.
+  const { user, loading: authLoading } = useAuth();
+
   // `mounted` controls render presence. `visible` controls the animation state.
   const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(false);
@@ -41,8 +44,12 @@ const WhatsNewModal = ({ forceVersion, onClose }: WhatsNewModalProps) => {
       requestAnimationFrame(() => requestAnimationFrame(() => setVisible(true)));
       return;
     }
+    // Auto mode: require a logged-in user
+    if (authLoading || !user) return;
     try {
-      if (!localStorage.getItem(storageKey(version))) {
+      // Per-user seen flag so each registered user sees it exactly once
+      const key = `${storageKey(version)}:${user.id}`;
+      if (!localStorage.getItem(key)) {
         const t = setTimeout(() => {
           setMounted(true);
           requestAnimationFrame(() => requestAnimationFrame(() => setVisible(true)));
@@ -50,7 +57,7 @@ const WhatsNewModal = ({ forceVersion, onClose }: WhatsNewModalProps) => {
         return () => clearTimeout(t);
       }
     } catch {}
-  }, [forceVersion, version]);
+  }, [forceVersion, version, user, authLoading]);
 
   const handleClose = () => {
     if (!forceVersion) {
