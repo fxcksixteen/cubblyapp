@@ -336,6 +336,15 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
           </div>
         </div>
       </div>
+      {profileCard && (
+        <UserProfileCard
+          userId={profileCard.userId}
+          displayName={profileCard.name}
+          position={{ x: profileCard.x, y: profileCard.y }}
+          onClose={() => setProfileCard(null)}
+          onSendMessage={(userId) => { setProfileCard(null); onOpenDM(userId); }}
+        />
+      )}
     </div>
   );
 };
