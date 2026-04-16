@@ -1,0 +1,135 @@
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import folderFileIcon from "@/assets/icons/folder-file.svg";
+
+interface Attachment {
+  name: string;
+  url: string;
+  size: number;
+  type: string;
+}
+
+interface AttachmentItemProps {
+  attachment: Attachment;
+}
+
+const formatFileSize = (bytes: number) => {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+/**
+ * Extracts the storage object path from a (possibly expired) signed URL.
+ * Signed URLs look like:
+ *   https://<project>.supabase.co/storage/v1/object/sign/<bucket>/<path>?token=...
+ * or older `/object/public/<bucket>/<path>`.
+ * Returns null if it doesn't look like a Supabase storage URL for `chat-attachments`.
+ */
+function extractStoragePath(url: string): string | null {
+  try {
+    const u = new URL(url);
+    // Match either /storage/v1/object/sign/chat-attachments/<path>
+    // or /storage/v1/object/public/chat-attachments/<path>
+    const m = u.pathname.match(/\/storage\/v1\/object\/(?:sign|public|authenticated)\/chat-attachments\/(.+)$/);
+    if (m) return decodeURIComponent(m[1]);
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Renders an attachment, automatically refreshing expired signed URLs.
+ * `chat-attachments` is a private bucket and signed URLs expire — without this,
+ * images sent more than an hour ago would break after a refresh.
+ */
+const AttachmentItem = ({ attachment }: AttachmentItemProps) => {
+  const [url, setUrl] = useState(attachment.url);
+  const [errored, setErrored] = useState(false);
+
+  // Re-sign on mount if the URL is from our private bucket
+  useEffect(() => {
+    let cancelled = false;
+    const path = extractStoragePath(attachment.url);
+    if (!path) {
+      setUrl(attachment.url);
+      return;
+    }
+    // Always re-sign for a fresh 24-hour URL on every mount.
+    supabase.storage
+      .from("chat-attachments")
+      .createSignedUrl(path, 60 * 60 * 24)
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (data?.signedUrl) {
+          setUrl(data.signedUrl);
+          setErrored(false);
+        } else if (error) {
+          console.warn("[Attachment] failed to re-sign URL:", error.message);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [attachment.url]);
+
+  const isImage = attachment.type.startsWith("image/");
+
+  if (isImage) {
+    return (
+      <a href={url} target="_blank" rel="noopener noreferrer" className="block mt-1 max-w-sm">
+        {!errored ? (
+          <img
+            src={url}
+            alt={attachment.name}
+            className="max-h-[400px] max-w-full rounded-lg object-contain"
+            onError={() => setErrored(true)}
+            loading="lazy"
+          />
+        ) : (
+          <div
+            className="flex items-center gap-2 rounded-lg border p-3"
+            style={{
+              borderColor: "var(--app-border, #1e1f22)",
+              backgroundColor: "var(--app-bg-secondary, #2b2d31)",
+            }}
+          >
+            <img src={folderFileIcon} alt="" className="h-8 w-8 invert opacity-60 shrink-0" />
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-[#00a8fc] truncate">{attachment.name}</p>
+              <p className="text-[11px]" style={{ color: "var(--app-text-secondary, #949ba4)" }}>
+                {formatFileSize(attachment.size)}
+              </p>
+            </div>
+          </div>
+        )}
+      </a>
+    );
+  }
+
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="mt-1 flex items-center gap-2 rounded-lg border p-3 max-w-sm transition-colors"
+      style={{
+        borderColor: "var(--app-border, #1e1f22)",
+        backgroundColor: "var(--app-bg-secondary, #2b2d31)",
+      }}
+      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--app-hover, #32353b)")}
+      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "var(--app-bg-secondary, #2b2d31)")}
+    >
+      <img src={folderFileIcon} alt="" className="h-8 w-8 invert opacity-60 shrink-0" />
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-[#00a8fc] truncate">{attachment.name}</p>
+        <p className="text-[11px]" style={{ color: "var(--app-text-secondary, #949ba4)" }}>
+          {formatFileSize(attachment.size)}
+        </p>
+      </div>
+    </a>
+  );
+};
+
+export default AttachmentItem;
