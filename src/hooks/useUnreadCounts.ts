@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { playSound } from "@/lib/sounds";
+import { notify, ensureNotificationPermission } from "@/lib/notifications";
 
 export interface UnreadInfo {
   conversationId: string;
@@ -101,6 +102,9 @@ export function useUnreadCounts(activeConversationId: string | null) {
 
   useEffect(() => {
     fetchUnread();
+    // Quietly request OS notification permission the first time the user is logged in.
+    // Browsers/Electron will only show the prompt once; subsequent calls are no-ops.
+    ensureNotificationPermission().catch(() => {});
   }, [fetchUnread]);
 
   // Realtime: increment unread when a new message arrives in any of my conversations
@@ -134,12 +138,35 @@ export function useUnreadCounts(activeConversationId: string | null) {
           // Play notification sound (respects DND internally)
           playSound("message");
 
-          // Fetch sender profile for the indicator
+          // Fetch sender profile for the indicator + OS notification
           const { data: profile } = await supabase
             .from("profiles")
             .select("display_name, avatar_url")
             .eq("user_id", msg.sender_id)
             .maybeSingle();
+
+          // OS-level notification (suppressed automatically when window focused or DND on)
+          const senderName = profile?.display_name || "Someone";
+          const preview = (msg.content || "")
+            .replace(/\[attachments\].*?\[\/attachments\]/s, "📎 Attachment")
+            .trim()
+            .slice(0, 140);
+          notify({
+            title: senderName,
+            body: preview || "Sent you a message",
+            icon: profile?.avatar_url || "/favicon.ico",
+            tag: `dm:${msg.conversation_id}`,
+            onClick: () => {
+              // Navigate via hash for both BrowserRouter and HashRouter
+              const path = `/@me/chat/${msg.conversation_id}`;
+              if (window.location.hash) {
+                window.location.hash = path;
+              } else {
+                window.history.pushState({}, "", path);
+                window.dispatchEvent(new PopStateEvent("popstate"));
+              }
+            },
+          });
 
           setUnreadByConv((prev) => {
             const next = new Map(prev);
