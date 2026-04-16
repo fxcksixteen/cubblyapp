@@ -1,4 +1,6 @@
 import { useNavigate, useLocation } from "react-router-dom";
+import { useFriends } from "@/hooks/useFriends";
+import { useAuth } from "@/contexts/AuthContext";
 import friendsIcon from "@/assets/icons/friends.svg";
 import messagesIcon from "@/assets/icons/messages.svg";
 import shopIcon from "@/assets/icons/shop.svg";
@@ -19,6 +21,9 @@ interface Props {
 const MobileBottomNav = ({ hidden }: Props) => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
+  const { pending } = useFriends();
+  const incomingPendingCount = pending.filter((p) => p.addressee_id === user?.id).length;
   const parts = location.pathname.split("/").filter(Boolean);
   const seg = parts[1] || "online";
 
@@ -47,7 +52,7 @@ const MobileBottomNav = ({ hidden }: Props) => {
           <button
             key={t.id}
             onClick={() => navigate(t.route, { replace: true })}
-            className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 active:opacity-60 transition-opacity touch-manipulation"
+            className="relative flex-1 flex flex-col items-center justify-center gap-0.5 py-2 active:opacity-60 transition-opacity touch-manipulation"
             aria-current={isActive ? "page" : undefined}
           >
             {t.iconType === "img" && t.icon ? (
