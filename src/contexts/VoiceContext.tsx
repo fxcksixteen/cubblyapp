@@ -1664,7 +1664,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     <VoiceContext.Provider value={{
       settings, updateSettings, screenShareSettings, updateScreenShareSettings,
       activeCall, startCall, acceptCall, endCall,
-      incomingCall, toggleMute, toggleDeafen, localStream, remoteStream,
+      incomingCall, toggleMute, toggleDeafen, toggleVideo,
+      localStream, remoteStream, localVideoStream, remoteVideoStream,
       audioLevel, remoteAudioLevel, availableDevices, refreshDevices, callEvents, detectedRegion,
       isScreenSharing, screenStream, remoteScreenStream, startScreenShare, stopScreenShare,
     }}>
