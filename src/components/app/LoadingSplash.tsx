@@ -68,7 +68,7 @@ const LoadingSplash = ({ minDuration = 2200, onComplete }: LoadingSplashProps) =
       aria-live="polite"
     >
       <video
-        src="/cubbly-loading.webm"
+        src="./cubbly-loading.webm"
         autoPlay
         loop
         muted
