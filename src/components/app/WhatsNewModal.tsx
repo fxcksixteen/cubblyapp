@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { CHANGELOG, CURRENT_VERSION, getChangelogEntry } from "@/lib/changelog";
+import { useAuth } from "@/contexts/AuthContext";
 
 /**
  * "What's New" / changelog modal.
