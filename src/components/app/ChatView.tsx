@@ -466,14 +466,23 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                     </div>
                     {item.messages.map((msg) => {
                       const { text, attachments } = parseContent(msg.content);
+                      const isHighlighted = highlightedId === msg.id;
                       return (
                         <MessageContextMenu
                           key={msg.id}
                           messageId={msg.id}
                           messageContent={msg.content}
                           isOwnMessage={msg.sender_id === user?.id}
+                          onReply={() => handleReply(msg)}
                         >
-                          <div className="relative group/msg py-0.5">
+                          <div
+                            ref={(el) => {
+                              if (el) messageRefs.current.set(msg.id, el);
+                              else messageRefs.current.delete(msg.id);
+                            }}
+                            className="relative group/msg py-0.5 rounded transition-colors"
+                            style={{ backgroundColor: isHighlighted ? "rgba(88,101,242,0.18)" : "transparent" }}
+                          >
                             {/* Hover action buttons for individual messages */}
                             <div className="absolute -top-3 right-0 flex items-center gap-0.5 rounded-lg border px-1 py-0.5 shadow-lg opacity-0 group-hover/msg:opacity-100 transition-opacity z-10"
                               style={{ backgroundColor: "var(--app-bg-tertiary, #1e1f22)", borderColor: "var(--app-border, #2b2d31)" }}
@@ -482,8 +491,25 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                                 messageId={msg.id}
                                 messageContent={msg.content}
                                 isOwnMessage={msg.sender_id === user?.id}
+                                onReply={() => handleReply(msg)}
                               />
                             </div>
+                            {msg.reply_to && (
+                              <button
+                                type="button"
+                                onClick={() => scrollToMessage(msg.reply_to!.id)}
+                                className="flex items-center gap-1.5 mb-0.5 text-xs hover:opacity-80 transition-opacity max-w-full overflow-hidden"
+                                style={{ color: "var(--app-text-secondary, #949ba4)" }}
+                              >
+                                <ReplyIcon className="h-3 w-3 -scale-x-100 shrink-0" />
+                                <span className="font-semibold truncate" style={{ color: "var(--app-text-primary, #dbdee1)" }}>
+                                  @{msg.reply_to.sender_name}
+                                </span>
+                                <span className="truncate opacity-80">
+                                  {msg.reply_to.content.replace(/\[attachments\].*?\[\/attachments\]/s, "").trim() || "Attachment"}
+                                </span>
+                              </button>
+                            )}
                             {text && (
                               /^https?:\/\/.*\.(gif|giphy)/i.test(text) ? (
                                 <InlineGif url={text} />
