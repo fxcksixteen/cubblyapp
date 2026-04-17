@@ -261,7 +261,61 @@ ipcMain.handle("get-open-windows", async () => {
   catch (e) { log.warn("[activity] open windows failed:", e?.message || e); return []; }
 });
 
-// IPC: pick game .exe (manual)
+// ----- Process icon extractor (Windows + macOS + Linux best-effort) -----
+// Given a process name (e.g. "valorant"), returns a base64 data URL of the
+// process .exe / .app icon. Used as a final fallback when we don't have a
+// curated logo or a Steam header for the activity.
+const iconCache = new Map(); // processName -> dataURL | null
+async function getProcessIcon(processName) {
+  if (!processName) return null;
+  const key = processName.toLowerCase();
+  if (iconCache.has(key)) return iconCache.get(key);
+
+  try {
+    if (process.platform === "win32") {
+      // Use PowerShell to find a running process and its full executable path,
+      // then ask Electron to extract its file icon.
+      const ps = `Get-Process -Name '${key.replace(/'/g, "''")}' -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Path`;
+      const exePath = await new Promise((resolve) => {
+        exec(`powershell -NoProfile -Command "${ps}"`, { windowsHide: true, timeout: 4000 }, (err, stdout) => {
+          if (err) return resolve(null);
+          const path = (stdout || "").trim();
+          resolve(path || null);
+        });
+      });
+      if (!exePath) { iconCache.set(key, null); return null; }
+      try {
+        const img = await app.getFileIcon(exePath, { size: "large" });
+        const dataUrl = img.isEmpty() ? null : img.toDataURL();
+        iconCache.set(key, dataUrl);
+        return dataUrl;
+      } catch (_) {
+        iconCache.set(key, null);
+        return null;
+      }
+    }
+
+    if (process.platform === "darwin") {
+      // Try /Applications/<Name>.app
+      const appPath = `/Applications/${processName}.app`;
+      try {
+        const img = await app.getFileIcon(appPath, { size: "large" });
+        const dataUrl = img.isEmpty() ? null : img.toDataURL();
+        iconCache.set(key, dataUrl);
+        return dataUrl;
+      } catch (_) {
+        iconCache.set(key, null);
+        return null;
+      }
+    }
+  } catch (e) {
+    log.warn("[activity] getProcessIcon failed:", e?.message || e);
+  }
+  iconCache.set(key, null);
+  return null;
+}
+ipcMain.handle("get-process-icon", async (_evt, processName) => getProcessIcon(processName));
+
 ipcMain.handle("pick-game-exe", async () => {
   if (!mainWindow) return null;
   const result = await dialog.showOpenDialog(mainWindow, {
