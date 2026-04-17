@@ -9,7 +9,15 @@ export default defineConfig(({ mode }) => ({
   // Electron loads via file:// and needs relative asset paths.
   // Web/PWA needs absolute "/" so deep links like /@me/online resolve assets correctly
   // (relative ./assets/... breaks iOS Home Screen PWA at non-root start_url).
-  base: process.env.BUILD_TARGET === "electron" ? "./" : "/",
+  // Detect electron-builder too — it spawns vite build without our env var, which
+  // is exactly what shipped a broken 0.2.4 (absolute /assets paths under file://).
+  base:
+    process.env.BUILD_TARGET === "electron" ||
+    process.env.npm_lifecycle_event === "build:electron" ||
+    !!process.env.ELECTRON_BUILDER_ALLOW_UNRESOLVED_DEPENDENCIES ||
+    process.argv.some((a) => a.includes("electron-builder"))
+      ? "./"
+      : "/",
   server: {
     host: "::",
     port: 8080,

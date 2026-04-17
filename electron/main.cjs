@@ -1,5 +1,6 @@
-const { app, BrowserWindow, shell, Menu, ipcMain, desktopCapturer, dialog, Notification, nativeImage } = require("electron");
+const { app, BrowserWindow, shell, Menu, ipcMain, desktopCapturer, dialog, Notification, nativeImage, protocol, session } = require("electron");
 const path = require("path");
+const fs = require("fs");
 const { exec } = require("child_process");
 const { autoUpdater } = require("electron-updater");
 const log = require("electron-log");
@@ -60,6 +61,31 @@ function getAppIconImage() {
 
 function createWindow() {
   const iconImage = getAppIconImage();
+
+  // SELF-HEAL: if a misbuilt dist/index.html references "/assets/..." (absolute),
+  // those resolve to drive root under file:// and 404. Intercept and redirect to
+  // the dist folder so a broken installer recovers without a re-download.
+  try {
+    const distDir = path.join(__dirname, "..", "dist");
+    session.defaultSession.webRequest.onBeforeRequest({ urls: ["file:///*"] }, (details, callback) => {
+      try {
+        const u = new URL(details.url);
+        // On Windows file:// URLs decode to e.g. /C:/assets/...; on macOS/Linux to /assets/...
+        const decoded = decodeURIComponent(u.pathname);
+        const m = decoded.match(/\/assets\/([^?#]+)$/);
+        if (m && !decoded.includes("/dist/assets/")) {
+          const fixed = path.join(distDir, "assets", m[1]);
+          if (fs.existsSync(fixed)) {
+            return callback({ redirectURL: "file:///" + fixed.replace(/\\/g, "/") });
+          }
+        }
+      } catch (_) { /* noop */ }
+      callback({});
+    });
+  } catch (e) {
+    log.warn("[selfheal] webRequest hook failed:", e?.message || e);
+  }
+
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
