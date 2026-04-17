@@ -370,6 +370,7 @@ const AppLayout = () => {
         {/* Sliding members panel (right) — only useful on group DMs */}
         {isDM && activeConv?.is_group && (
           <div
+            ref={membersPanelSwipeRef}
             className="fixed inset-y-0 right-0 z-40 mobile-panel mobile-chrome"
             style={{
               width: "85vw",
