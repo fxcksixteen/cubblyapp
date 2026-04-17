@@ -44,7 +44,13 @@ export const KNOWN_GAMES: Record<string, KnownActivity> = {
 
   // Roblox
   "robloxplayerbeta": { name: "Roblox", type: "game" },
+  "robloxplayer": { name: "Roblox", type: "game" },
   "roblox": { name: "Roblox", type: "game" },
+  "robloxstudiobeta": { name: "Roblox Studio", type: "software" },
+
+  // Marvel Rivals
+  "marvel-win64-shipping": { name: "Marvel Rivals", type: "game" },
+  "marvel rivals": { name: "Marvel Rivals", type: "game" },
 
   // Battle.net / Blizzard
   "battle.net": { name: "Battle.net", type: "software" },
