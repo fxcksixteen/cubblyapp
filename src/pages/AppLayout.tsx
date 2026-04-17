@@ -325,6 +325,7 @@ const AppLayout = () => {
               isInCall={!!isInCall}
               onBack={() => navigate("/@me/online", { replace: true })}
               onCall={handleVoiceCall}
+              onVideo={!activeConv.is_group ? handleVideoCall : undefined}
               onShowMembers={activeConv.is_group ? () => setMobilePanel("members") : undefined}
             />
           ) : !isYou ? (
