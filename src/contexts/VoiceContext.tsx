@@ -1697,6 +1697,31 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     return () => clearTimeout(t);
   }, [incomingCall?.callEventId]);
 
+  // Poll RTCPeerConnection.getStats() during a connected call to compute round-trip ping.
+  useEffect(() => {
+    if (!activeCall || activeCall.state !== "connected") {
+      setPing(0);
+      return;
+    }
+    const interval = setInterval(async () => {
+      const pc = pcRef.current;
+      if (!pc) return;
+      try {
+        const stats = await pc.getStats();
+        let rtt: number | null = null;
+        stats.forEach((report: any) => {
+          if (report.type === "candidate-pair" && report.state === "succeeded" && typeof report.currentRoundTripTime === "number") {
+            rtt = report.currentRoundTripTime;
+          }
+        });
+        if (rtt != null) setPing(Math.round(rtt * 1000));
+      } catch {
+        /* ignore */
+      }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [activeCall?.state]);
+
   return (
     <VoiceContext.Provider value={{
       settings, updateSettings, screenShareSettings, updateScreenShareSettings,
@@ -1705,6 +1730,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       localStream, remoteStream, localVideoStream, remoteVideoStream,
       audioLevel, remoteAudioLevel, availableDevices, refreshDevices, callEvents, detectedRegion,
       isScreenSharing, screenStream, remoteScreenStream, startScreenShare, stopScreenShare,
+      ping,
     }}>
       {children}
     </VoiceContext.Provider>
