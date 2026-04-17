@@ -195,6 +195,9 @@ export function useUnreadCounts(activeConversationId: string | null) {
               lastSenderName: profile?.display_name ?? existing?.lastSenderName,
               lastSenderAvatar: profile?.avatar_url ?? existing?.lastSenderAvatar,
               lastMessageAt: msg.created_at,
+              isGroup: existing?.isGroup,
+              groupName: existing?.groupName,
+              groupPictureUrl: existing?.groupPictureUrl,
             });
             return next;
           });
