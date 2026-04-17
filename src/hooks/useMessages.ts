@@ -130,14 +130,50 @@ export function useMessages(conversationId: string | null) {
           { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` },
           async (payload) => {
             const newMessage = payload.new as Message;
-            const { data: profile, error: profileError } = await supabase
-              .from("profiles")
-              .select("display_name, avatar_url")
-              .eq("user_id", newMessage.sender_id)
-              .maybeSingle();
+
+            // Fetch sender profile + reply_to in parallel so the realtime
+            // INSERT doesn't blow away the optimistic message's reply preview.
+            const [{ data: profile, error: profileError }, replyResult] = await Promise.all([
+              supabase
+                .from("profiles")
+                .select("display_name, avatar_url")
+                .eq("user_id", newMessage.sender_id)
+                .maybeSingle(),
+              newMessage.reply_to_id
+                ? supabase
+                    .from("messages")
+                    .select("id, sender_id, content")
+                    .eq("id", newMessage.reply_to_id)
+                    .maybeSingle()
+                : Promise.resolve({ data: null as any }),
+            ]);
 
             if (profileError) {
               console.error("Failed to fetch realtime sender profile:", profileError);
+            }
+
+            // Build reply_to preview if this message is a reply
+            let replyPreview: ReplyPreview | null = null;
+            if (newMessage.reply_to_id && replyResult.data) {
+              const r = replyResult.data as any;
+              // Need the replied-to sender's display name too — try cache via profile fetch above
+              let replySenderName: string | undefined;
+              if (r.sender_id === newMessage.sender_id) {
+                replySenderName = profile?.display_name || undefined;
+              } else {
+                const { data: replySenderProfile } = await supabase
+                  .from("profiles")
+                  .select("display_name")
+                  .eq("user_id", r.sender_id)
+                  .maybeSingle();
+                replySenderName = replySenderProfile?.display_name || undefined;
+              }
+              replyPreview = {
+                id: r.id,
+                sender_id: r.sender_id,
+                sender_name: getSenderName(r.sender_id, replySenderName),
+                content: r.content,
+              };
             }
 
             setMessages((previous) => {
@@ -149,11 +185,14 @@ export function useMessages(conversationId: string | null) {
               );
 
               if (optimisticIndex >= 0) {
+                const optimistic = previous[optimisticIndex];
                 const updated = [...previous];
                 updated[optimisticIndex] = {
                   ...newMessage,
                   sender_name: getSenderName(newMessage.sender_id, profile?.display_name),
                   sender_avatar_url: profile?.avatar_url || null,
+                  // Prefer freshly fetched reply preview, fall back to optimistic one
+                  reply_to: replyPreview || optimistic.reply_to || null,
                   status: "delivered",
                 };
                 return updated;
@@ -167,6 +206,7 @@ export function useMessages(conversationId: string | null) {
                   ...newMessage,
                   sender_name: getSenderName(newMessage.sender_id, profile?.display_name ?? updated[existingIndex].sender_name),
                   sender_avatar_url: profile?.avatar_url ?? updated[existingIndex].sender_avatar_url ?? null,
+                  reply_to: replyPreview || updated[existingIndex].reply_to || null,
                   status: "delivered",
                 };
                 return updated;
@@ -178,6 +218,7 @@ export function useMessages(conversationId: string | null) {
                   ...newMessage,
                   sender_name: getSenderName(newMessage.sender_id, profile?.display_name),
                   sender_avatar_url: profile?.avatar_url || null,
+                  reply_to: replyPreview,
                   status: "delivered",
                 },
               ];
