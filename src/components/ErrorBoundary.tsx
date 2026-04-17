@@ -23,6 +23,20 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: unknown) {
     console.error("[ErrorBoundary] caught:", error, info);
+    // Auto-recover from chunk-load errors: hard reload once.
+    const msg = error?.message || "";
+    const isChunk =
+      error?.name === "ChunkLoadError" ||
+      /Loading chunk [\w-]+ failed/i.test(msg) ||
+      /Failed to fetch dynamically imported module/i.test(msg);
+    if (isChunk) {
+      try {
+        if (!sessionStorage.getItem("__cubbly_chunk_reload")) {
+          sessionStorage.setItem("__cubbly_chunk_reload", "1");
+          window.location.reload();
+        }
+      } catch { /* ignore */ }
+    }
   }
 
   handleReload = () => {
