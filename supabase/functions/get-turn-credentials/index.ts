@@ -6,13 +6,18 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+type IceServer = {
+  urls: string;
+  username?: string;
+  credential?: string;
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    // Verify authentication
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -35,11 +40,10 @@ serve(async (req) => {
       });
     }
 
-    // Return TURN credentials from server-side secrets
     const turnUsername = Deno.env.get("TURN_USERNAME");
     const turnCredential = Deno.env.get("TURN_CREDENTIAL");
 
-    const iceServers = [
+    const iceServers: IceServer[] = [
       { urls: "stun:stun.l.google.com:19302" },
       { urls: "stun:stun1.l.google.com:19302" },
       { urls: "stun:stun2.l.google.com:19302" },
@@ -47,7 +51,6 @@ serve(async (req) => {
       { urls: "stun:stun4.l.google.com:19302" },
     ];
 
-    // Add TURN servers only if credentials are configured
     if (turnUsername && turnCredential) {
       iceServers.push(
         { urls: "turn:a.relay.metered.ca:80", username: turnUsername, credential: turnCredential },
