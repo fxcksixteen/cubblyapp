@@ -836,19 +836,31 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     if (!activeCall || !user) return;
     if (!activeCall.isScreenSharing) {
       let stream: MediaStream;
+      const wantAudio = true; // group calls now share audio too
       try {
-        if (sourceId && (window as any).electronAPI?.isElectron) {
-          // Electron desktop capture
-          stream = await navigator.mediaDevices.getUserMedia({
-            audio: false,
-            video: {
-              // chromeMediaSource is non-standard but supported in Electron
-              // @ts-ignore
-              mandatory: { chromeMediaSource: "desktop", chromeMediaSourceId: sourceId },
-            },
-          } as any);
+        const api = (window as any).electronAPI;
+        if (api?.isElectron) {
+          // Modern Electron pipeline: hand source to main, then getDisplayMedia.
+          let chosenId = sourceId;
+          if (!chosenId && api?.getDesktopSources) {
+            const sources = await api.getDesktopSources();
+            chosenId = (sources.find((s: any) => s.id.startsWith("screen:")) || sources[0])?.id;
+          }
+          if (!chosenId) throw new Error("No screen sources available");
+          await api.setSelectedShareSource(chosenId, wantAudio);
+          try {
+            stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: wantAudio } as any);
+          } finally {
+            try { await api.clearSelectedShareSource?.(); } catch {}
+          }
+          if (wantAudio && stream.getAudioTracks().length === 0) {
+            console.warn("[GroupCall] Electron share audio requested but no audio track produced");
+          }
         } else {
-          stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+          stream = await navigator.mediaDevices.getDisplayMedia({
+            video: true,
+            audio: wantAudio ? ({ systemAudio: "include" } as any) : false,
+          } as any);
         }
       } catch (e) {
         console.error("[GroupCall] Screen share denied:", e);
@@ -863,6 +875,10 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         Object.defineProperty(labeledStream, "id", { value: `cubbly-screen-${user.id}` });
         const sender = pc.addTrack(track, labeledStream);
         screenSendersRef.current.set(peerId, sender);
+        // Also add screenshare audio track(s) so peers actually hear it.
+        stream.getAudioTracks().forEach((atrack) => {
+          try { pc.addTrack(atrack, labeledStream); } catch (e) { console.warn("[GroupCall] add screen audio failed:", e); }
+        });
       }
       // Auto-stop when user clicks the OS "Stop sharing" pill
       track.onended = () => { toggleScreenShare(); };

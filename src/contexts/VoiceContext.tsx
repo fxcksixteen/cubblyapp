@@ -1158,63 +1158,46 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     try {
       let stream: MediaStream;
 
-      // Electron path: use desktopCapturer via preload
-      if (isElectron && options?.sourceId) {
-        const selectedSourceId = options.sourceId;
+      // Electron path: use the modern display-capture pipeline. Main injects
+      // the chosen source + 'loopback' audio via setDisplayMediaRequestHandler.
+      // The legacy chromeMediaSource constraint route is gone — it gave silent
+      // window shares.
+      if (isElectron) {
+        const api = (window as any).electronAPI;
+        let selectedSourceId = options?.sourceId;
+        if (!selectedSourceId && api?.getDesktopSources) {
+          const sources = await api.getDesktopSources();
+          let selectedSource = sources[0];
+          if (type === "screen") {
+            selectedSource = sources.find((s: any) => s.id.startsWith("screen:")) || selectedSource;
+          } else if (type === "window") {
+            selectedSource = sources.find((s: any) => s.id.startsWith("window:")) || selectedSource;
+          }
+          if (!selectedSource) throw new Error("No screen sources available");
+          selectedSourceId = selectedSource.id;
+        }
+        const wantAudio = effectiveAudio;
+        await api.setSelectedShareSource(selectedSourceId, wantAudio);
 
         const videoConstraints: any = {
-          mandatory: {
-            chromeMediaSource: "desktop",
-            chromeMediaSourceId: selectedSourceId,
-            ...(res ? { maxWidth: res.width, maxHeight: res.height } : {}),
-            maxFrameRate: effectiveFps,
-          },
+          frameRate: { ideal: effectiveFps, max: effectiveFps },
+          ...(res
+            ? { width: { ideal: res.width }, height: { ideal: res.height } }
+            : { width: { ideal: 1920 }, height: { ideal: 1080 } }),
         };
 
-        // Best-effort desktop audio in Electron. Chromium still treats this
-        // as desktop loopback, but we should not regress to silent shares.
-        const wantAudio = effectiveAudio;
-
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: wantAudio ? {
-            mandatory: {
-              chromeMediaSource: "desktop",
-              chromeMediaSourceId: selectedSourceId,
-            },
-          } as any : false,
-          video: videoConstraints,
-        });
-      } else if (isElectron && (window as any).electronAPI?.getDesktopSources) {
-        const sources = await (window as any).electronAPI.getDesktopSources();
-        let selectedSource = sources[0];
-        if (type === "screen") {
-          selectedSource = sources.find((s: any) => s.id.startsWith("screen:")) || selectedSource;
-        } else if (type === "window") {
-          selectedSource = sources.find((s: any) => s.id.startsWith("window:")) || selectedSource;
+        try {
+          stream = await navigator.mediaDevices.getDisplayMedia({
+            video: videoConstraints,
+            audio: wantAudio,
+          } as any);
+        } finally {
+          try { await api.clearSelectedShareSource?.(); } catch {}
         }
 
-        if (!selectedSource) throw new Error("No screen sources available");
-
-        const videoConstraints: any = {
-          mandatory: {
-            chromeMediaSource: "desktop",
-            chromeMediaSourceId: selectedSource.id,
-            ...(res ? { maxWidth: res.width, maxHeight: res.height } : {}),
-            maxFrameRate: effectiveFps,
-          },
-        };
-
-        const wantAudio = effectiveAudio;
-
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: wantAudio ? {
-            mandatory: {
-              chromeMediaSource: "desktop",
-              chromeMediaSourceId: selectedSource.id,
-            },
-          } as any : false,
-          video: videoConstraints,
-        });
+        if (wantAudio && stream.getAudioTracks().length === 0) {
+          console.warn("[Voice] Electron share audio requested but no audio track was produced (OS may not support loopback for this source)");
+        }
       } else {
         // Browser path: standard getDisplayMedia.
         // Only attempt audio when user is sharing an entire screen — window/tab cannot

@@ -455,7 +455,74 @@ ipcMain.handle("get-desktop-sources", async () => {
   }));
 });
 
-app.whenReady().then(createWindow);
+// ----- Modern display-capture pipeline (Electron 28+) -----
+// Renderer picks a source via the picker, then calls
+// `electronAPI.setSelectedShareSource(sourceId, wantAudio)` followed by
+// `navigator.mediaDevices.getDisplayMedia(...)`. Main intercepts the request
+// here and grants the chosen source — with `audio: 'loopback'` when the user
+// requested audio. This is the path that actually delivers a usable share
+// audio track for window/screen sources, unlike the legacy
+// `chromeMediaSourceId` constraint which often returns video-only.
+let pendingShareSourceId = null;
+let pendingShareWantAudio = false;
+ipcMain.handle("set-selected-share-source", (_evt, sourceId, wantAudio) => {
+  pendingShareSourceId = sourceId || null;
+  pendingShareWantAudio = !!wantAudio;
+  log.info("[share] selected source set:", sourceId, "audio:", !!wantAudio);
+  return true;
+});
+ipcMain.handle("clear-selected-share-source", () => {
+  pendingShareSourceId = null;
+  pendingShareWantAudio = false;
+  return true;
+});
+
+function installDisplayMediaHandler() {
+  try {
+    session.defaultSession.setDisplayMediaRequestHandler(async (_request, callback) => {
+      try {
+        if (!pendingShareSourceId) {
+          log.warn("[share] getDisplayMedia called with no pending source — denying");
+          callback({});
+          return;
+        }
+        const sources = await desktopCapturer.getSources({
+          types: ["window", "screen"],
+          thumbnailSize: { width: 0, height: 0 },
+        });
+        const match = sources.find(s => s.id === pendingShareSourceId);
+        if (!match) {
+          log.warn("[share] pending source not found among desktopCapturer sources:", pendingShareSourceId);
+          callback({});
+          return;
+        }
+        const grant = { video: match };
+        if (pendingShareWantAudio) {
+          // 'loopback' = system audio capture on Windows; on macOS Electron will
+          // fall back to no audio (macOS has no public loopback API). Browsers/
+          // Linux behave per Chromium defaults.
+          grant.audio = "loopback";
+        }
+        log.info("[share] granting source:", match.id, "withAudio:", pendingShareWantAudio);
+        callback(grant);
+      } catch (e) {
+        log.error("[share] display-media handler failed:", e?.message || e);
+        callback({});
+      } finally {
+        // One-shot — clear so the next share requires a fresh pick
+        pendingShareSourceId = null;
+        pendingShareWantAudio = false;
+      }
+    }, { useSystemPicker: false });
+  } catch (e) {
+    log.warn("[share] failed to install display-media handler:", e?.message || e);
+  }
+}
+
+app.whenReady().then(() => {
+  installDisplayMediaHandler();
+  createWindow();
+});
 app.on("window-all-closed", () => { app.quit(); });
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
