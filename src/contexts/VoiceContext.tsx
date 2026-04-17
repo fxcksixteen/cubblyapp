@@ -139,6 +139,8 @@ interface VoiceContextType {
   remoteScreenStream: MediaStream | null;
   startScreenShare: (type?: "screen" | "window" | "tab", options?: { audio?: boolean; fps?: number; quality?: string; sourceId?: string }) => Promise<void>;
   stopScreenShare: () => void;
+  /** Round-trip latency in ms (polled from RTCPeerConnection.getStats during active call). 0 when not in a call. */
+  ping: number;
 }
 
 const VoiceContext = createContext<VoiceContextType>({} as VoiceContextType);
