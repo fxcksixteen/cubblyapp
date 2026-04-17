@@ -300,6 +300,7 @@ export function useMessages(conversationId: string | null) {
               ...(insertedMessage as Message),
               sender_name: optimistic.sender_name,
               sender_avatar_url: optimistic.sender_avatar_url,
+              reply_to: optimistic.reply_to,
               status: "sent" as MessageStatus,
             }
           : message,

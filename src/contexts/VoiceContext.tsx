@@ -3,6 +3,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { playSound, playLooping, stopLooping } from "@/lib/sounds";
 
+type ParticipantStatePatch = {
+  is_muted?: boolean;
+  is_deafened?: boolean;
+  is_video_on?: boolean;
+  is_screen_sharing?: boolean;
+};
+
 export interface VoiceSettings {
   inputDeviceId: string;
   outputDeviceId: string;
@@ -133,6 +140,7 @@ interface VoiceContextType {
   availableDevices: { inputs: MediaDeviceInfo[]; outputs: MediaDeviceInfo[]; cameras: MediaDeviceInfo[] };
   refreshDevices: () => void;
   callEvents: CallEvent[];
+  currentCallEventId: string | null;
   detectedRegion: string;
   isScreenSharing: boolean;
   screenStream: MediaStream | null;
@@ -206,6 +214,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const [audioLevel, setAudioLevel] = useState(0);
   const [remoteAudioLevel, setRemoteAudioLevel] = useState(0);
   const [callEvents, setCallEvents] = useState<CallEvent[]>([]);
+  const [currentCallEventId, setCurrentCallEventId] = useState<string | null>(null);
   const [detectedRegion, setDetectedRegion] = useState("us-east");
   const [ping, setPing] = useState(0);
 
@@ -520,6 +529,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             pcRef.current = null;
             setActiveCall(null);
             setIncomingCall(null);
+            setCurrentCallEventId(null);
             setRemoteStream(null);
             setRemoteAudioLevel(0);
             document.querySelectorAll("audio").forEach((el: any) => {
@@ -960,6 +970,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         state: "ongoing",
         startedAt: new Date().toISOString(),
       }]);
+      setCurrentCallEventId(callEventId);
 
       supabase.from("call_events").insert({
         id: callEventId,
@@ -1023,6 +1034,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     if (!incomingCall || !user) return;
 
     const acceptedCall = incomingCall;
+    const acceptedCallEventId = acceptedCall.callEventId || crypto.randomUUID();
     console.log("[Voice] ✅ Accepting call from", acceptedCall.callerName, "hasOffer:", !!acceptedCall.offer);
 
     try {
@@ -1097,19 +1109,19 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             type: "ready-for-offer",
             senderId: user.id,
             senderName: user.user_metadata?.display_name || "User",
-            callEventId: acceptedCall.callEventId,
+            callEventId: acceptedCallEventId,
           },
         });
       }
 
+      setCurrentCallEventId(acceptedCallEventId);
       setCallEvents(prev => {
-        const callEventId = acceptedCall.callEventId || crypto.randomUUID();
         const hasOngoing = prev.some(
-          e => e.id === callEventId || (e.conversationId === acceptedCall.conversationId && e.state === "ongoing")
+          e => e.id === acceptedCallEventId || (e.conversationId === acceptedCall.conversationId && e.state === "ongoing")
         );
         if (hasOngoing) return prev;
         return [...prev, {
-          id: callEventId,
+          id: acceptedCallEventId,
           conversationId: acceptedCall.conversationId,
           state: "ongoing",
           startedAt: new Date().toISOString(),
@@ -1159,12 +1171,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           },
         };
 
-        // CRITICAL: Chromium's desktop audio capture is system-wide loopback,
-        // it cannot isolate a single window's audio. So when sharing a single
-        // *window*, refuse audio capture entirely — otherwise we'd leak ALL
-        // system audio to the peer. Only allow audio for full-screen shares.
-        const sourceIsFullScreen = selectedSourceId.startsWith("screen:");
-        const wantAudio = effectiveAudio && sourceIsFullScreen;
+        // Best-effort desktop audio in Electron. Chromium still treats this
+        // as desktop loopback, but we should not regress to silent shares.
+        const wantAudio = effectiveAudio;
 
         stream = await navigator.mediaDevices.getUserMedia({
           audio: wantAudio ? {
@@ -1175,12 +1184,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           } as any : false,
           video: videoConstraints,
         });
-
-        // Hard guard: if for any reason an audio track came back on a window
-        // share, strip it before adding to the PC.
-        if (!sourceIsFullScreen) {
-          stream.getAudioTracks().forEach(t => { try { t.stop(); } catch {} stream.removeTrack(t); });
-        }
       } else if (isElectron && (window as any).electronAPI?.getDesktopSources) {
         const sources = await (window as any).electronAPI.getDesktopSources();
         let selectedSource = sources[0];
@@ -1201,8 +1204,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           },
         };
 
-        const sourceIsFullScreen = selectedSource.id.startsWith("screen:");
-        const wantAudio = effectiveAudio && sourceIsFullScreen;
+        const wantAudio = effectiveAudio;
 
         stream = await navigator.mediaDevices.getUserMedia({
           audio: wantAudio ? {
@@ -1213,10 +1215,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           } as any : false,
           video: videoConstraints,
         });
-
-        if (!sourceIsFullScreen) {
-          stream.getAudioTracks().forEach(t => { try { t.stop(); } catch {} stream.removeTrack(t); });
-        }
       } else {
         // Browser path: standard getDisplayMedia.
         // Only attempt audio when user is sharing an entire screen — window/tab cannot
@@ -1471,6 +1469,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     setRemoteStream(null);
     setActiveCall(null);
     setIncomingCall(null);
+    setCurrentCallEventId(null);
     stopAudioLevelMonitor();
     cancelAnimationFrame(remoteAnimFrameRef.current);
     remoteAnalyserRef.current = null;
@@ -1498,40 +1497,57 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   // Keep endCall ref always current
   useEffect(() => { endCallRef.current = endCall; }, [endCall]);
 
-  /** Push my current mute/deafen state to call_participants so peers see it live */
-  const syncCallParticipantState = useCallback(async (overrides?: { is_muted?: boolean; is_deafened?: boolean }) => {
-    if (!user) return;
-    // Find the most recent ongoing call event
-    const ongoing = [...callEvents].reverse().find(e => e.state === "ongoing");
-    if (!ongoing) return;
-    const currentMuted = overrides?.is_muted ?? activeCall?.isMuted ?? false;
-    const currentDeafened = overrides?.is_deafened ?? activeCall?.isDeafened ?? false;
+  const upsertCurrentCallParticipantState = useCallback(async (patch: ParticipantStatePatch) => {
+    if (!user || !currentCallEventId) return;
+
+    const updates: ParticipantStatePatch = {};
+    if (patch.is_muted !== undefined) updates.is_muted = patch.is_muted;
+    if (patch.is_deafened !== undefined) updates.is_deafened = patch.is_deafened;
+    if (patch.is_video_on !== undefined) updates.is_video_on = patch.is_video_on;
+    if (patch.is_screen_sharing !== undefined) updates.is_screen_sharing = patch.is_screen_sharing;
+
     try {
-      // Upsert: insert if first time, otherwise update
       const { data: existing } = await supabase
         .from("call_participants")
         .select("id")
-        .eq("call_event_id", ongoing.id)
+        .eq("call_event_id", currentCallEventId)
         .eq("user_id", user.id)
         .is("left_at", null)
         .maybeSingle();
+
       if (existing) {
         await supabase
           .from("call_participants")
-          .update({ is_muted: currentMuted, is_deafened: currentDeafened })
+          .update(updates)
           .eq("id", existing.id);
-      } else {
-        await supabase.from("call_participants").insert({
-          call_event_id: ongoing.id,
-          user_id: user.id,
-          is_muted: currentMuted,
-          is_deafened: currentDeafened,
-        });
+        return;
       }
+
+      await supabase.from("call_participants").insert({
+        call_event_id: currentCallEventId,
+        user_id: user.id,
+        is_muted: false,
+        is_deafened: false,
+        is_video_on: false,
+        is_screen_sharing: false,
+        ...updates,
+      });
     } catch (e) {
-      console.warn("[Voice] Failed to sync call participant state:", e);
+      console.warn("[Voice] Failed to upsert call participant state:", e);
     }
-  }, [user, callEvents, activeCall]);
+  }, [user, currentCallEventId]);
+
+  /** Push my current mute/deafen state to call_participants so peers see it live */
+  const syncCallParticipantState = useCallback(async (overrides?: { is_muted?: boolean; is_deafened?: boolean }) => {
+    const currentMuted = overrides?.is_muted ?? activeCall?.isMuted ?? false;
+    const currentDeafened = overrides?.is_deafened ?? activeCall?.isDeafened ?? false;
+
+    await upsertCurrentCallParticipantState({
+      is_muted: currentMuted,
+      is_deafened: currentDeafened,
+      is_video_on: activeCall?.isVideoOn ?? false,
+    });
+  }, [activeCall, upsertCurrentCallParticipantState]);
 
   // Keep the forward ref pointing at the latest function so the ICE handler
   // can call it the moment the call connects.
@@ -1598,33 +1614,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     const sender = transceiver.sender;
     const currentlyOn = !!sender.track;
 
-    // Helper: upsert is_video_on so peers see the change even if no row existed yet.
     const upsertVideoState = async (isVideoOn: boolean) => {
-      const ongoing = [...callEvents].reverse().find(e => e.state === "ongoing");
-      if (!ongoing || !user) return;
-      try {
-        const { data: existing } = await supabase
-          .from("call_participants")
-          .select("id")
-          .eq("call_event_id", ongoing.id)
-          .eq("user_id", user.id)
-          .is("left_at", null)
-          .maybeSingle();
-        if (existing) {
-          await supabase
-            .from("call_participants")
-            .update({ is_video_on: isVideoOn })
-            .eq("id", existing.id);
-        } else {
-          await supabase.from("call_participants").insert({
-            call_event_id: ongoing.id,
-            user_id: user.id,
-            is_video_on: isVideoOn,
-          });
-        }
-      } catch (e) {
-        console.warn("[Voice] Failed to sync video state:", e);
-      }
+      await upsertCurrentCallParticipantState({
+        is_video_on: isVideoOn,
+        is_muted: activeCall?.isMuted ?? false,
+        is_deafened: activeCall?.isDeafened ?? false,
+      });
     };
 
     if (currentlyOn) {
@@ -1688,7 +1683,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     } catch (e) {
       console.error("[Voice] Failed to start camera:", e);
     }
-  }, [settings.videoDeviceId, settings.videoResolution, settings.videoFrameRate, callEvents, user]);
+  }, [settings.videoDeviceId, settings.videoResolution, settings.videoFrameRate, activeCall, upsertCurrentCallParticipantState]);
 
   useEffect(() => {
     if (!user) return;
@@ -1785,7 +1780,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       activeCall, startCall, acceptCall, endCall,
       incomingCall, toggleMute, toggleDeafen, toggleVideo,
       localStream, remoteStream, localVideoStream, remoteVideoStream,
-      audioLevel, remoteAudioLevel, availableDevices, refreshDevices, callEvents, detectedRegion,
+      audioLevel, remoteAudioLevel, availableDevices, refreshDevices, callEvents, currentCallEventId, detectedRegion,
       isScreenSharing, screenStream, remoteScreenStream, startScreenShare, stopScreenShare,
       ping,
     }}>
