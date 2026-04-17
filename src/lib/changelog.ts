@@ -23,9 +23,25 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.1";
+export const CURRENT_VERSION = "0.2.2";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.2.2",
+    title: "Desktop notifications, fixed",
+    date: "2026-04-17",
+    hero: bearImage,
+    newFeatures: [
+      "Desktop notifications now ship enabled out of the box — no permission prompt, no setup, just install and go",
+      "Toasts now show the sender's profile picture instead of the Cubbly logo (Discord-style)",
+      "Notifications are properly attributed to 'Cubbly' on Windows instead of 'Electron'",
+    ],
+    bugFixes: [
+      "Fixed message notification sound not playing — message.wav now plays reliably on every new DM",
+      "Fixed the OS playing its generic 'ding' on top of our custom sound (double-ding gone)",
+      "Web version no longer prompts for browser notification permission — only the desktop app and installed mobile PWA ask",
+    ],
+  },
   {
     version: "0.2.1",
     title: "Group voice + video + screen share",
