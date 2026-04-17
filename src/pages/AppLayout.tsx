@@ -180,6 +180,18 @@ const AppLayout = () => {
     },
   });
 
+  // Swipe-left on the open DM panel closes it (Discord-style back to chat)
+  const dmPanelSwipeRef = useSwipe<HTMLDivElement>({
+    disabled: !isMobile || mobilePanel !== "dms",
+    onSwipeLeft: () => setMobilePanel("none"),
+  });
+
+  // Swipe-right on the open members panel closes it
+  const membersPanelSwipeRef = useSwipe<HTMLDivElement>({
+    disabled: !isMobile || mobilePanel !== "members",
+    onSwipeRight: () => setMobilePanel("none"),
+  });
+
   const renderHeader = () => {
     if (isShop) {
       return <span className="font-semibold" style={{ color: "var(--app-text-primary)" }}>Shop</span>;
