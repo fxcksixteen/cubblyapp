@@ -30,9 +30,7 @@
         }
       ],
       "icon": "electron/icon.ico",
-      "signAndEditExecutable": false,
-      "signingHashAlgorithms": null,
-      "verifyUpdateCodeSignature": false
+      "signAndEditExecutable": false
     },
     "nsis": {
       "oneClick": false,
