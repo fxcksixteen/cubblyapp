@@ -7,6 +7,7 @@ export interface UserActivity {
   user_id: string;
   activity_type: string;
   name: string | null;
+  /** "game" | "software" — stored in `details` so we don't need a schema change. */
   details: string | null;
   started_at: string;
   privacy_visible: boolean;
@@ -120,9 +121,9 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
 
   // ---- Broadcast my activity (Electron only) ----
   const broadcastActivity = useCallback(
-    async (game: { processName: string; displayName: string } | null) => {
+    async (game: import("@/lib/knownGames").DetectedActivity | null) => {
       if (!user) return;
-      const newKey = game ? game.displayName : "__none__";
+      const newKey = game ? `${game.type}:${game.displayName}` : "__none__";
       if (lastSentRef.current === newKey) return; // no change → skip
       lastSentRef.current = newKey;
 
@@ -132,9 +133,10 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
           .upsert(
             {
               user_id: user.id,
-              activity_type: "playing",
+              activity_type: game.type === "software" ? "using" : "playing",
               name: game.displayName,
-              details: null,
+              // Stash the kind in `details` so consumers can pick the right verb.
+              details: game.type,
               started_at: new Date().toISOString(),
               privacy_visible: shareActivity,
             },
