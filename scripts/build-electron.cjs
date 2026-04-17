@@ -45,8 +45,7 @@ const builderArgs = [
   "--x64",
   "--publish",
   "never",
-  "--config",
-  `directories.output=${releaseRoot}`,
+  `--config.directories.output=${releaseRoot}`,
 ];
 console.log(`[build:electron] Command: ${npxCmd} ${builderArgs.join(" ")}`);
 const builderResult = spawnSync(npxCmd, builderArgs, { cwd: rootDir, stdio: "inherit", shell: true });
