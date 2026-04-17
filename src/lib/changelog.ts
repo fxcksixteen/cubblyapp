@@ -23,9 +23,30 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.0";
+export const CURRENT_VERSION = "0.2.1";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.2.1",
+    title: "Group calls, activity icons & voice card",
+    date: "2026-04-17",
+    hero: bearImage,
+    newFeatures: [
+      "Group voice calls — start a call in any group DM and ring every member at once with a full N-peer audio mesh",
+      "Activity icons everywhere — game/app logos now show in the DM sidebar, profile popups, full profiles and the Active Now rail",
+      "Smart icon resolution — curated logos for popular games/apps, Steam CDN fallback, then the actual .exe icon from your OS",
+      "Discord-style activity card in the DM sidebar with the icon, name, verb (Playing/Using) and live elapsed time",
+      "Live voice status card in the DM sidebar with WiFi-bar ping indicator (hover for ms), location, and quick mute/cam/share/hangup buttons",
+      "Per-peer speaking rings in group calls so you can see exactly who's talking",
+      "'Using Steam' (and other software) now correctly says Using instead of Playing",
+    ],
+    bugFixes: [
+      "Fixed activity card not appearing for some users with Steam open",
+      "Smoother fallback when no curated icon exists — colored letter tiles instead of broken images",
+      "Per-peer audio level monitoring no longer leaks AudioContext on call end",
+      "Group call participants list now refreshes correctly when someone joins or leaves mid-call",
+    ],
+  },
   {
     version: "0.2.0",
     title: "Gaming Mode, video calls & mobile rework",
