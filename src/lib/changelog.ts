@@ -23,9 +23,29 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.3";
+export const CURRENT_VERSION = "0.2.4";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.2.4",
+    title: "Calling, screen share & mobile fixes",
+    date: "2026-04-17",
+    hero: bearImage,
+    newFeatures: [
+      "1-on-1 video calling — the camera button in DM headers now actually starts/toggles video for both desktop and mobile",
+      "Fullscreen camera tiles — click any camera tile in a call to expand it to full window, just like screen sharing",
+      "Bigger status indicators — idle, do-not-disturb and invisible icons now match the visual weight of the green online dot",
+      "iPhone home-screen PWA support — installing Cubbly to your iOS home screen now actually loads instead of grey-screening",
+    ],
+    bugFixes: [
+      "CRITICAL: Sharing a single window no longer leaks your entire system audio — window shares are now silent (audio only included when sharing the full screen)",
+      "Fixed mute & deafen indicators not appearing for other people in the call — they now sync the moment the call connects",
+      "Fixed remote camera not showing for the other person when you turned yours on mid-call",
+      "Fixed reply previews flickering / disappearing for a split second after sending a message",
+      "Fixed the Windows taskbar and notifications still showing the generic Electron icon instead of the Cubbly logo",
+      "Fixed mobile (iOS Safari) voice calling being completely broken — mic, audio playback and level monitoring now work",
+    ],
+  },
   {
     version: "0.2.3",
     title: "Updater hotfix + notification settings",
