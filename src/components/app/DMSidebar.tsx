@@ -9,6 +9,7 @@ import { Conversation } from "@/hooks/useConversations";
 import { supabase } from "@/integrations/supabase/client";
 import { Plus, X, Users } from "lucide-react";
 import { getProfileColor } from "@/lib/profileColors";
+import { activityLabel } from "@/lib/activityLabel";
 import { toast } from "sonner";
 import {
   ContextMenu,
