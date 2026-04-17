@@ -9,6 +9,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("window-maximize-changed", (_, isMaximized) => callback(isMaximized));
   },
   getDesktopSources: () => ipcRenderer.invoke("get-desktop-sources"),
+  /** Tell main which desktop source the user picked for the next getDisplayMedia call. */
+  setSelectedShareSource: (sourceId, wantAudio) =>
+    ipcRenderer.invoke("set-selected-share-source", sourceId, wantAudio),
+  clearSelectedShareSource: () => ipcRenderer.invoke("clear-selected-share-source"),
   isElectron: true,
 
   // Activity / process scanning
