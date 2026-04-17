@@ -22,6 +22,8 @@ import ProfilePopup from "./ProfilePopup";
 import SettingsModal from "./SettingsModal";
 import SearchBar from "./SearchBar";
 import UserProfileCard from "./chat/UserProfileCard";
+import SidebarActivityCard from "./SidebarActivityCard";
+import SidebarVoiceCard from "./SidebarVoiceCard";
 import friendsIcon from "@/assets/icons/friends.svg";
 import shopIcon from "@/assets/icons/shop.svg";
 import micIcon from "@/assets/icons/microphone.svg";
@@ -290,6 +292,13 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
           })}
         </div>
       </div>
+
+      {/* Activity + Voice cards (sit just above the user panel) */}
+      <SidebarActivityCard />
+      <SidebarVoiceCard
+        conversations={conversations}
+        onOpenCall={(convId) => setActiveView(`dm:${convId}`)}
+      />
 
       {/* User panel */}
       <div className="flex items-center gap-2.5 px-2 py-2 user-panel" style={{ backgroundColor: 'var(--app-bg-accent)' }}>
