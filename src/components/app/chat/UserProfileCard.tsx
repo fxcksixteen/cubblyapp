@@ -42,8 +42,9 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
   const color = getProfileColor(userId);
   const isOwnProfile = userId === user?.id;
   const effectiveStatus = getEffectivePresenceStatus(userId, profile?.status, onlineUserIds);
+  const isUserOnline = isOwnProfile || userId === "00000000-0000-0000-0000-000000000001" || onlineUserIds.has(userId);
   const userActivity = getActivity(userId);
-  const userActivityLabel = activityLabel(userActivity);
+  const userActivityLabel = activityLabel(userActivity, isUserOnline);
 
   useEffect(() => {
     supabase

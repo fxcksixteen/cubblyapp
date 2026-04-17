@@ -298,7 +298,8 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
                       <p className="text-sm font-semibold leading-tight text-white">{friendship.profile.display_name}</p>
                       {(() => {
                         const act = getActivity(friendship.profile.user_id);
-                        const label = activityLabel(act);
+                        const friendOnline = friendship.profile.user_id === CUBBLY_BOT_ID || onlineUserIds.has(friendship.profile.user_id);
+                        const label = activityLabel(act, friendOnline);
                         if (activeTab !== "pending" && label) {
                           return (
                             <p className="truncate text-xs leading-tight" style={{ color: "#3ba55c" }}>

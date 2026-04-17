@@ -167,7 +167,10 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
               ? (conv.name || conv.members.map((m) => m.display_name).slice(0, 3).join(", ") || "Group")
               : conv.participant.display_name;
             const dmActivity = !conv.is_group ? getActivity(conv.participant.user_id) : undefined;
-            const dmActivityLabel = activityLabel(dmActivity);
+            const dmIsOnline = !conv.is_group
+              ? (conv.participant.user_id === "00000000-0000-0000-0000-000000000001" || onlineUserIds.has(conv.participant.user_id))
+              : false;
+            const dmActivityLabel = activityLabel(dmActivity, dmIsOnline);
             const subtitle = conv.is_group
               ? `${conv.members.length + 1} members`
               : dmActivityLabel;

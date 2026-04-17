@@ -171,10 +171,29 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
     tick(); // immediate
     pollTimerRef.current = setInterval(tick, POLL_INTERVAL_MS);
 
+    // Best-effort cleanup: when the app/tab closes, delete our activity row
+    // so friends don't keep seeing "Playing Discord" after we're gone.
+    const handleUnload = () => {
+      try {
+        const url = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/user_activities?user_id=eq.${user.id}`;
+        const headers = {
+          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string,
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        };
+        // sendBeacon doesn't support DELETE; use fetch with keepalive instead
+        fetch(url, { method: "DELETE", headers, keepalive: true }).catch(() => {});
+      } catch { /* ignore */ }
+    };
+    window.addEventListener("beforeunload", handleUnload);
+
     return () => {
       cancelled = true;
       if (pollTimerRef.current) clearInterval(pollTimerRef.current);
       pollTimerRef.current = null;
+      window.removeEventListener("beforeunload", handleUnload);
+      // Also clean up on unmount (sign-out)
+      handleUnload();
+      lastSentRef.current = null;
     };
   }, [user?.id, myGames, broadcastActivity]);
 

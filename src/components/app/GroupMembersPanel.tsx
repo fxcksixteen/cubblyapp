@@ -251,7 +251,8 @@ const GroupMembersPanel = ({ conversation, onClose, onLeftGroup }: GroupMembersP
                 </div>
                 {(() => {
                   const act = getActivity(m.user_id);
-                  const label = activityLabel(act);
+                  const memberOnline = m.isYou || onlineUserIds.has(m.user_id);
+                  const label = activityLabel(act, memberOnline);
                   if (label) {
                     return (
                       <p className="truncate text-[11px] leading-tight" style={{ color: "#3ba55c" }}>
