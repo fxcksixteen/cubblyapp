@@ -3,6 +3,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { playSound, playLooping, stopLooping } from "@/lib/sounds";
 
+type ParticipantStatePatch = {
+  is_muted?: boolean;
+  is_deafened?: boolean;
+  is_video_on?: boolean;
+  is_screen_sharing?: boolean;
+};
+
 export interface VoiceSettings {
   inputDeviceId: string;
   outputDeviceId: string;
@@ -1490,14 +1497,14 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   // Keep endCall ref always current
   useEffect(() => { endCallRef.current = endCall; }, [endCall]);
 
-  const upsertCurrentCallParticipantState = useCallback(async (
-    patch: Partial<Pick<CallParticipantState, "is_muted" | "is_deafened" | "is_video_on" | "is_screen_sharing">>,
-  ) => {
+  const upsertCurrentCallParticipantState = useCallback(async (patch: ParticipantStatePatch) => {
     if (!user || !currentCallEventId) return;
 
-    const updates = Object.fromEntries(
-      Object.entries(patch).filter(([, value]) => value !== undefined),
-    );
+    const updates: ParticipantStatePatch = {};
+    if (patch.is_muted !== undefined) updates.is_muted = patch.is_muted;
+    if (patch.is_deafened !== undefined) updates.is_deafened = patch.is_deafened;
+    if (patch.is_video_on !== undefined) updates.is_video_on = patch.is_video_on;
+    if (patch.is_screen_sharing !== undefined) updates.is_screen_sharing = patch.is_screen_sharing;
 
     try {
       const { data: existing } = await supabase
