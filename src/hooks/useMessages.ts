@@ -6,12 +6,21 @@ const BOT_USER_ID = "00000000-0000-0000-0000-000000000001";
 
 export type MessageStatus = "sending" | "sent" | "delivered";
 
+export interface ReplyPreview {
+  id: string;
+  sender_id: string;
+  sender_name: string;
+  content: string;
+}
+
 export interface Message {
   id: string;
   conversation_id: string;
   sender_id: string;
   content: string;
   created_at: string;
+  reply_to_id?: string | null;
+  reply_to?: ReplyPreview | null;
   sender_name?: string;
   sender_avatar_url?: string | null;
   status?: MessageStatus;
@@ -73,23 +82,33 @@ export function useMessages(conversationId: string | null) {
 
     if (data && data.length > 0) {
       const senderIds = [...new Set(data.map((message) => message.sender_id))];
-      const { data: profiles, error: profilesError } = await supabase
-        .from("profiles")
-        .select("user_id, display_name, avatar_url")
-        .in("user_id", senderIds);
+      const replyIds = [...new Set(data.map((m: any) => m.reply_to_id).filter(Boolean))] as string[];
 
-      if (profilesError) {
-        console.error("Failed to fetch sender profiles:", profilesError);
-      }
+      const [{ data: profiles }, { data: replyRows }] = await Promise.all([
+        supabase.from("profiles").select("user_id, display_name, avatar_url").in("user_id", senderIds),
+        replyIds.length
+          ? supabase.from("messages").select("id, sender_id, content").in("id", replyIds)
+          : Promise.resolve({ data: [] as any[] }),
+      ]);
 
-      const nameMap = new Map((profiles || []).map((profile) => [profile.user_id, profile.display_name]));
-      const avatarMap = new Map((profiles || []).map((profile) => [profile.user_id, profile.avatar_url]));
+      const nameMap = new Map((profiles || []).map((p) => [p.user_id, p.display_name]));
+      const avatarMap = new Map((profiles || []).map((p) => [p.user_id, p.avatar_url]));
+      const replyMap = new Map<string, ReplyPreview>();
+      (replyRows || []).forEach((r: any) => {
+        replyMap.set(r.id, {
+          id: r.id,
+          sender_id: r.sender_id,
+          sender_name: getSenderName(r.sender_id, nameMap.get(r.sender_id)),
+          content: r.content,
+        });
+      });
 
       setMessages(
-        data.map((message) => ({
+        data.map((message: any) => ({
           ...message,
           sender_name: getSenderName(message.sender_id, nameMap.get(message.sender_id)),
           sender_avatar_url: avatarMap.get(message.sender_id) || null,
+          reply_to: message.reply_to_id ? replyMap.get(message.reply_to_id) || null : null,
           status: "delivered" as MessageStatus,
         })),
       );
@@ -186,11 +205,19 @@ export function useMessages(conversationId: string | null) {
     };
   }, [conversationId, fetchMessages]);
 
-  const sendMessage = async (content: string) => {
+  const sendMessage = async (content: string, replyToId?: string | null) => {
     if (!user || !conversationId || !content.trim()) return false;
 
     const trimmedContent = content.trim();
     const tempId = `temp-${Date.now()}`;
+    const replyPreview: ReplyPreview | null = replyToId
+      ? (() => {
+          const m = messages.find((mm) => mm.id === replyToId);
+          if (!m) return null;
+          return { id: m.id, sender_id: m.sender_id, sender_name: m.sender_name || "Unknown", content: m.content };
+        })()
+      : null;
+
     const optimistic: Message = {
       id: tempId,
       conversation_id: conversationId,
@@ -199,18 +226,23 @@ export function useMessages(conversationId: string | null) {
       created_at: new Date().toISOString(),
       sender_name: user.user_metadata?.display_name || user.email?.split("@")[0] || "Unknown",
       sender_avatar_url: currentUserAvatarUrl,
+      reply_to_id: replyToId || null,
+      reply_to: replyPreview,
       status: "sending",
     };
 
     setMessages((previous) => [...previous, optimistic]);
 
+    const insertPayload: any = {
+      conversation_id: conversationId,
+      sender_id: user.id,
+      content: trimmedContent,
+    };
+    if (replyToId) insertPayload.reply_to_id = replyToId;
+
     const { data: insertedMessage, error } = await supabase
       .from("messages")
-      .insert({
-        conversation_id: conversationId,
-        sender_id: user.id,
-        content: trimmedContent,
-      })
+      .insert(insertPayload)
       .select("*")
       .single();
 
