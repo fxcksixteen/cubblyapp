@@ -322,7 +322,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     } as any);
 
     setActiveCall({ conversationId, conversationName, joinedAt: Date.now(), isMuted: false, isDeafened: false });
-    playSound("joinCall", { volume: 0.4 });
+    playSound("message", { volume: 0.4 });
 
     // Subscribe to call channel
     await joinCallChannel(conversationId);
@@ -505,7 +505,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       isMuted: false,
       isDeafened: false,
     });
-    playSound("joinCall", { volume: 0.4 });
+    playSound("message", { volume: 0.4 });
 
     // Insert participant row
     if (inc.callEventId) {
