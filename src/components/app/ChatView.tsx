@@ -544,6 +544,26 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
       </div>
 
 
+      {/* Reply pill */}
+      {replyTo && (
+        <div
+          className="flex items-center gap-2 px-4 py-1.5 text-xs border-t"
+          style={{ backgroundColor: "var(--app-bg-secondary, #2b2d31)", borderColor: "var(--app-border, #1e1f22)", color: "var(--app-text-secondary, #949ba4)" }}
+        >
+          <ReplyIcon className="h-3.5 w-3.5 -scale-x-100 shrink-0" />
+          <span className="truncate">
+            Replying to <strong className="font-semibold" style={{ color: "var(--app-text-primary, #dbdee1)" }}>@{replyTo.sender_name}</strong>
+          </span>
+          <button
+            onClick={() => setReplyTo(null)}
+            className="ml-auto flex h-5 w-5 items-center justify-center rounded hover:bg-white/10 shrink-0"
+            title="Cancel reply"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Pending files preview */}
       {pendingFiles.length > 0 && (
         <div className="border-t px-4 py-2" style={{ borderColor: "var(--app-border, #1e1f22)", backgroundColor: "var(--app-bg-secondary, #2b2d31)" }}>
