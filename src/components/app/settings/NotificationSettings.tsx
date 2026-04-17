@@ -3,7 +3,7 @@ import type { CSSProperties } from "react";
 import { BellRing, MessageSquareText, Volume2 } from "lucide-react";
 import { toast } from "sonner";
 import { getNotificationPermission, notify } from "@/lib/notifications";
-import { playSound } from "@/lib/sounds";
+import { playSound, playLooping, stopLooping } from "@/lib/sounds";
 import {
   getNotificationPreferences,
   subscribeToNotificationPreferences,
@@ -65,6 +65,20 @@ const NotificationSettings = ({ cardStyle }: NotificationSettingsProps) => {
   const playTestSound = () => {
     playSound("message", { force: true });
     toast.success("Played message.wav.");
+  };
+
+  const testCallSound = (key: "outgoingRing" | "incomingCall" | "leaveCall", label: string) => {
+    if (key === "leaveCall") {
+      playSound("leaveCall", { force: true, volume: 0.5 });
+      toast.success(`Played ${label}.`);
+      return;
+    }
+    // Looping sounds — start, then auto-stop after 4s so the user can hear them
+    // without needing a separate "stop" button.
+    stopLooping(key);
+    playLooping(key, { force: true, volume: 0.5 });
+    toast.success(`Playing ${label} for 4 seconds…`);
+    window.setTimeout(() => stopLooping(key), 4000);
   };
 
   const rows = [
@@ -182,8 +196,49 @@ const NotificationSettings = ({ cardStyle }: NotificationSettingsProps) => {
               color: "var(--app-text-primary)",
             }}
           >
-            Play Test Sound
+            Play Message Sound
           </button>
+        </div>
+
+        <div className="mt-3">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--app-text-secondary)" }}>
+            Call Sounds
+          </p>
+          <div className="grid gap-3 md:grid-cols-3">
+            <button
+              onClick={() => testCallSound("outgoingRing", "outgoing ring")}
+              className="rounded-[18px] border px-4 py-3 text-sm font-semibold transition-colors hover:opacity-90"
+              style={{
+                backgroundColor: "var(--app-bg-secondary)",
+                borderColor: "var(--app-border)",
+                color: "var(--app-text-primary)",
+              }}
+            >
+              Outgoing Ring
+            </button>
+            <button
+              onClick={() => testCallSound("incomingCall", "incoming call")}
+              className="rounded-[18px] border px-4 py-3 text-sm font-semibold transition-colors hover:opacity-90"
+              style={{
+                backgroundColor: "var(--app-bg-secondary)",
+                borderColor: "var(--app-border)",
+                color: "var(--app-text-primary)",
+              }}
+            >
+              Incoming Call
+            </button>
+            <button
+              onClick={() => testCallSound("leaveCall", "leave call")}
+              className="rounded-[18px] border px-4 py-3 text-sm font-semibold transition-colors hover:opacity-90"
+              style={{
+                backgroundColor: "var(--app-bg-secondary)",
+                borderColor: "var(--app-border)",
+                color: "var(--app-text-primary)",
+              }}
+            >
+              Leave Call
+            </button>
+          </div>
         </div>
 
         <p className="mt-4 text-xs leading-relaxed" style={{ color: "var(--app-text-secondary)" }}>

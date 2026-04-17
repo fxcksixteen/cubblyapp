@@ -3,12 +3,23 @@
 
 type SoundKey = "message" | "outgoingRing" | "incomingCall" | "leaveCall";
 
-// Use new URL(...) so Vite resolves the asset URL relative to the bundle.
-// Critically, this works under Electron's `file://` (where leading "/" paths
-// silently 404) AND under web. Falls back to a plain string if URL fails.
+// Resolve a sound URL that works in BOTH the web build (served from "/")
+// AND the Electron build (loaded via file:// where leading "/" 404s).
+//
+// In Electron, `document.baseURI` resolves to the bundled `dist/index.html`
+// file URL — so `new URL("sounds/foo.wav", document.baseURI)` correctly
+// produces `file:///.../resources/app.asar/dist/sounds/foo.wav`.
+//
+// On the web, `document.baseURI` is the page origin, so the same call gives
+// us `https://app.cubbly.app/sounds/foo.wav`. One code path, both worlds.
 function resolveSoundUrl(name: string): string {
   try {
-    return new URL(`/sounds/${name}`, import.meta.url).href;
+    if (typeof document !== "undefined" && document.baseURI) {
+      return new URL(`sounds/${name}`, document.baseURI).href;
+    }
+  } catch { /* ignore */ }
+  try {
+    return new URL(`./sounds/${name}`, import.meta.url).href;
   } catch {
     return `/sounds/${name}`;
   }
