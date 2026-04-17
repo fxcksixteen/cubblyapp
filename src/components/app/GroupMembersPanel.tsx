@@ -129,7 +129,7 @@ const GroupMembersPanel = ({ conversation, onClose, onLeftGroup }: GroupMembersP
     setConfirmKick(null);
   };
 
-  // Build full members list including current user
+  // Build full members list including current user (with their REAL avatar + status)
   const allMembers = [
     ...(user
       ? [
@@ -137,8 +137,8 @@ const GroupMembersPanel = ({ conversation, onClose, onLeftGroup }: GroupMembersP
             user_id: user.id,
             display_name: user.user_metadata?.display_name || "You",
             username: user.user_metadata?.username || "you",
-            avatar_url: null as string | null,
-            status: "online",
+            avatar_url: myAvatarUrl,
+            status: myStatus,
             isYou: true,
           },
         ]
@@ -213,7 +213,11 @@ const GroupMembersPanel = ({ conversation, onClose, onLeftGroup }: GroupMembersP
         </p>
         {allMembers.map((m) => {
           const color = getProfileColor(m.user_id);
-          const status = m.isYou ? "online" : getEffectivePresenceStatus(m.user_id, m.status, onlineUserIds);
+          // Use the user's actual selected status (idle/dnd/invisible/online).
+          // For "you", invisible appears as offline-style only to others; locally show real selection.
+          const status = m.isYou
+            ? (m.status === "invisible" ? "invisible" : m.status)
+            : getEffectivePresenceStatus(m.user_id, m.status, onlineUserIds);
           const memberIsOwner = m.user_id === conversation.owner_id;
           return (
             <div
@@ -247,10 +251,11 @@ const GroupMembersPanel = ({ conversation, onClose, onLeftGroup }: GroupMembersP
                 </div>
                 {(() => {
                   const act = getActivity(m.user_id);
-                  if (act?.name) {
+                  const label = activityLabel(act);
+                  if (label) {
                     return (
                       <p className="truncate text-[11px] leading-tight" style={{ color: "#3ba55c" }}>
-                        Playing {act.name}
+                        {label}
                       </p>
                     );
                   }
