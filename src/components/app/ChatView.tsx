@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { X, Reply as ReplyIcon } from "lucide-react";
 import { defaultProfileColor, getProfileColor } from "@/lib/profileColors";
 import { CallPanel, CallEventMessage } from "./VoiceCallOverlay";
+import GroupCallPanel from "./GroupCallPanel";
 import TypingIndicator from "./TypingIndicator";
 import MessageActions from "./chat/MessageActions";
 import MessageContextMenu from "./chat/MessageContextMenu";
@@ -378,14 +379,18 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
   return (
     <div className="flex flex-1 min-h-0 overflow-hidden">
       <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
-      {/* Discord-style call panel */}
+      {/* Discord-style call panel — group call OR 1-on-1 call (mutually exclusive) */}
       <div className="shrink-0 max-h-[50vh] overflow-y-auto">
-        <CallPanel
-          conversationId={conversationId}
-          recipientName={recipientName}
-          recipientAvatar={recipientAvatar}
-          recipientUserId={recipientUserId}
-        />
+        {conversation?.is_group ? (
+          <GroupCallPanel conversationId={conversationId} />
+        ) : (
+          <CallPanel
+            conversationId={conversationId}
+            recipientName={recipientName}
+            recipientAvatar={recipientAvatar}
+            recipientUserId={recipientUserId}
+          />
+        )}
       </div>
 
       {/* Messages */}

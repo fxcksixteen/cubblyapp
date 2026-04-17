@@ -18,6 +18,7 @@ import NotFound from "./pages/NotFound.tsx";
 import UpdateModal from "./components/app/UpdateModal";
 import WhatsNewModal from "./components/app/WhatsNewModal";
 import GlobalCallIndicator from "./components/app/GlobalCallIndicator";
+import { GroupIncomingCallOverlay } from "./components/app/GroupCallPanel";
 
 const queryClient = new QueryClient();
 
@@ -53,6 +54,7 @@ const App = () => (
               <UpdateModal />
               <WhatsNewModal />
               <GlobalCallIndicator />
+              <GroupIncomingCallOverlay />
               </GamingModeProvider>
             </ActivityProvider>
             </GroupCallProvider>
