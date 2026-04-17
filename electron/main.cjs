@@ -42,7 +42,7 @@ function createWindow() {
     minWidth: 940,
     minHeight: 600,
     title: "Cubbly",
-    icon: path.join(__dirname, "..", "dist", "favicon.ico"),
+    icon: path.join(__dirname, "icon.ico"),
     frame: false,
     titleBarStyle: "hidden",
     backgroundColor: "#1e1610",
@@ -163,7 +163,7 @@ ipcMain.handle("show-notification", async (_evt, opts) => {
     // Prefer the sender's avatar URL (Discord-style); fall back to app icon.
     let icon = await loadRemoteIcon(opts?.icon);
     if (!icon) {
-      const iconPath = path.join(__dirname, "..", "dist", "favicon.ico");
+      const iconPath = path.join(__dirname, "icon.ico");
       try { icon = nativeImage.createFromPath(iconPath); } catch { icon = undefined; }
     }
     const n = new Notification({
