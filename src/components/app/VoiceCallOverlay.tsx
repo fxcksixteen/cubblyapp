@@ -177,7 +177,7 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
             {/* When my camera is on, show the live video tile in place of the avatar circle */}
             {activeCall.isVideoOn && localVideoStream ? (
               <div
-                className={`relative overflow-hidden rounded-2xl bg-black transition-all duration-150 ${
+                className={`group relative overflow-hidden rounded-2xl bg-black transition-all duration-150 ${
                   hasScreenShare ? "h-20 w-28" : "h-[140px] w-[200px]"
                 }`}
                 style={{
@@ -195,6 +195,19 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
                   className="h-full w-full object-cover"
                   style={{ transform: settings.mirrorSelfView ? "scaleX(-1)" : "none" }}
                 />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const el = localCamRef.current;
+                    if (!el) return;
+                    if (!document.fullscreenElement) el.requestFullscreen().catch(() => {});
+                    else document.exitFullscreen().catch(() => {});
+                  }}
+                  className="absolute top-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-md bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-black/75 transition-opacity"
+                  title="Fullscreen"
+                >
+                  <Maximize2 className="h-3 w-3" />
+                </button>
               </div>
             ) : (
               <div
