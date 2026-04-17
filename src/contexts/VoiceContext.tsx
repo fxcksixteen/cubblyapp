@@ -191,6 +191,9 @@ async function detectBestRegion(): Promise<string> {
 
 // Detect if running in Electron
 const isElectron = typeof window !== "undefined" && !!(window as any).electronAPI;
+// iOS Safari has strict gesture/codec rules — apply looser audio constraints + gesture-tied playback
+const isIOS = typeof navigator !== "undefined" && /iP(hone|od|ad)/.test(navigator.userAgent || "");
+const isMobile = typeof navigator !== "undefined" && /Mobi|Android|iP(hone|od|ad)/i.test(navigator.userAgent || "");
 
 export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const { user } = useAuth();
@@ -385,6 +388,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const startAudioLevelMonitor = useCallback((stream: MediaStream) => {
     const ctx = new AudioContext();
     audioContextRef.current = ctx;
+    // iOS Safari starts AudioContext suspended — must explicitly resume from a user gesture.
+    // This call is fire-and-forget; the surrounding accept/start handler is the gesture.
+    if (ctx.state === "suspended") {
+      ctx.resume().catch(() => {});
+    }
     const source = ctx.createMediaStreamSource(stream);
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 256;
@@ -411,19 +419,19 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const getUserMedia = useCallback(async () => {
-    const constraints: MediaStreamConstraints = {
-      audio: {
-        deviceId: settings.inputDeviceId !== "default" ? { exact: settings.inputDeviceId } : undefined,
-        echoCancellation: settings.echoCancellation,
-        noiseSuppression: settings.noiseSuppression,
-        autoGainControl: settings.autoGainControl,
-        sampleRate: 48000,
-        sampleSize: 24,
-        channelCount: 2,
-      } as MediaTrackConstraints,
-      video: false,
+    // iOS Safari rejects strict sampleRate/sampleSize/channelCount constraints
+    // and returns NO stream at all → mobile users had no mic. On mobile we
+    // pass only the universally-supported booleans and let Safari pick defaults.
+    const audioBase: MediaTrackConstraints = {
+      deviceId: settings.inputDeviceId !== "default" ? { exact: settings.inputDeviceId } : undefined,
+      echoCancellation: settings.echoCancellation,
+      noiseSuppression: settings.noiseSuppression,
+      autoGainControl: settings.autoGainControl,
     };
-    return navigator.mediaDevices.getUserMedia(constraints);
+    const audio: MediaTrackConstraints = isMobile
+      ? audioBase
+      : { ...audioBase, sampleRate: 48000, sampleSize: 24, channelCount: 2 } as MediaTrackConstraints;
+    return navigator.mediaDevices.getUserMedia({ audio, video: false });
   }, [settings.inputDeviceId, settings.echoCancellation, settings.noiseSuppression, settings.autoGainControl]);
 
   const createPeerConnection = useCallback(() => {
