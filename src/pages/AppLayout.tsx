@@ -44,6 +44,11 @@ const AppLayout = () => {
   const location = useLocation();
   const { user, onlineUserIds } = useAuth();
   const { activeCall, startCall, endCall } = useVoice();
+  const groupCall = (() => {
+    // Defer requiring the hook in case provider isn't wrapping (it always is, but TS-safe)
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    return require("@/contexts/GroupCallContext").useGroupCall();
+  })();
   const isMobile = useIsMobile();
 
   const pathParts = location.pathname.split("/").filter(Boolean);
