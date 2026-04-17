@@ -180,6 +180,18 @@ const AppLayout = () => {
     },
   });
 
+  // Swipe-left on the open DM panel closes it (Discord-style back to chat)
+  const dmPanelSwipeRef = useSwipe<HTMLDivElement>({
+    disabled: !isMobile || mobilePanel !== "dms",
+    onSwipeLeft: () => setMobilePanel("none"),
+  });
+
+  // Swipe-right on the open members panel closes it
+  const membersPanelSwipeRef = useSwipe<HTMLDivElement>({
+    disabled: !isMobile || mobilePanel !== "members",
+    onSwipeRight: () => setMobilePanel("none"),
+  });
+
   const renderHeader = () => {
     if (isShop) {
       return <span className="font-semibold" style={{ color: "var(--app-text-primary)" }}>Shop</span>;
@@ -320,6 +332,7 @@ const AppLayout = () => {
 
         {/* Sliding DM panel (left) */}
         <div
+          ref={dmPanelSwipeRef}
           className="fixed inset-y-0 left-0 z-40 flex mobile-panel mobile-chrome"
           style={{
             width: "85vw",
@@ -357,6 +370,7 @@ const AppLayout = () => {
         {/* Sliding members panel (right) — only useful on group DMs */}
         {isDM && activeConv?.is_group && (
           <div
+            ref={membersPanelSwipeRef}
             className="fixed inset-y-0 right-0 z-40 mobile-panel mobile-chrome"
             style={{
               width: "85vw",

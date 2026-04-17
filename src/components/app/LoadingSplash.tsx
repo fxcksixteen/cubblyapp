@@ -29,7 +29,10 @@ const LoadingSplash = ({ minDuration = 2200, onComplete }: LoadingSplashProps) =
   const startedAt = useRef(Date.now());
 
   useEffect(() => {
+    let done = false;
     const handleReady = () => {
+      if (done) return;
+      done = true;
       const elapsed = Date.now() - startedAt.current;
       const remaining = Math.max(0, minDuration - elapsed);
       setTimeout(() => {
@@ -41,17 +44,20 @@ const LoadingSplash = ({ minDuration = 2200, onComplete }: LoadingSplashProps) =
       }, remaining);
     };
 
+    // Hard ceiling: regardless of any load events, never let the splash linger
+    // beyond this. Fixes the "solid grey UI on refresh" bug on web/mobile where
+    // cached refreshes sometimes never re-fire `load` reliably.
+    const hardCeiling = setTimeout(handleReady, minDuration + 1500);
+
     if (document.readyState === "complete") {
       handleReady();
     } else {
       window.addEventListener("load", handleReady, { once: true });
-      // Fallback in case load never fires (Electron etc.)
-      const fallback = setTimeout(handleReady, minDuration + 500);
-      return () => {
-        window.removeEventListener("load", handleReady);
-        clearTimeout(fallback);
-      };
     }
+    return () => {
+      window.removeEventListener("load", handleReady);
+      clearTimeout(hardCeiling);
+    };
   }, [minDuration, onComplete]);
 
   if (hidden) return null;
