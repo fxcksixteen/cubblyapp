@@ -19,6 +19,11 @@ log.transports.file.level = "info";
 autoUpdater.logger = log;
 autoUpdater.autoDownload = true;       // Download new versions in the background
 autoUpdater.autoInstallOnAppQuit = true; // Fallback: install on quit if user never restarts
+// Consider BOTH stable releases AND pre-releases — whichever has the highest
+// semver wins. Without this flag electron-updater silently ignores any GitHub
+// release marked "pre-release", which is why v0.2.2 was never picked up.
+autoUpdater.allowPrerelease = true;
+autoUpdater.allowDowngrade = false;
 
 // ----- Auto-launch on system startup (Discord-style) -----
 try {
