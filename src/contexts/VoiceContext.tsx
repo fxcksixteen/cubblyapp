@@ -456,6 +456,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       const audioEl = document.createElement("audio");
       audioEl.srcObject = remote;
       audioEl.autoplay = true;
+      // iOS requires playsinline + non-muted on freshly-created media elements,
+      // otherwise the system silently refuses to play the remote audio.
+      audioEl.setAttribute("playsinline", "true");
+      (audioEl as any).playsInline = true;
+      audioEl.muted = false;
       audioEl.volume = settings.outputVolume / 100;
       outputGainRef.current = { gain: { value: settings.outputVolume / 100 } } as any;
       (audioEl as any).__cubblyRemote = true;
