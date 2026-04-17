@@ -204,6 +204,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const [remoteAudioLevel, setRemoteAudioLevel] = useState(0);
   const [callEvents, setCallEvents] = useState<CallEvent[]>([]);
   const [detectedRegion, setDetectedRegion] = useState("us-east");
+  const [ping, setPing] = useState(0);
 
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
