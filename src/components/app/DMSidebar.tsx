@@ -166,9 +166,10 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
               ? (conv.name || conv.members.map((m) => m.display_name).slice(0, 3).join(", ") || "Group")
               : conv.participant.display_name;
             const dmActivity = !conv.is_group ? getActivity(conv.participant.user_id) : undefined;
+            const dmActivityLabel = activityLabel(dmActivity);
             const subtitle = conv.is_group
               ? `${conv.members.length + 1} members`
-              : (dmActivity?.name ? `Playing ${dmActivity.name}` : null);
+              : dmActivityLabel;
             return (
               <ContextMenu key={conv.id}>
                 <ContextMenuTrigger asChild>
