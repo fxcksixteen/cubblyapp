@@ -54,6 +54,13 @@ export function useUnreadCounts(activeConversationId: string | null) {
 
     const conversationIds = participations.map((p) => p.conversation_id);
 
+    // Fetch conversation metadata so we know which are groups
+    const { data: convRows } = await supabase
+      .from("conversations")
+      .select("id, is_group, name, picture_url")
+      .in("id", conversationIds);
+    const convMap = new Map((convRows || []).map((c) => [c.id, c]));
+
     // 2. For each conversation, count messages newer than last_read_at AND not from us
     //    + grab the most recent message's sender for the avatar
     const result = new Map<string, UnreadInfo>();
@@ -91,6 +98,7 @@ export function useUnreadCounts(activeConversationId: string | null) {
           .eq("user_id", lastMsg.sender_id)
           .maybeSingle();
 
+        const conv = convMap.get(convId);
         result.set(convId, {
           conversationId: convId,
           count,
@@ -98,6 +106,9 @@ export function useUnreadCounts(activeConversationId: string | null) {
           lastSenderName: profile?.display_name,
           lastSenderAvatar: profile?.avatar_url,
           lastMessageAt: lastMsg.created_at,
+          isGroup: !!conv?.is_group,
+          groupName: conv?.name ?? null,
+          groupPictureUrl: conv?.picture_url ?? null,
         });
       })
     );
