@@ -22,6 +22,8 @@ import ProfilePopup from "./ProfilePopup";
 import SettingsModal from "./SettingsModal";
 import SearchBar from "./SearchBar";
 import UserProfileCard from "./chat/UserProfileCard";
+import SidebarActivityCard from "./SidebarActivityCard";
+import SidebarVoiceCard from "./SidebarVoiceCard";
 import friendsIcon from "@/assets/icons/friends.svg";
 import shopIcon from "@/assets/icons/shop.svg";
 import micIcon from "@/assets/icons/microphone.svg";
