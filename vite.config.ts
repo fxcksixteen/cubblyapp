@@ -6,7 +6,10 @@ import { VitePWA } from "vite-plugin-pwa";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
-  base: './',
+  // Electron loads via file:// and needs relative asset paths.
+  // Web/PWA needs absolute "/" so deep links like /@me/online resolve assets correctly
+  // (relative ./assets/... breaks iOS Home Screen PWA at non-root start_url).
+  base: process.env.BUILD_TARGET === "electron" ? "./" : "/",
   server: {
     host: "::",
     port: 8080,

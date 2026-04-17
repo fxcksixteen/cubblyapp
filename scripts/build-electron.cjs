@@ -29,11 +29,12 @@ if (dryRun) {
   process.exit(0);
 }
 
-console.log(`[build:electron] Step 1/3: running vite build...`);
+console.log(`[build:electron] Step 1/3: running vite build (BUILD_TARGET=electron)...`);
 const buildResult = spawnSync(npmCmd, ["run", "build"], {
   cwd: rootDir,
   stdio: "inherit",
   shell: true,
+  env: { ...process.env, BUILD_TARGET: "electron" },
 });
 if (buildResult.status !== 0) {
   console.error(`[build:electron] vite build failed (status ${buildResult.status})`);

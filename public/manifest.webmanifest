@@ -2,7 +2,7 @@
   "name": "Cubbly",
   "short_name": "Cubbly",
   "description": "Your cozy corner of the internet — chat, hang out, and connect.",
-  "start_url": "/@me/online",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
