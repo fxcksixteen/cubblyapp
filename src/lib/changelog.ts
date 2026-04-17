@@ -23,9 +23,25 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.2";
+export const CURRENT_VERSION = "0.2.3";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.2.3",
+    title: "Updater hotfix + notification settings",
+    date: "2026-04-17",
+    hero: bearImage,
+    newFeatures: [
+      "Added a Check for Updates button in Update Logs so desktop users can force a GitHub update check instantly",
+      "Filled out the Notifications settings tab with desktop alerts, message sound, preview toggles, plus test buttons",
+      "Update checks now surface real status toasts so you can see checking, downloading, latest-version, and error states",
+    ],
+    bugFixes: [
+      "Fixed the settings footer version so it now follows the real current release",
+      "Fixed the updater flow by shipping the app itself as v0.2.3 instead of still reporting v0.2.1",
+      "Fixed the Update Logs ref warning in SettingsModal by forwarding the settings panel ref correctly",
+    ],
+  },
   {
     version: "0.2.2",
     title: "Desktop notifications, fixed",
