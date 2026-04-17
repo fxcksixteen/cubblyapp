@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { playSound } from "@/lib/sounds";
 import { notify, ensureNotificationPermission } from "@/lib/notifications";
+import { getNotificationPreferences } from "@/lib/notificationSettings";
 
 export interface UnreadInfo {
   conversationId: string;
@@ -160,17 +161,18 @@ export function useUnreadCounts(activeConversationId: string | null) {
             return;
           }
 
-          // Play notification sound (respects DND internally)
-          playSound("message");
+          const notificationPrefs = getNotificationPreferences();
 
-          // Fetch sender profile for the indicator + OS notification
+          if (notificationPrefs.messageSoundEnabled) {
+            playSound("message");
+          }
+
           const { data: profile } = await supabase
             .from("profiles")
             .select("display_name, avatar_url")
             .eq("user_id", msg.sender_id)
             .maybeSingle();
 
-          // OS-level notification (suppressed automatically when window focused or DND on)
           const senderName = profile?.display_name || "Someone";
           const preview = (msg.content || "")
             .replace(/\[attachments\].*?\[\/attachments\]/s, "📎 Attachment")
@@ -178,11 +180,12 @@ export function useUnreadCounts(activeConversationId: string | null) {
             .slice(0, 140);
           notify({
             title: senderName,
-            body: preview || "Sent you a message",
+            body: notificationPrefs.showMessagePreview
+              ? preview || "Sent you a message"
+              : "Sent you a message",
             icon: profile?.avatar_url || "/favicon.ico",
             tag: `dm:${msg.conversation_id}`,
             onClick: () => {
-              // Navigate via hash for both BrowserRouter and HashRouter
               const path = `/@me/chat/${msg.conversation_id}`;
               if (window.location.hash) {
                 window.location.hash = path;

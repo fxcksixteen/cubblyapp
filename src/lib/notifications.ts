@@ -1,3 +1,5 @@
+import { getNotificationPreferences } from "@/lib/notificationSettings";
+
 /**
  * Cross-platform notification wrapper.
  * - In Electron: prefers the main-process `Notification` API (proper Windows toast
@@ -47,13 +49,12 @@ export interface NotifyOptions {
   title: string;
   body: string;
   icon?: string;
-  tag?: string; // collapses repeated notifications (e.g. same conversation)
+  tag?: string;
   silent?: boolean;
   onClick?: () => void;
+  force?: boolean;
 }
 
-// Track per-tag click handlers so the Electron main->renderer "clicked" event
-// can route to the right callback.
 const clickHandlers = new Map<string, () => void>();
 if (isElectron && electronAPI?.onNotificationClick) {
   try {
@@ -68,11 +69,12 @@ if (isElectron && electronAPI?.onNotificationClick) {
 }
 
 export function notify(options: NotifyOptions) {
-  if (dndActive) return;
-  if (typeof window !== "undefined" && (window as any).__cubblySuppress) return;
-  if (typeof document !== "undefined" && document.hasFocus()) return;
+  const prefs = getNotificationPreferences();
+  if (!prefs.desktopEnabled) return;
+  if (!options.force && dndActive) return;
+  if (!options.force && typeof window !== "undefined" && (window as any).__cubblySuppress) return;
+  if (!options.force && typeof document !== "undefined" && document.hasFocus()) return;
 
-  // Electron path
   if (isElectron && electronAPI?.showNotification) {
     if (options.tag && options.onClick) clickHandlers.set(options.tag, options.onClick);
     try {
@@ -80,8 +82,8 @@ export function notify(options: NotifyOptions) {
         title: options.title,
         body: options.body,
         tag: options.tag,
-        icon: options.icon, // sender avatar URL — main process fetches & uses it
-        silent: true,        // we always play our own sound from renderer
+        icon: options.icon,
+        silent: true,
       });
     } catch (e) {
       console.warn("[notify electron] failed:", e);
@@ -89,7 +91,6 @@ export function notify(options: NotifyOptions) {
     return;
   }
 
-  // Web path
   if (typeof Notification === "undefined") return;
   if (permissionStatus !== "granted") return;
   try {
@@ -97,7 +98,7 @@ export function notify(options: NotifyOptions) {
       body: options.body,
       icon: options.icon || "/favicon.ico",
       tag: options.tag,
-      silent: true, // we play our own message.wav — no OS ding
+      silent: true,
     });
     if (options.onClick) {
       n.onclick = () => {

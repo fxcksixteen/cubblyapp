@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import VoiceVideoSettings from "./settings/VoiceVideoSettings";
 import ActivityPrivacySettings from "./settings/ActivityPrivacySettings";
 import GamingModeSettings from "./settings/GamingModeSettings";
+import NotificationSettings from "./settings/NotificationSettings";
 import UpdateLogsSettings from "./settings/UpdateLogsSettings";
 import { CURRENT_VERSION } from "@/lib/changelog";
 
@@ -470,6 +471,9 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
             </div>
           </div>
         );
+
+      case "notifications":
+        return <NotificationSettings cardStyle={cardStyle as any} />;
 
       case "voice-video":
         return <VoiceVideoSettings panelStyle={panelStyle as any} cardStyle={cardStyle as any} />;
