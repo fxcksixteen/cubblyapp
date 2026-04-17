@@ -11,6 +11,12 @@ export interface UnreadInfo {
   lastSenderName?: string | null;
   lastSenderAvatar?: string | null;
   lastMessageAt?: string;
+  /** True when the conversation is a group DM (so UI can use the group avatar). */
+  isGroup?: boolean;
+  /** Group display name (for tooltips). */
+  groupName?: string | null;
+  /** Group custom picture, if any. */
+  groupPictureUrl?: string | null;
 }
 
 /**
