@@ -154,13 +154,6 @@ const AppLayout = () => {
       await groupCall.startCall(activeConvId, callName, memberIds);
       return;
     }
-    if (activeConv?.is_group && activeConvId) {
-      // Start a group call: ring every other member
-      const memberIds = activeConv.members.map(m => m.user_id);
-      const callName = activeConv.name?.trim() || activeConv.members.map(m => m.display_name).join(", ");
-      await groupCall.startCall(activeConvId, callName, memberIds);
-      return;
-    }
     if (activeConv && !activeConv.is_group && activeParticipant) {
       if (activeParticipant.user_id === BOT_USER_ID && !isAdmin) {
         try {
