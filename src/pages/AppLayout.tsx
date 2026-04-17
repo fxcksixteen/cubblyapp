@@ -524,12 +524,23 @@ const AppLayout = () => {
                         />
                       </button>
                       <button
+                        onClick={handleVideoCall}
                         className="flex h-8 w-8 items-center justify-center rounded-lg transition-all"
                         onMouseEnter={e => { e.currentTarget.style.backgroundColor = "var(--app-hover)"; }}
                         onMouseLeave={e => { e.currentTarget.style.backgroundColor = ""; }}
-                        title="Start Video Call"
+                        title={activeCall?.conversationId === activeConvId && activeCall?.isVideoOn ? "Turn Camera Off" : "Start Video Call"}
+                        style={{ backgroundColor: activeCall?.conversationId === activeConvId && activeCall?.isVideoOn ? "var(--app-hover)" : undefined }}
                       >
-                        <img src={videoIcon} alt="Video" className="h-5 w-5" style={{ filter: "brightness(0) invert(0.6)" }} />
+                        <img
+                          src={videoIcon}
+                          alt="Video"
+                          className="h-5 w-5"
+                          style={{
+                            filter: activeCall?.conversationId === activeConvId && activeCall?.isVideoOn
+                              ? "brightness(0) saturate(100%) invert(58%) sepia(43%) saturate(540%) hue-rotate(85deg) brightness(94%) contrast(85%)"
+                              : "brightness(0) invert(0.6)"
+                          }}
+                        />
                       </button>
                     </>
                   )}
