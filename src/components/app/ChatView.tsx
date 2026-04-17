@@ -3,7 +3,7 @@ import { useMessages, Message, MessageStatus } from "@/hooks/useMessages";
 import { useAuth } from "@/contexts/AuthContext";
 import { useVoice } from "@/contexts/VoiceContext";
 import { supabase } from "@/integrations/supabase/client";
-import { X } from "lucide-react";
+import { X, Reply as ReplyIcon } from "lucide-react";
 import { defaultProfileColor, getProfileColor } from "@/lib/profileColors";
 import { CallPanel, CallEventMessage } from "./VoiceCallOverlay";
 import TypingIndicator from "./TypingIndicator";
@@ -78,6 +78,9 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
   const [gifPickerOpen, setGifPickerOpen] = useState(false);
   const [profileCard, setProfileCard] = useState<{ userId: string; name: string; x: number; y: number } | null>(null);
   const [peerTyping, setPeerTyping] = useState(false);
+  const [replyTo, setReplyTo] = useState<{ id: string; sender_name: string; content: string } | null>(null);
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messageInputRef = useRef<HTMLInputElement>(null);
@@ -234,15 +237,35 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
     }
   }, [user, conversationId]);
 
+  const handleReply = useCallback((msg: Message) => {
+    const { text } = (() => {
+      const attachRegex = /\[attachments\](.*?)\[\/attachments\]/s;
+      const t = msg.content.replace(attachRegex, "").trim();
+      return { text: t || "Attachment" };
+    })();
+    setReplyTo({ id: msg.id, sender_name: msg.sender_name || "Unknown", content: text });
+    setTimeout(() => messageInputRef.current?.focus(), 0);
+  }, []);
+
+  const scrollToMessage = useCallback((id: string) => {
+    const el = messageRefs.current.get(id);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlightedId(id);
+    setTimeout(() => setHighlightedId((cur) => (cur === id ? null : cur)), 1600);
+  }, []);
+
   const handleSend = async () => {
     if (!input.trim() && pendingFiles.length === 0) return;
 
     const currentInput = input.trim();
     const currentFiles = [...pendingFiles];
+    const currentReplyTo = replyTo;
 
     setInput("");
     setPendingFiles([]);
     setAttachMenuOpen(false);
+    setReplyTo(null);
     broadcastStopTyping();
 
     setUploading(true);
@@ -271,7 +294,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
       }
       // Reset scroll flag so auto-scroll works for own messages
       userHasScrolledUpRef.current = false;
-      await sendMessage(content);
+      await sendMessage(content, currentReplyTo?.id || null);
     }
 
     setUploading(false);
@@ -443,14 +466,23 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                     </div>
                     {item.messages.map((msg) => {
                       const { text, attachments } = parseContent(msg.content);
+                      const isHighlighted = highlightedId === msg.id;
                       return (
                         <MessageContextMenu
                           key={msg.id}
                           messageId={msg.id}
                           messageContent={msg.content}
                           isOwnMessage={msg.sender_id === user?.id}
+                          onReply={() => handleReply(msg)}
                         >
-                          <div className="relative group/msg py-0.5">
+                          <div
+                            ref={(el) => {
+                              if (el) messageRefs.current.set(msg.id, el);
+                              else messageRefs.current.delete(msg.id);
+                            }}
+                            className="relative group/msg py-0.5 rounded transition-colors"
+                            style={{ backgroundColor: isHighlighted ? "rgba(88,101,242,0.18)" : "transparent" }}
+                          >
                             {/* Hover action buttons for individual messages */}
                             <div className="absolute -top-3 right-0 flex items-center gap-0.5 rounded-lg border px-1 py-0.5 shadow-lg opacity-0 group-hover/msg:opacity-100 transition-opacity z-10"
                               style={{ backgroundColor: "var(--app-bg-tertiary, #1e1f22)", borderColor: "var(--app-border, #2b2d31)" }}
@@ -459,8 +491,25 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                                 messageId={msg.id}
                                 messageContent={msg.content}
                                 isOwnMessage={msg.sender_id === user?.id}
+                                onReply={() => handleReply(msg)}
                               />
                             </div>
+                            {msg.reply_to && (
+                              <button
+                                type="button"
+                                onClick={() => scrollToMessage(msg.reply_to!.id)}
+                                className="flex items-center gap-1.5 mb-0.5 text-xs hover:opacity-80 transition-opacity max-w-full overflow-hidden"
+                                style={{ color: "var(--app-text-secondary, #949ba4)" }}
+                              >
+                                <ReplyIcon className="h-3 w-3 -scale-x-100 shrink-0" />
+                                <span className="font-semibold truncate" style={{ color: "var(--app-text-primary, #dbdee1)" }}>
+                                  @{msg.reply_to.sender_name}
+                                </span>
+                                <span className="truncate opacity-80">
+                                  {msg.reply_to.content.replace(/\[attachments\].*?\[\/attachments\]/s, "").trim() || "Attachment"}
+                                </span>
+                              </button>
+                            )}
                             {text && (
                               /^https?:\/\/.*\.(gif|giphy)/i.test(text) ? (
                                 <InlineGif url={text} />
@@ -494,6 +543,26 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
         <div ref={bottomRef} />
       </div>
 
+
+      {/* Reply pill */}
+      {replyTo && (
+        <div
+          className="flex items-center gap-2 px-4 py-1.5 text-xs border-t"
+          style={{ backgroundColor: "var(--app-bg-secondary, #2b2d31)", borderColor: "var(--app-border, #1e1f22)", color: "var(--app-text-secondary, #949ba4)" }}
+        >
+          <ReplyIcon className="h-3.5 w-3.5 -scale-x-100 shrink-0" />
+          <span className="truncate">
+            Replying to <strong className="font-semibold" style={{ color: "var(--app-text-primary, #dbdee1)" }}>@{replyTo.sender_name}</strong>
+          </span>
+          <button
+            onClick={() => setReplyTo(null)}
+            className="ml-auto flex h-5 w-5 items-center justify-center rounded hover:bg-white/10 shrink-0"
+            title="Cancel reply"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Pending files preview */}
       {pendingFiles.length > 0 && (
