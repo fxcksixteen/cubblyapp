@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useActivity } from "@/contexts/ActivityContext";
 import { getProfileColor } from "@/lib/profileColors";
 import { getEffectivePresenceStatus } from "@/lib/presence";
+import { activityLabel } from "@/lib/activityLabel";
 import { toast } from "sonner";
 import { X } from "lucide-react";
 import messagesIcon from "@/assets/icons/messages.svg";
@@ -31,6 +33,7 @@ interface ProfileData {
 
 const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage, startExpanded = false }: UserProfileCardProps) => {
   const { user, onlineUserIds } = useAuth();
+  const { getActivity } = useActivity();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [friendshipStatus, setFriendshipStatus] = useState<string | null>(null);
   const [friendshipId, setFriendshipId] = useState<string | null>(null);
@@ -39,6 +42,8 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
   const color = getProfileColor(userId);
   const isOwnProfile = userId === user?.id;
   const effectiveStatus = getEffectivePresenceStatus(userId, profile?.status, onlineUserIds);
+  const userActivity = getActivity(userId);
+  const userActivityLabel = activityLabel(userActivity);
 
   useEffect(() => {
     supabase

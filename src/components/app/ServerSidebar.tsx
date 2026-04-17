@@ -55,32 +55,40 @@ const ServerSidebar = ({
       {unreadConversations.length > 0 && (
         <div className="flex flex-col items-center gap-2 mt-1">
           {unreadConversations.slice(0, 6).map(({ conversationId, info }) => {
-            const color = info.lastSenderId ? getProfileColor(info.lastSenderId) : { bg: "#5865f2" };
-            const initial = (info.lastSenderName || "?").charAt(0).toUpperCase();
+            // For groups, prefer the group's custom picture; otherwise fall back
+            // to a neutral group color tile so it never looks like a 1:1 DM.
+            const isGroup = !!info.isGroup;
+            const senderColor = info.lastSenderId ? getProfileColor(info.lastSenderId) : { bg: "#5865f2" };
+            const tileColor = isGroup ? "#5865f2" : senderColor.bg;
+            const avatarUrl = isGroup ? (info.groupPictureUrl || null) : (info.lastSenderAvatar || null);
+            const initial = isGroup
+              ? (info.groupName || "G").charAt(0).toUpperCase()
+              : (info.lastSenderName || "?").charAt(0).toUpperCase();
+            const tooltip = isGroup
+              ? `${info.groupName || "Group"} • ${info.count} new`
+              : `${info.lastSenderName || "New message"} • ${info.count} new`;
             return (
               <button
                 key={conversationId}
                 onClick={() => onJumpToConversation?.(conversationId)}
                 className="group relative flex h-12 w-12 items-center justify-center transition-all duration-200 hover:scale-[1.05] animate-fade-in"
-                title={`${info.lastSenderName || "New message"} • ${info.count} new`}
+                title={tooltip}
               >
-                {/* Active-style left pill indicator */}
                 <div className="absolute -left-4 h-6 w-1 rounded-r-full bg-white opacity-100" />
-                {info.lastSenderAvatar ? (
+                {avatarUrl ? (
                   <img
-                    src={info.lastSenderAvatar}
-                    alt={info.lastSenderName || ""}
+                    src={avatarUrl}
+                    alt={tooltip}
                     className="h-12 w-12 rounded-full object-cover transition-all duration-200 group-hover:rounded-[16px]"
                   />
                 ) : (
                   <div
                     className="flex h-12 w-12 items-center justify-center rounded-full text-base font-bold text-white transition-all duration-200 group-hover:rounded-[16px]"
-                    style={{ backgroundColor: color.bg }}
+                    style={{ backgroundColor: tileColor }}
                   >
                     {initial}
                   </div>
                 )}
-                {/* Red unread count badge */}
                 <div
                   className="absolute -bottom-0.5 -right-0.5 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[#ed4245] px-1.5 text-[11px] font-bold text-white border-2"
                   style={{ borderColor: "var(--app-bg-tertiary)" }}
