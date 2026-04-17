@@ -1,10 +1,16 @@
-const { app, BrowserWindow, shell, Menu, ipcMain, desktopCapturer, dialog } = require("electron");
+const { app, BrowserWindow, shell, Menu, ipcMain, desktopCapturer, dialog, Notification, nativeImage } = require("electron");
 const path = require("path");
 const { exec } = require("child_process");
 const { autoUpdater } = require("electron-updater");
 const log = require("electron-log");
 
 app.name = "Cubbly";
+
+// AppUserModelID — required on Windows so toast notifications attribute to Cubbly
+// (and don't show as "electron.app.Cubbly"). Must be set BEFORE any window or notification.
+try {
+  app.setAppUserModelId("app.cubbly");
+} catch (_) { /* noop on non-windows */ }
 
 // Configure logging for the auto-updater (helps debug update issues)
 log.transports.file.level = "info";
@@ -13,12 +19,6 @@ autoUpdater.autoDownload = true;       // Download new versions in the backgroun
 autoUpdater.autoInstallOnAppQuit = true; // Fallback: install on quit if user never restarts
 
 // ----- Auto-launch on system startup (Discord-style) -----
-// Enabled by default for every install. Users can disable it later via Settings
-// (we'll wire that to a setting in a future build). On macOS this uses Login
-// Items; on Windows it adds a registry key under HKCU\...\Run; Linux is a
-// no-op because each distro handles startup differently.
-// ----- Auto-launch on system startup (Discord-style) -----
-// Fires only on OS login/reboot, NOT after a manual close.
 try {
   if (process.platform === "win32" || process.platform === "darwin") {
     app.setLoginItemSettings({
@@ -85,8 +85,7 @@ function createWindow() {
     mainWindow = null;
   });
 
-  // ----- Auto-updater wiring (only after window exists) -----
-  // Forward update lifecycle events to renderer so the glassmorphism modal can react.
+  // ----- Auto-updater wiring -----
   autoUpdater.on("update-available", (info) => {
     log.info("[updater] update-available", info?.version);
     mainWindow?.webContents.send("update-available", { version: info?.version });
@@ -102,68 +101,74 @@ function createWindow() {
     log.error("[updater] error", err?.message || err);
   });
 
-  // Initial check (silently fails if no internet / no release / dev mode)
   setTimeout(() => {
-    try {
-      autoUpdater.checkForUpdatesAndNotify();
-    } catch (e) {
-      log.warn("[updater] initial check failed:", e?.message || e);
-    }
+    try { autoUpdater.checkForUpdatesAndNotify(); }
+    catch (e) { log.warn("[updater] initial check failed:", e?.message || e); }
   }, 4000);
 
-  // Re-check every hour
   setInterval(() => {
-    try {
-      autoUpdater.checkForUpdates();
-    } catch (e) {
-      log.warn("[updater] periodic check failed:", e?.message || e);
-    }
+    try { autoUpdater.checkForUpdates(); }
+    catch (e) { log.warn("[updater] periodic check failed:", e?.message || e); }
   }, 60 * 60 * 1000);
 }
 
-// IPC handlers for window controls
-ipcMain.on("window-minimize", () => {
-  mainWindow?.minimize();
-});
-
+// IPC: window controls
+ipcMain.on("window-minimize", () => { mainWindow?.minimize(); });
 ipcMain.on("window-maximize", () => {
-  if (mainWindow?.isMaximized()) {
-    mainWindow.unmaximize();
-  } else {
-    mainWindow?.maximize();
-  }
+  if (mainWindow?.isMaximized()) mainWindow.unmaximize();
+  else mainWindow?.maximize();
 });
+ipcMain.on("window-close", () => { mainWindow?.close(); });
+ipcMain.handle("window-is-maximized", () => mainWindow?.isMaximized() ?? false);
 
-ipcMain.on("window-close", () => {
-  mainWindow?.close();
-});
-
-ipcMain.handle("window-is-maximized", () => {
-  return mainWindow?.isMaximized() ?? false;
-});
-
-// Manual "check for updates" (e.g. wired to a Settings button later)
+// IPC: updater
 ipcMain.on("check-for-updates", () => {
-  try {
-    autoUpdater.checkForUpdates();
-  } catch (e) {
-    log.warn("[updater] manual check failed:", e?.message || e);
-  }
+  try { autoUpdater.checkForUpdates(); }
+  catch (e) { log.warn("[updater] manual check failed:", e?.message || e); }
 });
-
-// User clicked "Restart & Update" in the modal
 ipcMain.on("install-update", () => {
   log.info("[updater] user requested install");
   autoUpdater.quitAndInstall(false, true);
 });
 
-// ----- Activity / Process scanner -----
-// Returns a list of running process names (lowercase, without .exe) currently on the system.
-// Used by the renderer to detect "Playing X" activity.
+// ----- Native desktop notifications -----
+// Renderer fires this when a new message arrives and the window isn't focused.
+// We use Electron's main-process Notification (not the renderer Web Notification API)
+// because it gives proper Windows toast attribution under our AppUserModelID.
+ipcMain.handle("show-notification", async (_evt, opts) => {
+  try {
+    if (!Notification.isSupported()) return false;
+    const iconPath = path.join(__dirname, "..", "dist", "favicon.ico");
+    let icon;
+    try { icon = nativeImage.createFromPath(iconPath); } catch { icon = undefined; }
+    const n = new Notification({
+      title: opts?.title || "Cubbly",
+      body: opts?.body || "",
+      icon,
+      silent: !!opts?.silent, // we play our own sound from renderer
+    });
+    n.on("click", () => {
+      if (mainWindow) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.show();
+        mainWindow.focus();
+        if (opts?.tag) {
+          mainWindow.webContents.send("notification-clicked", { tag: opts.tag });
+        }
+      }
+    });
+    n.show();
+    return true;
+  } catch (e) {
+    log.warn("[notify] failed:", e?.message || e);
+    return false;
+  }
+});
+
+// ----- Process scanner (for activity detection) -----
 function listRunningProcesses() {
   return new Promise((resolve) => {
     if (process.platform === "win32") {
-      // tasklist is preinstalled on every Windows install
       exec('tasklist /fo csv /nh', { maxBuffer: 4 * 1024 * 1024 }, (err, stdout) => {
         if (err) return resolve([]);
         const names = new Set();
@@ -193,17 +198,70 @@ function listRunningProcesses() {
     }
   });
 }
-
 ipcMain.handle("get-running-processes", async () => {
-  try {
-    return await listRunningProcesses();
-  } catch (e) {
-    log.warn("[activity] process list failed:", e?.message || e);
-    return [];
-  }
+  try { return await listRunningProcesses(); }
+  catch (e) { log.warn("[activity] process list failed:", e?.message || e); return []; }
 });
 
-// Open a file picker so user can manually pick a game .exe
+// ----- Open-windows scanner (for the "currently running" picker) -----
+// Returns [{ title, processName }] of visible top-level windows. We use this to
+// give users a friendly list of apps they can add as a custom game without
+// having to find the .exe themselves.
+function listOpenWindows() {
+  return new Promise((resolve) => {
+    if (process.platform === "win32") {
+      // PowerShell one-liner: enumerate processes that have a MainWindowTitle
+      const ps = `Get-Process | Where-Object { $_.MainWindowTitle } | Select-Object MainWindowTitle, ProcessName | ConvertTo-Json -Compress`;
+      exec(`powershell -NoProfile -Command "${ps}"`, { maxBuffer: 4 * 1024 * 1024, windowsHide: true }, (err, stdout) => {
+        if (err) return resolve([]);
+        try {
+          const parsed = JSON.parse(stdout || "[]");
+          const arr = Array.isArray(parsed) ? parsed : [parsed];
+          const out = arr
+            .filter(p => p && p.MainWindowTitle && p.ProcessName)
+            .map(p => ({
+              title: String(p.MainWindowTitle),
+              processName: String(p.ProcessName).toLowerCase().replace(/\.exe$/, ""),
+            }));
+          resolve(out);
+        } catch { resolve([]); }
+      });
+    } else if (process.platform === "darwin") {
+      // AppleScript: visible apps and their frontmost window title (best-effort)
+      const osa = `osascript -e 'tell application "System Events" to get {name, title of front window} of (every process whose visible is true and background only is false)' 2>/dev/null`;
+      exec(osa, { maxBuffer: 2 * 1024 * 1024 }, (err, stdout) => {
+        if (err || !stdout) return resolve([]);
+        // Output is hard to parse reliably; fall back to just app names.
+        exec(`osascript -e 'tell application "System Events" to get name of (every process whose visible is true and background only is false)'`, (err2, stdout2) => {
+          if (err2 || !stdout2) return resolve([]);
+          const names = stdout2.split(",").map(s => s.trim()).filter(Boolean);
+          resolve(names.map(n => ({ title: n, processName: n.toLowerCase().replace(/\.app$/, "") })));
+        });
+      });
+    } else {
+      // Linux: try wmctrl, then xdotool, then nothing
+      exec("wmctrl -lp 2>/dev/null", (err, stdout) => {
+        if (!err && stdout) {
+          const lines = stdout.split(/\r?\n/).filter(Boolean);
+          const out = lines.map(l => {
+            // wmctrl format: "0xID  desk  pid  host  title..."
+            const parts = l.split(/\s+/);
+            const title = parts.slice(4).join(" ");
+            return title ? { title, processName: title.toLowerCase().split(/\s+/)[0] } : null;
+          }).filter(Boolean);
+          return resolve(out);
+        }
+        resolve([]);
+      });
+    }
+  });
+}
+ipcMain.handle("get-open-windows", async () => {
+  try { return await listOpenWindows(); }
+  catch (e) { log.warn("[activity] open windows failed:", e?.message || e); return []; }
+});
+
+// IPC: pick game .exe (manual)
 ipcMain.handle("pick-game-exe", async () => {
   if (!mainWindow) return null;
   const result = await dialog.showOpenDialog(mainWindow, {
@@ -217,7 +275,6 @@ ipcMain.handle("pick-game-exe", async () => {
   const fullPath = result.filePaths[0];
   const fileName = path.basename(fullPath);
   const processName = fileName.toLowerCase().replace(/\.exe$/, "");
-  // Default display name = filename without extension, prettified
   const displayGuess = fileName
     .replace(/\.exe$/i, "")
     .replace(/[-_]+/g, " ")
@@ -241,13 +298,7 @@ ipcMain.handle("get-desktop-sources", async () => {
 });
 
 app.whenReady().then(createWindow);
-
-app.on("window-all-closed", () => {
-  app.quit();
-});
-
+app.on("window-all-closed", () => { app.quit(); });
 app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  }
+  if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
