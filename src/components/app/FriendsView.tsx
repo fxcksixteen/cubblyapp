@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useActivity } from "@/contexts/ActivityContext";
 import { Check, X } from "lucide-react";
 import { getProfileColor } from "@/lib/profileColors";
+import { activityLabel } from "@/lib/activityLabel";
 import messagesHoverIcon from "@/assets/icons/messages-3.svg";
 import searchIcon from "@/assets/icons/search.svg";
 import emptyPendingIcon from "@/assets/icons/empty-pending.svg";
@@ -297,10 +298,11 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
                       <p className="text-sm font-semibold leading-tight text-white">{friendship.profile.display_name}</p>
                       {(() => {
                         const act = getActivity(friendship.profile.user_id);
-                        if (activeTab !== "pending" && act?.name) {
+                        const label = activityLabel(act);
+                        if (activeTab !== "pending" && label) {
                           return (
                             <p className="truncate text-xs leading-tight" style={{ color: "#3ba55c" }}>
-                              Playing {act.name}
+                              {label}
                             </p>
                           );
                         }
