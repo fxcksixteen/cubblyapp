@@ -47,6 +47,23 @@
         }
       } catch(e) {}
     </script>
+    <script>
+      // SELF-HEAL: under file:// (Electron), rewrite any absolute "/assets/..."
+      // script/link refs that may have been baked in by a misbuild. Runs BEFORE
+      // React mounts so a broken installer can recover on next launch.
+      (function () {
+        if (location.protocol !== 'file:') return;
+        var nodes = document.querySelectorAll('script[src^="/assets/"], link[href^="/assets/"]');
+        nodes.forEach(function (el) {
+          var attr = el.tagName === 'SCRIPT' ? 'src' : 'href';
+          var v = el.getAttribute(attr);
+          if (!v) return;
+          var clone = el.cloneNode(false);
+          clone.setAttribute(attr, '.' + v);
+          el.parentNode.replaceChild(clone, el);
+        });
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
