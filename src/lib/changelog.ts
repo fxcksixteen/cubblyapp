@@ -28,11 +28,14 @@ export const CURRENT_VERSION = "0.2.1";
 export const CHANGELOG: ChangelogEntry[] = [
   {
     version: "0.2.1",
-    title: "Group calls, activity icons & voice card",
+    title: "Group voice + video + screen share",
     date: "2026-04-17",
     hero: bearImage,
     newFeatures: [
       "Group voice calls — start a call in any group DM and ring every member at once with a full N-peer audio mesh",
+      "Group video calls — toggle your camera mid-call and see every member's video tile in a live grid",
+      "Group screen sharing — share your screen to the whole group, with a big-format viewer for whoever's presenting",
+      "iOS & Android push notifications — Cubbly is now a full PWA, add it to your home screen and get real OS notifications even when the app is closed",
       "Activity icons everywhere — game/app logos now show in the DM sidebar, profile popups, full profiles and the Active Now rail",
       "Smart icon resolution — curated logos for popular games/apps, Steam CDN fallback, then the actual .exe icon from your OS",
       "Discord-style activity card in the DM sidebar with the icon, name, verb (Playing/Using) and live elapsed time",
@@ -42,9 +45,13 @@ export const CHANGELOG: ChangelogEntry[] = [
     ],
     bugFixes: [
       "Fixed activity card not appearing for some users with Steam open",
+      "Fixed Steam, Discord and other software still showing as 'Playing' instead of 'Using' in some places",
+      "Fixed missing voice/video buttons in the group chat header",
       "Smoother fallback when no curated icon exists — colored letter tiles instead of broken images",
       "Per-peer audio level monitoring no longer leaks AudioContext on call end",
       "Group call participants list now refreshes correctly when someone joins or leaves mid-call",
+      "Web app no longer crashes after a hard refresh on the chat view",
+      "Mobile notification prompt now actually wires up to Web Push instead of only browser-tab notifications",
     ],
   },
   {

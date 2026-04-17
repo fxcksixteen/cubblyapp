@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { ensureNotificationPermission, getNotificationPermission } from "@/lib/notifications";
+import { subscribeToPush } from "@/lib/webPush";
 import { Bell, X } from "lucide-react";
 
 const STORAGE_KEY = "cubbly:mobile-notif-prompt:v1";
@@ -60,6 +61,11 @@ const MobileNotificationPrompt = () => {
 
   const handleEnable = async () => {
     const ok = await ensureNotificationPermission();
+    if (ok) {
+      // Subscribe this device to Web Push so iOS/Android PWAs get notifications
+      // even when the app is closed.
+      try { await subscribeToPush(); } catch { /* ignore */ }
+    }
     dismiss(ok ? "enabled" : "dismissed");
   };
 

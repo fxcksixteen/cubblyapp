@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useActivity } from "@/contexts/ActivityContext";
 import { Check, X } from "lucide-react";
 import { getProfileColor } from "@/lib/profileColors";
-import { activityLabel } from "@/lib/activityLabel";
+import { activityLabel, isSoftwareActivity } from "@/lib/activityLabel";
 import messagesHoverIcon from "@/assets/icons/messages-3.svg";
 import searchIcon from "@/assets/icons/search.svg";
 import emptyPendingIcon from "@/assets/icons/empty-pending.svg";
@@ -365,7 +365,7 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
               <div className="flex flex-col gap-2">
                 {activeFriends.map((f) => {
                   const act = getActivity(f.profile.user_id)!;
-                  const isSoftware = act.details === "software" || act.activity_type === "using";
+                  const isSoftware = isSoftwareActivity(act);
                   const verb = isSoftware ? "Using" : "Playing";
                   // Compact elapsed (e.g. "23m" or "1h 5m")
                   const elapsedMs = Math.max(0, Date.now() - new Date(act.started_at).getTime());

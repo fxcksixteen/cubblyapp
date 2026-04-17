@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import ActivityIcon from "./ActivityIcon";
+import { isSoftwareActivity } from "@/lib/activityLabel";
 
 interface Props {
   name: string;
@@ -38,7 +39,7 @@ const ActivityCard = ({ name, processName, type, startedAt, variant = "default",
     return () => clearInterval(i);
   }, []);
 
-  const verb = type === "software" ? "Using" : "Playing";
+  const verb = type === "software" || isSoftwareActivity({ name }) ? "Using" : "Playing";
 
   // Sizes per variant
   const iconSize = variant === "sidebar" ? 40 : variant === "compact" ? 36 : 48;

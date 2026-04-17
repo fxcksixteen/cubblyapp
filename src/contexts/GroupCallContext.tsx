@@ -34,6 +34,14 @@ export interface GroupPeer {
   isMuted: boolean;
   /** Audio level 0..100 — monitored locally from their inbound audio track. */
   audioLevel: number;
+  /** Inbound camera stream (if peer has video on). */
+  videoStream?: MediaStream | null;
+  /** Inbound screen-share stream (if peer is sharing). */
+  screenStream?: MediaStream | null;
+  /** Peer-side video toggle (broadcast). */
+  isVideoOn: boolean;
+  /** Peer-side screenshare toggle (broadcast). */
+  isScreenSharing: boolean;
 }
 
 export interface GroupActiveCall {
@@ -43,6 +51,8 @@ export interface GroupActiveCall {
   joinedAt: number;
   isMuted: boolean;
   isDeafened: boolean;
+  isVideoOn: boolean;
+  isScreenSharing: boolean;
 }
 
 interface GroupIncomingCall {
@@ -66,6 +76,12 @@ interface GroupCallContextType {
   leaveCall: () => void;
   toggleMute: () => void;
   toggleDeafen: () => void;
+  toggleVideo: () => Promise<void>;
+  toggleScreenShare: (sourceId?: string) => Promise<void>;
+  /** Local camera stream (for self-tile preview). */
+  localVideoStream: MediaStream | null;
+  /** Local screenshare stream (for self-tile preview). */
+  localScreenStream: MediaStream | null;
   /** Audio level of the LOCAL mic (0-100). */
   selfAudioLevel: number;
 }
@@ -85,6 +101,8 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
   const [peers, setPeers] = useState<GroupPeer[]>([]);
   const [selfAudioLevel, setSelfAudioLevel] = useState(0);
   const [ping, setPing] = useState(0);
+  const [localVideoStream, setLocalVideoStream] = useState<MediaStream | null>(null);
+  const [localScreenStream, setLocalScreenStream] = useState<MediaStream | null>(null);
 
   // ICE servers — fetched on mount via the same edge function the 1-on-1 voice uses
   const iceServersRef = useRef<RTCIceServer[]>(STUN_SERVERS);
@@ -96,8 +114,17 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
   const remoteDescSetRef = useRef<Map<string, boolean>>(new Map());
   // Per-peer audio analyser cleanup
   const audioCleanupRef = useRef<Map<string, () => void>>(new Map());
+  // Perfect-negotiation per-peer state (to handle simultaneous offers cleanly)
+  const makingOfferRef = useRef<Map<string, boolean>>(new Map());
+  const ignoreOfferRef = useRef<Map<string, boolean>>(new Map());
+  // Per-peer video & screen RTCRtpSender refs (to enable replace/remove tracks for renegotiation)
+  const videoSendersRef = useRef<Map<string, RTCRtpSender>>(new Map());
+  const screenSendersRef = useRef<Map<string, RTCRtpSender>>(new Map());
 
   const localStreamRef = useRef<MediaStream | null>(null);
+  // Local camera + screenshare track refs
+  const localVideoTrackRef = useRef<MediaStreamTrack | null>(null);
+  const localScreenTrackRef = useRef<MediaStreamTrack | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const callEventIdRef = useRef<string | null>(null);
   const callConvIdRef = useRef<string | null>(null);
@@ -195,6 +222,10 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     remoteDescSetRef.current.delete(peerId);
     audioCleanupRef.current.get(peerId)?.();
     audioCleanupRef.current.delete(peerId);
+    makingOfferRef.current.delete(peerId);
+    ignoreOfferRef.current.delete(peerId);
+    videoSendersRef.current.delete(peerId);
+    screenSendersRef.current.delete(peerId);
     setPeers(prev => prev.filter(p => p.userId !== peerId));
     // Remove that peer's <audio> element
     document.querySelectorAll<HTMLAudioElement>(`audio[data-group-peer="${peerId}"]`).forEach(el => {
@@ -205,6 +236,12 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
   /**
    * Create (or reuse) an RTCPeerConnection for a specific peer and wire up
    * track / ICE handling. Used by BOTH offerer and answerer.
+   *
+   * Track routing: WebRTC's stream `id` is preserved across peers, so we let
+   * the SENDER label its outbound video/screen streams with a known id
+   * pattern (`cubbly-video-<userId>` / `cubbly-screen-<userId>`) that the
+   * receiver inspects in `ontrack` to decide whether the inbound video track
+   * is camera or screenshare.
    */
   const ensurePc = useCallback((peerId: string): RTCPeerConnection => {
     const existing = pcsRef.current.get(peerId);
@@ -212,6 +249,8 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
 
     const pc = new RTCPeerConnection({ iceServers: iceServersRef.current, iceTransportPolicy: "all" });
     pcsRef.current.set(peerId, pc);
+    makingOfferRef.current.set(peerId, false);
+    ignoreOfferRef.current.set(peerId, false);
 
     // Add our local audio tracks
     if (localStreamRef.current) {
@@ -219,23 +258,59 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         pc.addTrack(track, localStreamRef.current!);
       });
     }
+    // If we already have local video / screen on, add those too (so a NEW peer
+    // joining mid-call still sees us)
+    if (localVideoTrackRef.current && user) {
+      const videoStream = new MediaStream([localVideoTrackRef.current]);
+      // Use a discoverable stream id so receivers can route correctly
+      Object.defineProperty(videoStream, "id", { value: `cubbly-video-${user.id}` });
+      const sender = pc.addTrack(localVideoTrackRef.current, videoStream);
+      videoSendersRef.current.set(peerId, sender);
+    }
+    if (localScreenTrackRef.current && user) {
+      const screenStream = new MediaStream([localScreenTrackRef.current]);
+      Object.defineProperty(screenStream, "id", { value: `cubbly-screen-${user.id}` });
+      const sender = pc.addTrack(localScreenTrackRef.current, screenStream);
+      screenSendersRef.current.set(peerId, sender);
+    }
 
     pc.ontrack = (event) => {
-      if (event.track.kind !== "audio") return;
       const stream = event.streams[0];
-      // Create / replace the <audio> element for this peer
-      let audioEl = document.querySelector<HTMLAudioElement>(`audio[data-group-peer="${peerId}"]`);
-      if (!audioEl) {
-        audioEl = document.createElement("audio");
-        audioEl.dataset.groupPeer = peerId;
-        audioEl.autoplay = true;
-        document.body.appendChild(audioEl);
+      if (event.track.kind === "audio") {
+        let audioEl = document.querySelector<HTMLAudioElement>(`audio[data-group-peer="${peerId}"]`);
+        if (!audioEl) {
+          audioEl = document.createElement("audio");
+          audioEl.dataset.groupPeer = peerId;
+          audioEl.autoplay = true;
+          document.body.appendChild(audioEl);
+        }
+        audioEl.srcObject = stream;
+        audioEl.play().catch(() => {});
+        audioCleanupRef.current.get(peerId)?.();
+        startPeerMonitor(peerId, stream);
+        return;
       }
-      audioEl.srcObject = stream;
-      audioEl.play().catch(() => {});
-      // Audio level monitoring
-      audioCleanupRef.current.get(peerId)?.();
-      startPeerMonitor(peerId, stream);
+      if (event.track.kind === "video") {
+        // Decide camera vs screen by stream id label
+        const isScreen = stream?.id?.startsWith("cubbly-screen-");
+        const isVideo = stream?.id?.startsWith("cubbly-video-");
+        // When the peer turns the track off (replaceTrack(null)), `mute` fires
+        const handleEnded = () => {
+          setPeers(prev => prev.map(p => p.userId === peerId
+            ? (isScreen ? { ...p, screenStream: null, isScreenSharing: false } : { ...p, videoStream: null, isVideoOn: false })
+            : p));
+        };
+        event.track.addEventListener("ended", handleEnded);
+        event.track.addEventListener("mute", handleEnded);
+        setPeers(prev => prev.map(p => p.userId === peerId
+          ? (isScreen
+              ? { ...p, screenStream: stream, isScreenSharing: true }
+              : isVideo
+                ? { ...p, videoStream: stream, isVideoOn: true }
+                : { ...p, videoStream: stream, isVideoOn: true })
+          : p));
+        return;
+      }
     };
 
     pc.onicecandidate = (event) => {
@@ -252,6 +327,29 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       });
     };
 
+    // Perfect-negotiation: triggered automatically when we add/remove tracks
+    pc.onnegotiationneeded = async () => {
+      if (!channelRef.current || !user) return;
+      try {
+        makingOfferRef.current.set(peerId, true);
+        await pc.setLocalDescription();
+        channelRef.current.send({
+          type: "broadcast",
+          event: "group-signal",
+          payload: {
+            type: "offer",
+            fromUserId: user.id,
+            toUserId: peerId,
+            sdp: pc.localDescription,
+          },
+        });
+      } catch (e) {
+        console.error("[GroupCall] negotiationneeded failed:", e);
+      } finally {
+        makingOfferRef.current.set(peerId, false);
+      }
+    };
+
     pc.oniceconnectionstatechange = () => {
       if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "closed") {
         removePeer(peerId);
@@ -263,7 +361,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
 
   /** Build a peer entry in `peers` (lazy — avoids duplicates). */
   const ensurePeerEntry = useCallback(async (peerId: string) => {
-    setPeers(prev => prev.some(p => p.userId === peerId) ? prev : [...prev, { userId: peerId, displayName: "…", isMuted: false, audioLevel: 0 }]);
+    setPeers(prev => prev.some(p => p.userId === peerId) ? prev : [...prev, { userId: peerId, displayName: "…", isMuted: false, audioLevel: 0, isVideoOn: false, isScreenSharing: false, videoStream: null, screenStream: null }]);
     const profile = await loadProfile(peerId);
     setPeers(prev => prev.map(p => p.userId === peerId
       ? { ...p, displayName: profile.display_name, avatarUrl: profile.avatar_url }
@@ -321,7 +419,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       is_deafened: false,
     } as any);
 
-    setActiveCall({ conversationId, conversationName, joinedAt: Date.now(), isMuted: false, isDeafened: false });
+    setActiveCall({ conversationId, conversationName, joinedAt: Date.now(), isMuted: false, isDeafened: false, isVideoOn: false, isScreenSharing: false });
     playSound("message", { volume: 0.4 });
 
     // Subscribe to call channel
@@ -401,22 +499,28 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         if (payload.type === "offer") {
           await ensurePeerEntry(payload.fromUserId);
           const pc = ensurePc(payload.fromUserId);
+          // Perfect-negotiation collision check: if WE made an offer too,
+          // the peer with the lower id is "polite" and rolls back.
+          const polite = user.id < payload.fromUserId;
+          const offerCollision = makingOfferRef.current.get(payload.fromUserId)
+            || pc.signalingState !== "stable";
+          const ignore = !polite && offerCollision;
+          ignoreOfferRef.current.set(payload.fromUserId, ignore);
+          if (ignore) return;
           try {
             await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
             remoteDescSetRef.current.set(payload.fromUserId, true);
-            // Flush any queued ICE
             const queued = queuedIceRef.current.get(payload.fromUserId) || [];
             for (const c of queued) {
               await pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
             }
             queuedIceRef.current.delete(payload.fromUserId);
 
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
+            await pc.setLocalDescription();
             channel.send({
               type: "broadcast",
               event: "group-signal",
-              payload: { type: "answer", fromUserId: user.id, toUserId: payload.fromUserId, sdp: answer },
+              payload: { type: "answer", fromUserId: user.id, toUserId: payload.fromUserId, sdp: pc.localDescription },
             });
           } catch (e) {
             console.error("[GroupCall] Failed to handle offer:", e);
@@ -455,6 +559,21 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
 
         if (payload.type === "peer-mute") {
           setPeers(prev => prev.map(p => p.userId === payload.fromUserId ? { ...p, isMuted: !!payload.isMuted } : p));
+          return;
+        }
+
+        if (payload.type === "peer-video") {
+          // If they turned video off, clear the stream from our local state
+          setPeers(prev => prev.map(p => p.userId === payload.fromUserId
+            ? { ...p, isVideoOn: !!payload.isVideoOn, videoStream: payload.isVideoOn ? p.videoStream : null }
+            : p));
+          return;
+        }
+
+        if (payload.type === "peer-screen") {
+          setPeers(prev => prev.map(p => p.userId === payload.fromUserId
+            ? { ...p, isScreenSharing: !!payload.isScreenSharing, screenStream: payload.isScreenSharing ? p.screenStream : null }
+            : p));
           return;
         }
       });
@@ -504,6 +623,8 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       joinedAt: Date.now(),
       isMuted: false,
       isDeafened: false,
+      isVideoOn: false,
+      isScreenSharing: false,
     });
     playSound("message", { volume: 0.4 });
 
@@ -557,6 +678,14 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
 
     localStreamRef.current?.getTracks().forEach(t => t.stop());
     localStreamRef.current = null;
+    localVideoTrackRef.current?.stop();
+    localVideoTrackRef.current = null;
+    setLocalVideoStream(null);
+    localScreenTrackRef.current?.stop();
+    localScreenTrackRef.current = null;
+    setLocalScreenStream(null);
+    videoSendersRef.current.clear();
+    screenSendersRef.current.clear();
     stopSelfMonitor();
 
     if (channelRef.current) {
@@ -634,6 +763,136 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     });
   }, [user]);
 
+  /**
+   * Toggle local camera. When turning on, request a camera stream and add the
+   * track to every existing peer connection (which triggers onnegotiationneeded
+   * → renegotiation). When turning off, replace the track with null on each
+   * sender, stop the local track, and broadcast the new state.
+   */
+  const toggleVideo = useCallback(async () => {
+    if (!activeCall || !user) return;
+    if (!activeCall.isVideoOn) {
+      // Turn ON
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24 } },
+          audio: false,
+        });
+      } catch (e) {
+        console.error("[GroupCall] Camera permission denied:", e);
+        return;
+      }
+      const track = stream.getVideoTracks()[0];
+      localVideoTrackRef.current = track;
+      setLocalVideoStream(stream);
+
+      // Add the track to every peer connection
+      for (const [peerId, pc] of pcsRef.current) {
+        const labeledStream = new MediaStream([track]);
+        Object.defineProperty(labeledStream, "id", { value: `cubbly-video-${user.id}` });
+        const sender = pc.addTrack(track, labeledStream);
+        videoSendersRef.current.set(peerId, sender);
+      }
+      track.onended = () => { toggleVideo(); }; // safety: hardware unplugged
+
+      setActiveCall(prev => prev ? { ...prev, isVideoOn: true } : null);
+      channelRef.current?.send({
+        type: "broadcast",
+        event: "group-signal",
+        payload: { type: "peer-video", fromUserId: user.id, isVideoOn: true },
+      });
+    } else {
+      // Turn OFF
+      const track = localVideoTrackRef.current;
+      if (track) track.stop();
+      localVideoTrackRef.current = null;
+      setLocalVideoStream(null);
+      // Remove sender from each pc — replaceTrack(null) keeps the transceiver
+      // open for fast re-enable later.
+      for (const [peerId, sender] of videoSendersRef.current) {
+        try { await sender.replaceTrack(null); } catch {}
+        const pc = pcsRef.current.get(peerId);
+        if (pc) {
+          try { pc.removeTrack(sender); } catch {}
+        }
+      }
+      videoSendersRef.current.clear();
+      setActiveCall(prev => prev ? { ...prev, isVideoOn: false } : null);
+      channelRef.current?.send({
+        type: "broadcast",
+        event: "group-signal",
+        payload: { type: "peer-video", fromUserId: user.id, isVideoOn: false },
+      });
+    }
+  }, [activeCall, user]);
+
+  /**
+   * Toggle screen share. Uses getDisplayMedia in browsers; in Electron it
+   * accepts an optional sourceId from the screen picker. Auto-disables when
+   * the user clicks "Stop sharing" in the OS prompt.
+   */
+  const toggleScreenShare = useCallback(async (sourceId?: string) => {
+    if (!activeCall || !user) return;
+    if (!activeCall.isScreenSharing) {
+      let stream: MediaStream;
+      try {
+        if (sourceId && (window as any).electronAPI?.isElectron) {
+          // Electron desktop capture
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: {
+              // chromeMediaSource is non-standard but supported in Electron
+              // @ts-ignore
+              mandatory: { chromeMediaSource: "desktop", chromeMediaSourceId: sourceId },
+            },
+          } as any);
+        } else {
+          stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+        }
+      } catch (e) {
+        console.error("[GroupCall] Screen share denied:", e);
+        return;
+      }
+      const track = stream.getVideoTracks()[0];
+      localScreenTrackRef.current = track;
+      setLocalScreenStream(stream);
+
+      for (const [peerId, pc] of pcsRef.current) {
+        const labeledStream = new MediaStream([track]);
+        Object.defineProperty(labeledStream, "id", { value: `cubbly-screen-${user.id}` });
+        const sender = pc.addTrack(track, labeledStream);
+        screenSendersRef.current.set(peerId, sender);
+      }
+      // Auto-stop when user clicks the OS "Stop sharing" pill
+      track.onended = () => { toggleScreenShare(); };
+
+      setActiveCall(prev => prev ? { ...prev, isScreenSharing: true } : null);
+      channelRef.current?.send({
+        type: "broadcast",
+        event: "group-signal",
+        payload: { type: "peer-screen", fromUserId: user.id, isScreenSharing: true },
+      });
+    } else {
+      const track = localScreenTrackRef.current;
+      if (track) track.stop();
+      localScreenTrackRef.current = null;
+      setLocalScreenStream(null);
+      for (const [peerId, sender] of screenSendersRef.current) {
+        try { await sender.replaceTrack(null); } catch {}
+        const pc = pcsRef.current.get(peerId);
+        if (pc) { try { pc.removeTrack(sender); } catch {} }
+      }
+      screenSendersRef.current.clear();
+      setActiveCall(prev => prev ? { ...prev, isScreenSharing: false } : null);
+      channelRef.current?.send({
+        type: "broadcast",
+        event: "group-signal",
+        payload: { type: "peer-screen", fromUserId: user.id, isScreenSharing: false },
+      });
+    }
+  }, [activeCall, user]);
+
   // Listen for global incoming group calls
   useEffect(() => {
     if (!user) return;
@@ -688,7 +947,8 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     <GroupCallContext.Provider value={{
       activeCall, incomingCall, peers, ping,
       startCall, acceptCall, declineCall, leaveCall,
-      toggleMute, toggleDeafen, selfAudioLevel,
+      toggleMute, toggleDeafen, toggleVideo, toggleScreenShare,
+      localVideoStream, localScreenStream, selfAudioLevel,
     }}>
       {children}
     </GroupCallContext.Provider>

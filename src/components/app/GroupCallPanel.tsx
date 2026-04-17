@@ -1,14 +1,17 @@
 import { useEffect, useState, useRef } from "react";
-import { useGroupCall } from "@/contexts/GroupCallContext";
+import { useGroupCall, GroupPeer } from "@/contexts/GroupCallContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { getProfileColor } from "@/lib/profileColors";
+import ScreenSharePicker from "./ScreenSharePicker";
 import micIcon from "@/assets/icons/microphone.svg";
 import micMuteIcon from "@/assets/icons/microphone-mute.svg";
 import headphoneIcon from "@/assets/icons/headphone.svg";
 import headphoneDeafenIcon from "@/assets/icons/headphone-deafen.svg";
 import callEndIcon from "@/assets/icons/call-end.svg";
 import callIcon from "@/assets/icons/call.svg";
+import videoIcon from "@/assets/icons/video-camera.svg";
+import screenshareIcon from "@/assets/icons/screenshare.svg";
 
 const formatDuration = (ms: number) => {
   const secs = Math.floor(ms / 1000);
@@ -29,11 +32,46 @@ interface PeerTileProps {
   audioLevel: number;
   isMuted: boolean;
   isLocal?: boolean;
+  /** When set, the tile renders a <video> instead of the avatar circle. */
+  videoStream?: MediaStream | null;
 }
 
-const PeerTile = ({ userId, displayName, avatarUrl, audioLevel, isMuted, isLocal }: PeerTileProps) => {
+const PeerTile = ({ userId, displayName, avatarUrl, audioLevel, isMuted, isLocal, videoStream }: PeerTileProps) => {
   const color = getProfileColor(userId);
   const speaking = audioLevel > 5 && !isMuted;
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  useEffect(() => {
+    if (videoRef.current && videoStream) {
+      videoRef.current.srcObject = videoStream;
+      videoRef.current.play().catch(() => {});
+    }
+  }, [videoStream]);
+
+  if (videoStream) {
+    return (
+      <div className="flex flex-col items-center gap-2">
+        <div
+          className="relative overflow-hidden rounded-xl bg-black transition-all"
+          style={{
+            width: 220,
+            height: 124,
+            boxShadow: speaking ? speakingShadow(audioLevel) : "0 0 0 0px transparent",
+          }}
+        >
+          <video ref={videoRef} muted={isLocal} playsInline className="h-full w-full object-cover" />
+          {isMuted && (
+            <div className="absolute bottom-1 right-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#ed4245]">
+              <img src={micMuteIcon} alt="Muted" className="h-3 w-3" style={{ filter: "brightness(0) invert(1)" }} />
+            </div>
+          )}
+        </div>
+        <span className="text-xs font-semibold max-w-[200px] truncate" style={{ color: "var(--app-text-primary)" }}>
+          {displayName}{isLocal ? " (you)" : ""}
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col items-center gap-2">
       <div className="relative">
@@ -66,19 +104,41 @@ const PeerTile = ({ userId, displayName, avatarUrl, audioLevel, isMuted, isLocal
   );
 };
 
+/** Big screenshare viewer — shown above the participant grid when someone shares. */
+const ScreenShareViewer = ({ peer }: { peer: GroupPeer }) => {
+  const ref = useRef<HTMLVideoElement | null>(null);
+  useEffect(() => {
+    if (ref.current && peer.screenStream) {
+      ref.current.srcObject = peer.screenStream;
+      ref.current.play().catch(() => {});
+    }
+  }, [peer.screenStream]);
+  return (
+    <div className="mx-4 mt-3 rounded-xl overflow-hidden bg-black border" style={{ borderColor: "var(--app-border)" }}>
+      <video ref={ref} playsInline className="w-full max-h-[50vh] object-contain bg-black" />
+      <div className="px-3 py-2 text-xs" style={{ color: "var(--app-text-secondary)" }}>
+        {peer.displayName} is sharing their screen
+      </div>
+    </div>
+  );
+};
+
 interface Props {
   conversationId: string;
 }
 
-/**
- * Group voice call panel — mounted inside the chat area of a group conversation
- * when the local user is in the call for THIS conversation.
- */
+const isElectron = typeof window !== "undefined" && (window as any).electronAPI?.isElectron;
+
 const GroupCallPanel = ({ conversationId }: Props) => {
   const { user } = useAuth();
-  const { activeCall, peers, selfAudioLevel, leaveCall, toggleMute, toggleDeafen, ping } = useGroupCall();
+  const {
+    activeCall, peers, selfAudioLevel, leaveCall,
+    toggleMute, toggleDeafen, toggleVideo, toggleScreenShare,
+    localVideoStream, localScreenStream, ping,
+  } = useGroupCall();
   const [elapsed, setElapsed] = useState(0);
   const [selfAvatar, setSelfAvatar] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -95,6 +155,19 @@ const GroupCallPanel = ({ conversationId }: Props) => {
   if (!activeCall || activeCall.conversationId !== conversationId) return null;
 
   const displayName = user?.user_metadata?.display_name || "You";
+  const sharingPeer = peers.find(p => p.isScreenSharing && p.screenStream);
+
+  const handleShareClick = async () => {
+    if (activeCall.isScreenSharing) {
+      await toggleScreenShare();
+      return;
+    }
+    if (isElectron) {
+      setPickerOpen(true);
+    } else {
+      await toggleScreenShare();
+    }
+  };
 
   return (
     <div className="mx-4 mt-4 rounded-2xl overflow-hidden border" style={{ backgroundColor: "var(--app-bg-tertiary)", borderColor: "var(--app-border)" }}>
@@ -110,8 +183,18 @@ const GroupCallPanel = ({ conversationId }: Props) => {
         </span>
       </div>
 
-      {/* Participants grid */}
-      <div className="flex flex-wrap items-center justify-center gap-8 px-6 py-8">
+      {sharingPeer && <ScreenShareViewer peer={sharingPeer} />}
+      {activeCall.isScreenSharing && localScreenStream && (
+        <div className="mx-4 mt-3 rounded-xl overflow-hidden bg-black border" style={{ borderColor: "var(--app-border)" }}>
+          <video
+            ref={(el) => { if (el && localScreenStream) { el.srcObject = localScreenStream; el.play().catch(() => {}); } }}
+            playsInline muted className="w-full max-h-[50vh] object-contain bg-black"
+          />
+          <div className="px-3 py-2 text-xs" style={{ color: "var(--app-text-secondary)" }}>You're sharing your screen</div>
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center justify-center gap-6 px-6 py-6">
         <PeerTile
           userId={user!.id}
           displayName={displayName}
@@ -119,6 +202,7 @@ const GroupCallPanel = ({ conversationId }: Props) => {
           audioLevel={selfAudioLevel}
           isMuted={activeCall.isMuted}
           isLocal
+          videoStream={activeCall.isVideoOn ? localVideoStream : null}
         />
         {peers.map((p) => (
           <PeerTile
@@ -128,12 +212,12 @@ const GroupCallPanel = ({ conversationId }: Props) => {
             avatarUrl={p.avatarUrl}
             audioLevel={p.audioLevel}
             isMuted={p.isMuted}
+            videoStream={p.isVideoOn ? p.videoStream : null}
           />
         ))}
       </div>
 
-      {/* Controls */}
-      <div className="flex items-center justify-center gap-3 px-6 pb-5">
+      <div className="flex items-center justify-center gap-3 px-6 pb-5 flex-wrap">
         <button
           onClick={toggleMute}
           className={`flex h-10 w-10 items-center justify-center rounded-full transition-all duration-150 ${
@@ -141,12 +225,8 @@ const GroupCallPanel = ({ conversationId }: Props) => {
           }`}
           title={activeCall.isMuted ? "Unmute" : "Mute"}
         >
-          <img
-            src={activeCall.isMuted ? micMuteIcon : micIcon}
-            alt="Mic"
-            className="h-5 w-5"
-            style={{ filter: activeCall.isMuted ? "brightness(0) saturate(100%) invert(29%) sepia(98%) saturate(2052%) hue-rotate(337deg) brightness(95%) contrast(92%)" : "brightness(0) invert(1)" }}
-          />
+          <img src={activeCall.isMuted ? micMuteIcon : micIcon} alt="Mic" className="h-5 w-5"
+            style={{ filter: activeCall.isMuted ? "brightness(0) saturate(100%) invert(29%) sepia(98%) saturate(2052%) hue-rotate(337deg) brightness(95%) contrast(92%)" : "brightness(0) invert(1)" }} />
         </button>
 
         <button
@@ -156,12 +236,28 @@ const GroupCallPanel = ({ conversationId }: Props) => {
           }`}
           title={activeCall.isDeafened ? "Undeafen" : "Deafen"}
         >
-          <img
-            src={activeCall.isDeafened ? headphoneDeafenIcon : headphoneIcon}
-            alt="Deafen"
-            className="h-5 w-5"
-            style={{ filter: activeCall.isDeafened ? "brightness(0) saturate(100%) invert(29%) sepia(98%) saturate(2052%) hue-rotate(337deg) brightness(95%) contrast(92%)" : "brightness(0) invert(1)" }}
-          />
+          <img src={activeCall.isDeafened ? headphoneDeafenIcon : headphoneIcon} alt="Deafen" className="h-5 w-5"
+            style={{ filter: activeCall.isDeafened ? "brightness(0) saturate(100%) invert(29%) sepia(98%) saturate(2052%) hue-rotate(337deg) brightness(95%) contrast(92%)" : "brightness(0) invert(1)" }} />
+        </button>
+
+        <button
+          onClick={() => toggleVideo()}
+          className={`flex h-10 w-10 items-center justify-center rounded-full transition-all duration-150 ${
+            activeCall.isVideoOn ? "bg-[#3ba55c] hover:bg-[#2d8b4e]" : "bg-white/10 hover:bg-white/20"
+          }`}
+          title={activeCall.isVideoOn ? "Turn off camera" : "Turn on camera"}
+        >
+          <img src={videoIcon} alt="Video" className="h-5 w-5" style={{ filter: "brightness(0) invert(1)" }} />
+        </button>
+
+        <button
+          onClick={handleShareClick}
+          className={`flex h-10 w-10 items-center justify-center rounded-full transition-all duration-150 ${
+            activeCall.isScreenSharing ? "bg-[#3ba55c] hover:bg-[#2d8b4e]" : "bg-white/10 hover:bg-white/20"
+          }`}
+          title={activeCall.isScreenSharing ? "Stop sharing screen" : "Share screen"}
+        >
+          <img src={screenshareIcon} alt="Share" className="h-5 w-5" style={{ filter: "brightness(0) invert(1)" }} />
         </button>
 
         <div className="w-px h-6 mx-1" style={{ backgroundColor: "var(--app-border)" }} />
@@ -174,11 +270,21 @@ const GroupCallPanel = ({ conversationId }: Props) => {
           <img src={callEndIcon} alt="Leave" className="h-5 w-5" style={{ filter: "brightness(0) invert(1)" }} />
         </button>
       </div>
+
+      {pickerOpen && (
+        <ScreenSharePicker
+          isOpen={pickerOpen}
+          onClose={() => setPickerOpen(false)}
+          onSelect={async (sourceId: string) => {
+            setPickerOpen(false);
+            await toggleScreenShare(sourceId);
+          }}
+        />
+      )}
     </div>
   );
 };
 
-/** Fixed top-center notification when someone calls our group. */
 export const GroupIncomingCallOverlay = () => {
   const { incomingCall, activeCall, acceptCall, declineCall } = useGroupCall();
   if (!incomingCall || activeCall) return null;
