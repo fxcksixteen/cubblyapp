@@ -3,7 +3,7 @@ import type { CSSProperties } from "react";
 import { BellRing, MessageSquareText, Volume2 } from "lucide-react";
 import { toast } from "sonner";
 import { getNotificationPermission, notify } from "@/lib/notifications";
-import { playSound } from "@/lib/sounds";
+import { playSound, playLooping, stopLooping } from "@/lib/sounds";
 import {
   getNotificationPreferences,
   subscribeToNotificationPreferences,
@@ -65,6 +65,20 @@ const NotificationSettings = ({ cardStyle }: NotificationSettingsProps) => {
   const playTestSound = () => {
     playSound("message", { force: true });
     toast.success("Played message.wav.");
+  };
+
+  const testCallSound = (key: "outgoingRing" | "incomingCall" | "leaveCall", label: string) => {
+    if (key === "leaveCall") {
+      playSound("leaveCall", { force: true, volume: 0.5 });
+      toast.success(`Played ${label}.`);
+      return;
+    }
+    // Looping sounds — start, then auto-stop after 4s so the user can hear them
+    // without needing a separate "stop" button.
+    stopLooping(key);
+    playLooping(key, { force: true, volume: 0.5 });
+    toast.success(`Playing ${label} for 4 seconds…`);
+    window.setTimeout(() => stopLooping(key), 4000);
   };
 
   const rows = [
