@@ -234,6 +234,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const preMuteStateRef = useRef<boolean>(false);
   const localStreamRef = useRef<MediaStream | null>(null);
   const endCallRef = useRef<() => void>(() => {});
+  // Forward-ref to syncCallParticipantState (declared later) so the ICE-connected
+  // handler can upsert our call_participants row the moment we connect — without
+  // this, peers can't see our mute/deafen/video state until we toggle something.
+  const syncParticipantRef = useRef<(o?: { is_muted?: boolean; is_deafened?: boolean }) => void>(() => {});
 
   // ICE candidate queues to fix race conditions
   const incomingCandidateQueue = useRef<RTCIceCandidateInit[]>([]);
@@ -502,6 +506,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             console.log("[Voice] Audio track enabled on ICE connected");
           }
         });
+        // Upsert our call_participants row immediately so the peer can see
+        // our mute/deafen/video state from the moment we connect (otherwise
+        // the row only gets created the first time we toggle something).
+        try { syncParticipantRef.current?.(); } catch {}
       }
       if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed") {
         console.warn("[Voice] ICE connection failed/disconnected");
