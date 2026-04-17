@@ -2,6 +2,7 @@ import { createRoot } from "react-dom/client";
 import { useState } from "react";
 import App from "./App.tsx";
 import LoadingSplash from "./components/app/LoadingSplash";
+import ErrorBoundary from "./components/ErrorBoundary";
 import { preloadAllSounds } from "./lib/sounds";
 import "./index.css";
 
@@ -14,10 +15,10 @@ preloadAllSounds();
 const Root = () => {
   const [splashDone, setSplashDone] = useState(false);
   return (
-    <>
+    <ErrorBoundary>
       <App />
       {!splashDone && <LoadingSplash onComplete={() => setSplashDone(true)} />}
-    </>
+    </ErrorBoundary>
   );
 };
 
