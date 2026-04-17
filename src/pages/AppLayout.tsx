@@ -32,6 +32,7 @@ import MobileChatHeader from "@/components/app/mobile/MobileChatHeader";
 import MobileCallOverlay from "@/components/app/mobile/MobileCallOverlay";
 import YouPage from "@/pages/YouPage";
 import GroupMembersPanel from "@/components/app/GroupMembersPanel";
+import MobileNotificationPrompt from "@/components/app/MobileNotificationPrompt";
 
 type FriendTab = "online" | "all" | "pending" | "blocked" | "add";
 
@@ -400,6 +401,7 @@ const AppLayout = () => {
 
         {/* Incoming-call toast still shows */}
         <VoiceCallOverlay />
+        <MobileNotificationPrompt />
 
         <CreateGroupModal
           isOpen={createGroupOpen}
