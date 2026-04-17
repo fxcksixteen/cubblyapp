@@ -13,9 +13,12 @@ const isWin = process.platform === "win32";
 const npmCmd = isWin ? "npm.cmd" : "npm";
 const npxCmd = isWin ? "npx.cmd" : "npx";
 const dryRun = process.argv.includes("--dry-run");
+const builderConfigPath = path.join(rootDir, "electron-release", `_builder-config-${timestamp}.json`);
 
-function rmrf(p) {
-  try { fs.rmSync(p, { recursive: true, force: true }); } catch {}
+function rmrf(targetPath) {
+  try {
+    fs.rmSync(targetPath, { recursive: true, force: true });
+  } catch {}
 }
 
 console.log(`[build:electron] Building Cubbly desktop installer v${version}`);
@@ -27,15 +30,29 @@ if (dryRun) {
 }
 
 console.log(`[build:electron] Step 1/3: running vite build...`);
-const buildResult = spawnSync(npmCmd, ["run", "build"], { cwd: rootDir, stdio: "inherit", shell: true });
+const buildResult = spawnSync(npmCmd, ["run", "build"], {
+  cwd: rootDir,
+  stdio: "inherit",
+  shell: true,
+});
 if (buildResult.status !== 0) {
   console.error(`[build:electron] vite build failed (status ${buildResult.status})`);
   process.exit(buildResult.status ?? 1);
 }
 
-console.log(`[build:electron] Step 2/3: cleaning output folder...`);
+console.log(`[build:electron] Step 2/3: preparing installer output...`);
 rmrf(releaseRoot);
 fs.mkdirSync(releaseRoot, { recursive: true });
+fs.mkdirSync(path.dirname(builderConfigPath), { recursive: true });
+
+const buildConfig = {
+  ...pkg.build,
+  directories: {
+    ...(pkg.build?.directories || {}),
+    output: releaseRoot,
+  },
+};
+fs.writeFileSync(builderConfigPath, JSON.stringify(buildConfig, null, 2), "utf8");
 
 console.log(`[build:electron] Step 3/3: running electron-builder for Windows NSIS installer...`);
 const builderArgs = [
@@ -45,10 +62,16 @@ const builderArgs = [
   "--x64",
   "--publish",
   "never",
-  `--config.directories.output=${releaseRoot}`,
+  "--config",
+  builderConfigPath,
 ];
 console.log(`[build:electron] Command: ${npxCmd} ${builderArgs.join(" ")}`);
-const builderResult = spawnSync(npxCmd, builderArgs, { cwd: rootDir, stdio: "inherit", shell: true });
+const builderResult = spawnSync(npxCmd, builderArgs, {
+  cwd: rootDir,
+  stdio: "inherit",
+  shell: true,
+});
+rmrf(builderConfigPath);
 if (builderResult.status !== 0) {
   console.error(`[build:electron] electron-builder exited with status ${builderResult.status}`);
   process.exit(builderResult.status ?? 1);
@@ -59,10 +82,12 @@ const expectedFiles = [
   path.join(releaseRoot, `Cubbly Setup ${version}.exe.blockmap`),
   path.join(releaseRoot, "latest.yml"),
 ];
-const missing = expectedFiles.filter((p) => !fs.existsSync(p));
+const missing = expectedFiles.filter((filePath) => !fs.existsSync(filePath));
 if (missing.length) {
   console.error(`[build:electron] FATAL: installer build is missing required files:`);
-  for (const m of missing) console.error(`  - ${path.relative(releaseRoot, m)}`);
+  for (const missingFile of missing) {
+    console.error(`  - ${path.relative(releaseRoot, missingFile)}`);
+  }
   process.exit(1);
 }
 
@@ -74,4 +99,3 @@ console.log(`[build:electron] Upload these files from: ${releaseRoot}`);
 console.log(`[build:electron]   - Cubbly Setup ${version}.exe`);
 console.log(`[build:electron]   - Cubbly Setup ${version}.exe.blockmap`);
 console.log(`[build:electron]   - latest.yml`);
-
