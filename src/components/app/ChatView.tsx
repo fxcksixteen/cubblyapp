@@ -556,6 +556,31 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
             }}
             onBlur={broadcastStopTyping}
             onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
+            onPaste={(e) => {
+              // Ctrl+V image paste — grab image items from the clipboard and queue them as attachments
+              const items = e.clipboardData?.items;
+              if (!items) return;
+              const imageFiles: File[] = [];
+              for (let i = 0; i < items.length; i++) {
+                const it = items[i];
+                if (it.kind === "file" && it.type.startsWith("image/")) {
+                  const f = it.getAsFile();
+                  if (f) {
+                    // Give pasted screenshots a friendlier name
+                    const ext = (f.type.split("/")[1] || "png").split("+")[0];
+                    const named = new File([f], `pasted-${Date.now()}.${ext}`, { type: f.type });
+                    imageFiles.push(named);
+                  }
+                }
+              }
+              if (imageFiles.length > 0) {
+                e.preventDefault();
+                setPendingFiles((prev) => [
+                  ...prev,
+                  ...imageFiles.map((f) => ({ file: f, id: `paste-${Date.now()}-${Math.random()}` })),
+                ]);
+              }
+            }}
             placeholder={`Message @${recipientName}`}
             className="flex-1 bg-transparent text-sm outline-none placeholder:text-[#6d6f78]"
             data-typing-input

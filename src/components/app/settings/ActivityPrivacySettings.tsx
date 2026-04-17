@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useActivity } from "@/contexts/ActivityContext";
 import { Switch } from "@/components/ui/switch";
 import { Plus, Trash2, Gamepad2, Info } from "lucide-react";
-import { toast } from "sonner";
+import AddGameModal from "./AddGameModal";
 
 interface ActivityPrivacySettingsProps {
   cardStyle: React.CSSProperties;
@@ -11,38 +11,8 @@ interface ActivityPrivacySettingsProps {
 const isElectron = typeof window !== "undefined" && (window as any).electronAPI?.isElectron;
 
 const ActivityPrivacySettings = ({ cardStyle }: ActivityPrivacySettingsProps) => {
-  const { shareActivity, setShareActivity, myGames, addMyGame, removeMyGame } = useActivity();
-  const [adding, setAdding] = useState(false);
-
-  const handleAddGame = async () => {
-    if (!isElectron) {
-      toast.error("Adding custom games is only available in the desktop app.");
-      return;
-    }
-    const api = (window as any).electronAPI;
-    if (!api?.pickGameExe) return;
-    setAdding(true);
-    try {
-      const picked = await api.pickGameExe();
-      if (!picked) {
-        setAdding(false);
-        return;
-      }
-      const displayName = window.prompt(
-        "What should we call this game?",
-        picked.displayName
-      );
-      if (!displayName?.trim()) {
-        setAdding(false);
-        return;
-      }
-      await addMyGame(picked.processName, displayName.trim());
-      toast.success(`Added ${displayName} to your games`);
-    } catch (e: any) {
-      toast.error("Failed to add game");
-    }
-    setAdding(false);
-  };
+  const { shareActivity, setShareActivity, myGames, removeMyGame } = useActivity();
+  const [addOpen, setAddOpen] = useState(false);
 
   return (
     <div className="space-y-5">
@@ -90,12 +60,11 @@ const ActivityPrivacySettings = ({ cardStyle }: ActivityPrivacySettingsProps) =>
             </p>
           </div>
           <button
-            onClick={handleAddGame}
-            disabled={adding || !isElectron}
-            className="flex items-center gap-2 rounded-full bg-[#5865f2] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#4752c4] disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={() => setAddOpen(true)}
+            className="flex items-center gap-2 rounded-full bg-[#5865f2] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#4752c4]"
           >
             <Plus className="h-4 w-4" />
-            {adding ? "Picking..." : "Add a game"}
+            Add a game
           </button>
         </div>
 
@@ -138,6 +107,8 @@ const ActivityPrivacySettings = ({ cardStyle }: ActivityPrivacySettingsProps) =>
           </div>
         )}
       </div>
+
+      <AddGameModal isOpen={addOpen} onClose={() => setAddOpen(false)} />
     </div>
   );
 };

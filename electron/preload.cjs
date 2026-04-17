@@ -13,7 +13,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   // Activity / process scanning
   getRunningProcesses: () => ipcRenderer.invoke("get-running-processes"),
+  getOpenWindows: () => ipcRenderer.invoke("get-open-windows"),
   pickGameExe: () => ipcRenderer.invoke("pick-game-exe"),
+
+  // Native desktop notifications (Windows toast / macOS NC / Linux libnotify)
+  showNotification: (opts) => ipcRenderer.invoke("show-notification", opts),
+  onNotificationClick: (cb) => {
+    const listener = (_e, payload) => cb(payload);
+    ipcRenderer.on("notification-clicked", listener);
+    return () => ipcRenderer.removeListener("notification-clicked", listener);
+  },
 
   // Auto-updater
   installUpdate: () => ipcRenderer.send("install-update"),

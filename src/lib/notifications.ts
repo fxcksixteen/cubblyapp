@@ -1,10 +1,10 @@
 /**
- * Native OS notifications wrapper.
- * - Works in both web and Electron (Electron provides the same Notification API
- *   in renderer when the app is focused-aware).
- * - Respects DND state via lib/sounds isDndActive() (passed in to keep this
- *   module dependency-free).
- * - Suppresses notifications when the window is focused (user is already there).
+ * Cross-platform notification wrapper.
+ * - In Electron: prefers the main-process `Notification` API (proper Windows toast
+ *   attribution under our AppUserModelID).
+ * - In a browser/PWA: falls back to the standard Web Notification API.
+ * - Suppresses notifications when the window is focused, when DND is on, or
+ *   when Gaming Mode has set `__cubblySuppress`.
  */
 
 let permissionStatus: NotificationPermission = "default";
@@ -14,11 +14,16 @@ if (typeof Notification !== "undefined") {
   permissionStatus = Notification.permission;
 }
 
+const electronAPI = (typeof window !== "undefined" ? (window as any).electronAPI : null) || null;
+const isElectron = !!electronAPI?.isElectron;
+
 export function setNotificationDnd(active: boolean) {
   dndActive = active;
 }
 
 export async function ensureNotificationPermission(): Promise<boolean> {
+  // Electron handles permissions natively — always allowed in main process.
+  if (isElectron) return true;
   if (typeof Notification === "undefined") return false;
   if (permissionStatus === "granted") return true;
   if (permissionStatus === "denied") return false;
@@ -31,6 +36,13 @@ export async function ensureNotificationPermission(): Promise<boolean> {
   }
 }
 
+/** Returns the current permission state without prompting. */
+export function getNotificationPermission(): NotificationPermission {
+  if (isElectron) return "granted";
+  if (typeof Notification === "undefined") return "denied";
+  return Notification.permission;
+}
+
 export interface NotifyOptions {
   title: string;
   body: string;
@@ -40,15 +52,45 @@ export interface NotifyOptions {
   onClick?: () => void;
 }
 
+// Track per-tag click handlers so the Electron main->renderer "clicked" event
+// can route to the right callback.
+const clickHandlers = new Map<string, () => void>();
+if (isElectron && electronAPI?.onNotificationClick) {
+  try {
+    electronAPI.onNotificationClick((payload: { tag?: string }) => {
+      if (!payload?.tag) return;
+      const fn = clickHandlers.get(payload.tag);
+      if (fn) {
+        try { fn(); } catch { /* ignore */ }
+      }
+    });
+  } catch { /* ignore */ }
+}
+
 export function notify(options: NotifyOptions) {
-  if (typeof Notification === "undefined") return;
-  if (permissionStatus !== "granted") return;
   if (dndActive) return;
-  // Gaming Mode suppression
   if (typeof window !== "undefined" && (window as any).__cubblySuppress) return;
-  // Don't disturb when the window is already focused
   if (typeof document !== "undefined" && document.hasFocus()) return;
 
+  // Electron path
+  if (isElectron && electronAPI?.showNotification) {
+    if (options.tag && options.onClick) clickHandlers.set(options.tag, options.onClick);
+    try {
+      electronAPI.showNotification({
+        title: options.title,
+        body: options.body,
+        tag: options.tag,
+        silent: options.silent ?? false,
+      });
+    } catch (e) {
+      console.warn("[notify electron] failed:", e);
+    }
+    return;
+  }
+
+  // Web path
+  if (typeof Notification === "undefined") return;
+  if (permissionStatus !== "granted") return;
   try {
     const n = new Notification(options.title, {
       body: options.body,

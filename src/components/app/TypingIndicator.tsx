@@ -1,21 +1,28 @@
-import { useEffect, useState } from "react";
 import { getProfileColor } from "@/lib/profileColors";
 
-interface TypingIndicatorProps {
-  typingUsers: { id: string; name: string }[];
+interface TypingUser {
+  id: string;
+  name: string;
 }
+
+interface TypingIndicatorProps {
+  typingUsers: TypingUser[];
+}
+
+const formatNames = (users: TypingUser[]): string => {
+  const names = users.map((u) => u.name);
+  if (names.length === 0) return "";
+  if (names.length === 1) return `${names[0]} is typing`;
+  if (names.length === 2) return `${names[0]} and ${names[1]} are typing`;
+  if (names.length === 3) return `${names[0]}, ${names[1]} and ${names[2]} are typing`;
+  // 4+ — don't list everyone
+  return `Several people are typing`;
+};
 
 const TypingIndicator = ({ typingUsers }: TypingIndicatorProps) => {
   if (typingUsers.length === 0) return null;
 
-  const names = typingUsers.map(u => u.name);
-  const text =
-    names.length === 1
-      ? `${names[0]} is typing`
-      : names.length === 2
-      ? `${names[0]} and ${names[1]} are typing`
-      : `${names[0]} and ${names.length - 1} others are typing`;
-
+  const text = formatNames(typingUsers);
   const firstColor = getProfileColor(typingUsers[0].id);
 
   return (
