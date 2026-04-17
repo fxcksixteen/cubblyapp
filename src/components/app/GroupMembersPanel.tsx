@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Conversation } from "@/hooks/useConversations";
 import { useAuth } from "@/contexts/AuthContext";
 import { useActivity } from "@/contexts/ActivityContext";
 import { supabase } from "@/integrations/supabase/client";
 import { getProfileColor } from "@/lib/profileColors";
 import { getEffectivePresenceStatus } from "@/lib/presence";
+import { activityLabel } from "@/lib/activityLabel";
 import StatusIndicator from "./StatusIndicator";
 import GroupAvatar from "./GroupAvatar";
 import { Crown, UserMinus, LogOut, Pencil, Image as ImageIcon, Check, X } from "lucide-react";
@@ -27,7 +28,7 @@ interface GroupMembersPanelProps {
 }
 
 const GroupMembersPanel = ({ conversation, onClose, onLeftGroup }: GroupMembersPanelProps) => {
-  const { user, onlineUserIds } = useAuth();
+  const { user, onlineUserIds, myStatus } = useAuth();
   const { getActivity } = useActivity();
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(conversation.name || "");
@@ -35,6 +36,23 @@ const GroupMembersPanel = ({ conversation, onClose, onLeftGroup }: GroupMembersP
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [confirmKick, setConfirmKick] = useState<string | null>(null);
   const [uploadingPic, setUploadingPic] = useState(false);
+  const [myAvatarUrl, setMyAvatarUrl] = useState<string | null>(null);
+
+  // Pull current user's avatar so the "you" row in the member list shows the
+  // real profile picture instead of a colored initial fallback.
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    supabase
+      .from("profiles")
+      .select("avatar_url")
+      .eq("user_id", user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled) setMyAvatarUrl(data?.avatar_url || null);
+      });
+    return () => { cancelled = true; };
+  }, [user?.id]);
 
   const isOwner = user?.id === conversation.owner_id;
 
@@ -111,7 +129,7 @@ const GroupMembersPanel = ({ conversation, onClose, onLeftGroup }: GroupMembersP
     setConfirmKick(null);
   };
 
-  // Build full members list including current user
+  // Build full members list including current user (with their REAL avatar + status)
   const allMembers = [
     ...(user
       ? [
@@ -119,8 +137,8 @@ const GroupMembersPanel = ({ conversation, onClose, onLeftGroup }: GroupMembersP
             user_id: user.id,
             display_name: user.user_metadata?.display_name || "You",
             username: user.user_metadata?.username || "you",
-            avatar_url: null as string | null,
-            status: "online",
+            avatar_url: myAvatarUrl,
+            status: myStatus,
             isYou: true,
           },
         ]
@@ -195,7 +213,11 @@ const GroupMembersPanel = ({ conversation, onClose, onLeftGroup }: GroupMembersP
         </p>
         {allMembers.map((m) => {
           const color = getProfileColor(m.user_id);
-          const status = m.isYou ? "online" : getEffectivePresenceStatus(m.user_id, m.status, onlineUserIds);
+          // Use the user's actual selected status (idle/dnd/invisible/online).
+          // For "you", invisible appears as offline-style only to others; locally show real selection.
+          const status = m.isYou
+            ? (m.status === "invisible" ? "invisible" : m.status)
+            : getEffectivePresenceStatus(m.user_id, m.status, onlineUserIds);
           const memberIsOwner = m.user_id === conversation.owner_id;
           return (
             <div
@@ -229,10 +251,11 @@ const GroupMembersPanel = ({ conversation, onClose, onLeftGroup }: GroupMembersP
                 </div>
                 {(() => {
                   const act = getActivity(m.user_id);
-                  if (act?.name) {
+                  const label = activityLabel(act);
+                  if (label) {
                     return (
                       <p className="truncate text-[11px] leading-tight" style={{ color: "#3ba55c" }}>
-                        Playing {act.name}
+                        {label}
                       </p>
                     );
                   }

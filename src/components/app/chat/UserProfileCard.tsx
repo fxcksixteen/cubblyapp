@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useActivity } from "@/contexts/ActivityContext";
 import { getProfileColor } from "@/lib/profileColors";
 import { getEffectivePresenceStatus } from "@/lib/presence";
+import { activityLabel } from "@/lib/activityLabel";
 import { toast } from "sonner";
 import { X } from "lucide-react";
 import messagesIcon from "@/assets/icons/messages.svg";
@@ -31,6 +33,7 @@ interface ProfileData {
 
 const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage, startExpanded = false }: UserProfileCardProps) => {
   const { user, onlineUserIds } = useAuth();
+  const { getActivity } = useActivity();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [friendshipStatus, setFriendshipStatus] = useState<string | null>(null);
   const [friendshipId, setFriendshipId] = useState<string | null>(null);
@@ -39,6 +42,8 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
   const color = getProfileColor(userId);
   const isOwnProfile = userId === user?.id;
   const effectiveStatus = getEffectivePresenceStatus(userId, profile?.status, onlineUserIds);
+  const userActivity = getActivity(userId);
+  const userActivityLabel = activityLabel(userActivity);
 
   useEffect(() => {
     supabase
@@ -177,6 +182,12 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
             <p className="text-xl font-bold text-white">{displayName}</p>
             <p className="text-sm text-[#949ba4]">@{profile?.username || displayName.toLowerCase()}</p>
 
+            {userActivityLabel && (
+              <p className="mt-2 text-sm font-medium" style={{ color: "#3ba55c" }}>
+                {userActivityLabel}
+              </p>
+            )}
+
             {profile?.bio && (
               <div className="mt-3 rounded-lg bg-[#1e1f22] p-3">
                 <p className="text-xs font-semibold text-[#949ba4] uppercase tracking-wide mb-1">About Me</p>
@@ -257,6 +268,9 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
       <div className="px-4 pt-1.5 pb-2">
         <p className="text-lg font-bold text-white">{displayName}</p>
         <p className="text-sm text-[#949ba4]">@{profile?.username || displayName.toLowerCase()}</p>
+        {userActivityLabel && (
+          <p className="mt-1 text-xs font-medium" style={{ color: "#3ba55c" }}>{userActivityLabel}</p>
+        )}
         {profile?.bio && (
           <p className="mt-2 text-xs text-[#dbdee1] leading-relaxed line-clamp-3">{profile.bio}</p>
         )}
