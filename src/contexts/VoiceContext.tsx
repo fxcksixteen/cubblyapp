@@ -1513,6 +1513,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [user, callEvents, activeCall]);
 
+  // Keep the forward ref pointing at the latest function so the ICE handler
+  // can call it the moment the call connects.
+  useEffect(() => {
+    syncParticipantRef.current = syncCallParticipantState;
+  }, [syncCallParticipantState]);
+
   const toggleMute = useCallback(() => {
     setActiveCall(prev => {
       if (!prev) return null;
