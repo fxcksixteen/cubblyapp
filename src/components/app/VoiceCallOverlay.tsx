@@ -44,14 +44,9 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
     isScreenSharing, startScreenShare, stopScreenShare,
     screenStream, remoteScreenStream,
     localVideoStream, remoteVideoStream,
-    callEvents,
+    currentCallEventId,
   } = useVoice();
-  // Find the active call event for this conversation so we can read peer state
-  const activeCallEventId = useMemo(() => {
-    const ev = callEvents.find(e => e.conversationId === conversationId && e.state === "ongoing");
-    return ev?.id ?? null;
-  }, [callEvents, conversationId]);
-  const { getPeerState } = useCallParticipants(activeCallEventId);
+  const { getPeerState } = useCallParticipants(activeCall?.conversationId === conversationId ? currentCallEventId : null);
   const peerState = getPeerState();
   const [elapsed, setElapsed] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
