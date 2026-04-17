@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Conversation } from "@/hooks/useConversations";
 import { useAuth } from "@/contexts/AuthContext";
 import { useActivity } from "@/contexts/ActivityContext";
 import { supabase } from "@/integrations/supabase/client";
 import { getProfileColor } from "@/lib/profileColors";
 import { getEffectivePresenceStatus } from "@/lib/presence";
+import { activityLabel } from "@/lib/activityLabel";
 import StatusIndicator from "./StatusIndicator";
 import GroupAvatar from "./GroupAvatar";
 import { Crown, UserMinus, LogOut, Pencil, Image as ImageIcon, Check, X } from "lucide-react";
@@ -27,7 +28,7 @@ interface GroupMembersPanelProps {
 }
 
 const GroupMembersPanel = ({ conversation, onClose, onLeftGroup }: GroupMembersPanelProps) => {
-  const { user, onlineUserIds } = useAuth();
+  const { user, onlineUserIds, myStatus } = useAuth();
   const { getActivity } = useActivity();
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(conversation.name || "");
@@ -35,6 +36,23 @@ const GroupMembersPanel = ({ conversation, onClose, onLeftGroup }: GroupMembersP
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [confirmKick, setConfirmKick] = useState<string | null>(null);
   const [uploadingPic, setUploadingPic] = useState(false);
+  const [myAvatarUrl, setMyAvatarUrl] = useState<string | null>(null);
+
+  // Pull current user's avatar so the "you" row in the member list shows the
+  // real profile picture instead of a colored initial fallback.
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    supabase
+      .from("profiles")
+      .select("avatar_url")
+      .eq("user_id", user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled) setMyAvatarUrl(data?.avatar_url || null);
+      });
+    return () => { cancelled = true; };
+  }, [user?.id]);
 
   const isOwner = user?.id === conversation.owner_id;
 
