@@ -80,7 +80,8 @@ export function notify(options: NotifyOptions) {
         title: options.title,
         body: options.body,
         tag: options.tag,
-        silent: options.silent ?? false,
+        icon: options.icon, // sender avatar URL — main process fetches & uses it
+        silent: true,        // we always play our own sound from renderer
       });
     } catch (e) {
       console.warn("[notify electron] failed:", e);
@@ -96,7 +97,7 @@ export function notify(options: NotifyOptions) {
       body: options.body,
       icon: options.icon || "/favicon.ico",
       tag: options.tag,
-      silent: options.silent ?? false,
+      silent: true, // we play our own message.wav — no OS ding
     });
     if (options.onClick) {
       n.onclick = () => {

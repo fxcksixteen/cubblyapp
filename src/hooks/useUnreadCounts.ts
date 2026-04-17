@@ -119,9 +119,17 @@ export function useUnreadCounts(activeConversationId: string | null) {
 
   useEffect(() => {
     fetchUnread();
-    // Quietly request OS notification permission the first time the user is logged in.
-    // Browsers/Electron will only show the prompt once; subsequent calls are no-ops.
-    ensureNotificationPermission().catch(() => {});
+    // Only auto-request OS notification permission in Electron (where it's
+    // a no-op — already granted) or in an installed mobile PWA. Plain
+    // desktop browsers should NOT get a permission prompt — desktop users
+    // are expected to install the actual Cubbly desktop app for notifications.
+    const isElectron = !!(window as any).electronAPI?.isElectron;
+    const isStandalone =
+      (window.navigator as any).standalone === true ||
+      (() => { try { return window.matchMedia("(display-mode: standalone)").matches; } catch { return false; } })();
+    if (isElectron || isStandalone) {
+      ensureNotificationPermission().catch(() => {});
+    }
   }, [fetchUnread]);
 
   // Realtime: increment unread when a new message arrives in any of my conversations

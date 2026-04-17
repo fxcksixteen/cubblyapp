@@ -8,8 +8,10 @@ app.name = "Cubbly";
 
 // AppUserModelID — required on Windows so toast notifications attribute to Cubbly
 // (and don't show as "electron.app.Cubbly"). Must be set BEFORE any window or notification.
+// MUST match the `appId` in package.json -> "build" -> "appId", otherwise
+// Windows attributes toasts to "Electron" instead of "Cubbly".
 try {
-  app.setAppUserModelId("app.cubbly");
+  app.setAppUserModelId("app.cubbly.desktop");
 } catch (_) { /* noop on non-windows */ }
 
 // Configure logging for the auto-updater (helps debug update issues)
@@ -135,17 +137,42 @@ ipcMain.on("install-update", () => {
 // Renderer fires this when a new message arrives and the window isn't focused.
 // We use Electron's main-process Notification (not the renderer Web Notification API)
 // because it gives proper Windows toast attribution under our AppUserModelID.
+// Tiny in-memory cache of remote avatars -> nativeImage so we don't refetch
+// for every message in the same DM.
+const remoteIconCache = new Map(); // url -> nativeImage
+async function loadRemoteIcon(url) {
+  if (!url || typeof url !== "string" || !/^https?:\/\//i.test(url)) return null;
+  if (remoteIconCache.has(url)) return remoteIconCache.get(url);
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    const img = nativeImage.createFromBuffer(buf);
+    if (img.isEmpty()) return null;
+    remoteIconCache.set(url, img);
+    return img;
+  } catch (e) {
+    log.warn("[notify] avatar fetch failed:", e?.message || e);
+    return null;
+  }
+}
+
 ipcMain.handle("show-notification", async (_evt, opts) => {
   try {
     if (!Notification.isSupported()) return false;
-    const iconPath = path.join(__dirname, "..", "dist", "favicon.ico");
-    let icon;
-    try { icon = nativeImage.createFromPath(iconPath); } catch { icon = undefined; }
+    // Prefer the sender's avatar URL (Discord-style); fall back to app icon.
+    let icon = await loadRemoteIcon(opts?.icon);
+    if (!icon) {
+      const iconPath = path.join(__dirname, "..", "dist", "favicon.ico");
+      try { icon = nativeImage.createFromPath(iconPath); } catch { icon = undefined; }
+    }
     const n = new Notification({
       title: opts?.title || "Cubbly",
       body: opts?.body || "",
       icon,
-      silent: !!opts?.silent, // we play our own sound from renderer
+      // Always silent — we play our own message.wav from the renderer so the
+      // OS doesn't double-up with its generic ding.
+      silent: true,
     });
     n.on("click", () => {
       if (mainWindow) {
