@@ -1578,6 +1578,35 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     const sender = transceiver.sender;
     const currentlyOn = !!sender.track;
 
+    // Helper: upsert is_video_on so peers see the change even if no row existed yet.
+    const upsertVideoState = async (isVideoOn: boolean) => {
+      const ongoing = [...callEvents].reverse().find(e => e.state === "ongoing");
+      if (!ongoing || !user) return;
+      try {
+        const { data: existing } = await supabase
+          .from("call_participants")
+          .select("id")
+          .eq("call_event_id", ongoing.id)
+          .eq("user_id", user.id)
+          .is("left_at", null)
+          .maybeSingle();
+        if (existing) {
+          await supabase
+            .from("call_participants")
+            .update({ is_video_on: isVideoOn })
+            .eq("id", existing.id);
+        } else {
+          await supabase.from("call_participants").insert({
+            call_event_id: ongoing.id,
+            user_id: user.id,
+            is_video_on: isVideoOn,
+          });
+        }
+      } catch (e) {
+        console.warn("[Voice] Failed to sync video state:", e);
+      }
+    };
+
     if (currentlyOn) {
       // Turn off
       await sender.replaceTrack(null);
@@ -1585,17 +1614,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       localVideoStreamRef.current = null;
       setLocalVideoStream(null);
       setActiveCall(prev => prev ? { ...prev, isVideoOn: false } : prev);
-      // Sync to call_participants
-      const ongoing = [...callEvents].reverse().find(e => e.state === "ongoing");
-      if (ongoing && user) {
-        supabase
-          .from("call_participants")
-          .update({ is_video_on: false })
-          .eq("call_event_id", ongoing.id)
-          .eq("user_id", user.id)
-          .is("left_at", null)
-          .then(() => {});
-      }
+      upsertVideoState(false);
       return;
     }
 
@@ -1639,22 +1658,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         localVideoStreamRef.current = null;
         setActiveCall(prev => prev ? { ...prev, isVideoOn: false } : prev);
         sender.replaceTrack(null).catch(() => {});
+        upsertVideoState(false);
       };
 
       localVideoStreamRef.current = stream;
       setLocalVideoStream(stream);
       setActiveCall(prev => prev ? { ...prev, isVideoOn: true } : prev);
-
-      const ongoing = [...callEvents].reverse().find(e => e.state === "ongoing");
-      if (ongoing && user) {
-        supabase
-          .from("call_participants")
-          .update({ is_video_on: true })
-          .eq("call_event_id", ongoing.id)
-          .eq("user_id", user.id)
-          .is("left_at", null)
-          .then(() => {});
-      }
+      upsertVideoState(true);
     } catch (e) {
       console.error("[Voice] Failed to start camera:", e);
     }
