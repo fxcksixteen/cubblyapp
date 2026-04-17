@@ -9,8 +9,9 @@ import VoiceVideoSettings from "./settings/VoiceVideoSettings";
 import ActivityPrivacySettings from "./settings/ActivityPrivacySettings";
 import GamingModeSettings from "./settings/GamingModeSettings";
 import UpdateLogsSettings from "./settings/UpdateLogsSettings";
+import { CURRENT_VERSION } from "@/lib/changelog";
 
-const APP_VERSION = "0.2.0";
+const APP_VERSION = CURRENT_VERSION;
 
 type SettingsCategory = "my-account" | "content-social" | "data-privacy" | "notifications" | "appearance" | "accessibility" | "voice-video" | "chat" | "keybinds" | "language-time" | "advanced" | "activity-privacy" | "gaming-mode" | "update-logs";
 
