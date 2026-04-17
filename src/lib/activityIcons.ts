@@ -14,8 +14,8 @@
 /** Direct image URLs for popular games & software. Keyed by lowercased name OR process name. */
 export const CURATED_ICONS: Record<string, string> = {
   // --- Riot ---
-  "valorant": "https://cdn2.steamgriddb.com/icon_thumb/8c2f1d3acb91eed6d9f55ac41bcc41d7.png",
-  "valorant-win64-shipping": "https://cdn2.steamgriddb.com/icon_thumb/8c2f1d3acb91eed6d9f55ac41bcc41d7.png",
+  "valorant": "https://cdn.simpleicons.org/valorant/FF4654",
+  "valorant-win64-shipping": "https://cdn.simpleicons.org/valorant/FF4654",
   "league of legends": "https://cdn.simpleicons.org/leagueoflegends/C89B3C",
   "leagueclient": "https://cdn.simpleicons.org/leagueoflegends/C89B3C",
   "teamfight tactics": "https://cdn.simpleicons.org/riotgames/D32936",
