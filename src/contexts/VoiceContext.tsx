@@ -1159,8 +1159,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           },
         };
 
+        // CRITICAL: Chromium's desktop audio capture is system-wide loopback,
+        // it cannot isolate a single window's audio. So when sharing a single
+        // *window*, refuse audio capture entirely — otherwise we'd leak ALL
+        // system audio to the peer. Only allow audio for full-screen shares.
+        const sourceIsFullScreen = selectedSourceId.startsWith("screen:");
+        const wantAudio = effectiveAudio && sourceIsFullScreen;
+
         stream = await navigator.mediaDevices.getUserMedia({
-          audio: effectiveAudio ? {
+          audio: wantAudio ? {
             mandatory: {
               chromeMediaSource: "desktop",
               chromeMediaSourceId: selectedSourceId,
@@ -1168,6 +1175,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           } as any : false,
           video: videoConstraints,
         });
+
+        // Hard guard: if for any reason an audio track came back on a window
+        // share, strip it before adding to the PC.
+        if (!sourceIsFullScreen) {
+          stream.getAudioTracks().forEach(t => { try { t.stop(); } catch {} stream.removeTrack(t); });
+        }
       } else if (isElectron && (window as any).electronAPI?.getDesktopSources) {
         const sources = await (window as any).electronAPI.getDesktopSources();
         let selectedSource = sources[0];
@@ -1188,8 +1201,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           },
         };
 
+        const sourceIsFullScreen = selectedSource.id.startsWith("screen:");
+        const wantAudio = effectiveAudio && sourceIsFullScreen;
+
         stream = await navigator.mediaDevices.getUserMedia({
-          audio: effectiveAudio ? {
+          audio: wantAudio ? {
             mandatory: {
               chromeMediaSource: "desktop",
               chromeMediaSourceId: selectedSource.id,
@@ -1197,6 +1213,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           } as any : false,
           video: videoConstraints,
         });
+
+        if (!sourceIsFullScreen) {
+          stream.getAudioTracks().forEach(t => { try { t.stop(); } catch {} stream.removeTrack(t); });
+        }
       } else {
         // Browser path: standard getDisplayMedia.
         // Only attempt audio when user is sharing an entire screen — window/tab cannot
