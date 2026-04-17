@@ -332,6 +332,7 @@ const AppLayout = () => {
 
         {/* Sliding DM panel (left) */}
         <div
+          ref={dmPanelSwipeRef}
           className="fixed inset-y-0 left-0 z-40 flex mobile-panel mobile-chrome"
           style={{
             width: "85vw",
