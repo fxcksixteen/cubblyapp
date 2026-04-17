@@ -248,7 +248,7 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
           <div className="relative">
             {!isWaiting && peerState?.is_video_on && remoteVideoStream ? (
               <div
-                className={`relative overflow-hidden rounded-2xl bg-black transition-all duration-300 ${
+                className={`group relative overflow-hidden rounded-2xl bg-black transition-all duration-300 ${
                   hasScreenShare ? "h-20 w-28" : "h-[140px] w-[200px]"
                 }`}
                 style={{
@@ -259,6 +259,19 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
                 }}
               >
                 <video ref={remoteCamRef} autoPlay playsInline className="h-full w-full object-cover" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const el = remoteCamRef.current;
+                    if (!el) return;
+                    if (!document.fullscreenElement) el.requestFullscreen().catch(() => {});
+                    else document.exitFullscreen().catch(() => {});
+                  }}
+                  className="absolute top-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-md bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-black/75 transition-opacity"
+                  title="Fullscreen"
+                >
+                  <Maximize2 className="h-3 w-3" />
+                </button>
               </div>
             ) : (
               <div
