@@ -237,15 +237,35 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
     }
   }, [user, conversationId]);
 
+  const handleReply = useCallback((msg: Message) => {
+    const { text } = (() => {
+      const attachRegex = /\[attachments\](.*?)\[\/attachments\]/s;
+      const t = msg.content.replace(attachRegex, "").trim();
+      return { text: t || "Attachment" };
+    })();
+    setReplyTo({ id: msg.id, sender_name: msg.sender_name || "Unknown", content: text });
+    setTimeout(() => messageInputRef.current?.focus(), 0);
+  }, []);
+
+  const scrollToMessage = useCallback((id: string) => {
+    const el = messageRefs.current.get(id);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlightedId(id);
+    setTimeout(() => setHighlightedId((cur) => (cur === id ? null : cur)), 1600);
+  }, []);
+
   const handleSend = async () => {
     if (!input.trim() && pendingFiles.length === 0) return;
 
     const currentInput = input.trim();
     const currentFiles = [...pendingFiles];
+    const currentReplyTo = replyTo;
 
     setInput("");
     setPendingFiles([]);
     setAttachMenuOpen(false);
+    setReplyTo(null);
     broadcastStopTyping();
 
     setUploading(true);
@@ -274,7 +294,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
       }
       // Reset scroll flag so auto-scroll works for own messages
       userHasScrolledUpRef.current = false;
-      await sendMessage(content);
+      await sendMessage(content, currentReplyTo?.id || null);
     }
 
     setUploading(false);
