@@ -15,6 +15,7 @@ import blockUserIcon from "@/assets/icons/block-user.svg";
 import activityIcon from "@/assets/icons/activity.svg";
 import StatusIndicator from "@/components/app/StatusIndicator";
 import UserProfileCard from "@/components/app/chat/UserProfileCard";
+import ActivityIcon from "@/components/app/ActivityIcon";
 
 type FriendTab = "online" | "all" | "pending" | "blocked" | "add";
 
@@ -364,20 +365,26 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
               <div className="flex flex-col gap-2">
                 {activeFriends.map((f) => {
                   const act = getActivity(f.profile.user_id)!;
+                  const isSoftware = act.details === "software" || act.activity_type === "using";
+                  const verb = isSoftware ? "Using" : "Playing";
+                  // Compact elapsed (e.g. "23m" or "1h 5m")
+                  const elapsedMs = Math.max(0, Date.now() - new Date(act.started_at).getTime());
+                  const mins = Math.floor(elapsedMs / 60000);
+                  const elapsedLabel = mins < 1 ? "just now" : mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
                   return (
                     <button
                       key={f.id}
                       onClick={(e) => setProfileCard({ userId: f.profile.user_id, name: f.profile.display_name, x: e.clientX, y: e.clientY })}
-                      className="flex items-start gap-3 rounded-lg border p-3 text-left transition-colors"
+                      className="flex items-start gap-3 rounded-xl border p-3 text-left transition-colors"
                       style={{ borderColor: "var(--app-border, #3f4147)", backgroundColor: "var(--app-bg-secondary, #2b2d31)" }}
                       onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "var(--app-active, #404249)"; }}
                       onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "var(--app-bg-secondary, #2b2d31)"; }}
                     >
                       <div className="relative shrink-0">
                         {f.profile.avatar_url ? (
-                          <img src={f.profile.avatar_url} alt={f.profile.display_name} className="h-9 w-9 rounded-full object-cover" />
+                          <img src={f.profile.avatar_url} alt={f.profile.display_name} className="h-10 w-10 rounded-full object-cover" />
                         ) : (
-                          <div className="flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold text-white" style={{ backgroundColor: getProfileColor(f.profile.user_id).bg }}>
+                          <div className="flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-white" style={{ backgroundColor: getProfileColor(f.profile.user_id).bg }}>
                             {f.profile.display_name.charAt(0).toUpperCase()}
                           </div>
                         )}
@@ -387,10 +394,17 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold text-white leading-tight">{f.profile.display_name}</p>
-                        <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-wide" style={{ color: "#3ba55c" }}>
-                          {act.details === "software" || act.activity_type === "using" ? "Using" : "Playing"}
-                        </p>
-                        <p className="truncate text-sm" style={{ color: "var(--app-text-primary, #dbdee1)" }}>{act.name}</p>
+                        <div className="mt-1.5 flex items-center gap-2">
+                          <ActivityIcon name={act.name} size={28} rounded={6} />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[10px] font-bold uppercase tracking-wide leading-tight" style={{ color: "#3ba55c" }}>
+                              {verb} · {elapsedLabel}
+                            </p>
+                            <p className="truncate text-[12px] leading-tight" style={{ color: "var(--app-text-primary, #dbdee1)" }}>
+                              {act.name}
+                            </p>
+                          </div>
+                        </div>
                       </div>
                     </button>
                   );
