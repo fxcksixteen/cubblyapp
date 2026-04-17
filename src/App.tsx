@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { VoiceProvider } from "@/contexts/VoiceContext";
+import { GroupCallProvider } from "@/contexts/GroupCallContext";
 import { ActivityProvider } from "@/contexts/ActivityContext";
 import { GamingModeProvider } from "@/contexts/GamingModeContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -17,6 +18,7 @@ import NotFound from "./pages/NotFound.tsx";
 import UpdateModal from "./components/app/UpdateModal";
 import WhatsNewModal from "./components/app/WhatsNewModal";
 import GlobalCallIndicator from "./components/app/GlobalCallIndicator";
+import { GroupIncomingCallOverlay } from "./components/app/GroupCallPanel";
 
 const queryClient = new QueryClient();
 
@@ -32,6 +34,7 @@ const App = () => (
       <Router>
         <AuthProvider>
           <VoiceProvider>
+            <GroupCallProvider>
             <ActivityProvider>
               <GamingModeProvider>
               <Routes>
@@ -51,8 +54,10 @@ const App = () => (
               <UpdateModal />
               <WhatsNewModal />
               <GlobalCallIndicator />
+              <GroupIncomingCallOverlay />
               </GamingModeProvider>
             </ActivityProvider>
+            </GroupCallProvider>
           </VoiceProvider>
         </AuthProvider>
       </Router>

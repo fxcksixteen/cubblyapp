@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useConversations } from "@/hooks/useConversations";
 import { useVoice } from "@/contexts/VoiceContext";
+import { useGroupCall } from "@/contexts/GroupCallContext";
 import { useUnreadCounts } from "@/hooks/useUnreadCounts";
 import { useFriends } from "@/hooks/useFriends";
 import { supabase } from "@/integrations/supabase/client";
@@ -44,6 +45,7 @@ const AppLayout = () => {
   const location = useLocation();
   const { user, onlineUserIds } = useAuth();
   const { activeCall, startCall, endCall } = useVoice();
+  const groupCall = useGroupCall();
   const isMobile = useIsMobile();
 
   const pathParts = location.pathname.split("/").filter(Boolean);
@@ -133,15 +135,26 @@ const AppLayout = () => {
       conversation.id === activeConvId,
   );
 
-  const isInCall = activeCall?.conversationId === activeConvId;
+  const isInCall = activeCall?.conversationId === activeConvId
+    || groupCall.activeCall?.conversationId === activeConvId;
 
   const currentUsername = user?.user_metadata?.username?.toLowerCase() || "";
   const isAdmin = currentUsername === "kaszy";
 
   const handleVoiceCall = async () => {
     if (isInCall) {
-      endCall();
-    } else if (activeConv && !activeConv.is_group && activeParticipant) {
+      if (groupCall.activeCall?.conversationId === activeConvId) groupCall.leaveCall();
+      else endCall();
+      return;
+    }
+    if (activeConv?.is_group && activeConvId) {
+      // Start a group call: ring every other member
+      const memberIds = activeConv.members.map(m => m.user_id);
+      const callName = activeConv.name?.trim() || activeConv.members.map(m => m.display_name).join(", ");
+      await groupCall.startCall(activeConvId, callName, memberIds);
+      return;
+    }
+    if (activeConv && !activeConv.is_group && activeParticipant) {
       if (activeParticipant.user_id === BOT_USER_ID && !isAdmin) {
         try {
           const { data: { session } } = await supabase.auth.getSession();
