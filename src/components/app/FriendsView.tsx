@@ -387,7 +387,7 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold text-white leading-tight">{f.profile.display_name}</p>
                         <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-wide" style={{ color: "#3ba55c" }}>
-                          Playing
+                          {act.details === "software" || act.activity_type === "using" ? "Using" : "Playing"}
                         </p>
                         <p className="truncate text-sm" style={{ color: "var(--app-text-primary, #dbdee1)" }}>{act.name}</p>
                       </div>
