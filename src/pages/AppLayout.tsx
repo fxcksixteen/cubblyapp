@@ -44,7 +44,7 @@ const AppLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, onlineUserIds } = useAuth();
-  const { activeCall, startCall, endCall } = useVoice();
+  const { activeCall, startCall, endCall, toggleVideo } = useVoice();
   const groupCall = useGroupCall();
   const isMobile = useIsMobile();
 
@@ -179,6 +179,24 @@ const AppLayout = () => {
     }
   };
 
+  /** 1-on-1 video: start the call first if needed, then toggle camera. */
+  const handleVideoCall = async () => {
+    if (!activeConv || activeConv.is_group || !activeParticipant) return;
+    if (activeParticipant.user_id === BOT_USER_ID) return;
+    const alreadyInThisCall = activeCall?.conversationId === activeConvId;
+    if (!alreadyInThisCall) {
+      startCall(activeConvId!, activeParticipant.user_id, activeParticipant.display_name);
+      // Wait briefly for ICE to come up before toggling video so the
+      // transceiver exists when we call replaceTrack.
+      const start = Date.now();
+      while (Date.now() - start < 8000) {
+        await new Promise((r) => setTimeout(r, 250));
+        if (activeCall?.conversationId === activeConvId && activeCall.state === "connected") break;
+      }
+    }
+    try { await toggleVideo(); } catch (e) { console.error("[Video] toggle failed:", e); }
+  };
+
   // Mobile swipe target: the main chat content area
   // - In DM view: swipe right → open DMs panel; swipe left → open members (if group)
   // - In friends/shop view: swipe right → open DMs panel
@@ -307,6 +325,7 @@ const AppLayout = () => {
               isInCall={!!isInCall}
               onBack={() => navigate("/@me/online", { replace: true })}
               onCall={handleVoiceCall}
+              onVideo={!activeConv.is_group ? handleVideoCall : undefined}
               onShowMembers={activeConv.is_group ? () => setMobilePanel("members") : undefined}
             />
           ) : !isYou ? (
@@ -506,12 +525,23 @@ const AppLayout = () => {
                         />
                       </button>
                       <button
+                        onClick={handleVideoCall}
                         className="flex h-8 w-8 items-center justify-center rounded-lg transition-all"
                         onMouseEnter={e => { e.currentTarget.style.backgroundColor = "var(--app-hover)"; }}
                         onMouseLeave={e => { e.currentTarget.style.backgroundColor = ""; }}
-                        title="Start Video Call"
+                        title={activeCall?.conversationId === activeConvId && activeCall?.isVideoOn ? "Turn Camera Off" : "Start Video Call"}
+                        style={{ backgroundColor: activeCall?.conversationId === activeConvId && activeCall?.isVideoOn ? "var(--app-hover)" : undefined }}
                       >
-                        <img src={videoIcon} alt="Video" className="h-5 w-5" style={{ filter: "brightness(0) invert(0.6)" }} />
+                        <img
+                          src={videoIcon}
+                          alt="Video"
+                          className="h-5 w-5"
+                          style={{
+                            filter: activeCall?.conversationId === activeConvId && activeCall?.isVideoOn
+                              ? "brightness(0) saturate(100%) invert(58%) sepia(43%) saturate(540%) hue-rotate(85deg) brightness(94%) contrast(85%)"
+                              : "brightness(0) invert(0.6)"
+                          }}
+                        />
                       </button>
                     </>
                   )}

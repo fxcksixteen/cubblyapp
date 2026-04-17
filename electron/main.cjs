@@ -39,15 +39,34 @@ try {
 }
 
 let mainWindow;
+let appIconImage = null;
+
+/** Resolve our .ico to an on-disk path that Windows can actually read.
+ *  Inside an asar archive, native APIs can't read files, so we mark the
+ *  icon as `asarUnpack` and resolve it from app.asar.unpacked. */
+function getAppIconPath() {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, "app.asar.unpacked", "electron", "icon.ico")
+    : path.join(__dirname, "icon.ico");
+}
+function getAppIconImage() {
+  if (appIconImage && !appIconImage.isEmpty()) return appIconImage;
+  try {
+    const img = nativeImage.createFromPath(getAppIconPath());
+    if (!img.isEmpty()) { appIconImage = img; return img; }
+  } catch (_) {}
+  return null;
+}
 
 function createWindow() {
+  const iconImage = getAppIconImage();
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 940,
     minHeight: 600,
     title: "Cubbly",
-    icon: path.join(__dirname, "icon.ico"),
+    icon: iconImage || getAppIconPath(),
     frame: false,
     titleBarStyle: "hidden",
     backgroundColor: "#1e1610",
@@ -196,8 +215,7 @@ ipcMain.handle("show-notification", async (_evt, opts) => {
     // Prefer the sender's avatar URL (Discord-style); fall back to app icon.
     let icon = await loadRemoteIcon(opts?.icon);
     if (!icon) {
-      const iconPath = path.join(__dirname, "icon.ico");
-      try { icon = nativeImage.createFromPath(iconPath); } catch { icon = undefined; }
+      icon = getAppIconImage() || undefined;
     }
     const n = new Notification({
       title: opts?.title || "Cubbly",

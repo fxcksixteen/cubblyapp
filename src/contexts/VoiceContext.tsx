@@ -191,6 +191,9 @@ async function detectBestRegion(): Promise<string> {
 
 // Detect if running in Electron
 const isElectron = typeof window !== "undefined" && !!(window as any).electronAPI;
+// iOS Safari has strict gesture/codec rules — apply looser audio constraints + gesture-tied playback
+const isIOS = typeof navigator !== "undefined" && /iP(hone|od|ad)/.test(navigator.userAgent || "");
+const isMobile = typeof navigator !== "undefined" && /Mobi|Android|iP(hone|od|ad)/i.test(navigator.userAgent || "");
 
 export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const { user } = useAuth();
@@ -231,6 +234,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const preMuteStateRef = useRef<boolean>(false);
   const localStreamRef = useRef<MediaStream | null>(null);
   const endCallRef = useRef<() => void>(() => {});
+  // Forward-ref to syncCallParticipantState (declared later) so the ICE-connected
+  // handler can upsert our call_participants row the moment we connect — without
+  // this, peers can't see our mute/deafen/video state until we toggle something.
+  const syncParticipantRef = useRef<(o?: { is_muted?: boolean; is_deafened?: boolean }) => void>(() => {});
 
   // ICE candidate queues to fix race conditions
   const incomingCandidateQueue = useRef<RTCIceCandidateInit[]>([]);
@@ -385,6 +392,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const startAudioLevelMonitor = useCallback((stream: MediaStream) => {
     const ctx = new AudioContext();
     audioContextRef.current = ctx;
+    // iOS Safari starts AudioContext suspended — must explicitly resume from a user gesture.
+    // This call is fire-and-forget; the surrounding accept/start handler is the gesture.
+    if (ctx.state === "suspended") {
+      ctx.resume().catch(() => {});
+    }
     const source = ctx.createMediaStreamSource(stream);
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 256;
@@ -411,19 +423,19 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const getUserMedia = useCallback(async () => {
-    const constraints: MediaStreamConstraints = {
-      audio: {
-        deviceId: settings.inputDeviceId !== "default" ? { exact: settings.inputDeviceId } : undefined,
-        echoCancellation: settings.echoCancellation,
-        noiseSuppression: settings.noiseSuppression,
-        autoGainControl: settings.autoGainControl,
-        sampleRate: 48000,
-        sampleSize: 24,
-        channelCount: 2,
-      } as MediaTrackConstraints,
-      video: false,
+    // iOS Safari rejects strict sampleRate/sampleSize/channelCount constraints
+    // and returns NO stream at all → mobile users had no mic. On mobile we
+    // pass only the universally-supported booleans and let Safari pick defaults.
+    const audioBase: MediaTrackConstraints = {
+      deviceId: settings.inputDeviceId !== "default" ? { exact: settings.inputDeviceId } : undefined,
+      echoCancellation: settings.echoCancellation,
+      noiseSuppression: settings.noiseSuppression,
+      autoGainControl: settings.autoGainControl,
     };
-    return navigator.mediaDevices.getUserMedia(constraints);
+    const audio: MediaTrackConstraints = isMobile
+      ? audioBase
+      : { ...audioBase, sampleRate: 48000, sampleSize: 24, channelCount: 2 } as MediaTrackConstraints;
+    return navigator.mediaDevices.getUserMedia({ audio, video: false });
   }, [settings.inputDeviceId, settings.echoCancellation, settings.noiseSuppression, settings.autoGainControl]);
 
   const createPeerConnection = useCallback(() => {
@@ -448,6 +460,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       const audioEl = document.createElement("audio");
       audioEl.srcObject = remote;
       audioEl.autoplay = true;
+      // iOS requires playsinline + non-muted on freshly-created media elements,
+      // otherwise the system silently refuses to play the remote audio.
+      audioEl.setAttribute("playsinline", "true");
+      (audioEl as any).playsInline = true;
+      audioEl.muted = false;
       audioEl.volume = settings.outputVolume / 100;
       outputGainRef.current = { gain: { value: settings.outputVolume / 100 } } as any;
       (audioEl as any).__cubblyRemote = true;
@@ -489,6 +506,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             console.log("[Voice] Audio track enabled on ICE connected");
           }
         });
+        // Upsert our call_participants row immediately so the peer can see
+        // our mute/deafen/video state from the moment we connect (otherwise
+        // the row only gets created the first time we toggle something).
+        try { syncParticipantRef.current?.(); } catch {}
       }
       if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed") {
         console.warn("[Voice] ICE connection failed/disconnected");
@@ -1138,8 +1159,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           },
         };
 
+        // CRITICAL: Chromium's desktop audio capture is system-wide loopback,
+        // it cannot isolate a single window's audio. So when sharing a single
+        // *window*, refuse audio capture entirely — otherwise we'd leak ALL
+        // system audio to the peer. Only allow audio for full-screen shares.
+        const sourceIsFullScreen = selectedSourceId.startsWith("screen:");
+        const wantAudio = effectiveAudio && sourceIsFullScreen;
+
         stream = await navigator.mediaDevices.getUserMedia({
-          audio: effectiveAudio ? {
+          audio: wantAudio ? {
             mandatory: {
               chromeMediaSource: "desktop",
               chromeMediaSourceId: selectedSourceId,
@@ -1147,6 +1175,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           } as any : false,
           video: videoConstraints,
         });
+
+        // Hard guard: if for any reason an audio track came back on a window
+        // share, strip it before adding to the PC.
+        if (!sourceIsFullScreen) {
+          stream.getAudioTracks().forEach(t => { try { t.stop(); } catch {} stream.removeTrack(t); });
+        }
       } else if (isElectron && (window as any).electronAPI?.getDesktopSources) {
         const sources = await (window as any).electronAPI.getDesktopSources();
         let selectedSource = sources[0];
@@ -1167,8 +1201,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           },
         };
 
+        const sourceIsFullScreen = selectedSource.id.startsWith("screen:");
+        const wantAudio = effectiveAudio && sourceIsFullScreen;
+
         stream = await navigator.mediaDevices.getUserMedia({
-          audio: effectiveAudio ? {
+          audio: wantAudio ? {
             mandatory: {
               chromeMediaSource: "desktop",
               chromeMediaSourceId: selectedSource.id,
@@ -1176,6 +1213,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           } as any : false,
           video: videoConstraints,
         });
+
+        if (!sourceIsFullScreen) {
+          stream.getAudioTracks().forEach(t => { try { t.stop(); } catch {} stream.removeTrack(t); });
+        }
       } else {
         // Browser path: standard getDisplayMedia.
         // Only attempt audio when user is sharing an entire screen — window/tab cannot
@@ -1492,6 +1533,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [user, callEvents, activeCall]);
 
+  // Keep the forward ref pointing at the latest function so the ICE handler
+  // can call it the moment the call connects.
+  useEffect(() => {
+    syncParticipantRef.current = syncCallParticipantState;
+  }, [syncCallParticipantState]);
+
   const toggleMute = useCallback(() => {
     setActiveCall(prev => {
       if (!prev) return null;
@@ -1551,6 +1598,35 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     const sender = transceiver.sender;
     const currentlyOn = !!sender.track;
 
+    // Helper: upsert is_video_on so peers see the change even if no row existed yet.
+    const upsertVideoState = async (isVideoOn: boolean) => {
+      const ongoing = [...callEvents].reverse().find(e => e.state === "ongoing");
+      if (!ongoing || !user) return;
+      try {
+        const { data: existing } = await supabase
+          .from("call_participants")
+          .select("id")
+          .eq("call_event_id", ongoing.id)
+          .eq("user_id", user.id)
+          .is("left_at", null)
+          .maybeSingle();
+        if (existing) {
+          await supabase
+            .from("call_participants")
+            .update({ is_video_on: isVideoOn })
+            .eq("id", existing.id);
+        } else {
+          await supabase.from("call_participants").insert({
+            call_event_id: ongoing.id,
+            user_id: user.id,
+            is_video_on: isVideoOn,
+          });
+        }
+      } catch (e) {
+        console.warn("[Voice] Failed to sync video state:", e);
+      }
+    };
+
     if (currentlyOn) {
       // Turn off
       await sender.replaceTrack(null);
@@ -1558,17 +1634,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       localVideoStreamRef.current = null;
       setLocalVideoStream(null);
       setActiveCall(prev => prev ? { ...prev, isVideoOn: false } : prev);
-      // Sync to call_participants
-      const ongoing = [...callEvents].reverse().find(e => e.state === "ongoing");
-      if (ongoing && user) {
-        supabase
-          .from("call_participants")
-          .update({ is_video_on: false })
-          .eq("call_event_id", ongoing.id)
-          .eq("user_id", user.id)
-          .is("left_at", null)
-          .then(() => {});
-      }
+      upsertVideoState(false);
       return;
     }
 
@@ -1612,22 +1678,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         localVideoStreamRef.current = null;
         setActiveCall(prev => prev ? { ...prev, isVideoOn: false } : prev);
         sender.replaceTrack(null).catch(() => {});
+        upsertVideoState(false);
       };
 
       localVideoStreamRef.current = stream;
       setLocalVideoStream(stream);
       setActiveCall(prev => prev ? { ...prev, isVideoOn: true } : prev);
-
-      const ongoing = [...callEvents].reverse().find(e => e.state === "ongoing");
-      if (ongoing && user) {
-        supabase
-          .from("call_participants")
-          .update({ is_video_on: true })
-          .eq("call_event_id", ongoing.id)
-          .eq("user_id", user.id)
-          .is("left_at", null)
-          .then(() => {});
-      }
+      upsertVideoState(true);
     } catch (e) {
       console.error("[Voice] Failed to start camera:", e);
     }
