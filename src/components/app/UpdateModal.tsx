@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
 import { Sparkles, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 
-/**
- * Glassmorphism modal shown when the desktop app has downloaded a new update
- * and is ready to restart. Web users will never see this — it's wired through
- * window.electronAPI events from the main process (electron-updater).
- */
+interface UpdateStatusPayload {
+  type: "checking" | "available" | "not-available" | "downloading" | "downloaded" | "error";
+  version?: string;
+  percent?: number;
+  message?: string;
+}
+
 const UpdateModal = () => {
   const [info, setInfo] = useState<null | { version: string }>(null);
   const [installing, setInstalling] = useState(false);
@@ -21,19 +24,50 @@ const UpdateModal = () => {
       setDownloading(false);
       setProgress(null);
     });
+
     const offProgress = api.onUpdateProgress?.((p: number) => {
       setDownloading(true);
       setProgress(Math.round(p));
     });
-    const offAvailable = api.onUpdateAvailable?.(() => {
+
+    const offAvailable = api.onUpdateAvailable?.((payload: { version?: string }) => {
       setDownloading(true);
       setProgress(0);
+      if (payload?.version) {
+        toast.success(`Update found: v${payload.version}. Downloading now.`);
+      }
+    });
+
+    const offStatus = api.onUpdateStatus?.((payload: UpdateStatusPayload) => {
+      switch (payload?.type) {
+        case "checking":
+          toast.info("Checking for updates...");
+          break;
+        case "not-available":
+          toast.success(`You're already on the latest version${payload?.version ? ` (v${payload.version})` : ""}.`);
+          setDownloading(false);
+          setProgress(null);
+          break;
+        case "downloaded":
+          setInfo({ version: payload?.version || "new version" });
+          setDownloading(false);
+          setProgress(null);
+          break;
+        case "error":
+          toast.error(payload?.message || "Update check failed.");
+          setDownloading(false);
+          setProgress(null);
+          break;
+        default:
+          break;
+      }
     });
 
     return () => {
       offDownloaded?.();
       offProgress?.();
       offAvailable?.();
+      offStatus?.();
     };
   }, []);
 
@@ -63,7 +97,6 @@ const UpdateModal = () => {
             "0 20px 60px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08)",
         }}
       >
-        {/* Glow accent */}
         <div
           className="pointer-events-none absolute -top-20 left-1/2 h-40 w-40 -translate-x-1/2 rounded-full opacity-40 blur-3xl"
           style={{ backgroundColor: "hsl(32, 80%, 55%)" }}
@@ -80,20 +113,14 @@ const UpdateModal = () => {
           <Sparkles className="h-7 w-7 text-white" />
         </div>
 
-        <h2 className="text-xl font-bold text-white mb-2">
-          Cubbly is ready to update
-        </h2>
-        <p className="text-sm leading-relaxed text-white/70 mb-6">
-          A new version{info.version ? ` (v${info.version})` : ""} has been
-          downloaded. Restart Cubbly now to apply the update.
+        <h2 className="mb-2 text-xl font-bold text-white">Cubbly is ready to update</h2>
+        <p className="mb-6 text-sm leading-relaxed text-white/70">
+          A new version{info.version ? ` (v${info.version})` : ""} has been downloaded. Restart Cubbly now to apply the update.
         </p>
 
         {downloading && progress !== null && (
           <div className="mb-4">
-            <div
-              className="h-1.5 w-full overflow-hidden rounded-full"
-              style={{ backgroundColor: "rgba(255,255,255,0.1)" }}
-            >
+            <div className="h-1.5 w-full overflow-hidden rounded-full" style={{ backgroundColor: "rgba(255,255,255,0.1)" }}>
               <div
                 className="h-full rounded-full transition-all duration-200"
                 style={{
@@ -103,9 +130,7 @@ const UpdateModal = () => {
                 }}
               />
             </div>
-            <p className="mt-2 text-xs text-white/50">
-              Downloading… {progress}%
-            </p>
+            <p className="mt-2 text-xs text-white/50">Downloading… {progress}%</p>
           </div>
         )}
 
@@ -134,9 +159,7 @@ const UpdateModal = () => {
           </span>
         </button>
 
-        <p className="mt-3 text-[11px] text-white/40">
-          Cubbly will close and reopen automatically.
-        </p>
+        <p className="mt-3 text-[11px] text-white/40">Cubbly will close and reopen automatically.</p>
       </div>
     </div>
   );

@@ -30,7 +30,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   installUpdate: () => ipcRenderer.send("install-update"),
   checkForUpdates: () => ipcRenderer.send("check-for-updates"),
   onUpdateAvailable: (cb) => {
-    const listener = () => cb();
+    const listener = (_e, info) => cb(info);
     ipcRenderer.on("update-available", listener);
     return () => ipcRenderer.removeListener("update-available", listener);
   },
@@ -43,5 +43,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
     const listener = (_e, info) => cb(info);
     ipcRenderer.on("update-downloaded", listener);
     return () => ipcRenderer.removeListener("update-downloaded", listener);
+  },
+  onUpdateStatus: (cb) => {
+    const listener = (_e, payload) => cb(payload);
+    ipcRenderer.on("update-status", listener);
+    return () => ipcRenderer.removeListener("update-status", listener);
   },
 });

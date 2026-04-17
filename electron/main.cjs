@@ -88,29 +88,53 @@ function createWindow() {
   });
 
   // ----- Auto-updater wiring -----
+  autoUpdater.on("checking-for-update", () => {
+    log.info("[updater] checking-for-update");
+    mainWindow?.webContents.send("update-status", { type: "checking" });
+  });
   autoUpdater.on("update-available", (info) => {
     log.info("[updater] update-available", info?.version);
     mainWindow?.webContents.send("update-available", { version: info?.version });
+    mainWindow?.webContents.send("update-status", { type: "available", version: info?.version });
+  });
+  autoUpdater.on("update-not-available", (info) => {
+    log.info("[updater] update-not-available", info?.version);
+    mainWindow?.webContents.send("update-status", { type: "not-available", version: info?.version });
   });
   autoUpdater.on("download-progress", (progress) => {
     mainWindow?.webContents.send("update-progress", progress?.percent ?? 0);
+    mainWindow?.webContents.send("update-status", {
+      type: "downloading",
+      percent: progress?.percent ?? 0,
+    });
   });
   autoUpdater.on("update-downloaded", (info) => {
     log.info("[updater] update-downloaded", info?.version);
     mainWindow?.webContents.send("update-downloaded", { version: info?.version });
+    mainWindow?.webContents.send("update-status", { type: "downloaded", version: info?.version });
   });
   autoUpdater.on("error", (err) => {
-    log.error("[updater] error", err?.message || err);
+    const message = err?.message || String(err);
+    log.error("[updater] error", message);
+    mainWindow?.webContents.send("update-status", { type: "error", message });
   });
 
   setTimeout(() => {
-    try { autoUpdater.checkForUpdatesAndNotify(); }
-    catch (e) { log.warn("[updater] initial check failed:", e?.message || e); }
+    try { autoUpdater.checkForUpdates(); }
+    catch (e) {
+      const message = e?.message || String(e);
+      log.warn("[updater] initial check failed:", message);
+      mainWindow?.webContents.send("update-status", { type: "error", message });
+    }
   }, 4000);
 
   setInterval(() => {
     try { autoUpdater.checkForUpdates(); }
-    catch (e) { log.warn("[updater] periodic check failed:", e?.message || e); }
+    catch (e) {
+      const message = e?.message || String(e);
+      log.warn("[updater] periodic check failed:", message);
+      mainWindow?.webContents.send("update-status", { type: "error", message });
+    }
   }, 60 * 60 * 1000);
 }
 
@@ -126,7 +150,11 @@ ipcMain.handle("window-is-maximized", () => mainWindow?.isMaximized() ?? false);
 // IPC: updater
 ipcMain.on("check-for-updates", () => {
   try { autoUpdater.checkForUpdates(); }
-  catch (e) { log.warn("[updater] manual check failed:", e?.message || e); }
+  catch (e) {
+    const message = e?.message || String(e);
+    log.warn("[updater] manual check failed:", message);
+    mainWindow?.webContents.send("update-status", { type: "error", message });
+  }
 });
 ipcMain.on("install-update", () => {
   log.info("[updater] user requested install");
