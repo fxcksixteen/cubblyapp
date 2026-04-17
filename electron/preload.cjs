@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getRunningProcesses: () => ipcRenderer.invoke("get-running-processes"),
   getOpenWindows: () => ipcRenderer.invoke("get-open-windows"),
   pickGameExe: () => ipcRenderer.invoke("pick-game-exe"),
+  /** Returns a base64 data URL of the running process .exe / .app icon, or null. */
+  getProcessIcon: (processName) => ipcRenderer.invoke("get-process-icon", processName),
 
   // Native desktop notifications (Windows toast / macOS NC / Linux libnotify)
   showNotification: (opts) => ipcRenderer.invoke("show-notification", opts),
