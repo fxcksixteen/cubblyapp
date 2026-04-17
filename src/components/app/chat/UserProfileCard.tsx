@@ -12,6 +12,7 @@ import addUserIcon from "@/assets/icons/add-user.svg";
 import removeUserIcon from "@/assets/icons/remove-user.svg";
 import blockUserIcon from "@/assets/icons/block-user.svg";
 import StatusIndicator from "@/components/app/StatusIndicator";
+import ActivityCard from "@/components/app/ActivityCard";
 
 interface UserProfileCardProps {
   userId: string;
@@ -183,10 +184,14 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
             <p className="text-xl font-bold text-white">{displayName}</p>
             <p className="text-sm text-[#949ba4]">@{profile?.username || displayName.toLowerCase()}</p>
 
-            {userActivityLabel && (
-              <p className="mt-2 text-sm font-medium" style={{ color: "#3ba55c" }}>
-                {userActivityLabel}
-              </p>
+            {userActivity?.name && isUserOnline && (
+              <div className="mt-3">
+                <ActivityCard
+                  name={userActivity.name}
+                  type={userActivity.details === "software" || userActivity.activity_type === "using" ? "software" : "game"}
+                  startedAt={userActivity.started_at}
+                />
+              </div>
             )}
 
             {profile?.bio && (
@@ -269,8 +274,15 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
       <div className="px-4 pt-1.5 pb-2">
         <p className="text-lg font-bold text-white">{displayName}</p>
         <p className="text-sm text-[#949ba4]">@{profile?.username || displayName.toLowerCase()}</p>
-        {userActivityLabel && (
-          <p className="mt-1 text-xs font-medium" style={{ color: "#3ba55c" }}>{userActivityLabel}</p>
+        {userActivity?.name && isUserOnline && (
+          <div className="mt-2">
+            <ActivityCard
+              name={userActivity.name}
+              type={userActivity.details === "software" || userActivity.activity_type === "using" ? "software" : "game"}
+              startedAt={userActivity.started_at}
+              variant="compact"
+            />
+          </div>
         )}
         {profile?.bio && (
           <p className="mt-2 text-xs text-[#dbdee1] leading-relaxed line-clamp-3">{profile.bio}</p>
