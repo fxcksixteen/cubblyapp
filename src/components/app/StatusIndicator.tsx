@@ -11,9 +11,9 @@ interface StatusIndicatorProps {
 
 // Sizes calibrated so idle/dnd/invisible match the visual weight of the green online dot.
 const sizeMap = {
-  sm: { container: "h-[17px] w-[17px]", icon: "h-[14px] w-[14px]", border: "border-[2.5px]" },
-  md: { container: "h-[20px] w-[20px]", icon: "h-[16px] w-[16px]", border: "border-[3px]" },
-  lg: { container: "h-[24px] w-[24px]", icon: "h-[19px] w-[19px]", border: "border-[3px]" },
+  sm: { container: "h-[15px] w-[15px]", icon: "h-[14px] w-[14px]", border: "border-[2.5px]" },
+  md: { container: "h-[18px] w-[18px]", icon: "h-[16px] w-[16px]", border: "border-[3px]" },
+  lg: { container: "h-[22px] w-[22px]", icon: "h-[20px] w-[20px]", border: "border-[3px]" },
 };
 
 const statusIconMap: Record<string, string> = {
