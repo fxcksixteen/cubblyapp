@@ -327,6 +327,16 @@ const GroupCallPanel = ({ conversationId }: Props) => {
           }}
         />
       )}
+
+      {fullscreenView && (
+        <FullscreenScreenShareViewer
+          stream={fullscreenView.stream}
+          sharerName={fullscreenView.name}
+          type={fullscreenView.type}
+          isLocal={fullscreenView.isLocal}
+          onClose={() => setFullscreenView(null)}
+        />
+      )}
     </div>
   );
 };
