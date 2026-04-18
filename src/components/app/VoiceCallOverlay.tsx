@@ -270,7 +270,14 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
         </div>
 
         {/* Recipient */}
-        <div className="flex flex-col items-center gap-2">
+        <div
+          className="flex flex-col items-center gap-2"
+          onContextMenu={(e) => {
+            if (!recipientUserId) return;
+            e.preventDefault();
+            setVolumeMenu({ userId: recipientUserId, name: recipientName, x: e.clientX, y: e.clientY });
+          }}
+        >
           <div className="relative">
             {!isWaiting && peerState?.is_video_on && remoteVideoStream ? (
               <div
