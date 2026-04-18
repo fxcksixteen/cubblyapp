@@ -1918,6 +1918,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       audioLevel, remoteAudioLevel, availableDevices, refreshDevices, callEvents, currentCallEventId, detectedRegion,
       isScreenSharing, screenStream, remoteScreenStream, startScreenShare, stopScreenShare,
       ping,
+      peerInstantState,
     }}>
       {children}
     </VoiceContext.Provider>
