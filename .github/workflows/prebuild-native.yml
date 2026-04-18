@@ -38,18 +38,32 @@ jobs:
       - name: Install MSBuild
         uses: microsoft/setup-msbuild@v2
 
-      - name: Install native addon deps
+      - name: Install node-gyp globally
+        run: npm install -g node-gyp@10
+
+      - name: Install native addon deps (incl. dev deps for prebuildify)
         working-directory: native/win-audio-capture
-        run: npm install --ignore-scripts
+        env:
+          npm_config_build_from_source: 'true'
+        run: npm install --ignore-scripts --include=dev
 
       - name: Prebuild for Electron 33 (x64)
         working-directory: native/win-audio-capture
         env:
           npm_config_msvs_version: '2022'
-        run: npx prebuildify --napi --strip --electron --target=33.0.0 --arch=x64
+        shell: cmd
+        run: npx --no-install prebuildify --napi --strip --electron --target=33.0.0 --arch=x64 --verbose
 
       - name: List prebuilds
-        run: dir native\win-audio-capture\prebuilds /s
+        if: always()
+        shell: cmd
+        run: |
+          if exist native\win-audio-capture\prebuilds (
+            dir /s native\win-audio-capture\prebuilds
+          ) else (
+            echo No prebuilds directory was created.
+            exit /b 1
+          )
 
       - name: Commit prebuilds back to repo
         shell: bash
