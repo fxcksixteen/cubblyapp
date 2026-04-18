@@ -1,62 +1,68 @@
 
+Actual issue rephrased: the shipped Electron app still behaves like the fixes never landed at runtime. The three broken areas are:
+1. remote camera tiles still don’t render for other users,
+2. right-click/per-peer audio controls still don’t affect playback,
+3. Electron window/tab share audio still isn’t reaching peers.
 
-## Audit results
+What I know from the code right now:
+- Camera: there is still a UI-level bug in 1-on-1. `VoiceCallOverlay.tsx` only shows the remote camera tile when `peerState?.is_video_on && remoteVideoStream` is true. Even if the stream arrives, the tile stays hidden if signaling/DB state lags. That directly matches “I see myself, they don’t”.
+- Volume controls: `src/lib/peerGain.ts` creates `AudioContext`s for per-peer gain, but never resumes them. That means the gain pipeline can exist while not actually driving audible playback, so sliders/mute appear wired but do nothing in practice.
+- Window/tab audio: the Electron code path exists, but it still fails silently. Also, “tab” in Electron is not a real browser-tab capture — `ScreenSharePicker.tsx` maps it to browser windows only. So we need runtime validation in main/preload/renderer, not another blind patch.
 
-### ✅ v0.2.9 audio/video fixes — all intact
-- 1-on-1: `VoiceContext` imports `startNativeWindowAudioStream`, gates Chromium loopback only for screen picks, allows tab audio in browser.
-- Group: `GroupCallContext` mirrors the same logic; `nativeWindowAudioStopRef` cleanup fires on share-stop and `leaveCall`.
-- Camera `unmute` listener in place for group calls.
+Files most likely causing the real failures:
+- `src/components/app/VoiceCallOverlay.tsx`
+- `src/lib/peerGain.ts`
+- `src/contexts/VoiceContext.tsx`
+- `src/contexts/GroupCallContext.tsx`
+- `src/components/app/ScreenSharePicker.tsx`
+- `electron/main.cjs`
+- `electron/preload.cjs`
 
-### ❌ Right-click user volume menu — only HALF wired
-The menu UI works AND `VoiceContext` exposes `getUserVolume / setUserVolume / isUserMuted / setUserMuted` correctly. The `applyPeerGain` GainNode logic is correct. But the wiring breaks here:
+Plan to fix this properly:
+1. Camera rendering
+- Remove the hard dependency on `peerState.is_video_on` for showing the remote 1-on-1 camera tile.
+- Render the tile whenever `remoteVideoStream` exists; use signaling/DB only for badges/state, not visibility gating.
+- Re-check the same pattern in group UI so no tile is hidden by stale boolean state.
 
-- `attachPeerGain` is **only called from one place** (1-on-1 `ontrack`, line 680) and **only for the peer's MIC audio**.
-- The peer's **screen-share audio** track arrives on a separate `<audio data-screen-peer>` element that is NEVER routed through a peer-keyed GainNode → so the volume slider does nothing for screen-share audio.
-- `GroupCallContext` has **zero references** to `attachPeerGain / userVolumes / userMutes` → in any group call, the volume slider and "Mute (you only)" do nothing for ANYONE.
+2. Volume controls that actually work
+- Update `src/lib/peerGain.ts` to explicitly `resume()` the `AudioContext` when creating/attaching a peer pipeline.
+- Add a safe fallback: if the gain pipeline can’t run, do not leave the user with a muted source element and dead controls.
+- Verify both mic audio and screen-share audio routes use the same peer gain path in 1-on-1 and group.
 
-### ❌ FullscreenScreenShareViewer — PiP + volume broken
-- `srcObject = stream` and `volume`/`muted` are set on the `<video>` element, BUT in 1-on-1 calls the inbound screen-share audio is on a SEPARATE `<audio>` element managed by `VoiceContext` (the video element only carries the video track). So changing `v.volume` mutes nothing — the audio keeps playing from the hidden `<audio>` tag.
-- **PiP fails silently** because `disablePictureInPicture` attribute is set on the `<video>` (line ~131). You cannot `requestPictureInPicture()` on an element with that attribute. The handler catches the error and does nothing.
+3. Window/tab audio that is debuggable instead of silent
+- Add explicit logging/status in `electron/main.cjs` and renderer for:
+  - selected source id,
+  - whether native addon loaded,
+  - resolved HWND/PID,
+  - capture start success/failure,
+  - whether PCM frames are actually received,
+  - whether an audio track was added to the outgoing stream.
+- Surface failures to the UI/toasts instead of silently falling back to video-only.
+- Harden source-id parsing in main if Electron’s window source format differs from the current assumption.
+- Fix the Electron picker copy/behavior: “tab” is currently just a browser window. Either make that explicit or temporarily remove the fake tab mode until it is real.
 
----
+4. Re-verify both call paths
+- Re-test 1-on-1 and group separately:
+  - join call,
+  - turn camera on after connection,
+  - right-click peer avatar and change volume/mute,
+  - share a window with audio,
+  - share a browser window via current “tab” path,
+  - fullscreen + PiP + slider for remote share audio.
+- Check packaged Electron runtime logs, not just preview/web behavior.
 
-## Plan: ship v0.2.10 with proper functionality
+5. Release discipline
+- Only bump/release after the packaged app is verified end-to-end.
+- No new workflow work unless runtime logs prove the native addon isn’t loading in packaged builds; the current blocker looks code/runtime-path related, not CI-only.
 
-### 1. Make `attachPeerGain` work for screen-share audio too
-In `VoiceContext.tsx` `ontrack` handler:
-- When receiving an `audio` track tagged as screen-share (the existing branch that creates `<audio data-screen-peer>`), also call `attachPeerGain(peerUserId, screenStream, screenAudioEl)` so the same GainNode controls both mic AND screen audio for that peer. Result: one slider per peer controls everything you hear from them.
+Technical notes
+- `VoiceCallOverlay.tsx`: likely root cause of “camera only shows to self”.
+- `peerGain.ts`: likely root cause of “volume controls exist but do nothing”.
+- `ScreenSharePicker.tsx` + `electron/main.cjs`: current “tab” flow is misleading, and native capture failures are too silent to trust without instrumentation.
+- The current console snapshot has no meaningful `[winaudio]` / peer-gain / remote-video diagnostics, which is why this has kept looping without a hard root-cause confirmation.
 
-### 2. Wire the menu into `GroupCallContext`
-Port the per-peer pipeline into `GroupCallContext.tsx`:
-- Add `userVolumesRef`, `userMutesRef`, `peerGainsRef`, `peerAudioCtxRef` (reuse the same localStorage keys so settings carry over from 1-on-1 to group).
-- Add `getUserVolume / setUserVolume / isUserMuted / setUserMuted / applyPeerGain / attachPeerGain` (factor into `src/lib/peerGain.ts` so both contexts share one implementation — no drift).
-- In every `ontrack` handler for both `audio` (mic) AND screen-share audio, call `attachPeerGain(peerUserId, stream, audioEl)`.
-- Expose the four functions on the `GroupCallContext` value object.
-
-### 3. Make `UserVolumeMenu` source-of-truth context-aware
-The menu currently always reads from `useVoice()`. In `GroupCallPanel` it must read from `useGroupCall()` instead. Cleanest fix: add a `volumeApi` prop so the parent passes whichever context is active:
-```ts
-volumeApi: { getUserVolume; setUserVolume; isUserMuted; setUserMuted }
-```
-Update both `VoiceCallOverlay` and `GroupCallPanel` to pass the correct one.
-
-### 4. Fix `FullscreenScreenShareViewer`
-- Remove `disablePictureInPicture` and `noremoteplayback` from the video so `requestPictureInPicture()` actually resolves. (We keep `nodownload nofullscreen noplaybackrate` and `controls={false}` — viewer still can't pause/scrub/download via native UI.)
-- Volume/mute slider must drive the **separate per-peer GainNode** for screen audio — not `<video>.volume`. New prop `audioPeerId?: string`; when present, the slider calls `setUserVolume(audioPeerId, …)` / `setUserMuted(...)` from the active context. The `<video>` stays muted (audio plays via the GainNode pipeline already attached in step 1/2). For local previews (`isLocal`) we keep the slider hidden as today.
-- Pass `audioPeerId` from `VoiceCallOverlay` (peer's userId) and `GroupCallPanel` (the sharer's userId).
-
-### 5. Ship
-- Bump `package.json` → `0.2.10`.
-- Add changelog entry: "Per-user volume + local mute now actually work in 1-on-1 and group calls (mic AND screen audio). Fullscreen screen-share viewer's volume slider + Picture-in-Picture button now functional."
-- Build cmd unchanged: `git pull && set BUILD_TARGET=electron && npm run build:electron && npx electron-builder --win nsis --x64 --publish always`.
-
-### Files to edit
-- `src/lib/peerGain.ts` — new shared per-peer GainNode helper
-- `src/contexts/VoiceContext.tsx` — use shared helper; also `attachPeerGain` for screen-audio el
-- `src/contexts/GroupCallContext.tsx` — adopt helper; expose volume API; attach for mic + screen audio
-- `src/components/app/UserVolumeMenu.tsx` — accept `volumeApi` prop instead of hard-coding `useVoice`
-- `src/components/app/VoiceCallOverlay.tsx` — pass volumeApi + audioPeerId
-- `src/components/app/GroupCallPanel.tsx` — pass volumeApi + audioPeerId
-- `src/components/app/FullscreenScreenShareViewer.tsx` — remove `disablePictureInPicture`; route volume/mute through `audioPeerId` + volumeApi
-- `package.json` + `src/lib/changelog.ts` — v0.2.10
-
+Implementation outcome I’m aiming for once approved:
+- remote camera tiles appear whenever the actual media stream arrives,
+- per-peer volume/local mute affects real playback in both 1-on-1 and group,
+- Electron window audio either works with confirmed PCM flow or reports exactly why it failed,
+- “tab” behavior is no longer pretending to be something it isn’t.
