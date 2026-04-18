@@ -205,6 +205,18 @@ function createWindow() {
       mainWindow.reload();
       event.preventDefault();
     }
+    // DevTools — Ctrl/Cmd+Shift+I and F12. CRITICAL for debugging packaged
+    // builds: without this the user has zero way to see console errors.
+    const isToggleDevTools =
+      input.key === "F12" ||
+      ((input.control || input.meta) && input.shift && input.key.toLowerCase() === "i");
+    if (isToggleDevTools) {
+      try {
+        if (mainWindow.webContents.isDevToolsOpened()) mainWindow.webContents.closeDevTools();
+        else mainWindow.webContents.openDevTools({ mode: "detach" });
+      } catch (e) { log.warn("[devtools] toggle failed:", e?.message || e); }
+      event.preventDefault();
+    }
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -622,35 +634,45 @@ const { exec: _exec } = require("child_process");
 let activeWindowCapture = null; // { handle, sourceId, win }
 
 async function resolveSourcePid(sourceId) {
-  // sourceId for windows looks like "window:<HWND>:<index>" — Electron's
-  // `desktopCapturer` puts the native HWND in the second segment as a decimal
-  // string. We parse it and feed it to GetWindowThreadProcessId via PowerShell
-  // (lightweight, no extra native bindings needed).
+  // sourceId for windows looks like "window:<HWND>:<index>". The HWND segment
+  // can be either a decimal string OR a hex string (e.g. "0x1A2B"). We try
+  // both — the previous decimal-only parse silently failed for hex sources,
+  // which is one reason per-window audio was disabled in shipped builds.
   if (typeof sourceId !== "string" || !sourceId.startsWith("window:")) {
-    throw new Error("source is not a window — only window/tab sources support per-window audio");
+    throw new Error("source is not a window — only window sources support per-window audio");
   }
   const parts = sourceId.split(":");
   const hwndStr = parts[1];
-  const hwnd = Number(hwndStr);
+  let hwnd = Number(hwndStr);
+  if (!Number.isFinite(hwnd) || hwnd <= 0) {
+    // Try hex
+    const asHex = parseInt(hwndStr, 16);
+    if (Number.isFinite(asHex) && asHex > 0) hwnd = asHex;
+  }
   if (!Number.isFinite(hwnd) || hwnd <= 0) {
     throw new Error("could not parse HWND from sourceId: " + sourceId);
   }
+  log.info("[winaudio] resolving HWND", hwnd, "from sourceId", sourceId);
 
   return await new Promise((resolve, reject) => {
     const ps = `
       Add-Type -Namespace W -Name U -MemberDefinition '
         [DllImport("user32.dll")] public static extern int GetWindowThreadProcessId(System.IntPtr hWnd, out int lpdwProcessId);
       ' | Out-Null;
-      $pid = 0;
-      [W.U]::GetWindowThreadProcessId([System.IntPtr]${hwnd}, [ref]$pid) | Out-Null;
-      Write-Output $pid;
+      $procId = 0;
+      [W.U]::GetWindowThreadProcessId([System.IntPtr]${hwnd}, [ref]$procId) | Out-Null;
+      Write-Output $procId;
     `.replace(/\n+/g, " ");
-    _exec(`powershell -NoProfile -Command "${ps.replace(/"/g, '\\"')}"`, { timeout: 4000 }, (err, stdout) => {
-      if (err) return reject(err);
+    _exec(`powershell -NoProfile -Command "${ps.replace(/"/g, '\\"')}"`, { timeout: 4000 }, (err, stdout, stderr) => {
+      if (err) {
+        log.error("[winaudio] powershell failed:", err.message, "stderr:", stderr);
+        return reject(err);
+      }
       const pid = parseInt(String(stdout).trim(), 10);
       if (!Number.isFinite(pid) || pid <= 0) {
         return reject(new Error("GetWindowThreadProcessId returned invalid PID: " + stdout));
       }
+      log.info("[winaudio] HWND", hwnd, "→ PID", pid);
       resolve(pid);
     });
   });
@@ -658,7 +680,9 @@ async function resolveSourcePid(sourceId) {
 
 ipcMain.handle("start-window-audio-capture", async (evt, sourceId) => {
   if (!winAudioCapture) {
-    return { ok: false, error: "native addon unavailable (requires Windows 10 build 20348+ with prebuilt binary)" };
+    const msg = "native addon unavailable (requires Windows 10 build 20348+ with prebuilt binary)";
+    log.warn("[winaudio] start refused:", msg);
+    return { ok: false, error: msg };
   }
   if (activeWindowCapture) {
     try { winAudioCapture.stop(activeWindowCapture.handle); } catch {}
@@ -668,20 +692,25 @@ ipcMain.handle("start-window-audio-capture", async (evt, sourceId) => {
     const pid = await resolveSourcePid(sourceId);
     log.info("[winaudio] starting capture for sourceId:", sourceId, "pid:", pid);
     const senderWebContents = evt.sender;
+    let frameCount = 0;
     const handle = winAudioCapture.start(pid, (pcmBuf) => {
       try {
         if (senderWebContents.isDestroyed()) return;
-        // Forward raw PCM bytes to renderer. Buffer is float32 stereo at the
-        // format reported by getFormat() (typically 48 kHz / 2ch / 32-bit float).
+        frameCount++;
+        if (frameCount === 1 || frameCount === 50 || frameCount % 500 === 0) {
+          log.info("[winaudio] PCM frame #" + frameCount + " bytes=" + (pcmBuf?.length || 0));
+        }
         senderWebContents.send("window-audio-pcm", pcmBuf);
       } catch (_) {}
     });
     activeWindowCapture = { handle, sourceId, win: senderWebContents };
     const fmt = winAudioCapture.getFormat();
+    log.info("[winaudio] capture started OK, format:", JSON.stringify(fmt));
     return { ok: true, handle, format: fmt };
   } catch (e) {
-    log.error("[winaudio] start failed:", e?.message || e);
-    return { ok: false, error: e?.message || String(e) };
+    const msg = e?.message || String(e);
+    log.error("[winaudio] start failed:", msg);
+    return { ok: false, error: msg };
   }
 });
 
