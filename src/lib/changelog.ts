@@ -23,9 +23,26 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.11";
+export const CURRENT_VERSION = "0.2.12";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.2.12",
+    title: "Camera, volume, and screen-share audio: fixed at the runtime layer",
+    date: "2026-04-18",
+    hero: bearImage,
+    newFeatures: [
+      "DevTools is now reachable in the packaged desktop app via F12 or Ctrl/Cmd+Shift+I — when something breaks you can actually see why instead of guessing",
+      "Window-audio capture pipeline now logs every step (HWND parse, PID resolve, addon load, PCM frames, outgoing track) so failures are diagnosable in seconds, not patches",
+    ],
+    bugFixes: [
+      "CRITICAL: Right-click peer volume slider and 'Mute (you only)' now ACTUALLY change what you hear — the per-peer gain pipeline was binding to a stale call state and silently never connecting; now uses a stable peer-id ref so it binds the moment the first audio packet arrives",
+      "CRITICAL: Volume controls now work even when the WebAudio graph stays suspended — they fall through to the raw audio/video element's volume + muted, so the slider is never a dead control",
+      "CRITICAL: Remote camera tile now renders for the OTHER user the instant the track arrives — when a peer turned on camera mid-call, event.streams[0] could be empty and the tile bound to null; we now synthesise a MediaStream from the raw track and force play() on every assignment",
+      "CRITICAL: Per-window screen-share audio HWND parsing now accepts both decimal AND hex window handles — the previous decimal-only parser silently rejected hex sourceIds on some Windows versions, killing audio capture before it started",
+      "Browser tab option in the Electron picker is now correctly labeled 'Browser Window' — it was never real tab capture, just a name-filtered window list, and the wrong label kept setting expectations the desktop app couldn't meet",
+    ],
+  },
   {
     version: "0.2.11",
     title: "Calls actually work: native binary loads, controls drive audio, peer cam visible",
