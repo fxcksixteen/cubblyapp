@@ -368,5 +368,5 @@ export function useMessages(conversationId: string | null) {
     return true;
   };
 
-  return { messages, loading, sendMessage };
+  return { messages, loading, sendMessage, loadOlder, hasMore, loadingOlder };
 }
