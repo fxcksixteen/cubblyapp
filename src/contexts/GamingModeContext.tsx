@@ -86,6 +86,13 @@ export const GamingModeProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     (window as any).__cubblySuppress = isSuppressing;
     (window as any).__cubblySuppressCalls = isSuppressingCalls;
+    // Add a "reduce motion" body class so heavy animations / transitions
+    // can opt out via CSS while gaming, without React re-renders.
+    try {
+      const root = document.documentElement;
+      if (isSuppressing) root.classList.add("cubbly-gaming-mode");
+      else root.classList.remove("cubbly-gaming-mode");
+    } catch {}
   }, [isSuppressing, isSuppressingCalls]);
 
   const value = useMemo<GamingModeContextValue>(

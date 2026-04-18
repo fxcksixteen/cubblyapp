@@ -59,65 +59,91 @@ export function useMessages(conversationId: string | null) {
       });
   }, [user]);
 
+  const PAGE_SIZE = 50;
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const oldestLoadedRef = useRef<string | null>(null);
+
+  const hydrateMessages = useCallback(async (rows: any[]): Promise<Message[]> => {
+    if (rows.length === 0) return [];
+    const senderIds = [...new Set(rows.map((m) => m.sender_id))];
+    const replyIds = [...new Set(rows.map((m: any) => m.reply_to_id).filter(Boolean))] as string[];
+    const [{ data: profiles }, { data: replyRows }] = await Promise.all([
+      supabase.from("profiles").select("user_id, display_name, avatar_url").in("user_id", senderIds),
+      replyIds.length
+        ? supabase.from("messages").select("id, sender_id, content").in("id", replyIds)
+        : Promise.resolve({ data: [] as any[] }),
+    ]);
+    const nameMap = new Map((profiles || []).map((p) => [p.user_id, p.display_name]));
+    const avatarMap = new Map((profiles || []).map((p) => [p.user_id, p.avatar_url]));
+    const replyMap = new Map<string, ReplyPreview>();
+    (replyRows || []).forEach((r: any) => {
+      replyMap.set(r.id, {
+        id: r.id,
+        sender_id: r.sender_id,
+        sender_name: getSenderName(r.sender_id, nameMap.get(r.sender_id)),
+        content: r.content,
+      });
+    });
+    return rows.map((message: any) => ({
+      ...message,
+      sender_name: getSenderName(message.sender_id, nameMap.get(message.sender_id)),
+      sender_avatar_url: avatarMap.get(message.sender_id) || null,
+      reply_to: message.reply_to_id ? replyMap.get(message.reply_to_id) || null : null,
+      status: "delivered" as MessageStatus,
+    }));
+  }, []);
+
   const fetchMessages = useCallback(async () => {
     if (!conversationId) {
       setMessages([]);
+      setHasMore(false);
       return;
     }
-
     setLoading(true);
-
+    // Fetch the LATEST page (descending), then reverse for ascending render order.
     const { data, error } = await supabase
       .from("messages")
       .select("*")
       .eq("conversation_id", conversationId)
-      .order("created_at", { ascending: true });
-
+      .order("created_at", { ascending: false })
+      .limit(PAGE_SIZE);
     if (error) {
       console.error("Failed to fetch messages:", error);
       setMessages([]);
+      setHasMore(false);
       setLoading(false);
       return;
     }
-
-    if (data && data.length > 0) {
-      const senderIds = [...new Set(data.map((message) => message.sender_id))];
-      const replyIds = [...new Set(data.map((m: any) => m.reply_to_id).filter(Boolean))] as string[];
-
-      const [{ data: profiles }, { data: replyRows }] = await Promise.all([
-        supabase.from("profiles").select("user_id, display_name, avatar_url").in("user_id", senderIds),
-        replyIds.length
-          ? supabase.from("messages").select("id, sender_id, content").in("id", replyIds)
-          : Promise.resolve({ data: [] as any[] }),
-      ]);
-
-      const nameMap = new Map((profiles || []).map((p) => [p.user_id, p.display_name]));
-      const avatarMap = new Map((profiles || []).map((p) => [p.user_id, p.avatar_url]));
-      const replyMap = new Map<string, ReplyPreview>();
-      (replyRows || []).forEach((r: any) => {
-        replyMap.set(r.id, {
-          id: r.id,
-          sender_id: r.sender_id,
-          sender_name: getSenderName(r.sender_id, nameMap.get(r.sender_id)),
-          content: r.content,
-        });
-      });
-
-      setMessages(
-        data.map((message: any) => ({
-          ...message,
-          sender_name: getSenderName(message.sender_id, nameMap.get(message.sender_id)),
-          sender_avatar_url: avatarMap.get(message.sender_id) || null,
-          reply_to: message.reply_to_id ? replyMap.get(message.reply_to_id) || null : null,
-          status: "delivered" as MessageStatus,
-        })),
-      );
-    } else {
-      setMessages([]);
-    }
-
+    const ascending = (data || []).slice().reverse();
+    const hydrated = await hydrateMessages(ascending);
+    setMessages(hydrated);
+    setHasMore((data?.length || 0) >= PAGE_SIZE);
+    oldestLoadedRef.current = hydrated[0]?.created_at || null;
     setLoading(false);
-  }, [conversationId]);
+  }, [conversationId, hydrateMessages]);
+
+  const loadOlder = useCallback(async () => {
+    if (!conversationId || loadingOlder || !hasMore || !oldestLoadedRef.current) return;
+    setLoadingOlder(true);
+    const { data, error } = await supabase
+      .from("messages")
+      .select("*")
+      .eq("conversation_id", conversationId)
+      .lt("created_at", oldestLoadedRef.current)
+      .order("created_at", { ascending: false })
+      .limit(PAGE_SIZE);
+    if (error || !data) {
+      setLoadingOlder(false);
+      return;
+    }
+    const ascending = data.slice().reverse();
+    const hydrated = await hydrateMessages(ascending);
+    setMessages((prev) => [...hydrated, ...prev]);
+    setHasMore(data.length >= PAGE_SIZE);
+    oldestLoadedRef.current = hydrated[0]?.created_at || oldestLoadedRef.current;
+    setLoadingOlder(false);
+  }, [conversationId, hydrateMessages, hasMore, loadingOlder]);
 
   useEffect(() => {
     fetchMessages();
@@ -342,5 +368,5 @@ export function useMessages(conversationId: string | null) {
     return true;
   };
 
-  return { messages, loading, sendMessage };
+  return { messages, loading, sendMessage, loadOlder, hasMore, loadingOlder };
 }

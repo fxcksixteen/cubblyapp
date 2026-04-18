@@ -836,11 +836,18 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     if (!activeCall || !user) return;
     if (!activeCall.isScreenSharing) {
       let stream: MediaStream;
-      const wantAudio = true; // group calls now share audio too
+      const wantAudio = true;
+      // High-quality stereo audio constraints — disable voice DSP so music/games sound right.
+      const screenAudioConstraints: any = {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+        channelCount: 2,
+        sampleRate: 48000,
+      };
       try {
         const api = (window as any).electronAPI;
         if (api?.isElectron) {
-          // Modern Electron pipeline: hand source to main, then getDisplayMedia.
           let chosenId = sourceId;
           if (!chosenId && api?.getDesktopSources) {
             const sources = await api.getDesktopSources();
@@ -849,7 +856,10 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
           if (!chosenId) throw new Error("No screen sources available");
           await api.setSelectedShareSource(chosenId, wantAudio);
           try {
-            stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: wantAudio } as any);
+            stream = await navigator.mediaDevices.getDisplayMedia({
+              video: true,
+              audio: wantAudio ? screenAudioConstraints : false,
+            } as any);
           } finally {
             try { await api.clearSelectedShareSource?.(); } catch {}
           }
@@ -859,7 +869,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         } else {
           stream = await navigator.mediaDevices.getDisplayMedia({
             video: true,
-            audio: wantAudio ? ({ systemAudio: "include" } as any) : false,
+            audio: wantAudio ? ({ ...screenAudioConstraints, systemAudio: "include" } as any) : false,
           } as any);
         }
       } catch (e) {
@@ -870,17 +880,36 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       localScreenTrackRef.current = track;
       setLocalScreenStream(stream);
 
+      const applyHQ = async (sender: RTCRtpSender, kind: "video" | "audio") => {
+        try {
+          const params = sender.getParameters();
+          if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
+          if (kind === "video") {
+            params.encodings[0].maxBitrate = 12_000_000;
+            (params.encodings[0] as any).scaleResolutionDownBy = 1;
+            (params as any).degradationPreference = "maintain-resolution";
+          } else {
+            params.encodings[0].maxBitrate = 256_000;
+          }
+          (params.encodings[0] as any).networkPriority = "high";
+          (params.encodings[0] as any).priority = "high";
+          await sender.setParameters(params);
+        } catch {}
+      };
+
       for (const [peerId, pc] of pcsRef.current) {
         const labeledStream = new MediaStream([track]);
         Object.defineProperty(labeledStream, "id", { value: `cubbly-screen-${user.id}` });
         const sender = pc.addTrack(track, labeledStream);
         screenSendersRef.current.set(peerId, sender);
-        // Also add screenshare audio track(s) so peers actually hear it.
+        applyHQ(sender, "video");
         stream.getAudioTracks().forEach((atrack) => {
-          try { pc.addTrack(atrack, labeledStream); } catch (e) { console.warn("[GroupCall] add screen audio failed:", e); }
+          try {
+            const aSender = pc.addTrack(atrack, labeledStream);
+            applyHQ(aSender, "audio");
+          } catch (e) { console.warn("[GroupCall] add screen audio failed:", e); }
         });
       }
-      // Auto-stop when user clicks the OS "Stop sharing" pill
       track.onended = () => { toggleScreenShare(); };
 
       setActiveCall(prev => prev ? { ...prev, isScreenSharing: true } : null);

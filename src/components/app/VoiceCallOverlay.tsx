@@ -45,9 +45,18 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
     screenStream, remoteScreenStream,
     localVideoStream, remoteVideoStream,
     currentCallEventId,
+    peerInstantState,
   } = useVoice();
   const { getPeerState } = useCallParticipants(activeCall?.conversationId === conversationId ? currentCallEventId : null);
-  const peerState = getPeerState();
+  const dbPeerState = getPeerState();
+  // Merge: instant signaling state takes precedence; DB row is the fallback /
+  // late-joiner sync. This eliminates the 2-3s lag on mute/deafen/video badges.
+  const peerState = {
+    ...dbPeerState,
+    ...(peerInstantState.is_muted !== undefined ? { is_muted: peerInstantState.is_muted } : {}),
+    ...(peerInstantState.is_deafened !== undefined ? { is_deafened: peerInstantState.is_deafened } : {}),
+    ...(peerInstantState.is_video_on !== undefined ? { is_video_on: peerInstantState.is_video_on } : {}),
+  };
   const [elapsed, setElapsed] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showScreenSharePicker, setShowScreenSharePicker] = useState(false);

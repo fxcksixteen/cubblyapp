@@ -70,7 +70,7 @@ const shouldShowTimeDivider = (prevDate: string, currDate: string): boolean => {
 const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUserId, conversation, showGroupMembers, onLeftGroup }: ChatViewProps) => {
   const { user } = useAuth();
   const { activeCall, callEvents } = useVoice();
-  const { messages, loading, sendMessage } = useMessages(conversationId);
+  const { messages, loading, sendMessage, loadOlder, hasMore, loadingOlder } = useMessages(conversationId);
   const [input, setInput] = useState("");
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
@@ -121,7 +121,17 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
     const threshold = 150;
     userHasScrolledUpRef.current =
       container.scrollHeight - container.scrollTop - container.clientHeight >= threshold;
-  }, []);
+    // Discord-style: when scrolled near the top, fetch older messages
+    if (container.scrollTop < 200 && hasMore && !loadingOlder) {
+      const prevHeight = container.scrollHeight;
+      loadOlder().then(() => {
+        requestAnimationFrame(() => {
+          const c = messagesContainerRef.current;
+          if (c) c.scrollTop = c.scrollHeight - prevHeight;
+        });
+      });
+    }
+  }, [hasMore, loadingOlder, loadOlder]);
 
   useEffect(() => {
     const n = messages.length;
@@ -499,22 +509,33 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                                 onReply={() => handleReply(msg)}
                               />
                             </div>
-                            {msg.reply_to && (
-                              <button
-                                type="button"
-                                onClick={() => scrollToMessage(msg.reply_to!.id)}
-                                className="flex items-center gap-1.5 mb-0.5 text-xs hover:opacity-80 transition-opacity max-w-full overflow-hidden"
-                                style={{ color: "var(--app-text-secondary, #949ba4)" }}
-                              >
-                                <ReplyIcon className="h-3 w-3 -scale-x-100 shrink-0" />
-                                <span className="font-semibold truncate" style={{ color: "var(--app-text-primary, #dbdee1)" }}>
-                                  @{msg.reply_to.sender_name}
-                                </span>
-                                <span className="truncate opacity-80">
-                                  {msg.reply_to.content.replace(/\[attachments\].*?\[\/attachments\]/s, "").trim() || "Attachment"}
-                                </span>
-                              </button>
-                            )}
+                            {msg.reply_to && (() => {
+                              const rawReply = msg.reply_to.content.replace(/\[attachments\].*?\[\/attachments\]/s, "").trim();
+                              const isGifReply = /^https?:\/\/\S*\.(gif|giphy|tenor)/i.test(rawReply);
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={() => scrollToMessage(msg.reply_to!.id)}
+                                  className="flex items-center gap-1.5 mb-0.5 text-xs hover:opacity-80 transition-opacity max-w-full min-w-0 overflow-hidden"
+                                  style={{ color: "var(--app-text-secondary, #949ba4)" }}
+                                >
+                                  <ReplyIcon className="h-3 w-3 -scale-x-100 shrink-0" />
+                                  <span className="font-semibold truncate min-w-0" style={{ color: "var(--app-text-primary, #dbdee1)" }}>
+                                    @{msg.reply_to.sender_name}
+                                  </span>
+                                  {isGifReply ? (
+                                    <span className="flex items-center gap-1 opacity-80 shrink-0">
+                                      <img src={gifIcon} alt="" className="h-3 w-3 invert opacity-80" />
+                                      <span className="font-semibold">GIF</span>
+                                    </span>
+                                  ) : (
+                                    <span className="truncate opacity-80 min-w-0">
+                                      {rawReply || "Attachment"}
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })()}
                             {text && (
                               /^https?:\/\/.*\.(gif|giphy)/i.test(text) ? (
                                 <InlineGif url={text} />

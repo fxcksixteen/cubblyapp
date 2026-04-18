@@ -98,6 +98,11 @@ export const SERVER_REGIONS = [
  * Bump the maxBitrate on a screenshare video sender. Called right after
  * addTrack() so encoding parameters reflect the user's Optimization preset.
  */
+/**
+ * Apply high-quality screenshare *video* encoding parameters: max bitrate, never
+ * downscale resolution, drop frames before quality on bandwidth pressure.
+ * This is what fixes "screenshare looks pixelated to the OTHER user".
+ */
 async function applyScreenBitrate(sender: RTCRtpSender, maxBitrate: number) {
   try {
     const params = sender.getParameters();
@@ -105,10 +110,49 @@ async function applyScreenBitrate(sender: RTCRtpSender, maxBitrate: number) {
       params.encodings = [{}];
     }
     params.encodings[0].maxBitrate = maxBitrate;
+    (params.encodings[0] as any).scaleResolutionDownBy = 1;
+    (params.encodings[0] as any).networkPriority = "high";
+    (params.encodings[0] as any).priority = "high";
+    // maintain-resolution → drop FPS instead of pixelating when CPU/bw drops
+    (params as any).degradationPreference = "maintain-resolution";
     await sender.setParameters(params);
   } catch (e) {
     console.warn("[Voice] Could not set screen encoding bitrate:", e);
   }
+}
+
+/**
+ * Apply high-quality stereo Opus encoding to a screenshare *audio* sender so
+ * music/game audio doesn't get crushed to ~32 kbps mono speech.
+ */
+async function applyScreenAudioBitrate(sender: RTCRtpSender) {
+  try {
+    const params = sender.getParameters();
+    if (!params.encodings || params.encodings.length === 0) {
+      params.encodings = [{}];
+    }
+    params.encodings[0].maxBitrate = 256_000;
+    (params.encodings[0] as any).networkPriority = "high";
+    (params.encodings[0] as any).priority = "high";
+    await sender.setParameters(params);
+  } catch (e) {
+    console.warn("[Voice] Could not set screen audio bitrate:", e);
+  }
+}
+
+/** Patch SDP so the screen-share PC negotiates stereo high-bitrate Opus. */
+function patchScreenShareOpusSdp(sdp: string): string {
+  return sdp.replace(
+    /a=fmtp:111 ([^\r\n]*)/g,
+    (m, existing) => {
+      const filtered = (existing as string)
+        .split(";")
+        .map((s) => s.trim())
+        .filter((s) => s && !/^(stereo|sprop-stereo|maxaveragebitrate|useinbandfec|maxplaybackrate)=/i.test(s));
+      filtered.push("stereo=1", "sprop-stereo=1", "maxaveragebitrate=256000", "useinbandfec=1", "maxplaybackrate=48000");
+      return `a=fmtp:111 ${filtered.join(";")}`;
+    }
+  );
 }
 
 const STUN_ONLY_SERVERS: RTCIceServer[] = [
@@ -149,6 +193,8 @@ interface VoiceContextType {
   stopScreenShare: () => void;
   /** Round-trip latency in ms (polled from RTCPeerConnection.getStats during active call). 0 when not in a call. */
   ping: number;
+  /** Instant peer mute/deafen/video state from signaling channel (no DB lag). */
+  peerInstantState: { is_muted?: boolean; is_deafened?: boolean; is_video_on?: boolean };
 }
 
 const VoiceContext = createContext<VoiceContextType>({} as VoiceContextType);
@@ -221,6 +267,14 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const [remoteScreenStream, setRemoteScreenStream] = useState<MediaStream | null>(null);
+
+  /**
+   * Instant peer mute/deafen/video state, broadcast over the signaling
+   * channel so the UI updates with zero latency. The DB-backed
+   * useCallParticipants hook remains the source of truth for late-joiners
+   * and reconnects, but this overlays it for the active 1:1 peer.
+   */
+  const [peerInstantState, setPeerInstantState] = useState<{ is_muted?: boolean; is_deafened?: boolean; is_video_on?: boolean }>({});
 
   // Video / camera (sent over the same audio PC via a video transceiver)
   const [localVideoStream, setLocalVideoStream] = useState<MediaStream | null>(null);
@@ -512,12 +566,21 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         senders.forEach(s => {
           if (s.track?.kind === "audio") {
             s.track.enabled = true;
+            // Bump network priority so the OS prioritises voice packets
+            // over background traffic (game/download/etc).
+            try {
+              const params = s.getParameters();
+              if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
+              (params.encodings[0] as any).networkPriority = "high";
+              (params.encodings[0] as any).priority = "high";
+              params.encodings[0].maxBitrate = 128_000;
+              s.setParameters(params).catch(() => {});
+            } catch {}
             console.log("[Voice] Audio track enabled on ICE connected");
           }
         });
         // Upsert our call_participants row immediately so the peer can see
-        // our mute/deafen/video state from the moment we connect (otherwise
-        // the row only gets created the first time we toggle something).
+        // our mute/deafen/video state from the moment we connect.
         try { syncParticipantRef.current?.(); } catch {}
       }
       if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed") {
@@ -821,6 +884,23 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           setRemoteScreenStream(null);
           screenPcRef.current?.close();
           screenPcRef.current = null;
+        }
+
+        // Instant peer state (mute/deafen/video) — bypasses DB realtime lag.
+        if (payload.type === "peer-mute") {
+          setPeerInstantState((prev) => ({
+            ...prev,
+            is_muted: !!payload.isMuted,
+            is_deafened: !!payload.isDeafened,
+          }));
+          return;
+        }
+        if (payload.type === "peer-video") {
+          setPeerInstantState((prev) => ({
+            ...prev,
+            is_video_on: !!payload.isVideoOn,
+          }));
+          return;
         }
       });
 
@@ -1155,13 +1235,22 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
     const res = resolutionMap[effectiveQuality];
 
+    // High-quality screenshare *audio* constraints — disabling the voice DSP
+    // chain (echo/noise/AGC) is what stops music & game audio from sounding
+    // muffled and warbled. Stereo + 48 kHz so we don't downsample.
+    const screenAudioConstraints: any = {
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: false,
+      channelCount: 2,
+      sampleRate: 48000,
+    };
+
     try {
       let stream: MediaStream;
 
       // Electron path: use the modern display-capture pipeline. Main injects
       // the chosen source + 'loopback' audio via setDisplayMediaRequestHandler.
-      // The legacy chromeMediaSource constraint route is gone — it gave silent
-      // window shares.
       if (isElectron) {
         const api = (window as any).electronAPI;
         let selectedSourceId = options?.sourceId;
@@ -1189,7 +1278,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         try {
           stream = await navigator.mediaDevices.getDisplayMedia({
             video: videoConstraints,
-            audio: wantAudio,
+            audio: wantAudio ? screenAudioConstraints : false,
           } as any);
         } finally {
           try { await api.clearSelectedShareSource?.(); } catch {}
@@ -1200,9 +1289,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         }
       } else {
         // Browser path: standard getDisplayMedia.
-        // Only attempt audio when user is sharing an entire screen — window/tab cannot
-        // capture system audio, and trying to do so causes massive quality degradation
-        // and lag in some browsers (the OS forces a low-quality capture path).
         const allowAudio = effectiveAudio && type === "screen";
 
         const videoConstraints: any = {
@@ -1221,7 +1307,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         }
 
         const audioConstraint = allowAudio
-          ? ({ systemAudio: "include" } as any)
+          ? ({ ...screenAudioConstraints, systemAudio: "include" } as any)
           : false;
 
         stream = await navigator.mediaDevices.getDisplayMedia({
@@ -1232,8 +1318,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           selfBrowserSurface: "exclude",
         } as any);
 
-        // Hard guard: if for some reason audio tracks slipped through on a window/tab
-        // share, strip them out so we don't leak system audio.
         if (!allowAudio) {
           stream.getAudioTracks().forEach(t => { t.stop(); stream.removeTrack(t); });
         }
@@ -1242,26 +1326,38 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       setScreenStream(stream);
       setIsScreenSharing(true);
 
-      // Apply Optimization preset to the actual video track:
-      //   ultra   → contentHint='detail'  + max bitrate boost (best of both worlds)
-      //   clarity → contentHint='detail'
-      //   motion  → contentHint='motion'
-      // contentHint hints the encoder/scaler about temporal vs spatial quality tradeoffs.
+      // Apply Optimization preset to the actual video track. Bumped bitrates
+      // so "ultra" actually delivers a crisp stream to the *peer* (encoder
+      // adaptive degradation was crushing 8 Mbps targets).
       const opt = screenShareSettings.optimizeFor;
-      const hint = opt === "motion" ? "motion" : "detail"; // ultra & clarity → detail
+      const hint = opt === "motion" ? "motion" : "detail";
       const maxBitrate =
-        opt === "ultra" ? 8_000_000 : // 8 Mbps — premium
-        opt === "motion" ? 5_000_000 : // 5 Mbps — smoothness
-        4_000_000;                     // 4 Mbps — clarity
-      stream.getVideoTracks().forEach((t) => {
-        try { (t as any).contentHint = hint; } catch { /* unsupported */ }
-      });
+        opt === "ultra" ? 12_000_000 : // 12 Mbps — premium
+        opt === "motion" ? 8_000_000 : // 8 Mbps — smoothness
+        6_000_000;                     // 6 Mbps — clarity
+
+      // Force resolution / FPS via applyConstraints on the actual track —
+      // Electron's desktopCapturer ignores constraints at getDisplayMedia time
+      // so we must downscale post-capture.
+      for (const t of stream.getVideoTracks()) {
+        try { (t as any).contentHint = hint; } catch {}
+        try {
+          await (t as any).applyConstraints?.({
+            ...(res ? { width: res.width, height: res.height } : {}),
+            frameRate: effectiveFps,
+          });
+        } catch (e) {
+          console.warn("[Voice] applyConstraints on screen track failed:", e);
+        }
+        try {
+          const s = (t as any).getSettings?.();
+          console.log("[Voice] 🖥️ screen video track settings:", s);
+        } catch {}
+      }
 
       // Bot call → loopback screenshare (echo video + audio back to yourself)
       if (isBotCall) {
         console.log("[Voice][Loopback] 🖥️ Starting screenshare loopback self-test...");
-        console.log("[Voice][Loopback] Screen tracks:", stream.getTracks().map(t => `${t.kind}:${t.label}:enabled=${t.enabled}`));
-
         const localPc = new RTCPeerConnection({ iceServers: iceServersRef.current });
         const remotePc = new RTCPeerConnection({ iceServers: iceServersRef.current });
 
@@ -1272,28 +1368,16 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           if (e.candidate) localPc.addIceCandidate(e.candidate).catch(() => {});
         };
 
-        localPc.oniceconnectionstatechange = () => {
-          console.log("[Voice][Loopback] Screen localPc ICE:", localPc.iceConnectionState);
-          if (localPc.iceConnectionState === "connected" || localPc.iceConnectionState === "completed") {
-            console.log("[Voice][Loopback] ✅ Screenshare ICE CONNECTED — loopback should be playing!");
-          }
-          if (localPc.iceConnectionState === "failed") {
-            console.error("[Voice][Loopback] ❌ Screenshare ICE FAILED");
-          }
-        };
-
         remotePc.ontrack = (event) => {
-          console.log("[Voice][Loopback] ✅ Screen remotePc received track:", event.track.kind, event.track.label);
           if (event.track.kind === "video") {
             setRemoteScreenStream(event.streams[0]);
           } else if (event.track.kind === "audio") {
-            // Play screenshare audio back
             const audioEl = document.createElement("audio");
             audioEl.srcObject = event.streams[0];
             audioEl.autoplay = true;
             audioEl.volume = settings.outputVolume / 100;
             (audioEl as any).__cubblyRemote = true;
-            audioEl.play().then(() => console.log("[Voice][Loopback] ✅ Screenshare audio playing")).catch(e => console.error("[Voice][Loopback] ❌ Screenshare audio play failed:", e));
+            audioEl.play().catch(e => console.error("[Voice][Loopback] ❌ Screenshare audio play failed:", e));
             document.body.appendChild(audioEl);
           }
         };
@@ -1301,16 +1385,19 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         stream.getTracks().forEach(track => {
           const sender = localPc.addTrack(track, stream);
           if (track.kind === "video") applyScreenBitrate(sender, maxBitrate);
+          if (track.kind === "audio") applyScreenAudioBitrate(sender);
           track.onended = () => { stopScreenShare(); };
         });
 
         const offer = await localPc.createOffer();
+        offer.sdp = patchScreenShareOpusSdp(offer.sdp || "");
         await localPc.setLocalDescription(offer);
-        await remotePc.setRemoteDescription(offer);
+        const remoteOffer = { type: offer.type, sdp: offer.sdp };
+        await remotePc.setRemoteDescription(remoteOffer as RTCSessionDescriptionInit);
         const answer = await remotePc.createAnswer();
+        answer.sdp = patchScreenShareOpusSdp(answer.sdp || "");
         await remotePc.setLocalDescription(answer);
-        await localPc.setRemoteDescription(answer);
-        console.log("[Voice][Loopback] ✅ Screenshare offer/answer exchanged");
+        await localPc.setRemoteDescription({ type: answer.type, sdp: answer.sdp } as RTCSessionDescriptionInit);
 
         screenLoopbackPcRef.current = { local: localPc, remote: remotePc };
         screenPcRef.current = localPc;
@@ -1326,6 +1413,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       stream.getTracks().forEach(track => {
         const sender = screenPc.addTrack(track, stream);
         if (track.kind === "video") applyScreenBitrate(sender, maxBitrate);
+        if (track.kind === "audio") applyScreenAudioBitrate(sender);
         track.onended = () => {
           stopScreenShare();
         };
@@ -1342,7 +1430,25 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       };
 
       const offer = await screenPc.createOffer();
+      offer.sdp = patchScreenShareOpusSdp(offer.sdp || "");
       await screenPc.setLocalDescription(offer);
+
+      // Periodically log outbound stats so we can confirm the encoder is
+      // actually delivering the bitrate / resolution we asked for.
+      const statsInterval = setInterval(async () => {
+        if (!screenPcRef.current || screenPcRef.current !== screenPc) {
+          clearInterval(statsInterval);
+          return;
+        }
+        try {
+          const stats = await screenPc.getStats();
+          stats.forEach((report: any) => {
+            if (report.type === "outbound-rtp" && report.kind === "video") {
+              console.log(`[Voice] 🖥️ outbound screen video — ${report.frameWidth}x${report.frameHeight}@${report.framesPerSecond}fps, bitrate≈${Math.round((report.bytesSent || 0) * 8 / 1000)}kbps total`);
+            }
+          });
+        } catch {}
+      }, 5000);
 
       channelRef.current.send({
         type: "broadcast",
@@ -1462,6 +1568,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     incomingCandidateQueue.current = [];
     outgoingCandidateBuffer.current = [];
     remoteDescriptionSet.current = false;
+    setPeerInstantState({});
     pendingOfferRef.current = null;
     acceptedIncomingCallRef.current = null;
     outgoingCallMetaRef.current = null;
@@ -1542,35 +1649,38 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     setActiveCall(prev => {
       if (!prev) return null;
       const newMuted = !prev.isMuted;
-      // Set ALL tracks to the same enabled state (don't invert each individually)
       if (localStreamRef.current) {
         localStreamRef.current.getAudioTracks().forEach(track => { track.enabled = !newMuted; });
       }
-      // Fire-and-forget DB sync
+      // Instant peer broadcast over signaling channel — DB is fallback
+      try {
+        channelRef.current?.send({
+          type: "broadcast",
+          event: "voice-signal",
+          payload: { type: "peer-mute", senderId: user?.id, isMuted: newMuted, isDeafened: prev.isDeafened },
+        });
+      } catch {}
       syncCallParticipantState({ is_muted: newMuted, is_deafened: prev.isDeafened });
       return { ...prev, isMuted: newMuted };
     });
-  }, [syncCallParticipantState]);
+  }, [syncCallParticipantState, user]);
 
   const toggleDeafen = useCallback(() => {
     setActiveCall(prev => {
       if (!prev) return null;
       const newDeafened = !prev.isDeafened;
 
-      // Mute/unmute remote audio
       const audioElements = document.querySelectorAll("audio");
       audioElements.forEach((el: any) => { if (el.__cubblyRemote) el.muted = newDeafened; });
 
       let nextMuted: boolean;
       if (newDeafened) {
-        // Save current mute state before deafening, then mute mic
         preMuteStateRef.current = prev.isMuted;
         if (localStreamRef.current) {
           localStreamRef.current.getAudioTracks().forEach(track => { track.enabled = false; });
         }
         nextMuted = true;
       } else {
-        // Restore pre-deafen mute state
         const restoreMuted = preMuteStateRef.current;
         if (localStreamRef.current) {
           localStreamRef.current.getAudioTracks().forEach(track => { track.enabled = !restoreMuted; });
@@ -1578,10 +1688,17 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         nextMuted = restoreMuted;
       }
 
+      try {
+        channelRef.current?.send({
+          type: "broadcast",
+          event: "voice-signal",
+          payload: { type: "peer-mute", senderId: user?.id, isMuted: nextMuted, isDeafened: newDeafened },
+        });
+      } catch {}
       syncCallParticipantState({ is_muted: nextMuted, is_deafened: newDeafened });
       return { ...prev, isDeafened: newDeafened, isMuted: nextMuted };
     });
-  }, [syncCallParticipantState]);
+  }, [syncCallParticipantState, user]);
 
   /**
    * Toggle the local camera on/off. Uses replaceTrack on the pre-allocated video
@@ -1589,11 +1706,26 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
    * the new track (or a black frame when we set it back to null).
    */
   const toggleVideo = useCallback(async () => {
-    const transceiver = videoTransceiverRef.current;
-    if (!transceiver) {
-      console.warn("[Voice] Cannot toggle video — no transceiver. Are you in a call?");
+    let transceiver = videoTransceiverRef.current;
+    const pc = pcRef.current;
+    if (!pc) {
+      console.warn("[Voice] Cannot toggle video — no peer connection.");
       return;
     }
+    // If transceiver is missing (callee on old build), create one on the fly
+    // and trigger a renegotiation so the peer sees our video.
+    if (!transceiver) {
+      try {
+        transceiver = pc.addTransceiver("video", { direction: "sendrecv" });
+        videoTransceiverRef.current = transceiver;
+      } catch (e) {
+        console.warn("[Voice] Failed to add video transceiver on demand:", e);
+        return;
+      }
+    }
+    // CRITICAL: force sendrecv so the peer's m=video line accepts our track.
+    // Without this, replaceTrack succeeds locally but the peer never renders us.
+    try { transceiver.direction = "sendrecv"; } catch {}
     const sender = transceiver.sender;
     const currentlyOn = !!sender.track;
 
@@ -1606,17 +1738,23 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     };
 
     if (currentlyOn) {
-      // Turn off
       await sender.replaceTrack(null);
       localVideoStreamRef.current?.getTracks().forEach(t => t.stop());
       localVideoStreamRef.current = null;
       setLocalVideoStream(null);
       setActiveCall(prev => prev ? { ...prev, isVideoOn: false } : prev);
+      // Instant broadcast so peer hides the tile right away
+      try {
+        channelRef.current?.send({
+          type: "broadcast",
+          event: "voice-signal",
+          payload: { type: "peer-video", senderId: user?.id, isVideoOn: false },
+        });
+      } catch {}
       upsertVideoState(false);
       return;
     }
 
-    // Turn on — get camera stream
     try {
       const resMap: Record<string, { width: number; height: number }> = {
         "480p": { width: 854, height: 480 },
@@ -1638,20 +1776,37 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
       await sender.replaceTrack(videoTrack);
 
-      // Apply higher bitrate so video looks crisp
+      // If we had to create the transceiver fresh, we need to renegotiate so
+      // the peer learns there's a new m=video line in our SDP.
+      try {
+        if (pc.signalingState === "stable" && (transceiver.currentDirection !== "sendrecv" && transceiver.currentDirection !== "sendonly")) {
+          const offer = await pc.createOffer();
+          offer.sdp = setHighQualityOpus(offer.sdp || "");
+          await pc.setLocalDescription(offer);
+          channelRef.current?.send({
+            type: "broadcast",
+            event: "voice-signal",
+            payload: { type: "offer", sdp: offer, senderId: user?.id, callerAvatarUrl: outgoingCallMetaRef.current?.callerAvatarUrl },
+          });
+        }
+      } catch (e) {
+        console.warn("[Voice] Renegotiation after enabling video failed:", e);
+      }
+
       try {
         const params = sender.getParameters();
         if (!params.encodings || params.encodings.length === 0) {
           params.encodings = [{}];
         }
-        params.encodings[0].maxBitrate = 2_500_000; // 2.5 Mbps
+        params.encodings[0].maxBitrate = 2_500_000;
+        (params.encodings[0] as any).networkPriority = "high";
+        (params.encodings[0] as any).priority = "high";
         await sender.setParameters(params);
       } catch (e) {
         console.warn("[Voice] Could not set video encoding params:", e);
       }
 
       videoTrack.onended = () => {
-        // User pulled the cable / OS revoked permission → reflect off in UI
         setLocalVideoStream(null);
         localVideoStreamRef.current = null;
         setActiveCall(prev => prev ? { ...prev, isVideoOn: false } : prev);
@@ -1662,11 +1817,18 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       localVideoStreamRef.current = stream;
       setLocalVideoStream(stream);
       setActiveCall(prev => prev ? { ...prev, isVideoOn: true } : prev);
+      try {
+        channelRef.current?.send({
+          type: "broadcast",
+          event: "voice-signal",
+          payload: { type: "peer-video", senderId: user?.id, isVideoOn: true },
+        });
+      } catch {}
       upsertVideoState(true);
     } catch (e) {
       console.error("[Voice] Failed to start camera:", e);
     }
-  }, [settings.videoDeviceId, settings.videoResolution, settings.videoFrameRate, activeCall, upsertCurrentCallParticipantState]);
+  }, [settings.videoDeviceId, settings.videoResolution, settings.videoFrameRate, activeCall, upsertCurrentCallParticipantState, user]);
 
   useEffect(() => {
     if (!user) return;
@@ -1766,6 +1928,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       audioLevel, remoteAudioLevel, availableDevices, refreshDevices, callEvents, currentCallEventId, detectedRegion,
       isScreenSharing, screenStream, remoteScreenStream, startScreenShare, stopScreenShare,
       ping,
+      peerInstantState,
     }}>
       {children}
     </VoiceContext.Provider>

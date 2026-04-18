@@ -42,6 +42,9 @@ const ActivityContext = createContext<ActivityContextType>({
 export const useActivity = () => useContext(ActivityContext);
 
 const POLL_INTERVAL_MS = 15_000;
+// When suppressing (gaming mode active) OR in a call, slow the heavy
+// `tasklist` poll way down so it doesn't compete with WebRTC for CPU.
+const POLL_INTERVAL_SUPPRESSED_MS = 60_000;
 const isElectron = typeof window !== "undefined" && (window as any).electronAPI?.isElectron;
 
 export const ActivityProvider = ({ children }: { children: ReactNode }) => {
