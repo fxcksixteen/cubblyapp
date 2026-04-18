@@ -98,6 +98,11 @@ export const SERVER_REGIONS = [
  * Bump the maxBitrate on a screenshare video sender. Called right after
  * addTrack() so encoding parameters reflect the user's Optimization preset.
  */
+/**
+ * Apply high-quality screenshare *video* encoding parameters: max bitrate, never
+ * downscale resolution, drop frames before quality on bandwidth pressure.
+ * This is what fixes "screenshare looks pixelated to the OTHER user".
+ */
 async function applyScreenBitrate(sender: RTCRtpSender, maxBitrate: number) {
   try {
     const params = sender.getParameters();
@@ -105,10 +110,49 @@ async function applyScreenBitrate(sender: RTCRtpSender, maxBitrate: number) {
       params.encodings = [{}];
     }
     params.encodings[0].maxBitrate = maxBitrate;
+    (params.encodings[0] as any).scaleResolutionDownBy = 1;
+    (params.encodings[0] as any).networkPriority = "high";
+    (params.encodings[0] as any).priority = "high";
+    // maintain-resolution → drop FPS instead of pixelating when CPU/bw drops
+    (params as any).degradationPreference = "maintain-resolution";
     await sender.setParameters(params);
   } catch (e) {
     console.warn("[Voice] Could not set screen encoding bitrate:", e);
   }
+}
+
+/**
+ * Apply high-quality stereo Opus encoding to a screenshare *audio* sender so
+ * music/game audio doesn't get crushed to ~32 kbps mono speech.
+ */
+async function applyScreenAudioBitrate(sender: RTCRtpSender) {
+  try {
+    const params = sender.getParameters();
+    if (!params.encodings || params.encodings.length === 0) {
+      params.encodings = [{}];
+    }
+    params.encodings[0].maxBitrate = 256_000;
+    (params.encodings[0] as any).networkPriority = "high";
+    (params.encodings[0] as any).priority = "high";
+    await sender.setParameters(params);
+  } catch (e) {
+    console.warn("[Voice] Could not set screen audio bitrate:", e);
+  }
+}
+
+/** Patch SDP so the screen-share PC negotiates stereo high-bitrate Opus. */
+function patchScreenShareOpusSdp(sdp: string): string {
+  return sdp.replace(
+    /a=fmtp:111 ([^\r\n]*)/g,
+    (m, existing) => {
+      const filtered = (existing as string)
+        .split(";")
+        .map((s) => s.trim())
+        .filter((s) => s && !/^(stereo|sprop-stereo|maxaveragebitrate|useinbandfec|maxplaybackrate)=/i.test(s));
+      filtered.push("stereo=1", "sprop-stereo=1", "maxaveragebitrate=256000", "useinbandfec=1", "maxplaybackrate=48000");
+      return `a=fmtp:111 ${filtered.join(";")}`;
+    }
+  );
 }
 
 const STUN_ONLY_SERVERS: RTCIceServer[] = [
