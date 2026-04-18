@@ -25,6 +25,30 @@ const loadUserMutes = (): Record<string, boolean> => {
   try { return JSON.parse(localStorage.getItem(USER_MUTE_KEY) || "{}") || {}; } catch { return {}; }
 };
 
+// ---- Global "wake up suspended AudioContexts on next user gesture" ----------
+// Browsers/Electron may keep an AudioContext suspended even when the call's
+// accept/join click fired — especially across renegotiation when we create a
+// fresh context mid-call without an immediate gesture. Register every context
+// here and the FIRST subsequent click/keydown/touch resumes them all.
+const _allPeerCtxs = new Set<AudioContext>();
+let _gestureHookInstalled = false;
+function registerPeerCtx(ctx: AudioContext) {
+  _allPeerCtxs.add(ctx);
+  if (typeof window === "undefined") return;
+  if (_gestureHookInstalled) return;
+  _gestureHookInstalled = true;
+  const wake = () => {
+    _allPeerCtxs.forEach((c) => {
+      if (c.state === "suspended") c.resume().catch(() => {});
+    });
+  };
+  // Capture-phase listeners so we beat React handlers; once: false because
+  // a single missed wake on the very first attach can leave audio dead.
+  window.addEventListener("pointerdown", wake, true);
+  window.addEventListener("keydown", wake, true);
+  window.addEventListener("touchstart", wake, true);
+}
+
 /**
  * Per-peer gain "registry" — multiple inbound streams (mic + screen audio) for
  * the same peer all route through the SAME GainNode. We track each stream's
