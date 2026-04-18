@@ -25,6 +25,7 @@ import { createContext, useContext, useState, useCallback, useRef, useEffect, Re
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { playSound, playLooping, stopLooping } from "@/lib/sounds";
+import { startNativeWindowAudioStream } from "@/lib/nativeWindowAudio";
 
 export interface GroupPeer {
   userId: string;
