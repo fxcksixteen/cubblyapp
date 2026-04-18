@@ -42,7 +42,7 @@ const MobileChatHeader = ({
     >
       <button
         onClick={onBack}
-        className="flex h-10 w-10 items-center justify-center rounded-full active:bg-[var(--app-hover)] touch-manipulation"
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full active:bg-[var(--app-hover)] touch-manipulation"
         aria-label="Back"
       >
         <ArrowLeft className="h-5 w-5" style={{ color: "var(--app-text-primary)" }} />
@@ -57,7 +57,7 @@ const MobileChatHeader = ({
             </div>
           )}
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="truncate text-[15px] font-semibold leading-tight" style={{ color: "var(--app-text-primary)" }}>{title}</p>
           {conversation.is_group && (
             <p className="text-[11px] leading-tight" style={{ color: "var(--app-text-secondary)" }}>

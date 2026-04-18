@@ -311,8 +311,8 @@ const AppLayout = () => {
   if (isMobile) {
     return (
       <div
-        className="app-themed flex flex-col h-screen w-full overflow-hidden font-body relative"
-        style={{ backgroundColor: "var(--app-bg-primary)", color: "var(--app-text-primary)" }}
+        className="app-themed flex flex-col w-full overflow-hidden font-body relative"
+        style={{ backgroundColor: "var(--app-bg-primary)", color: "var(--app-text-primary)", height: "100dvh" }}
       >
         {/* Main view (full-screen on mobile) */}
         <div ref={swipeRef} className="flex flex-col flex-1 min-h-0 relative">

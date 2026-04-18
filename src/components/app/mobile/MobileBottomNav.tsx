@@ -45,6 +45,8 @@ const MobileBottomNav = ({ hidden }: Props) => {
         backgroundColor: "var(--app-bg-secondary)",
         borderColor: "var(--app-border)",
         paddingBottom: "env(safe-area-inset-bottom, 0px)",
+        paddingLeft: "env(safe-area-inset-left, 0px)",
+        paddingRight: "env(safe-area-inset-right, 0px)",
       }}
     >
       {tabs.map((t) => {
@@ -62,6 +64,13 @@ const MobileBottomNav = ({ hidden }: Props) => {
             className="relative flex-1 flex flex-col items-center justify-center gap-0.5 py-2 active:opacity-60 transition-opacity touch-manipulation"
             aria-current={isActive ? "page" : undefined}
           >
+            {/* Active indicator — 2px top bar in primary color (in addition to the icon/label color) */}
+            {isActive && (
+              <span
+                className="absolute top-0 left-1/2 -translate-x-1/2 h-[2px] w-8 rounded-b-full"
+                style={{ backgroundColor: "hsl(var(--primary))" }}
+              />
+            )}
             {t.iconType === "img" && t.icon ? (
               <img
                 src={t.icon}
@@ -87,7 +96,7 @@ const MobileBottomNav = ({ hidden }: Props) => {
             </span>
             {t.id === "friends" && incomingPendingCount > 0 && (
               <span
-                className="absolute top-1 right-1/2 translate-x-[14px] flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-[#ed4245] px-1 text-[9px] font-bold text-white border-2 animate-fade-in"
+                className="absolute top-0.5 right-[28%] flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-[#ed4245] px-1 text-[9px] font-bold text-white border-2 animate-fade-in"
                 style={{ borderColor: "var(--app-bg-secondary)" }}
               >
                 {incomingPendingCount > 9 ? "9+" : incomingPendingCount}

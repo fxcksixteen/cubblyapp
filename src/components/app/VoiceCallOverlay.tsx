@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { defaultProfileColor, getProfileColor } from "@/lib/profileColors";
 import { useCallParticipants } from "@/hooks/useCallParticipants";
 import ScreenSharePicker, { ScreenShareType } from "./ScreenSharePicker";
+import FullscreenScreenShareViewer from "./FullscreenScreenShareViewer";
 import micIcon from "@/assets/icons/microphone.svg";
 import micMuteIcon from "@/assets/icons/microphone-mute.svg";
 import headphoneIcon from "@/assets/icons/headphone.svg";
@@ -73,8 +74,10 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
     ...(peerInstantState.is_video_on !== undefined ? { is_video_on: peerInstantState.is_video_on } : {}),
   };
   const [elapsed, setElapsed] = useState(0);
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const [showScreenSharePicker, setShowScreenSharePicker] = useState(false);
+  /** Custom branded full-screen viewer state. Replaces native requestFullscreen
+   *  so viewers can't pause/PiP/download the inbound stream. */
+  const [fullscreenView, setFullscreenView] = useState<{ stream: MediaStream; name: string; type: "screen" | "cam"; isLocal?: boolean } | null>(null);
   const screenVideoRef = useRef<HTMLVideoElement>(null);
   const remoteScreenVideoRef = useRef<HTMLVideoElement>(null);
   const localCamRef = useRef<HTMLVideoElement>(null);
@@ -171,18 +174,20 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
           <div className="absolute top-3 right-3 flex gap-2">
             <button
               onClick={() => {
-                const el = (isScreenSharing ? screenVideoRef : remoteScreenVideoRef).current;
-                if (el) {
-                  if (!document.fullscreenElement) {
-                    el.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
-                  } else {
-                    document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
-                  }
+                const stream = isScreenSharing ? screenStream : remoteScreenStream;
+                if (stream) {
+                  setFullscreenView({
+                    stream,
+                    name: isScreenSharing ? displayName : recipientName,
+                    type: "screen",
+                    isLocal: isScreenSharing,
+                  });
                 }
               }}
               className="flex h-8 w-8 items-center justify-center rounded-lg bg-black/60 text-white hover:bg-black/80 transition-colors"
+              title="Fullscreen"
             >
-              {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+              <Maximize2 className="h-4 w-4" />
             </button>
           </div>
         </div>
@@ -218,10 +223,7 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
                 <button
                   type="button"
                   onClick={() => {
-                    const el = localCamRef.current;
-                    if (!el) return;
-                    if (!document.fullscreenElement) el.requestFullscreen().catch(() => {});
-                    else document.exitFullscreen().catch(() => {});
+                    if (localVideoStream) setFullscreenView({ stream: localVideoStream, name: displayName, type: "cam", isLocal: true });
                   }}
                   className="absolute top-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-md bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-black/75 transition-opacity"
                   title="Fullscreen"
@@ -284,10 +286,7 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
                 <button
                   type="button"
                   onClick={() => {
-                    const el = remoteCamRef.current;
-                    if (!el) return;
-                    if (!document.fullscreenElement) el.requestFullscreen().catch(() => {});
-                    else document.exitFullscreen().catch(() => {});
+                    if (remoteVideoStream) setFullscreenView({ stream: remoteVideoStream, name: recipientName, type: "cam" });
                   }}
                   className="absolute top-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-md bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-black/75 transition-opacity"
                   title="Fullscreen"
@@ -430,6 +429,16 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
           startScreenShare(type, options);
         }}
       />
+
+      {fullscreenView && (
+        <FullscreenScreenShareViewer
+          stream={fullscreenView.stream}
+          sharerName={fullscreenView.name}
+          type={fullscreenView.type}
+          isLocal={fullscreenView.isLocal}
+          onClose={() => setFullscreenView(null)}
+        />
+      )}
     </div>
   );
 };
