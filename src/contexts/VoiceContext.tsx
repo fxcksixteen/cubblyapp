@@ -510,7 +510,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
   const createPeerConnection = useCallback(() => {
     console.log("[Voice] 🔧 Creating RTCPeerConnection with", iceServersRef.current.length, "ICE servers");
-    const pc = new RTCPeerConnection({ iceServers: iceServersRef.current, iceTransportPolicy: "all" });
+    const pc = new RTCPeerConnection({
+      iceServers: iceServersRef.current,
+      iceTransportPolicy: "all",
+      bundlePolicy: "max-bundle",
+      rtcpMuxPolicy: "require",
+      iceCandidatePoolSize: 4,
+    });
 
     pc.ontrack = (event) => {
       const remote = event.streams[0];

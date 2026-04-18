@@ -247,7 +247,13 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     const existing = pcsRef.current.get(peerId);
     if (existing) return existing;
 
-    const pc = new RTCPeerConnection({ iceServers: iceServersRef.current, iceTransportPolicy: "all" });
+    const pc = new RTCPeerConnection({
+      iceServers: iceServersRef.current,
+      iceTransportPolicy: "all",
+      bundlePolicy: "max-bundle",
+      rtcpMuxPolicy: "require",
+      iceCandidatePoolSize: 4,
+    });
     pcsRef.current.set(peerId, pc);
     makingOfferRef.current.set(peerId, false);
     ignoreOfferRef.current.set(peerId, false);
