@@ -1789,10 +1789,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
       await sender.replaceTrack(videoTrack);
 
-      // If we had to create the transceiver fresh, we need to renegotiate so
-      // the peer learns there's a new m=video line in our SDP.
+      // Always renegotiate when turning the camera ON. Even if the transceiver
+      // was pre-allocated as "sendrecv", some browsers (Safari/Firefox) don't
+      // forward the track to the peer until a fresh offer/answer cycle. Without
+      // this, the camera shows for YOU but never for the OTHER person.
       try {
-        if (pc.signalingState === "stable" && (transceiver.currentDirection !== "sendrecv" && transceiver.currentDirection !== "sendonly")) {
+        if (pc.signalingState === "stable") {
           const offer = await pc.createOffer();
           offer.sdp = setHighQualityOpus(offer.sdp || "");
           await pc.setLocalDescription(offer);
