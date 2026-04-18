@@ -23,9 +23,23 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.9";
+export const CURRENT_VERSION = "0.2.10";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.2.10",
+    title: "Ship fix: actual desktop rollout of call/audio repairs",
+    date: "2026-04-18",
+    hero: bearImage,
+    newFeatures: [
+      "Desktop updater now ships the real post-0.2.9 call fixes as a new app version so Electron can actually detect and install them",
+    ],
+    bugFixes: [
+      "Fixed desktop users getting stuck on an older broken 0.2.9 build even after 'updating' — the patch now ships as 0.2.10 so auto-update sees it as newer",
+      "GitHub native-addon prebuild workflow now pushes back to the branch correctly instead of failing on detached HEAD during the commit step",
+      "Includes the already-implemented call fixes: remote camera visibility on mid-call enable, per-user volume/local mute for mic + screenshare audio in 1-on-1 and group calls, working fullscreen PiP, and native per-window audio wiring for Electron shares",
+    ],
+  },
   {
     version: "0.2.9",
     title: "Group calls get per-window audio, camera fix, working volume + PiP",
