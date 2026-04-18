@@ -195,10 +195,17 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       source.connect(analyser);
       const data = new Uint8Array(analyser.frequencyBinCount);
       let raf = 0;
+      let lastLevel = 0;
       const tick = () => {
         analyser.getByteFrequencyData(data);
         const avg = data.reduce((s, v) => s + v, 0) / data.length;
-        setPeers(prev => prev.map(p => p.userId === peerId ? { ...p, audioLevel: (avg / 255) * 100 } : p));
+        const next = (avg / 255) * 100;
+        // Only update peer state when level meaningfully changes — without this
+        // every PeerTile re-renders 60×/s during silence.
+        if (Math.abs(next - lastLevel) > 1) {
+          lastLevel = next;
+          setPeers(prev => prev.map(p => p.userId === peerId ? { ...p, audioLevel: next } : p));
+        }
         raf = requestAnimationFrame(tick);
       };
       tick();
@@ -294,7 +301,16 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         }
         audioEl.srcObject = stream;
         audioEl.play().catch(() => {});
-        audioCleanupRef.current.get(peerId)?.();
+        // CRITICAL: tear down any prior analyser BEFORE starting the new one,
+        // otherwise track replaces (renegotiation / camera toggle / brief
+        // network drop) leak rAF loops and the peer ring freezes at 0.
+        const prevCleanup = audioCleanupRef.current.get(peerId);
+        if (prevCleanup) {
+          try { prevCleanup(); } catch {}
+          audioCleanupRef.current.delete(peerId);
+        }
+        // Reset ring to 0 visually until the new analyser ticks
+        setPeers(prev => prev.map(p => p.userId === peerId ? { ...p, audioLevel: 0 } : p));
         startPeerMonitor(peerId, stream);
         return;
       }

@@ -447,16 +447,25 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     });
   }, [settings.echoCancellation, settings.noiseSuppression, settings.autoGainControl, localStream]);
 
-  // Sensitivity threshold gating: mute outgoing track when below threshold
+  // Sensitivity threshold gating: mute outgoing track when below threshold.
+  // Debounced (150ms) and only flips on STATE CHANGE so we don't flap
+  // track.enabled at 60fps — that flapping is what made speaking rings choppy
+  // and made peers hear chopped-up audio.
+  const lastGateStateRef = useRef<boolean>(true);
+  const gateTimerRef = useRef<number | null>(null);
   useEffect(() => {
     if (!localStream || settings.autoSensitivity || !activeCall) return;
-    const tracks = localStream.getAudioTracks();
-    if (activeCall.isMuted || activeCall.isDeafened) return; // don't interfere with manual mute
-    
+    if (activeCall.isMuted || activeCall.isDeafened) return;
     const shouldTransmit = audioLevel >= settings.sensitivityThreshold;
-    tracks.forEach(track => {
-      track.enabled = shouldTransmit;
-    });
+    if (shouldTransmit === lastGateStateRef.current) return;
+    if (gateTimerRef.current) window.clearTimeout(gateTimerRef.current);
+    gateTimerRef.current = window.setTimeout(() => {
+      lastGateStateRef.current = shouldTransmit;
+      localStream.getAudioTracks().forEach(t => { t.enabled = shouldTransmit; });
+    }, 150);
+    return () => {
+      if (gateTimerRef.current) { window.clearTimeout(gateTimerRef.current); gateTimerRef.current = null; }
+    };
   }, [audioLevel, settings.sensitivityThreshold, settings.autoSensitivity, localStream, activeCall]);
 
   const startAudioLevelMonitor = useCallback((stream: MediaStream) => {
@@ -475,10 +484,16 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     // Do NOT connect to ctx.destination — that causes echo/underwater effect
     analyserRef.current = analyser;
     const dataArray = new Uint8Array(analyser.frequencyBinCount);
+    let lastLocal = 0;
     const tick = () => {
       analyser.getByteFrequencyData(dataArray);
       const avg = dataArray.reduce((sum, v) => sum + v, 0) / dataArray.length;
-      setAudioLevel(avg / 255 * 100);
+      const next = (avg / 255) * 100;
+      // Only re-render when delta > 1 — cuts ~95% of CallPanel re-renders.
+      if (Math.abs(next - lastLocal) > 1) {
+        lastLocal = next;
+        setAudioLevel(next);
+      }
       animFrameRef.current = requestAnimationFrame(tick);
     };
     tick();
@@ -554,6 +569,22 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       audioEl.play().catch(console.error);
       document.body.appendChild(audioEl);
 
+      // Cancel ANY prior remote analyser loop + close its AudioContext FIRST.
+      // Without this, every track replace (network blip, renegotiation, camera
+      // toggle) stacked another rAF loop pointing at a soon-to-be-closed
+      // context — the surviving loop eventually read from a dead source and
+      // the peer ring would freeze at 0 for the rest of the call.
+      try {
+        if (remoteAnimFrameRef.current) cancelAnimationFrame(remoteAnimFrameRef.current);
+        remoteAnimFrameRef.current = 0;
+      } catch {}
+      try {
+        const prevCtx = (remoteAnalyserRef.current as any)?.context as AudioContext | undefined;
+        if (prevCtx && prevCtx.state !== "closed") prevCtx.close().catch(() => {});
+      } catch {}
+      remoteAnalyserRef.current = null;
+      setRemoteAudioLevel(0);
+
       try {
         const analyserCtx = new AudioContext();
         const source = analyserCtx.createMediaStreamSource(remote);
@@ -563,10 +594,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         source.connect(remoteAnalyser);
         remoteAnalyserRef.current = remoteAnalyser;
         const remoteData = new Uint8Array(remoteAnalyser.frequencyBinCount);
+        let lastRemote = 0;
         const tickRemote = () => {
           remoteAnalyser.getByteFrequencyData(remoteData);
           const avg = remoteData.reduce((sum, v) => sum + v, 0) / remoteData.length;
-          setRemoteAudioLevel(avg / 255 * 100);
+          const next = (avg / 255) * 100;
+          if (Math.abs(next - lastRemote) > 1) {
+            lastRemote = next;
+            setRemoteAudioLevel(next);
+          }
           remoteAnimFrameRef.current = requestAnimationFrame(tickRemote);
         };
         tickRemote();
