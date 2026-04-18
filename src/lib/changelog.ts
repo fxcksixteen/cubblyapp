@@ -23,9 +23,24 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.5";
+export const CURRENT_VERSION = "0.2.6";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.2.6",
+    title: "Gaming performance pass",
+    date: "2026-04-18",
+    hero: bearImage,
+    newFeatures: [
+      "Cubbly is now MUCH lighter while you're in a game — the desktop app drops its CPU priority below your game so it stops fighting Marvel Rivals (and friends) for cycles",
+      "Animations and rendering now cap to 30fps when Cubbly isn't focused, so you won't feel it eating GPU while you're playing",
+      "Activity detection (the thing that scans for your running game) now polls way less often when a game has focus, eliminating the periodic stutter",
+    ],
+    bugFixes: [
+      "Fixed Cubbly causing in-game lag spikes even when Gaming Mode was off",
+      "Fixed call quality degrading mid-match because the activity scanner was hammering the CPU",
+    ],
+  },
   {
     version: "0.2.5",
     title: "Call quality, lower ping & desktop polish",
