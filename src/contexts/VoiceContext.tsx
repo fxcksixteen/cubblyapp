@@ -266,6 +266,14 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const [remoteScreenStream, setRemoteScreenStream] = useState<MediaStream | null>(null);
 
+  /**
+   * Instant peer mute/deafen/video state, broadcast over the signaling
+   * channel so the UI updates with zero latency. The DB-backed
+   * useCallParticipants hook remains the source of truth for late-joiners
+   * and reconnects, but this overlays it for the active 1:1 peer.
+   */
+  const [peerInstantState, setPeerInstantState] = useState<{ is_muted?: boolean; is_deafened?: boolean; is_video_on?: boolean }>({});
+
   // Video / camera (sent over the same audio PC via a video transceiver)
   const [localVideoStream, setLocalVideoStream] = useState<MediaStream | null>(null);
   const [remoteVideoStream, setRemoteVideoStream] = useState<MediaStream | null>(null);
