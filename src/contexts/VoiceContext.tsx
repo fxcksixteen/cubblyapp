@@ -1568,6 +1568,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     incomingCandidateQueue.current = [];
     outgoingCandidateBuffer.current = [];
     remoteDescriptionSet.current = false;
+    setPeerInstantState({});
     pendingOfferRef.current = null;
     acceptedIncomingCallRef.current = null;
     outgoingCallMetaRef.current = null;
