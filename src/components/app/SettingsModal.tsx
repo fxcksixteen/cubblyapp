@@ -82,6 +82,15 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
   const backdropRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
+  // Lock body scroll while the modal is open (matters most on mobile, where
+  // the underlying chat would otherwise scroll behind the sheet).
+  useEffect(() => {
+    if (!isOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, [isOpen]);
+
   // Original profile data (source of truth)
   const [originalData, setOriginalData] = useState({
     display_name: "",

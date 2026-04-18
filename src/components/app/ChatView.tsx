@@ -410,8 +410,9 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
       <div
         ref={messagesContainerRef}
         onScroll={handleScroll}
+        data-chat-scroll
         className="flex-1 overflow-y-auto px-4 py-4"
-        style={{ minHeight: 0 }}
+        style={{ minHeight: 0, overscrollBehavior: "contain" }}
       >
         {loading ? (
           <div className="flex items-center justify-center py-16">
