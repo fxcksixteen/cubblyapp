@@ -1,66 +1,78 @@
 
 
-## Final v0.2.5 fix — Speaking rings + folded changelog
+## v0.2.5 final batch — custom fullscreen viewer + call-pill order + mobile UX
 
-### Issues found in the speaking-ring code
+### 1. Custom branded fullscreen screenshare viewer
 
-1. **Ring only updates locally for yourself, never reflects what the OTHER user actually hears.** Both 1:1 and group calls compute `audioLevel` from the *local mic capture* (you) and the *inbound remote audio track* (peer-as-heard-by-you). That part is fine in principle, but several bugs make it look broken in real calls:
+Replace the native browser `requestFullscreen()` (which gives users the generic Windows/Chrome video controls — including the **pause button**, picture-in-picture, download, playback speed) with a custom in-app overlay.
 
-2. **Bug A — Sensitivity gate kills the ring.** In `VoiceContext.tsx` line 450-460, when `autoSensitivity` is OFF, we set `track.enabled = false` whenever `audioLevel < threshold`. That means: peer's ring stops pulsing for you the instant you cross silence, AND your peer's ring stops pulsing for them because you literally stopped sending audio. Plus this re-runs every animation frame → constant track.enabled flapping → choppy ring.
+**Why this fixes the pause issue:** native HTML5 video controls let viewers pause the inbound stream. There's no way to disable just "pause" while keeping native fullscreen. The only real fix is to never use native fullscreen — render our own.
 
-3. **Bug B — Ring shown even while muted/deafened on the other side.** We gate the local ring on `!activeCall.isMuted`, but we gate the *peer* ring on `!peerState?.is_muted` which is sometimes undefined during the first 1-2s of a call (DB row hasn't synced and instant-broadcast hasn't fired yet). Result: peer's ring flickers ON for any background hiss right when call connects.
+**New component:** `src/components/app/FullscreenScreenShareViewer.tsx`
+- Fixed `inset-0 z-[100]` overlay, pure black background, fade-in animation
+- Uses the existing `MediaStream` from the screen video element (no re-negotiation)
+- `controls={false}` — no pause, no PiP, no download
+- Custom Cubbly-branded top bar:
+  - Left: Cubbly logo + "Watching {sharerName}'s screen" + live red dot
+  - Right: volume slider, picture-in-picture toggle (our own, opt-in), exit fullscreen button
+- Bottom auto-hide bar (3s idle): mute/unmute viewer audio, fit/fill toggle, exit
+- ESC key to exit
+- Mouse-idle: hide cursor + bars after 2.5s, show on movement
+- Smooth zoom-in entrance (`scale-95 → scale-100`, 200ms)
 
-4. **Bug C — `remoteAudioLevel` analyser leaks + stops updating.** In `VoiceContext.tsx` `ontrack` (line 557-573), every new inbound audio track creates a NEW `AudioContext` and overwrites `remoteAnalyserRef.current` without cancelling the prior `requestAnimationFrame` loop. On reconnect or track replace this stacks loops and eventually one wins that points at a closed context → ring freezes at 0 for the rest of the call.
+**Wire-up in `VoiceCallOverlay.tsx`:**
+- Replace the two `el.requestFullscreen()` blocks (lines ~174-180 for screen, ~221-229 / ~287-291 for cam tiles) with `setFullscreenStream({stream, sharerName, type: "screen"|"cam"})` state
+- Render `<FullscreenScreenShareViewer>` when state is set
+- Same treatment for `GroupCallPanel.tsx`'s screenshare/cam tiles
+- Mobile: `MobileCallOverlay` already has its own overlay so nothing to do there, but we'll add the same custom viewer for tile expansion on mobile too
 
-5. **Bug D — Group calls: peer monitor never restarts after a track replace (camera toggle, screen-share, reconnect).** `startPeerMonitor` is called once on `ontrack` for audio. If the same peer's audio track is replaced (network blip, renegotiation), the old analyser keeps reading from a dead source → that peer's ring goes flat permanently for the rest of the call.
+### 2. Call-pill ordering bug
 
-6. **Bug E — Threshold of `> 5` is too low.** Background room noise commonly sits at ~3-8 on the 0-100 scale, so rings frequently glow even when nobody's talking. Discord uses ~10-12.
+**Root cause** (`VoiceContext.tsx` line 1260): when the receiver accepts a call, code inserts a *local* call event with `startedAt: new Date().toISOString()` (receiver's clock, at accept time — minutes after the caller actually started). Meanwhile the realtime INSERT subscription (line 367) also adds the row with the **real** `started_at` from the DB. The local one wins because it's inserted first into local state, and any messages that arrived between caller-insert and receiver-accept end up timestamped *before* this fake value → they render above the pill.
 
-7. **Bug F — `requestAnimationFrame` keeps running when tab unfocused (Electron unfocused window throttles to 30fps from the v0.2.6 change). When focus returns, the ring suddenly jolts.** Need to also gate the analyser tick to only `setState` if value changed by >1, otherwise we re-render the entire CallPanel 60×/s for nothing.
+**Fix:**
+- Remove the manual `setCallEvents([...prev, { startedAt: new Date().toISOString() }])` insert at line 1257-1262. Let the realtime subscription be the single source of truth (it already fires on the receiver side with the real DB timestamp).
+- Add a small dedupe guard: if `callEvents` already contains the id from realtime, the receiver doesn't double-insert.
+- Defensive: in `ChatView.tsx` interleaver (line 378-385), also use `<= ts` instead of `> ts` so a pill and a message with identical ms always puts the pill first.
 
-### Fixes
+### 3. Mobile UX audit & fixes
 
-**`src/contexts/VoiceContext.tsx`**
-- Cancel any prior `remoteAnimFrameRef` and close prior remote `AudioContext` at the top of the audio-branch of `ontrack` before creating new ones.
-- Sensitivity gate: throttle to only flip `track.enabled` when state *changes* (debounce 150ms), and skip the gate entirely while audio level isn't being monitored. This stops the ring choppiness.
-- Threshold for visible ring: bump comparator from `> 5` to `> 10` in `VoiceCallOverlay.tsx` (both local and remote tiles).
-- In analyser tick, only call `setRemoteAudioLevel`/`setAudioLevel` if `Math.abs(new - prev) > 1` to cut needless re-renders by ~95%.
-- Ensure `is_muted` for peer falls back to `false` (not undefined) so we don't accidentally render a ring on call-connect noise; *combined with* the >10 threshold this fully fixes flicker.
+Issues found scanning `MobileBottomNav`, `MobileCallOverlay`, `MobileChatHeader`, `MobileNotificationPrompt`, `AppLayout`:
 
-**`src/contexts/GroupCallContext.tsx`**
-- In `ensurePc` `ontrack`, when audio track received: call `audioCleanupRef.current.get(peerId)?.()` BEFORE starting the new monitor so replaces don't leak.
-- Same setState-only-on-change optimization in `startPeerMonitor`.
-- Add the same threshold bump in `GroupCallPanel.tsx` (>10 instead of >5).
+- **Bottom nav clipped on iPhone Pro Max landscape**: `paddingBottom: env(safe-area-inset-bottom)` is right but missing `paddingLeft/paddingRight: env(safe-area-inset-left/right)` for landscape notch. Add those.
+- **Mobile chat header back button hit area is 36px** — below iOS's 44px minimum recommendation. Bump to `h-11 w-11`.
+- **Pull-to-refresh accidentally triggers** in chat scroll on iOS Safari → add `overscroll-behavior: contain` on the messages scroll container in `ChatView`.
+- **Tap-to-zoom double-tap** on message text triggers iOS browser zoom. Add `touch-action: manipulation` on message bubbles.
+- **Keyboard covers input** on iOS PWA when typing — switch the message composer container to use `100dvh` math + `visualViewport` listener so it stays above the keyboard. (Currently uses `100vh` which iOS doesn't shrink for keyboard.)
+- **Bottom nav badge** for friend requests overlaps the icon awkwardly on small screens — reposition with `top-0.5 right-[30%]`.
+- **Minimized call pill** at `bottom-20` collides with bottom nav on some viewports — anchor relative to nav instead with `bottom-[calc(64px+env(safe-area-inset-bottom))]`.
+- **Long DM names** in mobile chat header overflow the back button — add `truncate` + `min-w-0`.
+- **Settings modal on mobile** doesn't lock body scroll — add `overflow: hidden` on `<body>` while open.
+- **Active tab indicator** in bottom nav is just color; add a 2px top border in primary color for clarity at a glance.
 
-**`src/components/app/VoiceCallOverlay.tsx` & `src/components/app/GroupCallPanel.tsx`**
-- Update threshold checks (>10).
-- Add CSS `transition: box-shadow 80ms linear` so the ring smooths between frames (no jitter even when the level updates only on >1 deltas).
-- Make `speakingRingShadow` slightly more reactive: clamp level to [10, 100], normalize to 0..1, then scale ring radius from 4px → 14px and outer glow 12px → 32px with eased curve. Visually this gives Discord-style "pulse" feel.
+### 4. Files touched
 
-### Changelog (`src/lib/changelog.ts`)
+- **NEW** `src/components/app/FullscreenScreenShareViewer.tsx`
+- `src/components/app/VoiceCallOverlay.tsx` — swap native FS for custom viewer (3 spots)
+- `src/components/app/GroupCallPanel.tsx` — same swap
+- `src/contexts/VoiceContext.tsx` — remove receiver-side double-insert of call event (line 1257-1262 area)
+- `src/components/app/ChatView.tsx` — defensive `<=` in pill interleaver
+- `src/components/app/mobile/MobileBottomNav.tsx` — landscape safe-area, badge position, top-border indicator
+- `src/components/app/mobile/MobileChatHeader.tsx` — 44px back button, name truncate
+- `src/components/app/mobile/MobileCallOverlay.tsx` — minimized pill anchor
+- `src/components/app/MobileNotificationPrompt.tsx` — already touched, no-op here
+- `src/pages/AppLayout.tsx` — `100dvh` + visualViewport listener for keyboard
+- `src/components/app/SettingsModal.tsx` — body-scroll lock on mobile
+- `src/index.css` — `touch-action: manipulation` on `.message-bubble`, `overscroll-behavior: contain` on chat scroll
+- `src/lib/changelog.ts` — add to existing v0.2.5 entry: custom branded fullscreen viewer (no more accidental pause), call-pill order fix, mobile polish pass
 
-- **DELETE** the v0.2.6 entry entirely (we never shipped it — user is still finalizing 0.2.5).
-- **MERGE** all v0.2.6 content into the existing v0.2.5 entry's `newFeatures` / `bugFixes`.
-- **ADD** to v0.2.5 bug fixes:
-  - "Fixed speaking rings around user avatars not pulsing reactively in real calls (now smoothly responds to volume for everyone in the call)"
-  - "Fixed peer's speaking ring permanently freezing after a network blip mid-call"
-  - "Fixed speaking rings flickering on background noise the moment a call connected"
-- **BUMP** `CURRENT_VERSION` back to `"0.2.5"`.
-- **REVERT** `package.json` and `src/main.tsx` from `0.2.6` → `0.2.5`.
+### 5. Quick answer to your Swift/iOS question
 
-### Files touched
+I'll include the answer in the implementation message — short version: very capable for a SwiftUI Discord-style app, can scaffold the whole thing in chunks, but Xcode + a Mac is required to actually build/sign/run it. Cubbly's design system, color tokens, and feature set translate cleanly to SwiftUI.
 
-- `src/lib/changelog.ts` — delete 0.2.6, merge into 0.2.5
-- `package.json` — version → 0.2.5
-- `src/main.tsx` — version constant → 0.2.5
-- `src/contexts/VoiceContext.tsx` — analyser cleanup, debounced setState, sensitivity gate fix
-- `src/contexts/GroupCallContext.tsx` — peer monitor cleanup before replace, debounced setState
-- `src/components/app/VoiceCallOverlay.tsx` — threshold + ring transition + curve
-- `src/components/app/GroupCallPanel.tsx` — same ring fix
+### 6. After
 
-### After
-
-Once approved I implement all of this in one pass and give you the standard ship command:
+Once approved, I implement, then ship with the standard:
 ```
 git pull && npm install && npm run build:electron && BUILD_TARGET=electron npx electron-builder --win nsis --x64 --publish always
 ```
