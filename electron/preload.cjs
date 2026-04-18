@@ -60,4 +60,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Launch on system startup
   getAutoLaunch: () => ipcRenderer.invoke("auto-launch-get"),
   setAutoLaunch: (value) => ipcRenderer.invoke("auto-launch-set", value),
+
+  // Native per-window audio capture (Windows WASAPI process loopback)
+  isWindowAudioCaptureAvailable: () => ipcRenderer.invoke("is-window-audio-capture-available"),
+  startWindowAudioCapture: (sourceId) => ipcRenderer.invoke("start-window-audio-capture", sourceId),
+  stopWindowAudioCapture: () => ipcRenderer.invoke("stop-window-audio-capture"),
+  /** Subscribes to PCM frames; returns an unsubscribe fn. */
+  onWindowAudioPcm: (cb) => {
+    const listener = (_e, buf) => cb(buf);
+    ipcRenderer.on("window-audio-pcm", listener);
+    return () => ipcRenderer.removeListener("window-audio-pcm", listener);
+  },
 });
