@@ -993,6 +993,11 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       if (track) track.stop();
       localScreenTrackRef.current = null;
       setLocalScreenStream(null);
+      // Tear down native per-window audio if it was active
+      if (nativeWindowAudioStopRef.current) {
+        try { nativeWindowAudioStopRef.current(); } catch {}
+        nativeWindowAudioStopRef.current = null;
+      }
       for (const [peerId, sender] of screenSendersRef.current) {
         try { await sender.replaceTrack(null); } catch {}
         const pc = pcsRef.current.get(peerId);
