@@ -128,7 +128,7 @@ const PeerTile = ({ userId, displayName, avatarUrl, audioLevel, isMuted, isLocal
 };
 
 /** Big screenshare viewer — shown above the participant grid when someone shares. */
-const ScreenShareViewer = ({ peer }: { peer: GroupPeer }) => {
+const ScreenShareViewer = ({ peer, onMaximize }: { peer: GroupPeer; onMaximize: () => void }) => {
   const ref = useRef<HTMLVideoElement | null>(null);
   useEffect(() => {
     if (ref.current && peer.screenStream) {
@@ -137,8 +137,16 @@ const ScreenShareViewer = ({ peer }: { peer: GroupPeer }) => {
     }
   }, [peer.screenStream]);
   return (
-    <div className="mx-4 mt-3 rounded-xl overflow-hidden bg-black border" style={{ borderColor: "var(--app-border)" }}>
+    <div className="group mx-4 mt-3 rounded-xl overflow-hidden bg-black border relative" style={{ borderColor: "var(--app-border)" }}>
       <video ref={ref} playsInline className="w-full max-h-[50vh] object-contain bg-black" />
+      <button
+        type="button"
+        onClick={onMaximize}
+        className="absolute top-2 right-2 flex h-8 w-8 items-center justify-center rounded-md bg-black/60 text-white opacity-0 group-hover:opacity-100 hover:bg-black/80 transition-opacity"
+        title="Fullscreen"
+      >
+        <Maximize2 className="h-4 w-4" />
+      </button>
       <div className="px-3 py-2 text-xs" style={{ color: "var(--app-text-secondary)" }}>
         {peer.displayName} is sharing their screen
       </div>
@@ -162,6 +170,7 @@ const GroupCallPanel = ({ conversationId }: Props) => {
   const [elapsed, setElapsed] = useState(0);
   const [selfAvatar, setSelfAvatar] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [fullscreenView, setFullscreenView] = useState<{ stream: MediaStream; name: string; type: "screen" | "cam"; isLocal?: boolean } | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -206,13 +215,26 @@ const GroupCallPanel = ({ conversationId }: Props) => {
         </span>
       </div>
 
-      {sharingPeer && <ScreenShareViewer peer={sharingPeer} />}
+      {sharingPeer && (
+        <ScreenShareViewer
+          peer={sharingPeer}
+          onMaximize={() => sharingPeer.screenStream && setFullscreenView({ stream: sharingPeer.screenStream, name: sharingPeer.displayName, type: "screen" })}
+        />
+      )}
       {activeCall.isScreenSharing && localScreenStream && (
-        <div className="mx-4 mt-3 rounded-xl overflow-hidden bg-black border" style={{ borderColor: "var(--app-border)" }}>
+        <div className="group mx-4 mt-3 rounded-xl overflow-hidden bg-black border relative" style={{ borderColor: "var(--app-border)" }}>
           <video
             ref={(el) => { if (el && localScreenStream) { el.srcObject = localScreenStream; el.play().catch(() => {}); } }}
             playsInline muted className="w-full max-h-[50vh] object-contain bg-black"
           />
+          <button
+            type="button"
+            onClick={() => setFullscreenView({ stream: localScreenStream, name: displayName, type: "screen", isLocal: true })}
+            className="absolute top-2 right-2 flex h-8 w-8 items-center justify-center rounded-md bg-black/60 text-white opacity-0 group-hover:opacity-100 hover:bg-black/80 transition-opacity"
+            title="Fullscreen"
+          >
+            <Maximize2 className="h-4 w-4" />
+          </button>
           <div className="px-3 py-2 text-xs" style={{ color: "var(--app-text-secondary)" }}>You're sharing your screen</div>
         </div>
       )}
