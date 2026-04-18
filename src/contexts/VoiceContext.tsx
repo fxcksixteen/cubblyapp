@@ -643,6 +643,28 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         // Upsert our call_participants row immediately so the peer can see
         // our mute/deafen/video state from the moment we connect.
         try { syncParticipantRef.current?.(); } catch {}
+        // Debug: log the actual ICE candidate pair the browser picked, so we
+        // can tell whether we're going direct (host/srflx) or through TURN
+        // (relay) — without this we're guessing about Frankfurt's effect.
+        setTimeout(async () => {
+          try {
+            const stats = await pc.getStats();
+            stats.forEach((report: any) => {
+              if (report.type === "candidate-pair" && report.nominated && report.state === "succeeded") {
+                const local = stats.get(report.localCandidateId) as any;
+                const remote = stats.get(report.remoteCandidateId) as any;
+                console.log(
+                  `[Voice] 🌐 Active ICE pair → local=${local?.candidateType}/${local?.protocol}/${local?.address || local?.ip}` +
+                  ` remote=${remote?.candidateType}/${remote?.protocol}/${remote?.address || remote?.ip}` +
+                  ` rtt=${Math.round((report.currentRoundTripTime || 0) * 1000)}ms`
+                );
+                if (local?.candidateType === "relay" || remote?.candidateType === "relay") {
+                  console.log(`[Voice] 🛰️ Going through TURN relay${local?.relayProtocol ? ` (${local.relayProtocol})` : ""}`);
+                }
+              }
+            });
+          } catch (e) { console.warn("[Voice] getStats failed:", e); }
+        }, 1500);
       }
       if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed") {
         console.warn("[Voice] ICE connection failed/disconnected");
@@ -809,6 +831,30 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
         if (payload.type === "offer") {
           const acceptedCall = acceptedIncomingCallRef.current;
+
+          // Re-offer mid-call (e.g. peer enabled camera and renegotiated).
+          // If we already have a connected PC and signaling is stable, accept
+          // the new offer and answer it. This is the Perfect-Negotiation path
+          // that makes "turning camera on after connect" actually work.
+          if (pc && !acceptedCall && pc.signalingState === "stable") {
+            try {
+              console.log("[Voice] 🔁 Re-offer received mid-call — renegotiating");
+              await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+              const answer = await pc.createAnswer();
+              let sdp = answer.sdp || "";
+              sdp = setHighQualityOpus(sdp);
+              answer.sdp = sdp;
+              await pc.setLocalDescription(answer);
+              channel.send({
+                type: "broadcast",
+                event: "voice-signal",
+                payload: { type: "answer", sdp: answer, senderId: user.id },
+              });
+            } catch (e) {
+              console.warn("[Voice] Mid-call re-offer handling failed:", e);
+            }
+            return;
+          }
 
           if (acceptedCall && acceptedCall.conversationId === conversationId && pc) {
             try {
