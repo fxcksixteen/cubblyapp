@@ -46,7 +46,10 @@ export interface PeerGainApi {
   setUserMuted: (userId: string, muted: boolean) => void;
   /**
    * Route the given stream through the per-peer GainNode for `userId`.
-   * Mutes the source `audioEl` so playback only flows through the gain pipeline.
+   * Mutes the source media element so playback only flows through the gain pipeline.
+   *
+   * Accepts both HTMLAudioElement (mic playback) and HTMLVideoElement
+   * (screen-share whose `<video>` element also carries the audio track).
    *
    * `streamKind` differentiates concurrent streams from the same peer
    * (e.g. "mic" + "screen") so they can be independently re-attached
@@ -55,7 +58,7 @@ export interface PeerGainApi {
   attachPeerGain: (
     userId: string,
     stream: MediaStream,
-    audioEl: HTMLAudioElement,
+    mediaEl: HTMLMediaElement,
     streamKind?: string
   ) => void;
   /** Tear down ALL per-peer pipelines (call this in leaveCall / endCall). */
@@ -107,10 +110,11 @@ export function usePeerGains(): PeerGainApi {
   const attachPeerGain = useCallback((
     userId: string,
     stream: MediaStream,
-    audioEl: HTMLAudioElement,
+    mediaEl: HTMLMediaElement,
     streamKind: string = "mic",
   ) => {
     if (!userId || !stream) return;
+    if (!stream.getAudioTracks().length) return; // nothing to route
     try {
       // If we don't have a pipeline for this peer yet, build one.
       let entry = peerEntriesRef.current.get(userId);
@@ -139,9 +143,9 @@ export function usePeerGains(): PeerGainApi {
       entry.sources.set(streamKind, src);
 
       // Mute the source element — playback now flows through the gain pipeline.
-      audioEl.muted = true;
-      audioEl.setAttribute("data-cubbly-peer", userId);
-      audioEl.setAttribute("data-cubbly-kind", streamKind);
+      mediaEl.muted = true;
+      mediaEl.setAttribute("data-cubbly-peer", userId);
+      mediaEl.setAttribute("data-cubbly-kind", streamKind);
     } catch (e) {
       console.warn("[PeerGain] attach failed for", userId, streamKind, e);
       // Fallback: leave element playing at its own volume so we at least hear them.
