@@ -23,9 +23,25 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.9";
+export const CURRENT_VERSION = "0.2.10";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.2.10",
+    title: "Per-user volume + Picture-in-Picture finally work",
+    date: "2026-04-18",
+    hero: bearImage,
+    newFeatures: [
+      "Right-click any user in a 1-on-1 OR group call → the volume slider (0–200%) and 'Mute (you only)' now actually work — and they control BOTH that person's mic AND their screen-share audio (one slider for everything you hear from them)",
+      "Fullscreen screen-share viewer: Picture-in-Picture button now works (no more silent fail) — pop a friend's screen out into a floating window while you keep doing other things",
+      "Fullscreen viewer's volume slider now goes 0–200% and shares state with the right-click menu — adjusting one updates the other instantly",
+    ],
+    bugFixes: [
+      "Per-user volume / local mute were silently doing NOTHING in group calls — now wired up and persisted forever in localStorage (settings carry across reloads, calls, and re-installs)",
+      "Per-user volume in 1-on-1 only affected the peer's mic, not their screen-share audio — both are now routed through the same gain node",
+      "Fullscreen viewer's volume slider was changing the wrong audio element (the hidden one kept playing) — now drives the actual playback pipeline",
+    ],
+  },
   {
     version: "0.2.9",
     title: "Group calls finally get per-window audio + camera fix",

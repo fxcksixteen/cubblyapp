@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getProfileColor } from "@/lib/profileColors";
 import ScreenSharePicker from "./ScreenSharePicker";
 import FullscreenScreenShareViewer from "./FullscreenScreenShareViewer";
+import UserVolumeMenu from "./UserVolumeMenu";
 import micIcon from "@/assets/icons/microphone.svg";
 import micMuteIcon from "@/assets/icons/microphone-mute.svg";
 import headphoneIcon from "@/assets/icons/headphone.svg";
@@ -45,9 +46,11 @@ interface PeerTileProps {
   videoStream?: MediaStream | null;
   /** Called when the user clicks the maximize button on a video tile. */
   onMaximize?: () => void;
+  /** Called when the user right-clicks the tile (used to open the volume menu). Suppressed for the local user. */
+  onContextMenu?: (e: React.MouseEvent) => void;
 }
 
-const PeerTile = ({ userId, displayName, avatarUrl, audioLevel, isMuted, isLocal, videoStream, onMaximize }: PeerTileProps) => {
+const PeerTile = ({ userId, displayName, avatarUrl, audioLevel, isMuted, isLocal, videoStream, onMaximize, onContextMenu }: PeerTileProps) => {
   const color = getProfileColor(userId);
   const speaking = audioLevel > SPEAKING_THRESHOLD && !isMuted;
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -60,7 +63,7 @@ const PeerTile = ({ userId, displayName, avatarUrl, audioLevel, isMuted, isLocal
 
   if (videoStream) {
     return (
-      <div className="flex flex-col items-center gap-2">
+      <div className="flex flex-col items-center gap-2" onContextMenu={onContextMenu}>
         <div
           className="group relative overflow-hidden rounded-xl bg-black"
           style={{
@@ -95,7 +98,7 @@ const PeerTile = ({ userId, displayName, avatarUrl, audioLevel, isMuted, isLocal
   }
 
   return (
-    <div className="flex flex-col items-center gap-2">
+    <div className="flex flex-col items-center gap-2" onContextMenu={onContextMenu}>
       <div className="relative">
         <div
           className="flex h-20 w-20 items-center justify-center rounded-full text-2xl font-bold text-white overflow-hidden"
@@ -138,7 +141,10 @@ const ScreenShareViewer = ({ peer, onMaximize }: { peer: GroupPeer; onMaximize: 
   }, [peer.screenStream]);
   return (
     <div className="group mx-4 mt-3 rounded-xl overflow-hidden bg-black border relative" style={{ borderColor: "var(--app-border)" }}>
-      <video ref={ref} playsInline className="w-full max-h-[50vh] object-contain bg-black" />
+      {/* muted: screen audio is routed through the per-peer GainNode (see
+          GroupCallContext ontrack) so the right-click "User Volume" + the
+          fullscreen viewer's volume slider both control it. */}
+      <video ref={ref} muted playsInline className="w-full max-h-[50vh] object-contain bg-black" />
       <button
         type="button"
         onClick={onMaximize}
@@ -166,11 +172,14 @@ const GroupCallPanel = ({ conversationId }: Props) => {
     activeCall, peers, selfAudioLevel, leaveCall,
     toggleMute, toggleDeafen, toggleVideo, toggleScreenShare,
     localVideoStream, localScreenStream, ping,
+    getUserVolume, setUserVolume, isUserMuted, setUserMuted,
   } = useGroupCall();
+  const volumeApi = { getUserVolume, setUserVolume, isUserMuted, setUserMuted };
   const [elapsed, setElapsed] = useState(0);
   const [selfAvatar, setSelfAvatar] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [fullscreenView, setFullscreenView] = useState<{ stream: MediaStream; name: string; type: "screen" | "cam"; isLocal?: boolean } | null>(null);
+  const [fullscreenView, setFullscreenView] = useState<{ stream: MediaStream; name: string; type: "screen" | "cam"; isLocal?: boolean; peerId?: string } | null>(null);
+  const [volumeMenu, setVolumeMenu] = useState<{ userId: string; name: string; x: number; y: number } | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -218,7 +227,7 @@ const GroupCallPanel = ({ conversationId }: Props) => {
       {sharingPeer && (
         <ScreenShareViewer
           peer={sharingPeer}
-          onMaximize={() => sharingPeer.screenStream && setFullscreenView({ stream: sharingPeer.screenStream, name: sharingPeer.displayName, type: "screen" })}
+          onMaximize={() => sharingPeer.screenStream && setFullscreenView({ stream: sharingPeer.screenStream, name: sharingPeer.displayName, type: "screen", peerId: sharingPeer.userId })}
         />
       )}
       {activeCall.isScreenSharing && localScreenStream && (
@@ -259,6 +268,7 @@ const GroupCallPanel = ({ conversationId }: Props) => {
             isMuted={p.isMuted}
             videoStream={p.isVideoOn ? p.videoStream : null}
             onMaximize={p.isVideoOn && p.videoStream ? () => setFullscreenView({ stream: p.videoStream!, name: p.displayName, type: "cam" }) : undefined}
+            onContextMenu={(e) => { e.preventDefault(); setVolumeMenu({ userId: p.userId, name: p.displayName, x: e.clientX, y: e.clientY }); }}
           />
         ))}
       </div>
@@ -328,12 +338,24 @@ const GroupCallPanel = ({ conversationId }: Props) => {
         />
       )}
 
+      {volumeMenu && (
+        <UserVolumeMenu
+          userId={volumeMenu.userId}
+          displayName={volumeMenu.name}
+          x={volumeMenu.x}
+          y={volumeMenu.y}
+          volumeApi={volumeApi}
+          onClose={() => setVolumeMenu(null)}
+        />
+      )}
       {fullscreenView && (
         <FullscreenScreenShareViewer
           stream={fullscreenView.stream}
           sharerName={fullscreenView.name}
           type={fullscreenView.type}
           isLocal={fullscreenView.isLocal}
+          audioPeerId={fullscreenView.type === "screen" && !fullscreenView.isLocal ? fullscreenView.peerId : undefined}
+          volumeApi={volumeApi}
           onClose={() => setFullscreenView(null)}
         />
       )}

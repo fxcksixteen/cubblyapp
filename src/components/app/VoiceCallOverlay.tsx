@@ -63,7 +63,9 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
     localVideoStream, remoteVideoStream,
     currentCallEventId,
     peerInstantState,
+    getUserVolume, setUserVolume, isUserMuted, setUserMuted,
   } = useVoice();
+  const volumeApi = { getUserVolume, setUserVolume, isUserMuted, setUserMuted };
   const { getPeerState } = useCallParticipants(activeCall?.conversationId === conversationId ? currentCallEventId : null);
   const dbPeerState = getPeerState();
   // Merge: instant signaling state takes precedence; DB row is the fallback /
@@ -172,7 +174,10 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
             <video ref={screenVideoRef} autoPlay muted playsInline className="w-full max-h-[400px] object-contain" />
           )}
           {!isScreenSharing && remoteScreenStream && (
-            <video ref={remoteScreenVideoRef} autoPlay playsInline className="w-full max-h-[400px] object-contain" />
+            // muted: audio is routed through the per-peer GainNode (see
+            // VoiceContext screen-pc ontrack), so the right-click "User Volume"
+            // and the fullscreen viewer's volume slider both control it.
+            <video ref={remoteScreenVideoRef} autoPlay muted playsInline className="w-full max-h-[400px] object-contain" />
           )}
           <div className="absolute top-3 right-3 flex gap-2">
             <button
@@ -446,6 +451,9 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
           sharerName={fullscreenView.name}
           type={fullscreenView.type}
           isLocal={fullscreenView.isLocal}
+          // Only screen-share carries audio; remote-cam tiles + local previews don't.
+          audioPeerId={fullscreenView.type === "screen" && !fullscreenView.isLocal ? recipientUserId : undefined}
+          volumeApi={volumeApi}
           onClose={() => setFullscreenView(null)}
         />
       )}
@@ -456,6 +464,7 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
           displayName={volumeMenu.name}
           x={volumeMenu.x}
           y={volumeMenu.y}
+          volumeApi={volumeApi}
           onClose={() => setVolumeMenu(null)}
         />
       )}

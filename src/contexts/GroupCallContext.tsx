@@ -26,6 +26,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { playSound, playLooping, stopLooping } from "@/lib/sounds";
 import { startNativeWindowAudioStream } from "@/lib/nativeWindowAudio";
+import { usePeerGains } from "@/lib/peerGain";
 
 export interface GroupPeer {
   userId: string;
@@ -85,6 +86,11 @@ interface GroupCallContextType {
   localScreenStream: MediaStream | null;
   /** Audio level of the LOCAL mic (0-100). */
   selfAudioLevel: number;
+  // Per-user volume + local mute API (Discord-style right-click menu).
+  getUserVolume: (userId: string) => number;
+  setUserVolume: (userId: string, volume: number) => void;
+  isUserMuted: (userId: string) => boolean;
+  setUserMuted: (userId: string, muted: boolean) => void;
 }
 
 const GroupCallContext = createContext<GroupCallContextType>({} as GroupCallContextType);
@@ -135,6 +141,9 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
   const selfAnimRef = useRef<number>(0);
   const profileCacheRef = useRef<Map<string, { display_name: string; avatar_url: string | null }>>(new Map());
   const preMuteRef = useRef<boolean>(false);
+
+  // Per-user volume / local mute (shared with VoiceContext via localStorage).
+  const { getUserVolume, setUserVolume, isUserMuted, setUserMuted, attachPeerGain, clearAllPeerGains } = usePeerGains();
 
   // Fetch ICE servers (same as 1-on-1)
   useEffect(() => {
@@ -300,7 +309,17 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       if (event.track.kind === "audio") {
         // Lower jitter buffer for snappier real-time feel
         try { (event.receiver as any).playoutDelayHint = 0.05; } catch { /* ignore */ }
-        let audioEl = document.querySelector<HTMLAudioElement>(`audio[data-group-peer="${peerId}"]`);
+        // Distinguish mic audio from screen-share audio (the sender labels its
+        // screen stream id as `cubbly-screen-<userId>`). Mic + screen audio
+        // need their own <audio> elements so concurrent tracks don't clobber
+        // each other's srcObject. Both then route through the SAME per-peer
+        // GainNode so one slider controls everything you hear from this peer.
+        const isScreenAudio = !!stream?.id?.startsWith("cubbly-screen-");
+        const kind = isScreenAudio ? "screen" : "mic";
+        const selector = isScreenAudio
+          ? `audio[data-group-peer="${peerId}"][data-cubbly-kind="screen"]`
+          : `audio[data-group-peer="${peerId}"]:not([data-cubbly-kind="screen"])`;
+        let audioEl = document.querySelector<HTMLAudioElement>(selector);
         if (!audioEl) {
           audioEl = document.createElement("audio");
           audioEl.dataset.groupPeer = peerId;
@@ -309,17 +328,27 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         }
         audioEl.srcObject = stream;
         audioEl.play().catch(() => {});
-        // CRITICAL: tear down any prior analyser BEFORE starting the new one,
-        // otherwise track replaces (renegotiation / camera toggle / brief
-        // network drop) leak rAF loops and the peer ring freezes at 0.
-        const prevCleanup = audioCleanupRef.current.get(peerId);
-        if (prevCleanup) {
-          try { prevCleanup(); } catch {}
-          audioCleanupRef.current.delete(peerId);
+
+        // Route every audible track for this peer through the per-peer
+        // GainNode (Discord-style 0–200% slider + local mute).
+        attachPeerGain(peerId, stream, audioEl, kind);
+
+        // Only run the speaking-ring analyser on the MIC stream — running it
+        // on screen audio would light up the ring whenever someone's video
+        // makes noise.
+        if (!isScreenAudio) {
+          // CRITICAL: tear down any prior analyser BEFORE starting the new one,
+          // otherwise track replaces (renegotiation / camera toggle / brief
+          // network drop) leak rAF loops and the peer ring freezes at 0.
+          const prevCleanup = audioCleanupRef.current.get(peerId);
+          if (prevCleanup) {
+            try { prevCleanup(); } catch {}
+            audioCleanupRef.current.delete(peerId);
+          }
+          // Reset ring to 0 visually until the new analyser ticks
+          setPeers(prev => prev.map(p => p.userId === peerId ? { ...p, audioLevel: 0 } : p));
+          startPeerMonitor(peerId, stream);
         }
-        // Reset ring to 0 visually until the new analyser ticks
-        setPeers(prev => prev.map(p => p.userId === peerId ? { ...p, audioLevel: 0 } : p));
-        startPeerMonitor(peerId, stream);
         return;
       }
       if (event.track.kind === "video") {
@@ -731,6 +760,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     }
     videoSendersRef.current.clear();
     screenSendersRef.current.clear();
+    clearAllPeerGains();
     stopSelfMonitor();
 
     if (channelRef.current) {
@@ -1074,6 +1104,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       startCall, acceptCall, declineCall, leaveCall,
       toggleMute, toggleDeafen, toggleVideo, toggleScreenShare,
       localVideoStream, localScreenStream, selfAudioLevel,
+      getUserVolume, setUserVolume, isUserMuted, setUserMuted,
     }}>
       {children}
     </GroupCallContext.Provider>
