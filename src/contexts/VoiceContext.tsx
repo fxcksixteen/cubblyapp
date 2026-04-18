@@ -1784,6 +1784,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       if (el.__cubblyRemote) { el.pause(); el.srcObject = null; el.remove(); }
     });
 
+    // Tear down per-peer gain pipelines so AudioContexts don't leak between calls.
+    peerGainsRef.current.clear();
+    peerAudioCtxRef.current.forEach((ctx) => { try { if (ctx.state !== "closed") ctx.close().catch(() => {}); } catch {} });
+    peerAudioCtxRef.current.clear();
+
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
       channelRef.current = null;
