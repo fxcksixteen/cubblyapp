@@ -165,10 +165,15 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       analyser.smoothingTimeConstant = 0.5;
       source.connect(analyser);
       const data = new Uint8Array(analyser.frequencyBinCount);
+      let lastSelf = 0;
       const tick = () => {
         analyser.getByteFrequencyData(data);
         const avg = data.reduce((s, v) => s + v, 0) / data.length;
-        setSelfAudioLevel((avg / 255) * 100);
+        const next = (avg / 255) * 100;
+        if (Math.abs(next - lastSelf) > 1) {
+          lastSelf = next;
+          setSelfAudioLevel(next);
+        }
         selfAnimRef.current = requestAnimationFrame(tick);
       };
       tick();

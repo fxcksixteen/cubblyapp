@@ -24,9 +24,24 @@ const formatDuration = (ms: number) => {
   return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 };
 
-/** Speaking ring box-shadow — much more visible */
-const speakingRingShadow = (level: number) =>
-  `0 0 0 ${6 + level * 0.25}px rgba(59, 165, 92, ${0.7 + level * 0.003}), 0 0 ${16 + level * 0.6}px rgba(59, 165, 92, ${0.4 + level * 0.006})`;
+/** Threshold below which we consider the user silent (background hiss filter). */
+const SPEAKING_THRESHOLD = 10;
+/**
+ * Discord-style speaking ring. Clamps level to [10..100], normalizes to 0..1
+ * with an ease-out curve, then scales the ring radius (4→14px) and outer glow
+ * (12→32px). Combined with the CSS box-shadow transition this gives a smooth
+ * pulse that visibly reacts to volume.
+ */
+const speakingRingShadow = (level: number) => {
+  const clamped = Math.max(SPEAKING_THRESHOLD, Math.min(100, level));
+  const t = (clamped - SPEAKING_THRESHOLD) / (100 - SPEAKING_THRESHOLD);
+  const eased = 1 - Math.pow(1 - t, 2);
+  const ring = 4 + eased * 10;
+  const glow = 12 + eased * 20;
+  const ringAlpha = 0.7 + eased * 0.25;
+  const glowAlpha = 0.35 + eased * 0.35;
+  return `0 0 0 ${ring}px rgba(59, 165, 92, ${ringAlpha}), 0 0 ${glow}px rgba(59, 165, 92, ${glowAlpha})`;
+};
 
 /** Discord-style call panel that renders inside the chat area */
 export const CallPanel = ({ conversationId, recipientName, recipientAvatar, recipientUserId }: {
