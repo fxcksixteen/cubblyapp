@@ -23,9 +23,25 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.10";
+export const CURRENT_VERSION = "0.2.11";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.2.11",
+    title: "Calls actually work: native binary loads, controls drive audio, peer cam visible",
+    date: "2026-04-18",
+    hero: bearImage,
+    newFeatures: [
+      "Right-click 'User Volume' slider, 'Mute (you only)', and the fullscreen viewer's slider now move REAL playback in 1-on-1 and group calls — the per-peer audio pipeline now resumes on the first click/keypress instead of staying silently suspended",
+    ],
+    bugFixes: [
+      "CRITICAL: Native per-window/tab audio capture is now actually loaded inside the packaged Electron app — the previous loader silently failed to find the bundled .node binary because of a filename mismatch, so window/tab share audio quietly fell back to 'video only' for everyone. Now scans the prebuilds directory for any .node file and loads the first one that matches the addon ABI",
+      "CRITICAL: Remote camera tile in 1-on-1 calls now appears for the OTHER user the moment frames arrive — the tile no longer waits on the lagging signaling boolean that was hiding the video even when the stream was live",
+      "CRITICAL: Group call peer-camera tiles render whenever a video stream is present, not gated on the easily-missed isVideoOn flag — fixes 'they turned camera on, I never saw it'",
+      "Native addon prebuild workflow now targets Electron 41 (matches the shipped runtime) instead of Electron 33 — even though NAPI is ABI-stable, this removes any chance of header drift on the next rebuild",
+      "Per-peer GainNode pipeline no longer leaves the source <audio>/<video> element silently muted when the AudioContext is suspended — falls back to direct element playback so you never end up with dead controls AND no audio at the same time",
+    ],
+  },
   {
     version: "0.2.10",
     title: "Ship fix: actual desktop rollout of call/audio repairs",
