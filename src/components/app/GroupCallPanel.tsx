@@ -45,9 +45,11 @@ interface PeerTileProps {
   videoStream?: MediaStream | null;
   /** Called when the user clicks the maximize button on a video tile. */
   onMaximize?: () => void;
+  /** Called when the user right-clicks the tile (used to open the volume menu). Suppressed for the local user. */
+  onContextMenu?: (e: React.MouseEvent) => void;
 }
 
-const PeerTile = ({ userId, displayName, avatarUrl, audioLevel, isMuted, isLocal, videoStream, onMaximize }: PeerTileProps) => {
+const PeerTile = ({ userId, displayName, avatarUrl, audioLevel, isMuted, isLocal, videoStream, onMaximize, onContextMenu }: PeerTileProps) => {
   const color = getProfileColor(userId);
   const speaking = audioLevel > SPEAKING_THRESHOLD && !isMuted;
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -60,7 +62,7 @@ const PeerTile = ({ userId, displayName, avatarUrl, audioLevel, isMuted, isLocal
 
   if (videoStream) {
     return (
-      <div className="flex flex-col items-center gap-2">
+      <div className="flex flex-col items-center gap-2" onContextMenu={onContextMenu}>
         <div
           className="group relative overflow-hidden rounded-xl bg-black"
           style={{
@@ -95,7 +97,7 @@ const PeerTile = ({ userId, displayName, avatarUrl, audioLevel, isMuted, isLocal
   }
 
   return (
-    <div className="flex flex-col items-center gap-2">
+    <div className="flex flex-col items-center gap-2" onContextMenu={onContextMenu}>
       <div className="relative">
         <div
           className="flex h-20 w-20 items-center justify-center rounded-full text-2xl font-bold text-white overflow-hidden"
