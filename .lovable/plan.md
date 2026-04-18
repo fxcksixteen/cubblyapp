@@ -1,71 +1,62 @@
 
 
-## Audit findings
+## Audit results
 
-I checked v0.2.9 changes against both code paths. Here's what's actually fixed and what's still broken.
+### ✅ v0.2.9 audio/video fixes — all intact
+- 1-on-1: `VoiceContext` imports `startNativeWindowAudioStream`, gates Chromium loopback only for screen picks, allows tab audio in browser.
+- Group: `GroupCallContext` mirrors the same logic; `nativeWindowAudioStopRef` cleanup fires on share-stop and `leaveCall`.
+- Camera `unmute` listener in place for group calls.
 
-### ✅ Camera visibility (group calls) — FIXED CORRECTLY
-`GroupCallContext.tsx` ontrack handler now uses `unmute` instead of `mute` to drive visibility, and only triggers `clearVideoState` on `ended`. Newly negotiated camera tracks that arrive muted-then-unmute will now correctly appear for remote peers. Self-tile already worked (uses local stream directly).
+### ❌ Right-click user volume menu — only HALF wired
+The menu UI works AND `VoiceContext` exposes `getUserVolume / setUserVolume / isUserMuted / setUserMuted` correctly. The `applyPeerGain` GainNode logic is correct. But the wiring breaks here:
 
-### ✅ 1-on-1 window/tab audio — FIXED CORRECTLY
-`VoiceContext.startScreenShare` now:
-- Detects window/tab vs screen picks via `sourceId.startsWith("screen:")`.
-- Calls `startNativeWindowAudio(sourceId)` only for non-screen picks → uses WASAPI process loopback → adds the resulting MediaStreamTrack to the share stream → applies high-bitrate stereo Opus.
-- Resumes AudioContext + sets `audioTrack.enabled = true`.
-- Tears down via `nativeWindowAudioStopRef` on `stopScreenShare`.
+- `attachPeerGain` is **only called from one place** (1-on-1 `ontrack`, line 680) and **only for the peer's MIC audio**.
+- The peer's **screen-share audio** track arrives on a separate `<audio data-screen-peer>` element that is NEVER routed through a peer-keyed GainNode → so the volume slider does nothing for screen-share audio.
+- `GroupCallContext` has **zero references** to `attachPeerGain / userVolumes / userMutes` → in any group call, the volume slider and "Mute (you only)" do nothing for ANYONE.
 
-### ❌ Group call window/tab audio — STILL BROKEN
-`GroupCallContext.toggleScreenShare` (lines 872–976) **never calls `startNativeWindowAudio`**. It always passes `wantAudio: true` straight to `setSelectedShareSource`, which means:
-- **Window pick** → Electron tries to do Chromium "loopback" on a window source. This produces either no audio track at all, OR (worse) full-system-mix audio leaking everyone else's apps to the group.
-- **Screen pick** → works (loopback = full system mix, expected).
-- The peer-side ontrack already handles inbound screen audio fine (audio tracks always go to `<audio data-group-peer>` regardless of what video stream id labels them).
-
-### ❌ Browser 1-on-1 tab audio — silently disabled
-Line 1544: `allowAudio = effectiveAudio && type === "screen"`. This kills tab audio in non-Electron browsers, even though Chrome supports it for tab + screen surfaces (just not window). Minor, only impacts web users sharing a tab.
+### ❌ FullscreenScreenShareViewer — PiP + volume broken
+- `srcObject = stream` and `volume`/`muted` are set on the `<video>` element, BUT in 1-on-1 calls the inbound screen-share audio is on a SEPARATE `<audio>` element managed by `VoiceContext` (the video element only carries the video track). So changing `v.volume` mutes nothing — the audio keeps playing from the hidden `<audio>` tag.
+- **PiP fails silently** because `disablePictureInPicture` attribute is set on the `<video>` (line ~131). You cannot `requestPictureInPicture()` on an element with that attribute. The handler catches the error and does nothing.
 
 ---
 
-## Plan: ship v0.2.9 with these fixes
+## Plan: ship v0.2.10 with proper functionality
 
-### 1. `GroupCallContext.tsx` — add native per-window audio path
+### 1. Make `attachPeerGain` work for screen-share audio too
+In `VoiceContext.tsx` `ontrack` handler:
+- When receiving an `audio` track tagged as screen-share (the existing branch that creates `<audio data-screen-peer>`), also call `attachPeerGain(peerUserId, screenStream, screenAudioEl)` so the same GainNode controls both mic AND screen audio for that peer. Result: one slider per peer controls everything you hear from them.
 
-Mirror the 1-on-1 logic in `toggleScreenShare`:
+### 2. Wire the menu into `GroupCallContext`
+Port the per-peer pipeline into `GroupCallContext.tsx`:
+- Add `userVolumesRef`, `userMutesRef`, `peerGainsRef`, `peerAudioCtxRef` (reuse the same localStorage keys so settings carry over from 1-on-1 to group).
+- Add `getUserVolume / setUserVolume / isUserMuted / setUserMuted / applyPeerGain / attachPeerGain` (factor into `src/lib/peerGain.ts` so both contexts share one implementation — no drift).
+- In every `ontrack` handler for both `audio` (mic) AND screen-share audio, call `attachPeerGain(peerUserId, stream, audioEl)`.
+- Expose the four functions on the `GroupCallContext` value object.
 
-- Detect `isScreenPick = chosenId.startsWith("screen:")`.
-- Compute `useChromiumLoopback = wantAudio && isScreenPick`.
-- Compute `useNativeWindowAudio = wantAudio && !isScreenPick && (await api.isWindowAudioCaptureAvailable())`.
-- Call `setSelectedShareSource(chosenId, useChromiumLoopback)` so Chromium only injects loopback when it's a screen pick.
-- After `getDisplayMedia` resolves, if `useNativeWindowAudio`, start the native capture and `stream.addTrack(audioTrack)`.
-- Stash the cleanup fn in a new `nativeWindowAudioStopRef` and call it in the off-branch + `leaveCall`.
-- Apply high-bitrate stereo Opus (`maxBitrate: 256_000`, `networkPriority: "high"`) to every audio sender pushed into peer PCs — same as the existing `applyHQ(sender, "audio")` already does.
+### 3. Make `UserVolumeMenu` source-of-truth context-aware
+The menu currently always reads from `useVoice()`. In `GroupCallPanel` it must read from `useGroupCall()` instead. Cleanest fix: add a `volumeApi` prop so the parent passes whichever context is active:
+```ts
+volumeApi: { getUserVolume; setUserVolume; isUserMuted; setUserMuted }
+```
+Update both `VoiceCallOverlay` and `GroupCallPanel` to pass the correct one.
 
-Reuse the same Web Audio decode graph as `VoiceContext.startNativeWindowAudio` — extract it to a small helper `startNativeWindowAudioStream(api)` that returns `{ audioTrack, stop }` and call it from both contexts. (Lives in a new `src/lib/nativeWindowAudio.ts`.)
+### 4. Fix `FullscreenScreenShareViewer`
+- Remove `disablePictureInPicture` and `noremoteplayback` from the video so `requestPictureInPicture()` actually resolves. (We keep `nodownload nofullscreen noplaybackrate` and `controls={false}` — viewer still can't pause/scrub/download via native UI.)
+- Volume/mute slider must drive the **separate per-peer GainNode** for screen audio — not `<video>.volume`. New prop `audioPeerId?: string`; when present, the slider calls `setUserVolume(audioPeerId, …)` / `setUserMuted(...)` from the active context. The `<video>` stays muted (audio plays via the GainNode pipeline already attached in step 1/2). For local previews (`isLocal`) we keep the slider hidden as today.
+- Pass `audioPeerId` from `VoiceCallOverlay` (peer's userId) and `GroupCallPanel` (the sharer's userId).
 
-### 2. `src/lib/nativeWindowAudio.ts` — shared helper
-
-Move the entire body of `startNativeWindowAudio` from `VoiceContext.tsx` (lines 1723–1789) into this module. Both contexts import it. No behavior change for 1-on-1.
-
-### 3. `VoiceContext.startScreenShare` — fix browser tab audio
-
-Change line 1544 to: `const allowAudio = effectiveAudio && (type === "screen" || type === "tab");`. Chrome will gate window-surface audio itself.
-
-### 4. Camera visibility safety net (1-on-1)
-
-Verify `VoiceContext` ontrack for video uses the same `unmute`-not-`mute` pattern. If it doesn't, apply the same fix so 1-on-1 cameras can't disappear either.
-
-### 5. Verify + ship
-
-- `npm run build` to confirm clean compile.
-- Bump `package.json` version to `0.2.9` and add a changelog entry covering: native per-window audio in group calls, group camera visibility regression fix, browser tab-audio enabled.
-- User runs:
-  ```
-  git pull && set BUILD_TARGET=electron && npm run build:electron && npx electron-builder --win nsis --x64 --publish always
-  ```
+### 5. Ship
+- Bump `package.json` → `0.2.10`.
+- Add changelog entry: "Per-user volume + local mute now actually work in 1-on-1 and group calls (mic AND screen audio). Fullscreen screen-share viewer's volume slider + Picture-in-Picture button now functional."
+- Build cmd unchanged: `git pull && set BUILD_TARGET=electron && npm run build:electron && npx electron-builder --win nsis --x64 --publish always`.
 
 ### Files to edit
-
-- `src/lib/nativeWindowAudio.ts` — new
-- `src/contexts/GroupCallContext.tsx` — wire native audio into `toggleScreenShare` + cleanup in `leaveCall`
-- `src/contexts/VoiceContext.tsx` — replace inline `startNativeWindowAudio` with import; fix browser tab-audio gate; verify ontrack `unmute` handling
-- `package.json` + `src/lib/changelog.ts` — version 0.2.9 + entry
+- `src/lib/peerGain.ts` — new shared per-peer GainNode helper
+- `src/contexts/VoiceContext.tsx` — use shared helper; also `attachPeerGain` for screen-audio el
+- `src/contexts/GroupCallContext.tsx` — adopt helper; expose volume API; attach for mic + screen audio
+- `src/components/app/UserVolumeMenu.tsx` — accept `volumeApi` prop instead of hard-coding `useVoice`
+- `src/components/app/VoiceCallOverlay.tsx` — pass volumeApi + audioPeerId
+- `src/components/app/GroupCallPanel.tsx` — pass volumeApi + audioPeerId
+- `src/components/app/FullscreenScreenShareViewer.tsx` — remove `disablePictureInPicture`; route volume/mute through `audioPeerId` + volumeApi
+- `package.json` + `src/lib/changelog.ts` — v0.2.10
 
