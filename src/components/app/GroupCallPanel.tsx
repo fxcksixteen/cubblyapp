@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getProfileColor } from "@/lib/profileColors";
 import ScreenSharePicker from "./ScreenSharePicker";
 import FullscreenScreenShareViewer from "./FullscreenScreenShareViewer";
+import UserVolumeMenu from "./UserVolumeMenu";
 import micIcon from "@/assets/icons/microphone.svg";
 import micMuteIcon from "@/assets/icons/microphone-mute.svg";
 import headphoneIcon from "@/assets/icons/headphone.svg";
@@ -337,6 +338,16 @@ const GroupCallPanel = ({ conversationId }: Props) => {
         />
       )}
 
+      {volumeMenu && (
+        <UserVolumeMenu
+          userId={volumeMenu.userId}
+          displayName={volumeMenu.name}
+          x={volumeMenu.x}
+          y={volumeMenu.y}
+          volumeApi={volumeApi}
+          onClose={() => setVolumeMenu(null)}
+        />
+      )}
       {fullscreenView && (
         <FullscreenScreenShareViewer
           stream={fullscreenView.stream}
