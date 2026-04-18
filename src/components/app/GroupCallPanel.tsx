@@ -178,6 +178,7 @@ const GroupCallPanel = ({ conversationId }: Props) => {
   const [selfAvatar, setSelfAvatar] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [fullscreenView, setFullscreenView] = useState<{ stream: MediaStream; name: string; type: "screen" | "cam"; isLocal?: boolean; peerId?: string } | null>(null);
+  const [volumeMenu, setVolumeMenu] = useState<{ userId: string; name: string; x: number; y: number } | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -266,6 +267,7 @@ const GroupCallPanel = ({ conversationId }: Props) => {
             isMuted={p.isMuted}
             videoStream={p.isVideoOn ? p.videoStream : null}
             onMaximize={p.isVideoOn && p.videoStream ? () => setFullscreenView({ stream: p.videoStream!, name: p.displayName, type: "cam" }) : undefined}
+            onContextMenu={(e) => { e.preventDefault(); setVolumeMenu({ userId: p.userId, name: p.displayName, x: e.clientX, y: e.clientY }); }}
           />
         ))}
       </div>
