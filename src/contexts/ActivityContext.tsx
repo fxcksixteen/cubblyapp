@@ -172,7 +172,27 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
     };
 
     tick(); // immediate
-    pollTimerRef.current = setInterval(tick, POLL_INTERVAL_MS);
+    // Use slow polling when gaming-mode suppression OR an active call is happening,
+    // to avoid the heavy `tasklist` scan competing with WebRTC for CPU/wifi.
+    const getInterval = () => {
+      const suppressing = (window as any).__cubblySuppressActive === true;
+      const inCall = (window as any).__cubblyInCall === true;
+      return suppressing || inCall ? POLL_INTERVAL_SUPPRESSED_MS : POLL_INTERVAL_MS;
+    };
+    const schedule = () => {
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+      pollTimerRef.current = setInterval(async () => {
+        await tick();
+        // Re-evaluate cadence each tick in case state changed
+        const desired = getInterval();
+        if (pollTimerRef.current && (pollTimerRef.current as any)._cubblyMs !== desired) {
+          (pollTimerRef.current as any)._cubblyMs = desired;
+          schedule();
+        }
+      }, getInterval());
+      (pollTimerRef.current as any)._cubblyMs = getInterval();
+    };
+    schedule();
 
     // Best-effort cleanup: when the app/tab closes, delete our activity row
     // so friends don't keep seeing "Playing Discord" after we're gone.

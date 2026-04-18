@@ -48,7 +48,7 @@ const MobileChatHeader = ({
         <ArrowLeft className="h-5 w-5" style={{ color: "var(--app-text-primary)" }} />
       </button>
 
-      <div className="flex items-center gap-2 min-w-0 flex-1">
+      <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
         <div className="relative shrink-0">
           <GroupAvatar conversation={conversation} size={32} />
           {!conversation.is_group && (
@@ -67,7 +67,7 @@ const MobileChatHeader = ({
         </div>
       </div>
 
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1 shrink-0">
         {!conversation.is_group && (
           <>
             <button
