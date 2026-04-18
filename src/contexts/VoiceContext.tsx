@@ -195,6 +195,12 @@ interface VoiceContextType {
   ping: number;
   /** Instant peer mute/deafen/video state from signaling channel (no DB lag). */
   peerInstantState: { is_muted?: boolean; is_deafened?: boolean; is_video_on?: boolean };
+  /** Per-user playback gain (Discord-style: 0.0 = silent, 1.0 = 100%, 2.0 = 200%). Persisted to localStorage. */
+  getUserVolume: (userId: string) => number;
+  setUserVolume: (userId: string, volume: number) => void;
+  /** Local-only mute for a specific peer (does not affect what others hear). */
+  isUserMuted: (userId: string) => boolean;
+  setUserMuted: (userId: string, muted: boolean) => void;
 }
 
 const VoiceContext = createContext<VoiceContextType>({} as VoiceContextType);
