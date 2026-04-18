@@ -1223,6 +1223,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         isDeafened: false,
         isVideoOn: false,
       });
+      // Bind stable peer id so ontrack callbacks can route through per-peer gain.
+      peerIdRef.current = peerId;
 
       // Outgoing ring sound (skipped for bot self-test calls)
       if (!isBotCall) {
@@ -1342,6 +1344,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         isDeafened: false,
         isVideoOn: false,
       });
+      peerIdRef.current = acceptedCall.callerId;
       setIncomingCall(null);
 
       if (acceptedCall.offer) {
@@ -1777,6 +1780,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     setLocalStream(null);
     setRemoteStream(null);
     setActiveCall(null);
+    peerIdRef.current = null;
     setIncomingCall(null);
     setCurrentCallEventId(null);
     stopAudioLevelMonitor();
