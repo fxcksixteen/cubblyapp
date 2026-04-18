@@ -671,6 +671,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       audioEl.play().catch(console.error);
       document.body.appendChild(audioEl);
 
+      // Route through per-peer GainNode so the user can scale this peer's
+      // playback 0–200% via the right-click menu (Discord-style).
+      const peerUserId = activeCall?.peerId;
+      if (peerUserId) attachPeerGain(peerUserId, remote, audioEl);
+
       // Cancel ANY prior remote analyser loop + close its AudioContext FIRST.
       // Without this, every track replace (network blip, renegotiation, camera
       // toggle) stacked another rAF loop pointing at a soon-to-be-closed
