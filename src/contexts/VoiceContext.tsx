@@ -1737,6 +1737,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     const gain = ctx.createGain();
     gain.gain.value = 1.0;
     gain.connect(dest);
+    try {
+      if (ctx.state === "suspended") await ctx.resume();
+    } catch {}
 
     let nextStartTime = ctx.currentTime + 0.05; // 50ms initial buffer
     const channels = fmt.channels || 2;
@@ -1772,6 +1775,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     });
 
     const audioTrack = dest.stream.getAudioTracks()[0] || null;
+    if (audioTrack) {
+      try { audioTrack.enabled = true; } catch {}
+    }
 
     const stop = () => {
       try { unsubscribe?.(); } catch {}

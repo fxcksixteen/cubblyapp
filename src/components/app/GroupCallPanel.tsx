@@ -321,9 +321,9 @@ const GroupCallPanel = ({ conversationId }: Props) => {
         <ScreenSharePicker
           isOpen={pickerOpen}
           onClose={() => setPickerOpen(false)}
-          onSelect={async (sourceId: string) => {
+          onSelect={async (_type, options) => {
             setPickerOpen(false);
-            await toggleScreenShare(sourceId);
+            await toggleScreenShare(options.sourceId);
           }}
         />
       )}
