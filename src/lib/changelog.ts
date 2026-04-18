@@ -23,9 +23,31 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.6";
+export const CURRENT_VERSION = "0.2.7";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.2.7",
+    title: "Per-user volume, mobile polish & call-quality fixes",
+    date: "2026-04-18",
+    hero: bearImage,
+    newFeatures: [
+      "Right-click any peer's avatar in a voice call to open a Discord-style user controls menu — slide volume from 0% all the way up to 200% (default 100%)",
+      "Per-user volume settings save forever — your custom levels for each friend persist across calls, reloads, and reinstalls",
+      "Local 'Mute (you only)' option per peer — silence someone for yourself without affecting anyone else in the call",
+      "The screen-share button in the bottom-corner voice card now opens the proper Cubbly screen-share picker (entire screen / window / specific app) instead of just sharing your full screen by default",
+      "Mobile Settings is now a proper Discord-style two-pane sheet — categories list → detail view with a sticky back arrow and a visible close (X) button so you never get stuck",
+      "Mobile DMs now open on a single tap (no more 'X appears first then tap again') — replaced the hover-X with a persistent ⋮ menu on touch devices",
+      "Active ICE candidate pair (host / srflx / relay) and round-trip-time are now logged on every connect so we can verify whether calls are actually going through the Frankfurt TURN relay",
+    ],
+    bugFixes: [
+      "CRITICAL: Sharing a single window or browser tab no longer leaks your entire system audio to the call — Windows can't isolate audio per app, so window/tab shares are now silent and only Entire Screen shares carry audio",
+      "Fixed your camera STILL not appearing for the other person when you turned it on mid-call — the peer now properly renegotiates and the remote tile re-renders the moment frames start flowing",
+      "Fixed messages sometimes appearing ABOVE the call pill in chat — the merge now interleaves messages and call events atom-by-atom so the order is always correct",
+      "Fixed mobile bug where tapping a chat in the DM sidebar sometimes opened a different chat instead — navigation now commits before the panel closes",
+      "Screen-share picker now warns you upfront that audio sharing only works for full-screen captures on Windows",
+    ],
+  },
   {
     version: "0.2.6",
     title: "Crash fix — app stuck on 'Cubbly hit a snag'",

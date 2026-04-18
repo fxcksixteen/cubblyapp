@@ -449,6 +449,16 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
           onClose={() => setFullscreenView(null)}
         />
       )}
+
+      {volumeMenu && (
+        <UserVolumeMenu
+          userId={volumeMenu.userId}
+          displayName={volumeMenu.name}
+          x={volumeMenu.x}
+          y={volumeMenu.y}
+          onClose={() => setVolumeMenu(null)}
+        />
+      )}
     </div>
   );
 };
