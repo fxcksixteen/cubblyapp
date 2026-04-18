@@ -169,7 +169,9 @@ export function useUnreadCounts(activeConversationId: string | null) {
           const notificationPrefs = getNotificationPreferences();
 
           if (notificationPrefs.messageSoundEnabled) {
-            playSound("message");
+            // force=true so the sound still plays even if focus flickers back
+            // (we already verified above that we want to alert).
+            playSound("message", { force: true });
           }
 
           const { data: profile } = await supabase
