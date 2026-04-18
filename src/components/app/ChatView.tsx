@@ -121,7 +121,17 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
     const threshold = 150;
     userHasScrolledUpRef.current =
       container.scrollHeight - container.scrollTop - container.clientHeight >= threshold;
-  }, []);
+    // Discord-style: when scrolled near the top, fetch older messages
+    if (container.scrollTop < 200 && hasMore && !loadingOlder) {
+      const prevHeight = container.scrollHeight;
+      loadOlder().then(() => {
+        requestAnimationFrame(() => {
+          const c = messagesContainerRef.current;
+          if (c) c.scrollTop = c.scrollHeight - prevHeight;
+        });
+      });
+    }
+  }, [hasMore, loadingOlder, loadOlder]);
 
   useEffect(() => {
     const n = messages.length;
