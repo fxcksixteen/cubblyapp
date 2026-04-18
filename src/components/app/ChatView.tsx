@@ -509,22 +509,33 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                                 onReply={() => handleReply(msg)}
                               />
                             </div>
-                            {msg.reply_to && (
-                              <button
-                                type="button"
-                                onClick={() => scrollToMessage(msg.reply_to!.id)}
-                                className="flex items-center gap-1.5 mb-0.5 text-xs hover:opacity-80 transition-opacity max-w-full overflow-hidden"
-                                style={{ color: "var(--app-text-secondary, #949ba4)" }}
-                              >
-                                <ReplyIcon className="h-3 w-3 -scale-x-100 shrink-0" />
-                                <span className="font-semibold truncate" style={{ color: "var(--app-text-primary, #dbdee1)" }}>
-                                  @{msg.reply_to.sender_name}
-                                </span>
-                                <span className="truncate opacity-80">
-                                  {msg.reply_to.content.replace(/\[attachments\].*?\[\/attachments\]/s, "").trim() || "Attachment"}
-                                </span>
-                              </button>
-                            )}
+                            {msg.reply_to && (() => {
+                              const rawReply = msg.reply_to.content.replace(/\[attachments\].*?\[\/attachments\]/s, "").trim();
+                              const isGifReply = /^https?:\/\/\S*\.(gif|giphy|tenor)/i.test(rawReply);
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={() => scrollToMessage(msg.reply_to!.id)}
+                                  className="flex items-center gap-1.5 mb-0.5 text-xs hover:opacity-80 transition-opacity max-w-full min-w-0 overflow-hidden"
+                                  style={{ color: "var(--app-text-secondary, #949ba4)" }}
+                                >
+                                  <ReplyIcon className="h-3 w-3 -scale-x-100 shrink-0" />
+                                  <span className="font-semibold truncate min-w-0" style={{ color: "var(--app-text-primary, #dbdee1)" }}>
+                                    @{msg.reply_to.sender_name}
+                                  </span>
+                                  {isGifReply ? (
+                                    <span className="flex items-center gap-1 opacity-80 shrink-0">
+                                      <img src={gifIcon} alt="" className="h-3 w-3 invert opacity-80" />
+                                      <span className="font-semibold">GIF</span>
+                                    </span>
+                                  ) : (
+                                    <span className="truncate opacity-80 min-w-0">
+                                      {rawReply || "Attachment"}
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })()}
                             {text && (
                               /^https?:\/\/.*\.(gif|giphy)/i.test(text) ? (
                                 <InlineGif url={text} />
