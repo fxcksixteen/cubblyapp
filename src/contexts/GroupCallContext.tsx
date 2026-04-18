@@ -26,6 +26,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { playSound, playLooping, stopLooping } from "@/lib/sounds";
 import { startNativeWindowAudioStream } from "@/lib/nativeWindowAudio";
+import { usePeerGains } from "@/lib/peerGain";
 
 export interface GroupPeer {
   userId: string;
@@ -85,6 +86,11 @@ interface GroupCallContextType {
   localScreenStream: MediaStream | null;
   /** Audio level of the LOCAL mic (0-100). */
   selfAudioLevel: number;
+  // Per-user volume + local mute API (Discord-style right-click menu).
+  getUserVolume: (userId: string) => number;
+  setUserVolume: (userId: string, volume: number) => void;
+  isUserMuted: (userId: string) => boolean;
+  setUserMuted: (userId: string, muted: boolean) => void;
 }
 
 const GroupCallContext = createContext<GroupCallContextType>({} as GroupCallContextType);
