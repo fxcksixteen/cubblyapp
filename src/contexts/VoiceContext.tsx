@@ -1484,15 +1484,21 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           if (!selectedSource) throw new Error("No screen sources available");
           selectedSourceId = selectedSource.id;
         }
-        // CRITICAL: Windows has no per-window loopback. Asking for audio on a
-        // window/tab source LEAKS the entire system mix to the peer. Force
-        // audio off unless the user picked an entire screen.
+        // ---- Per-source audio strategy (Electron) -------------------------
+        // Entire-screen pick → use Chromium's built-in 'loopback' (system mix).
+        // Window/tab pick → use the native WASAPI process-loopback addon for
+        // TRUE per-window audio. NEVER hand window/tab to Chromium loopback —
+        // that leaks every other app's audio to the peer.
         const isScreenPick = typeof selectedSourceId === "string" && selectedSourceId.startsWith("screen:");
-        const wantAudio = effectiveAudio && isScreenPick;
-        if (effectiveAudio && !isScreenPick) {
-          console.warn("[Voice] Share-audio requested for non-screen source — disabled (Windows lacks per-window loopback).");
-        }
-        await api.setSelectedShareSource(selectedSourceId, wantAudio);
+        const wantAudio = !!effectiveAudio;
+        const electronAPI = (window as any).electronAPI;
+        const nativeAvailable = electronAPI?.isWindowAudioCaptureAvailable
+          ? await electronAPI.isWindowAudioCaptureAvailable()
+          : false;
+        const useChromiumLoopback = wantAudio && isScreenPick;
+        const useNativeWindowAudio = wantAudio && !isScreenPick && nativeAvailable;
+
+        await api.setSelectedShareSource(selectedSourceId, useChromiumLoopback);
 
         const videoConstraints: any = {
           frameRate: { ideal: effectiveFps, max: effectiveFps },
@@ -1504,14 +1510,32 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         try {
           stream = await navigator.mediaDevices.getDisplayMedia({
             video: videoConstraints,
-            audio: wantAudio ? screenAudioConstraints : false,
+            audio: useChromiumLoopback ? screenAudioConstraints : false,
           } as any);
         } finally {
           try { await api.clearSelectedShareSource?.(); } catch {}
         }
 
-        if (wantAudio && stream.getAudioTracks().length === 0) {
-          console.warn("[Voice] Electron share audio requested but no audio track was produced (OS may not support loopback for this source)");
+        // Window/tab + native addon → start per-process WASAPI capture and mix
+        // PCM frames into a fresh audio MediaStreamTrack added to `stream`.
+        if (useNativeWindowAudio && selectedSourceId) {
+          try {
+            const { audioTrack, stop } = await startNativeWindowAudio(selectedSourceId);
+            if (audioTrack) {
+              stream.addTrack(audioTrack);
+              nativeWindowAudioStopRef.current = stop;
+              console.log("[Voice] 🎯 Native per-window audio attached to share");
+            }
+          } catch (e) {
+            console.warn("[Voice] Native per-window audio failed, share will be video-only:", e);
+          }
+        }
+
+        if (wantAudio && !useChromiumLoopback && !useNativeWindowAudio) {
+          console.warn("[Voice] Window/tab share-audio requested but native addon unavailable — share is video-only.");
+        }
+        if (useChromiumLoopback && stream.getAudioTracks().length === 0) {
+          console.warn("[Voice] Electron screen-share audio requested but no audio track produced");
         }
       } else {
         // Browser path: standard getDisplayMedia.
