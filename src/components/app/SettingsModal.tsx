@@ -517,7 +517,7 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
       default:
         return (
           <div className="rounded-[24px] border p-5" style={cardStyle}>
-            <h2 className="text-xl font-bold" style={{ color: "var(--app-text-primary)" }}>{activeLabel}</h2>
+            <h2 className="text-xl font-bold" style={{ color: "var(--app-text-primary)" }}>{activeLabel || "Settings"}</h2>
             <p className="mt-3 text-sm" style={{ color: "var(--app-text-secondary)" }}>This section is scaffolded and keeps the popup layout consistent.</p>
           </div>
         );
