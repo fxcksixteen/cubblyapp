@@ -172,7 +172,10 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
             <video ref={screenVideoRef} autoPlay muted playsInline className="w-full max-h-[400px] object-contain" />
           )}
           {!isScreenSharing && remoteScreenStream && (
-            <video ref={remoteScreenVideoRef} autoPlay playsInline className="w-full max-h-[400px] object-contain" />
+            // muted: audio is routed through the per-peer GainNode (see
+            // VoiceContext screen-pc ontrack), so the right-click "User Volume"
+            // and the fullscreen viewer's volume slider both control it.
+            <video ref={remoteScreenVideoRef} autoPlay muted playsInline className="w-full max-h-[400px] object-contain" />
           )}
           <div className="absolute top-3 right-3 flex gap-2">
             <button
