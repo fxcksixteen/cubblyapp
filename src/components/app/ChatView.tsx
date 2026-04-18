@@ -374,12 +374,15 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
     }
   }
 
-  // Interleave call events by timestamp
+  // Interleave call events by timestamp. Use `>= ts` so that when a message
+  // and a call pill share an identical millisecond timestamp, the pill always
+  // wins the earlier slot — this guarantees ALL messages render under the
+  // pill, never above it (matches Discord's behaviour).
   for (const evt of conversationCallEvents) {
     const ts = new Date(evt.startedAt).getTime();
     let insertIdx = items.length;
     for (let i = 0; i < items.length; i++) {
-      if (items[i].timestamp > ts) { insertIdx = i; break; }
+      if (items[i].timestamp >= ts) { insertIdx = i; break; }
     }
     items.splice(insertIdx, 0, { type: "call-event", event: evt, timestamp: ts });
   }

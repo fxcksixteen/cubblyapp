@@ -1248,18 +1248,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       }
 
       setCurrentCallEventId(acceptedCallEventId);
-      setCallEvents(prev => {
-        const hasOngoing = prev.some(
-          e => e.id === acceptedCallEventId || (e.conversationId === acceptedCall.conversationId && e.state === "ongoing")
-        );
-        if (hasOngoing) return prev;
-        return [...prev, {
-          id: acceptedCallEventId,
-          conversationId: acceptedCall.conversationId,
-          state: "ongoing",
-          startedAt: new Date().toISOString(),
-        }];
-      });
+      // NOTE: do NOT manually insert a CallEvent here. The realtime INSERT
+      // subscription (see `setupCallEventsRealtime`) is the single source of
+      // truth and uses the *real* `started_at` from the DB. Inserting a local
+      // event with `new Date().toISOString()` (the receiver's accept time)
+      // would put the call pill BELOW any messages sent after the call
+      // actually started but before the receiver hit accept — wrong order.
     } catch (e) {
       console.error("Failed to accept call:", e);
     }

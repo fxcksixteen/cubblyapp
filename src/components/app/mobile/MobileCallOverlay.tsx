@@ -22,12 +22,12 @@ const MobileCallOverlay = (props: Props) => {
     return (
       <button
         onClick={() => setMinimized(false)}
-        className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 rounded-full px-4 py-2.5 shadow-2xl active:scale-95 transition-transform animate-fade-in"
+        className="fixed left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 rounded-full px-4 py-2.5 shadow-2xl active:scale-95 transition-transform animate-fade-in"
         style={{
+          // Anchor relative to bottom nav (56px) + safe-area, with 12px gap
+          bottom: `calc(56px + env(safe-area-inset-bottom, 0px) + 12px)`,
           backgroundColor: activeCall.state === "connected" ? "#3ba55c" : "#faa61a",
           color: "white",
-          paddingBottom: `calc(0.625rem + env(safe-area-inset-bottom, 0px))`,
-          marginBottom: "env(safe-area-inset-bottom, 0px)",
         }}
       >
         <span className="h-2 w-2 rounded-full bg-white animate-pulse" />

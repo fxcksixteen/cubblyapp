@@ -217,6 +217,10 @@
   .mobile-chrome, .mobile-chrome * { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
   /* Hide custom scrollbars on touch devices for cleaner look */
   *::-webkit-scrollbar { width: 0; height: 0; }
+  /* Prevent iOS double-tap-to-zoom on tappable surfaces */
+  button, a, .message-bubble, [role="button"] { touch-action: manipulation; }
+  /* Stop pull-to-refresh from firing inside scrollable chat areas */
+  .chat-scroll, [data-chat-scroll] { overscroll-behavior: contain; }
 }
 
 /* Mobile sliding panel transitions */
