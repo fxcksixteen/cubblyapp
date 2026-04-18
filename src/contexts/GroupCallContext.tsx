@@ -25,6 +25,7 @@ import { createContext, useContext, useState, useCallback, useRef, useEffect, Re
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { playSound, playLooping, stopLooping } from "@/lib/sounds";
+import { startNativeWindowAudioStream } from "@/lib/nativeWindowAudio";
 
 export interface GroupPeer {
   userId: string;
@@ -125,6 +126,8 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
   // Local camera + screenshare track refs
   const localVideoTrackRef = useRef<MediaStreamTrack | null>(null);
   const localScreenTrackRef = useRef<MediaStreamTrack | null>(null);
+  /** Cleanup fn for an active native (WASAPI) per-window audio capture, if any. */
+  const nativeWindowAudioStopRef = useRef<(() => void) | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const callEventIdRef = useRef<string | null>(null);
   const callConvIdRef = useRef<string | null>(null);
@@ -721,6 +724,11 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     localScreenTrackRef.current?.stop();
     localScreenTrackRef.current = null;
     setLocalScreenStream(null);
+    // Tear down native per-window audio if it was active
+    if (nativeWindowAudioStopRef.current) {
+      try { nativeWindowAudioStopRef.current(); } catch {}
+      nativeWindowAudioStopRef.current = null;
+    }
     videoSendersRef.current.clear();
     screenSendersRef.current.clear();
     stopSelfMonitor();
@@ -891,17 +899,47 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
             chosenId = (sources.find((s: any) => s.id.startsWith("screen:")) || sources[0])?.id;
           }
           if (!chosenId) throw new Error("No screen sources available");
-          await api.setSelectedShareSource(chosenId, wantAudio);
+
+          // ---- Per-source audio strategy (Electron) -----------------------
+          // Entire-screen pick → Chromium 'loopback' (system mix).
+          // Window/tab pick → native WASAPI process loopback addon (per-app).
+          // NEVER hand window/tab to Chromium loopback — leaks all system audio.
+          const isScreenPick = typeof chosenId === "string" && chosenId.startsWith("screen:");
+          const nativeAvailable = api?.isWindowAudioCaptureAvailable
+            ? await api.isWindowAudioCaptureAvailable()
+            : false;
+          const useChromiumLoopback = wantAudio && isScreenPick;
+          const useNativeWindowAudio = wantAudio && !isScreenPick && nativeAvailable;
+
+          await api.setSelectedShareSource(chosenId, useChromiumLoopback);
           try {
             stream = await navigator.mediaDevices.getDisplayMedia({
               video: true,
-              audio: wantAudio ? screenAudioConstraints : false,
+              audio: useChromiumLoopback ? screenAudioConstraints : false,
             } as any);
           } finally {
             try { await api.clearSelectedShareSource?.(); } catch {}
           }
-          if (wantAudio && stream.getAudioTracks().length === 0) {
-            console.warn("[GroupCall] Electron share audio requested but no audio track produced");
+
+          // Window/tab + native addon → start per-process WASAPI capture.
+          if (useNativeWindowAudio && chosenId) {
+            try {
+              const { audioTrack, stop } = await startNativeWindowAudioStream(chosenId);
+              if (audioTrack) {
+                stream.addTrack(audioTrack);
+                nativeWindowAudioStopRef.current = stop;
+                console.log("[GroupCall] 🎯 Native per-window audio attached to share");
+              }
+            } catch (e) {
+              console.warn("[GroupCall] Native per-window audio failed, share will be video-only:", e);
+            }
+          }
+
+          if (wantAudio && !useChromiumLoopback && !useNativeWindowAudio) {
+            console.warn("[GroupCall] Window/tab share-audio requested but native addon unavailable — share is video-only.");
+          }
+          if (useChromiumLoopback && stream.getAudioTracks().length === 0) {
+            console.warn("[GroupCall] Electron screen-share audio requested but no audio track produced");
           }
         } else {
           stream = await navigator.mediaDevices.getDisplayMedia({
@@ -960,6 +998,11 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       if (track) track.stop();
       localScreenTrackRef.current = null;
       setLocalScreenStream(null);
+      // Tear down native per-window audio if it was active
+      if (nativeWindowAudioStopRef.current) {
+        try { nativeWindowAudioStopRef.current(); } catch {}
+        nativeWindowAudioStopRef.current = null;
+      }
       for (const [peerId, sender] of screenSendersRef.current) {
         try { await sender.replaceTrack(null); } catch {}
         const pc = pcsRef.current.get(peerId);
