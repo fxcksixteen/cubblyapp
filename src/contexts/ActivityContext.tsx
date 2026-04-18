@@ -57,6 +57,7 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
   const [myGames, setMyGames] = useState<Array<{ id: string; process_name: string; display_name: string }>>([]);
   const lastSentRef = useRef<string | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollIntervalMsRef = useRef<number>(0);
 
   // ---- Fetch all visible activities + subscribe to realtime changes ----
   useEffect(() => {
@@ -188,16 +189,16 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
     };
     const schedule = () => {
       if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+      const ms = getInterval();
+      pollIntervalMsRef.current = ms;
       pollTimerRef.current = setInterval(async () => {
         await tick();
         // Re-evaluate cadence each tick in case state changed
         const desired = getInterval();
-        if (pollTimerRef.current && (pollTimerRef.current as any)._cubblyMs !== desired) {
-          (pollTimerRef.current as any)._cubblyMs = desired;
+        if (pollIntervalMsRef.current !== desired) {
           schedule();
         }
-      }, getInterval());
-      (pollTimerRef.current as any)._cubblyMs = getInterval();
+      }, ms);
     };
     schedule();
 
