@@ -1612,35 +1612,38 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     setActiveCall(prev => {
       if (!prev) return null;
       const newMuted = !prev.isMuted;
-      // Set ALL tracks to the same enabled state (don't invert each individually)
       if (localStreamRef.current) {
         localStreamRef.current.getAudioTracks().forEach(track => { track.enabled = !newMuted; });
       }
-      // Fire-and-forget DB sync
+      // Instant peer broadcast over signaling channel — DB is fallback
+      try {
+        channelRef.current?.send({
+          type: "broadcast",
+          event: "voice-signal",
+          payload: { type: "peer-mute", senderId: user?.id, isMuted: newMuted, isDeafened: prev.isDeafened },
+        });
+      } catch {}
       syncCallParticipantState({ is_muted: newMuted, is_deafened: prev.isDeafened });
       return { ...prev, isMuted: newMuted };
     });
-  }, [syncCallParticipantState]);
+  }, [syncCallParticipantState, user]);
 
   const toggleDeafen = useCallback(() => {
     setActiveCall(prev => {
       if (!prev) return null;
       const newDeafened = !prev.isDeafened;
 
-      // Mute/unmute remote audio
       const audioElements = document.querySelectorAll("audio");
       audioElements.forEach((el: any) => { if (el.__cubblyRemote) el.muted = newDeafened; });
 
       let nextMuted: boolean;
       if (newDeafened) {
-        // Save current mute state before deafening, then mute mic
         preMuteStateRef.current = prev.isMuted;
         if (localStreamRef.current) {
           localStreamRef.current.getAudioTracks().forEach(track => { track.enabled = false; });
         }
         nextMuted = true;
       } else {
-        // Restore pre-deafen mute state
         const restoreMuted = preMuteStateRef.current;
         if (localStreamRef.current) {
           localStreamRef.current.getAudioTracks().forEach(track => { track.enabled = !restoreMuted; });
@@ -1648,10 +1651,17 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         nextMuted = restoreMuted;
       }
 
+      try {
+        channelRef.current?.send({
+          type: "broadcast",
+          event: "voice-signal",
+          payload: { type: "peer-mute", senderId: user?.id, isMuted: nextMuted, isDeafened: newDeafened },
+        });
+      } catch {}
       syncCallParticipantState({ is_muted: nextMuted, is_deafened: newDeafened });
       return { ...prev, isDeafened: newDeafened, isMuted: nextMuted };
     });
-  }, [syncCallParticipantState]);
+  }, [syncCallParticipantState, user]);
 
   /**
    * Toggle the local camera on/off. Uses replaceTrack on the pre-allocated video
