@@ -154,8 +154,13 @@ export function useUnreadCounts(activeConversationId: string | null) {
             return;
           }
 
-          // If user is currently viewing this conversation, mark read instead
-          if (activeConvRef.current === msg.conversation_id) {
+          // Only treat the chat as "open" when the window is ACTUALLY focused.
+          // If the app is minimized / in the background / behind another window,
+          // we still want a sound + notification + taskbar flash even though the
+          // user technically has that DM route open.
+          const windowFocused = typeof document !== "undefined" && document.hasFocus();
+          const isViewingAndFocused = activeConvRef.current === msg.conversation_id && windowFocused;
+          if (isViewingAndFocused) {
             await supabase.rpc("mark_conversation_read", { _conversation_id: msg.conversation_id });
             lastReadByConvRef.current.set(msg.conversation_id, new Date().toISOString());
             return;
