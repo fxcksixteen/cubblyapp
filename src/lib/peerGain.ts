@@ -112,7 +112,27 @@ export function usePeerGains(): PeerGainApi {
     const muted = !!userMutesRef.current[userId];
     const vol = userVolumesRef.current[userId];
     const v = typeof vol === "number" && isFinite(vol) ? Math.max(0, Math.min(2, vol)) : 1;
+    // Always update the gain node (covers the running-graph case).
     entry.gain.gain.value = muted ? 0 : v;
+    // ALSO update every attached element directly, for two reasons:
+    //   1. Fallback path: if AudioContext is suspended, the element is the
+    //      only audible source — its `volume`/`muted` is what the user hears.
+    //   2. Belt-and-suspenders: if the graph IS running but somehow the source
+    //      isn't connected (race during renegotiation), the slider still works.
+    entry.media.forEach((m) => {
+      const running = entry.ctx.state === "running";
+      if (running && m.routedThroughGraph) {
+        // Element is silent (graph carries audio) — keep it muted.
+        try { m.el.muted = true; } catch {}
+      } else {
+        // Element is the audible source — apply volume + mute directly.
+        // HTMLMediaElement.volume only goes 0..1, so cap there.
+        try {
+          m.el.muted = muted;
+          m.el.volume = Math.max(0, Math.min(1, v));
+        } catch {}
+      }
+    });
   }, []);
 
   const setUserVolume = useCallback((userId: string, volume: number) => {
@@ -138,9 +158,8 @@ export function usePeerGains(): PeerGainApi {
     streamKind: string = "mic",
   ) => {
     if (!userId || !stream) return;
-    if (!stream.getAudioTracks().length) return; // nothing to route
+    if (!stream.getAudioTracks().length) return;
     try {
-      // If we don't have a pipeline for this peer yet, build one.
       let entry = peerEntriesRef.current.get(userId);
       if (!entry || entry.ctx.state === "closed") {
         const ctx = new AudioContext();
@@ -150,60 +169,61 @@ export function usePeerGains(): PeerGainApi {
         const v = typeof vol === "number" && isFinite(vol) ? Math.max(0, Math.min(2, vol)) : 1;
         gain.gain.value = muted ? 0 : v;
         gain.connect(ctx.destination);
-        entry = { ctx, gain, sources: new Map() };
+        entry = { ctx, gain, sources: new Map(), media: new Map() };
         peerEntriesRef.current.set(userId, entry);
-        // Register so the global gesture-resume below can wake it up later.
         registerPeerCtx(ctx);
       }
 
-      // CRITICAL: Browser/Electron autoplay policy creates AudioContexts in
-      // "suspended" state until a user gesture. If we leave it suspended the
-      // gain pipeline silently produces no audio AND the source <audio>/<video>
-      // is muted (we mute it below) — net result: peer is inaudible AND volume
-      // controls appear to do nothing. Resume aggressively; the join/accept
-      // button click counts as a gesture so this almost always succeeds.
       if (entry.ctx.state === "suspended") {
         entry.ctx.resume().catch((e) => {
           console.warn("[PeerGain] AudioContext resume failed (will retry on next user gesture):", e);
         });
       }
 
-      // If this kind of stream is already attached for this peer, disconnect
-      // the old source first so we don't double-mix.
+      // Disconnect any previous source for this stream kind so we don't double-mix.
       const prev = entry.sources.get(streamKind);
       if (prev) {
         try { prev.disconnect(); } catch {}
         entry.sources.delete(streamKind);
       }
 
-      const src = entry.ctx.createMediaStreamSource(stream);
-      src.connect(entry.gain);
-      entry.sources.set(streamKind, src);
+      let routedThroughGraph = false;
+      try {
+        const src = entry.ctx.createMediaStreamSource(stream);
+        src.connect(entry.gain);
+        entry.sources.set(streamKind, src);
+        routedThroughGraph = true;
+      } catch (e) {
+        console.warn("[PeerGain] createMediaStreamSource failed; falling back to element volume:", e);
+      }
 
-      // Mute the source element — playback now flows through the gain pipeline.
-      // BUT: only mute it AFTER we confirm the AudioContext is actually running
-      // (or successfully resumed). If the context is permanently stuck suspended
-      // (no user gesture yet), keep the element audible so the peer isn't silent.
-      const applyMutePolicy = () => {
-        const running = entry!.ctx.state === "running";
-        mediaEl.muted = running;
-      };
-      applyMutePolicy();
-      // Re-check after a tick in case resume() resolved asynchronously.
-      setTimeout(applyMutePolicy, 100);
+      // Track this element so applyPeerGain can update its volume/mute.
+      entry.media.set(streamKind, { el: mediaEl, routedThroughGraph });
 
       mediaEl.setAttribute("data-cubbly-peer", userId);
       mediaEl.setAttribute("data-cubbly-kind", streamKind);
+
+      // Apply current volume/mute state immediately AND after a tick (resume()
+      // resolves async — until it does the element must stay audible).
+      applyPeerGain(userId);
+      setTimeout(() => applyPeerGain(userId), 100);
+      setTimeout(() => applyPeerGain(userId), 500);
     } catch (e) {
       console.warn("[PeerGain] attach failed for", userId, streamKind, e);
-      // Fallback: leave element playing at its own volume so we at least hear them.
-      try { mediaEl.muted = false; } catch {}
+      // Last-resort fallback: leave element playing at its own volume so we hear them.
+      try { mediaEl.muted = !!userMutesRef.current[userId]; } catch {}
+      try {
+        const v = userVolumesRef.current[userId];
+        const cv = typeof v === "number" && isFinite(v) ? Math.max(0, Math.min(1, v)) : 1;
+        mediaEl.volume = cv;
+      } catch {}
     }
-  }, []);
+  }, [applyPeerGain]);
 
   const clearAllPeerGains = useCallback(() => {
     peerEntriesRef.current.forEach((entry) => {
       try { entry.sources.forEach((s) => { try { s.disconnect(); } catch {} }); } catch {}
+      try { entry.media.forEach((m) => { try { m.el.muted = false; } catch {} }); } catch {}
       try { if (entry.ctx.state !== "closed") entry.ctx.close().catch(() => {}); } catch {}
     });
     peerEntriesRef.current.clear();
