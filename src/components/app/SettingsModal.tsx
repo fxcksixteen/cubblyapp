@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { X, Check, LogOut, Pencil, Camera } from "lucide-react";
+import { X, Check, LogOut, Pencil, Camera, ChevronLeft, ChevronRight } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme, ThemeName } from "@/contexts/ThemeContext";
 import { defaultProfileColor } from "@/lib/profileColors";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useIsMobile } from "@/hooks/use-mobile";
 import VoiceVideoSettings from "./settings/VoiceVideoSettings";
 import ActivityPrivacySettings from "./settings/ActivityPrivacySettings";
 import GamingModeSettings from "./settings/GamingModeSettings";
@@ -74,7 +75,9 @@ interface PendingChanges {
 }
 
 const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
-  const [activeCategory, setActiveCategory] = useState<SettingsCategory>("my-account");
+  const isMobile = useIsMobile();
+  // null = category list view (mobile only). On desktop the sidebar is always visible.
+  const [activeCategory, setActiveCategory] = useState<SettingsCategory | null>(null);
   const { user, signOut } = useAuth();
   const { theme, setTheme } = useTheme();
   const [visible, setVisible] = useState(false);
@@ -150,6 +153,8 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
     if (isOpen) {
       setVisible(true);
       setPendingChanges({});
+      // Mobile: start in the category-list view. Desktop: open My Account directly.
+      setActiveCategory(isMobile ? null : "my-account");
       requestAnimationFrame(() => {
         requestAnimationFrame(() => setAnimating(true));
       });
@@ -158,7 +163,7 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
       const timer = setTimeout(() => setVisible(false), 250);
       return () => clearTimeout(timer);
     }
-  }, [isOpen]);
+  }, [isOpen, isMobile]);
 
   useEffect(() => {
     if (!isOpen) return;
