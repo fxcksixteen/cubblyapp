@@ -196,13 +196,14 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
             {/* When my camera is on, show the live video tile in place of the avatar circle */}
             {activeCall.isVideoOn && localVideoStream ? (
               <div
-                className={`group relative overflow-hidden rounded-2xl bg-black transition-all duration-150 ${
+                className={`group relative overflow-hidden rounded-2xl bg-black ${
                   hasScreenShare ? "h-20 w-28" : "h-[140px] w-[200px]"
                 }`}
                 style={{
+                  transition: "box-shadow 80ms linear",
                   boxShadow:
-                    activeCall.state === "connected" && !activeCall.isMuted && audioLevel > 5
-                      ? "0 0 0 3px rgba(59, 165, 92, 0.85), 0 0 14px rgba(59, 165, 92, 0.5)"
+                    activeCall.state === "connected" && !activeCall.isMuted && audioLevel > SPEAKING_THRESHOLD
+                      ? speakingRingShadow(audioLevel)
                       : "0 4px 14px rgba(0,0,0,0.4)",
                 }}
               >
@@ -230,11 +231,12 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
               </div>
             ) : (
               <div
-                className={`flex items-center justify-center rounded-full font-bold text-white transition-all duration-150 ${hasScreenShare ? "h-12 w-12 text-lg" : "h-[72px] w-[72px] text-2xl"}`}
+                className={`flex items-center justify-center rounded-full font-bold text-white ${hasScreenShare ? "h-12 w-12 text-lg" : "h-[72px] w-[72px] text-2xl"}`}
                 style={{
                   backgroundColor: callerColor.bg,
+                  transition: "box-shadow 80ms linear",
                   boxShadow:
-                    activeCall.state === "connected" && !activeCall.isMuted && audioLevel > 5
+                    activeCall.state === "connected" && !activeCall.isMuted && audioLevel > SPEAKING_THRESHOLD
                       ? speakingRingShadow(audioLevel)
                       : "0 0 0 0px transparent",
                 }}
@@ -267,13 +269,14 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
           <div className="relative">
             {!isWaiting && peerState?.is_video_on && remoteVideoStream ? (
               <div
-                className={`group relative overflow-hidden rounded-2xl bg-black transition-all duration-300 ${
+                className={`group relative overflow-hidden rounded-2xl bg-black ${
                   hasScreenShare ? "h-20 w-28" : "h-[140px] w-[200px]"
                 }`}
                 style={{
+                  transition: "box-shadow 80ms linear",
                   boxShadow:
-                    activeCall.state === "connected" && !peerState?.is_muted && remoteAudioLevel > 5
-                      ? "0 0 0 3px rgba(59, 165, 92, 0.85), 0 0 14px rgba(59, 165, 92, 0.5)"
+                    activeCall.state === "connected" && !peerState?.is_muted && remoteAudioLevel > SPEAKING_THRESHOLD
+                      ? speakingRingShadow(remoteAudioLevel)
                       : "0 4px 14px rgba(0,0,0,0.4)",
                 }}
               >
@@ -294,11 +297,12 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
               </div>
             ) : (
               <div
-                className={`flex items-center justify-center rounded-full font-bold text-white transition-all duration-300 ${hasScreenShare ? "h-12 w-12 text-lg" : "h-[72px] w-[72px] text-2xl"} ${isWaiting ? "opacity-40" : ""}`}
+                className={`flex items-center justify-center rounded-full font-bold text-white ${hasScreenShare ? "h-12 w-12 text-lg" : "h-[72px] w-[72px] text-2xl"} ${isWaiting ? "opacity-40" : ""}`}
                 style={{
                   backgroundColor: recipientColor.bg,
                   filter: isWaiting ? "grayscale(0.3)" : "none",
-                  boxShadow: !isWaiting && activeCall.state === "connected" && !peerState?.is_muted && remoteAudioLevel > 5
+                  transition: "box-shadow 80ms linear, opacity 300ms",
+                  boxShadow: !isWaiting && activeCall.state === "connected" && !peerState?.is_muted && remoteAudioLevel > SPEAKING_THRESHOLD
                     ? speakingRingShadow(remoteAudioLevel)
                     : "0 0 0 0px transparent",
                 }}
