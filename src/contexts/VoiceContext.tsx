@@ -298,6 +298,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const iceServersRef = useRef<RTCIceServer[]>(STUN_ONLY_SERVERS);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const screenPcRef = useRef<RTCPeerConnection | null>(null);
+  /** Cleanup fn for an active native (WASAPI) per-window audio capture, if any. */
+  const nativeWindowAudioStopRef = useRef<(() => void) | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const remoteAnalyserRef = useRef<AnalyserNode | null>(null);
@@ -1484,15 +1486,21 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           if (!selectedSource) throw new Error("No screen sources available");
           selectedSourceId = selectedSource.id;
         }
-        // CRITICAL: Windows has no per-window loopback. Asking for audio on a
-        // window/tab source LEAKS the entire system mix to the peer. Force
-        // audio off unless the user picked an entire screen.
+        // ---- Per-source audio strategy (Electron) -------------------------
+        // Entire-screen pick → use Chromium's built-in 'loopback' (system mix).
+        // Window/tab pick → use the native WASAPI process-loopback addon for
+        // TRUE per-window audio. NEVER hand window/tab to Chromium loopback —
+        // that leaks every other app's audio to the peer.
         const isScreenPick = typeof selectedSourceId === "string" && selectedSourceId.startsWith("screen:");
-        const wantAudio = effectiveAudio && isScreenPick;
-        if (effectiveAudio && !isScreenPick) {
-          console.warn("[Voice] Share-audio requested for non-screen source — disabled (Windows lacks per-window loopback).");
-        }
-        await api.setSelectedShareSource(selectedSourceId, wantAudio);
+        const wantAudio = !!effectiveAudio;
+        const electronAPI = (window as any).electronAPI;
+        const nativeAvailable = electronAPI?.isWindowAudioCaptureAvailable
+          ? await electronAPI.isWindowAudioCaptureAvailable()
+          : false;
+        const useChromiumLoopback = wantAudio && isScreenPick;
+        const useNativeWindowAudio = wantAudio && !isScreenPick && nativeAvailable;
+
+        await api.setSelectedShareSource(selectedSourceId, useChromiumLoopback);
 
         const videoConstraints: any = {
           frameRate: { ideal: effectiveFps, max: effectiveFps },
@@ -1504,14 +1512,32 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         try {
           stream = await navigator.mediaDevices.getDisplayMedia({
             video: videoConstraints,
-            audio: wantAudio ? screenAudioConstraints : false,
+            audio: useChromiumLoopback ? screenAudioConstraints : false,
           } as any);
         } finally {
           try { await api.clearSelectedShareSource?.(); } catch {}
         }
 
-        if (wantAudio && stream.getAudioTracks().length === 0) {
-          console.warn("[Voice] Electron share audio requested but no audio track was produced (OS may not support loopback for this source)");
+        // Window/tab + native addon → start per-process WASAPI capture and mix
+        // PCM frames into a fresh audio MediaStreamTrack added to `stream`.
+        if (useNativeWindowAudio && selectedSourceId) {
+          try {
+            const { audioTrack, stop } = await startNativeWindowAudio(selectedSourceId);
+            if (audioTrack) {
+              stream.addTrack(audioTrack);
+              nativeWindowAudioStopRef.current = stop;
+              console.log("[Voice] 🎯 Native per-window audio attached to share");
+            }
+          } catch (e) {
+            console.warn("[Voice] Native per-window audio failed, share will be video-only:", e);
+          }
+        }
+
+        if (wantAudio && !useChromiumLoopback && !useNativeWindowAudio) {
+          console.warn("[Voice] Window/tab share-audio requested but native addon unavailable — share is video-only.");
+        }
+        if (useChromiumLoopback && stream.getAudioTracks().length === 0) {
+          console.warn("[Voice] Electron screen-share audio requested but no audio track produced");
         }
       } else {
         // Browser path: standard getDisplayMedia.
@@ -1687,11 +1713,86 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [user, activeCall, screenShareSettings, settings.outputVolume]);
 
+  /**
+   * Start native WASAPI per-process audio capture for a window source and
+   * return a MediaStreamTrack that contains ONLY that process's audio.
+   * On any failure (old Windows, addon missing, target process refused
+   * loopback) returns `{ audioTrack: null, stop: () => {} }` and the share
+   * proceeds video-only.
+   */
+  const startNativeWindowAudio = useCallback(async (sourceId: string): Promise<{ audioTrack: MediaStreamTrack | null; stop: () => void }> => {
+    const api = (window as any).electronAPI;
+    if (!api?.startWindowAudioCapture) return { audioTrack: null, stop: () => {} };
+    const result = await api.startWindowAudioCapture(sourceId);
+    if (!result?.ok) {
+      console.warn("[Voice][NativeAudio] startWindowAudioCapture failed:", result?.error);
+      return { audioTrack: null, stop: () => {} };
+    }
+    const fmt = result.format || { sampleRate: 48000, channels: 2, floatPcm: true };
+
+    // Build a Web Audio graph: AudioBufferSourceNodes (one per PCM chunk) →
+    // GainNode → MediaStreamAudioDestinationNode → MediaStreamTrack.
+    const ctx = new AudioContext({ sampleRate: fmt.sampleRate });
+    const dest = ctx.createMediaStreamDestination();
+    const gain = ctx.createGain();
+    gain.gain.value = 1.0;
+    gain.connect(dest);
+
+    let nextStartTime = ctx.currentTime + 0.05; // 50ms initial buffer
+    const channels = fmt.channels || 2;
+    const sampleRate = fmt.sampleRate || 48000;
+
+    const unsubscribe = api.onWindowAudioPcm((buf: ArrayBuffer | Uint8Array) => {
+      try {
+        // Native sends float32 interleaved PCM. Deinterleave into per-channel
+        // Float32Arrays for AudioBuffer.copyToChannel.
+        const u8 = buf instanceof Uint8Array ? buf : new Uint8Array(buf as ArrayBuffer);
+        const f32 = new Float32Array(u8.buffer, u8.byteOffset, u8.byteLength / 4);
+        const framesPerChannel = f32.length / channels;
+        if (framesPerChannel <= 0) return;
+        const audioBuf = ctx.createBuffer(channels, framesPerChannel, sampleRate);
+        for (let ch = 0; ch < channels; ch++) {
+          const channelData = new Float32Array(framesPerChannel);
+          for (let i = 0; i < framesPerChannel; i++) {
+            channelData[i] = f32[i * channels + ch];
+          }
+          audioBuf.copyToChannel(channelData, ch);
+        }
+        const src = ctx.createBufferSource();
+        src.buffer = audioBuf;
+        src.connect(gain);
+        // Schedule contiguously so playback is gap-free.
+        const now = ctx.currentTime;
+        if (nextStartTime < now) nextStartTime = now + 0.02;
+        src.start(nextStartTime);
+        nextStartTime += audioBuf.duration;
+      } catch (e) {
+        console.warn("[Voice][NativeAudio] PCM frame decode failed:", e);
+      }
+    });
+
+    const audioTrack = dest.stream.getAudioTracks()[0] || null;
+
+    const stop = () => {
+      try { unsubscribe?.(); } catch {}
+      try { api.stopWindowAudioCapture?.(); } catch {}
+      try { audioTrack?.stop(); } catch {}
+      try { ctx.close(); } catch {}
+    };
+    return { audioTrack, stop };
+  }, []);
+
   const stopScreenShare = useCallback(() => {
     screenStream?.getTracks().forEach(t => t.stop());
     setScreenStream(null);
     setIsScreenSharing(false);
     setRemoteScreenStream(null);
+
+    // Tear down native per-window audio if it was active
+    if (nativeWindowAudioStopRef.current) {
+      try { nativeWindowAudioStopRef.current(); } catch {}
+      nativeWindowAudioStopRef.current = null;
+    }
 
     // Clean up screen loopback peers
     if (screenLoopbackPcRef.current) {

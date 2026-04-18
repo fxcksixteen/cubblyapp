@@ -14,14 +14,18 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
-      "package.json"
+      "package.json",
+      "native/win-audio-capture/index.js",
+      "native/win-audio-capture/package.json",
+      "native/win-audio-capture/prebuilds/**/*"
     ],
     "extraMetadata": {
       "main": "electron/main.cjs"
     },
     "asar": true,
     "asarUnpack": [
-      "electron/icon.ico"
+      "electron/icon.ico",
+      "native/win-audio-capture/**/*"
     ],
     "win": {
       "target": [

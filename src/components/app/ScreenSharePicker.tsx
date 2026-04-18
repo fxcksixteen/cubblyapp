@@ -303,7 +303,7 @@ const ScreenSharePicker = ({ isOpen, onClose, onSelect }: ScreenSharePickerProps
               </button>
               {isElectron && shareAudio && (
                 <p className="px-1 text-[11px]" style={{ color: "var(--app-text-secondary)" }}>
-                  On Windows, audio is only shared when you pick <strong>Entire Screen</strong>. Window/Tab shares stay video-only (Windows can't isolate audio per app).
+                  <strong>Entire Screen</strong> shares your full system audio. <strong>Window</strong> and <strong>Browser Tab</strong> shares now use Cubbly's native per-process audio capture (Windows 10 20H2+) — only the picked app's sound is sent, never your other apps.
                 </p>
               )}
 

@@ -1,0 +1,65 @@
+name: Prebuild Windows native addon
+
+# Builds the win-audio-capture .node binary on a Windows runner so end users
+# (and your local electron-builder) don't need Visual Studio installed.
+# After a successful run, the workflow commits the produced .node files into
+# `native/win-audio-capture/prebuilds/` on the same branch.
+#
+# Manual trigger: Actions tab → "Prebuild Windows native addon" → Run workflow.
+# Auto-trigger: any push that touches the native source.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'native/win-audio-capture/**'
+      - '.github/workflows/prebuild-native.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  prebuild:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Python 3.11 (node-gyp)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Install native addon deps
+        working-directory: native/win-audio-capture
+        run: npm install --ignore-scripts
+
+      - name: Prebuild for Electron 33 (x64)
+        working-directory: native/win-audio-capture
+        env:
+          npm_config_msvs_version: '2022'
+        run: npx prebuildify --napi --strip --electron --target=33.0.0 --arch=x64
+
+      - name: List prebuilds
+        run: dir native\win-audio-capture\prebuilds /s
+
+      - name: Commit prebuilds back to repo
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add native/win-audio-capture/prebuilds
+          if git diff --cached --quiet; then
+            echo "No prebuild changes to commit."
+          else
+            git commit -m "chore(native): prebuild win-audio-capture for Electron 33 [skip ci]"
+            git push
+          fi

@@ -5,6 +5,38 @@ const { exec } = require("child_process");
 const { autoUpdater } = require("electron-updater");
 const log = require("electron-log");
 
+// ---- Native WASAPI process-loopback addon (Windows only) ---------------------
+// Resolves the prebuilt .node binary from native/win-audio-capture/prebuilds/.
+// In a packaged build the addon lives under resources/app.asar.unpacked/native/.
+// On non-Windows platforms or when no prebuild is bundled, this is a no-op:
+// `winAudioCapture` stays null and per-window audio capture is silently skipped.
+let winAudioCapture = null;
+try {
+  if (process.platform === "win32") {
+    const candidates = [
+      path.join(__dirname, "..", "native", "win-audio-capture"),
+      path.join(process.resourcesPath || "", "app.asar.unpacked", "native", "win-audio-capture"),
+    ];
+    for (const dir of candidates) {
+      try {
+        if (dir && fs.existsSync(dir)) {
+          const mod = require(dir);
+          if (mod && typeof mod.isAvailable === "function" && mod.isAvailable()) {
+            winAudioCapture = mod;
+            log.info("[winaudio] native addon loaded from", dir);
+            break;
+          }
+        }
+      } catch (e) {
+        log.warn("[winaudio] load attempt failed for", dir, e?.message || e);
+      }
+    }
+    if (!winAudioCapture) log.warn("[winaudio] native addon NOT loaded — per-window audio disabled");
+  }
+} catch (e) {
+  log.warn("[winaudio] init error:", e?.message || e);
+}
+
 app.name = "Cubbly";
 
 // AppUserModelID — required on Windows so toast notifications attribute to Cubbly
@@ -569,6 +601,103 @@ ipcMain.handle("clear-selected-share-source", () => {
   pendingShareSourceId = null;
   pendingShareWantAudio = false;
   return true;
+});
+
+// ---- Native per-window audio capture IPC ------------------------------------
+// Renderer flow:
+//   1. After getDisplayMedia for a window source resolves, renderer calls
+//      `electronAPI.startWindowAudioCapture(sourceId)`.
+//   2. Main resolves the desktopCapturer source -> HWND -> PID, then starts
+//      the native WASAPI capture for that PID.
+//   3. Native pushes raw PCM (float32 stereo @ negotiated sample rate) via
+//      `window-audio-pcm` event -> main forwards to renderer.
+//   4. On stop / share-end, renderer calls `stopWindowAudioCapture()`.
+//
+// This delivers per-process audio with NO leakage from other apps — Discord-style.
+// Requires Windows 10 build 20348+. On older Windows, getProcessIdForWindow
+// or the addon Start() will fail and we surface a friendly error.
+
+const { exec: _exec } = require("child_process");
+
+let activeWindowCapture = null; // { handle, sourceId, win }
+
+async function resolveSourcePid(sourceId) {
+  // sourceId for windows looks like "window:<HWND>:<index>" — Electron's
+  // `desktopCapturer` puts the native HWND in the second segment as a decimal
+  // string. We parse it and feed it to GetWindowThreadProcessId via PowerShell
+  // (lightweight, no extra native bindings needed).
+  if (typeof sourceId !== "string" || !sourceId.startsWith("window:")) {
+    throw new Error("source is not a window — only window/tab sources support per-window audio");
+  }
+  const parts = sourceId.split(":");
+  const hwndStr = parts[1];
+  const hwnd = Number(hwndStr);
+  if (!Number.isFinite(hwnd) || hwnd <= 0) {
+    throw new Error("could not parse HWND from sourceId: " + sourceId);
+  }
+
+  return await new Promise((resolve, reject) => {
+    const ps = `
+      Add-Type -Namespace W -Name U -MemberDefinition '
+        [DllImport("user32.dll")] public static extern int GetWindowThreadProcessId(System.IntPtr hWnd, out int lpdwProcessId);
+      ' | Out-Null;
+      $pid = 0;
+      [W.U]::GetWindowThreadProcessId([System.IntPtr]${hwnd}, [ref]$pid) | Out-Null;
+      Write-Output $pid;
+    `.replace(/\n+/g, " ");
+    _exec(`powershell -NoProfile -Command "${ps.replace(/"/g, '\\"')}"`, { timeout: 4000 }, (err, stdout) => {
+      if (err) return reject(err);
+      const pid = parseInt(String(stdout).trim(), 10);
+      if (!Number.isFinite(pid) || pid <= 0) {
+        return reject(new Error("GetWindowThreadProcessId returned invalid PID: " + stdout));
+      }
+      resolve(pid);
+    });
+  });
+}
+
+ipcMain.handle("start-window-audio-capture", async (evt, sourceId) => {
+  if (!winAudioCapture) {
+    return { ok: false, error: "native addon unavailable (requires Windows 10 build 20348+ with prebuilt binary)" };
+  }
+  if (activeWindowCapture) {
+    try { winAudioCapture.stop(activeWindowCapture.handle); } catch {}
+    activeWindowCapture = null;
+  }
+  try {
+    const pid = await resolveSourcePid(sourceId);
+    log.info("[winaudio] starting capture for sourceId:", sourceId, "pid:", pid);
+    const senderWebContents = evt.sender;
+    const handle = winAudioCapture.start(pid, (pcmBuf) => {
+      try {
+        if (senderWebContents.isDestroyed()) return;
+        // Forward raw PCM bytes to renderer. Buffer is float32 stereo at the
+        // format reported by getFormat() (typically 48 kHz / 2ch / 32-bit float).
+        senderWebContents.send("window-audio-pcm", pcmBuf);
+      } catch (_) {}
+    });
+    activeWindowCapture = { handle, sourceId, win: senderWebContents };
+    const fmt = winAudioCapture.getFormat();
+    return { ok: true, handle, format: fmt };
+  } catch (e) {
+    log.error("[winaudio] start failed:", e?.message || e);
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle("stop-window-audio-capture", () => {
+  if (!activeWindowCapture) return { ok: true };
+  try {
+    winAudioCapture?.stop(activeWindowCapture.handle);
+  } catch (e) {
+    log.warn("[winaudio] stop error:", e?.message || e);
+  }
+  activeWindowCapture = null;
+  return { ok: true };
+});
+
+ipcMain.handle("is-window-audio-capture-available", () => {
+  return !!winAudioCapture;
 });
 
 function installDisplayMediaHandler() {
