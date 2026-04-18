@@ -142,6 +142,9 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
   const profileCacheRef = useRef<Map<string, { display_name: string; avatar_url: string | null }>>(new Map());
   const preMuteRef = useRef<boolean>(false);
 
+  // Per-user volume / local mute (shared with VoiceContext via localStorage).
+  const { getUserVolume, setUserVolume, isUserMuted, setUserMuted, attachPeerGain, clearAllPeerGains } = usePeerGains();
+
   // Fetch ICE servers (same as 1-on-1)
   useEffect(() => {
     if (!user) return;
