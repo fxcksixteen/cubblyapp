@@ -1,9 +1,11 @@
 import { useEffect, useState, useRef } from "react";
+import { Maximize2 } from "lucide-react";
 import { useGroupCall, GroupPeer } from "@/contexts/GroupCallContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { getProfileColor } from "@/lib/profileColors";
 import ScreenSharePicker from "./ScreenSharePicker";
+import FullscreenScreenShareViewer from "./FullscreenScreenShareViewer";
 import micIcon from "@/assets/icons/microphone.svg";
 import micMuteIcon from "@/assets/icons/microphone-mute.svg";
 import headphoneIcon from "@/assets/icons/headphone.svg";
@@ -41,9 +43,11 @@ interface PeerTileProps {
   isLocal?: boolean;
   /** When set, the tile renders a <video> instead of the avatar circle. */
   videoStream?: MediaStream | null;
+  /** Called when the user clicks the maximize button on a video tile. */
+  onMaximize?: () => void;
 }
 
-const PeerTile = ({ userId, displayName, avatarUrl, audioLevel, isMuted, isLocal, videoStream }: PeerTileProps) => {
+const PeerTile = ({ userId, displayName, avatarUrl, audioLevel, isMuted, isLocal, videoStream, onMaximize }: PeerTileProps) => {
   const color = getProfileColor(userId);
   const speaking = audioLevel > SPEAKING_THRESHOLD && !isMuted;
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -58,7 +62,7 @@ const PeerTile = ({ userId, displayName, avatarUrl, audioLevel, isMuted, isLocal
     return (
       <div className="flex flex-col items-center gap-2">
         <div
-          className="relative overflow-hidden rounded-xl bg-black"
+          className="group relative overflow-hidden rounded-xl bg-black"
           style={{
             width: 220,
             height: 124,
@@ -67,6 +71,16 @@ const PeerTile = ({ userId, displayName, avatarUrl, audioLevel, isMuted, isLocal
           }}
         >
           <video ref={videoRef} muted={isLocal} playsInline className="h-full w-full object-cover" />
+          {onMaximize && (
+            <button
+              type="button"
+              onClick={onMaximize}
+              className="absolute top-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-md bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-black/75 transition-opacity"
+              title="Fullscreen"
+            >
+              <Maximize2 className="h-3 w-3" />
+            </button>
+          )}
           {isMuted && (
             <div className="absolute bottom-1 right-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#ed4245]">
               <img src={micMuteIcon} alt="Muted" className="h-3 w-3" style={{ filter: "brightness(0) invert(1)" }} />
