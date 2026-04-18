@@ -939,6 +939,25 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             try {
               console.log("[Voice] 🔁 Re-offer received mid-call — renegotiating");
               await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+
+              // CRITICAL CAMERA FIX: when the peer enables their camera and re-offers,
+              // their offer's m=video line is `sendrecv`. But our local transceiver
+              // (pre-allocated as sendrecv with no track) gets auto-downgraded to
+              // `recvonly` in the answer because we have no local video track to send.
+              // That's fine for THEM seeing US, but the bigger problem is: when WE
+              // later enable our own camera, our `replaceTrack` succeeds locally but
+              // the m-line direction in the last negotiated SDP is `recvonly`, so the
+              // peer's browser refuses to render our track. Force every video
+              // transceiver back to sendrecv before answering so the answer SDP
+              // advertises sendrecv on our side too.
+              try {
+                pc.getTransceivers().forEach(t => {
+                  if (t.receiver?.track?.kind === "video" || t.sender?.track?.kind === "video" || t === videoTransceiverRef.current) {
+                    try { t.direction = "sendrecv"; } catch {}
+                  }
+                });
+              } catch {}
+
               const answer = await pc.createAnswer();
               let sdp = answer.sdp || "";
               sdp = setHighQualityOpus(sdp);

@@ -23,9 +23,19 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.7";
+export const CURRENT_VERSION = "0.2.8";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.2.8",
+    title: "Camera fix — your peer actually sees you now",
+    date: "2026-04-18",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "CRITICAL: Fixed the long-standing bug where turning on your camera mid-call showed the preview to YOU but never reached the other person — the receiving side now forces its video transceiver back to sendrecv on every mid-call re-offer, so the next time you (or they) flip the camera on, it actually streams both ways",
+    ],
+  },
   {
     version: "0.2.7",
     title: "Per-user volume, mobile polish & call-quality fixes",
