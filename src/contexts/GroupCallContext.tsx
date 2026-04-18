@@ -724,6 +724,11 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     localScreenTrackRef.current?.stop();
     localScreenTrackRef.current = null;
     setLocalScreenStream(null);
+    // Tear down native per-window audio if it was active
+    if (nativeWindowAudioStopRef.current) {
+      try { nativeWindowAudioStopRef.current(); } catch {}
+      nativeWindowAudioStopRef.current = null;
+    }
     videoSendersRef.current.clear();
     screenSendersRef.current.clear();
     stopSelfMonitor();
