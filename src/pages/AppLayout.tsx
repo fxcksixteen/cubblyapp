@@ -384,6 +384,10 @@ const AppLayout = () => {
             conversations={visibleConversations}
             activeView={activeView}
             setActiveView={(view) => {
+              // Navigate FIRST, then defer the panel close to the next frame.
+              // Doing both in the same tick batched the state and sometimes
+              // opened the chat that was active in the previous closure
+              // rather than the one the user just tapped.
               if (view.startsWith("dm:")) {
                 const convId = view.replace("dm:", "");
                 navigate(`/@me/chat/${convId}`, { replace: true });
@@ -392,7 +396,7 @@ const AppLayout = () => {
               } else {
                 navigate(`/@me/${friendTab}`, { replace: true });
               }
-              setMobilePanel("none");
+              requestAnimationFrame(() => setMobilePanel("none"));
             }}
             onCloseConversation={handleCloseConversation}
             onOpenDM={handleOpenDM}
