@@ -320,24 +320,32 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
       if (event.track.kind === "video") {
-        // Decide camera vs screen by stream id label
+        // Decide camera vs screen by stream id label.
         const isScreen = stream?.id?.startsWith("cubbly-screen-");
-        const isVideo = stream?.id?.startsWith("cubbly-video-");
-        // When the peer turns the track off (replaceTrack(null)), `mute` fires
-        const handleEnded = () => {
+        const applyLiveVideoState = () => {
           setPeers(prev => prev.map(p => p.userId === peerId
-            ? (isScreen ? { ...p, screenStream: null, isScreenSharing: false } : { ...p, videoStream: null, isVideoOn: false })
+            ? (isScreen
+                ? { ...p, screenStream: stream, isScreenSharing: true }
+                : { ...p, videoStream: stream, isVideoOn: true })
             : p));
         };
-        event.track.addEventListener("ended", handleEnded);
-        event.track.addEventListener("mute", handleEnded);
-        setPeers(prev => prev.map(p => p.userId === peerId
-          ? (isScreen
-              ? { ...p, screenStream: stream, isScreenSharing: true }
-              : isVideo
-                ? { ...p, videoStream: stream, isVideoOn: true }
-                : { ...p, videoStream: stream, isVideoOn: true })
-          : p));
+        const clearVideoState = () => {
+          setPeers(prev => prev.map(p => p.userId === peerId
+            ? (isScreen
+                ? { ...p, screenStream: null, isScreenSharing: false }
+                : { ...p, videoStream: null, isVideoOn: false })
+            : p));
+        };
+
+        // CRITICAL: newly-negotiated camera tracks often arrive muted first and
+        // only flip live on `unmute` once frames start. Treating `mute` as
+        // teardown makes the tile disappear forever for everyone else.
+        event.track.addEventListener("ended", clearVideoState);
+        event.track.addEventListener("unmute", applyLiveVideoState);
+
+        if (!event.track.muted) {
+          applyLiveVideoState();
+        }
         return;
       }
     };
