@@ -23,9 +23,19 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.5";
+export const CURRENT_VERSION = "0.2.5-hotfix.1";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.2.5-hotfix.1",
+    title: "Crash fix — app stuck on 'Cubbly hit a snag'",
+    date: "2026-04-18",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Fixed the desktop app crashing into the 'Cubbly hit a snag' error screen on launch right after auto-updating to v0.2.5 (activity poller was assigning a property to a primitive number — illegal in strict mode)",
+    ],
+  },
   {
     version: "0.2.5",
     title: "Call quality, gaming performance & desktop polish",
