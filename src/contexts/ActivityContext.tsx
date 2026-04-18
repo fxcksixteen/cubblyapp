@@ -180,6 +180,10 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
     const getInterval = () => {
       const suppressing = (window as any).__cubblySuppress === true;
       const inCall = (window as any).__cubblyInCall === true;
+      // `document.hasFocus()` is false whenever a game (or any other app) has
+      // foreground focus — the perfect signal that we should back off hard.
+      const unfocused = typeof document !== "undefined" && !document.hasFocus();
+      if (unfocused) return POLL_INTERVAL_UNFOCUSED_MS;
       return suppressing || inCall ? POLL_INTERVAL_SUPPRESSED_MS : POLL_INTERVAL_MS;
     };
     const schedule = () => {
