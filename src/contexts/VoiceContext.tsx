@@ -195,6 +195,12 @@ interface VoiceContextType {
   ping: number;
   /** Instant peer mute/deafen/video state from signaling channel (no DB lag). */
   peerInstantState: { is_muted?: boolean; is_deafened?: boolean; is_video_on?: boolean };
+  /** Per-user playback gain (Discord-style: 0.0 = silent, 1.0 = 100%, 2.0 = 200%). Persisted to localStorage. */
+  getUserVolume: (userId: string) => number;
+  setUserVolume: (userId: string, volume: number) => void;
+  /** Local-only mute for a specific peer (does not affect what others hear). */
+  isUserMuted: (userId: string) => boolean;
+  setUserMuted: (userId: string, muted: boolean) => void;
 }
 
 const VoiceContext = createContext<VoiceContextType>({} as VoiceContextType);
@@ -298,6 +304,94 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const gainNodeRef = useRef<GainNode | null>(null);
   const outputGainRef = useRef<GainNode | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+
+  // ===== Per-user volume / local mute (Discord-style) =====
+  // Persisted forever in localStorage by user_id. Default = 1.0 (100%).
+  const USER_VOL_KEY = "cubbly-user-volumes";
+  const USER_MUTE_KEY = "cubbly-user-muted";
+  const loadUserVolumes = (): Record<string, number> => {
+    try { return JSON.parse(localStorage.getItem(USER_VOL_KEY) || "{}") || {}; } catch { return {}; }
+  };
+  const loadUserMutes = (): Record<string, boolean> => {
+    try { return JSON.parse(localStorage.getItem(USER_MUTE_KEY) || "{}") || {}; } catch { return {}; }
+  };
+  const userVolumesRef = useRef<Record<string, number>>(loadUserVolumes());
+  const userMutesRef = useRef<Record<string, boolean>>(loadUserMutes());
+  // Per-peer playback pipeline: GainNode driving the audio output, keyed by peer userId.
+  // Lets us scale 0..2.0 (audio.volume can only do 0..1).
+  const peerGainsRef = useRef<Map<string, GainNode>>(new Map());
+  const peerAudioCtxRef = useRef<Map<string, AudioContext>>(new Map());
+
+  const getUserVolume = useCallback((userId: string): number => {
+    if (!userId) return 1;
+    const v = userVolumesRef.current[userId];
+    return typeof v === "number" && isFinite(v) ? Math.max(0, Math.min(2, v)) : 1;
+  }, []);
+  const isUserMuted = useCallback((userId: string): boolean => !!userMutesRef.current[userId], []);
+
+  const applyPeerGain = useCallback((userId: string) => {
+    const gain = peerGainsRef.current.get(userId);
+    if (!gain) return;
+    const muted = !!userMutesRef.current[userId];
+    const vol = userVolumesRef.current[userId];
+    const v = typeof vol === "number" && isFinite(vol) ? Math.max(0, Math.min(2, vol)) : 1;
+    gain.gain.value = muted ? 0 : v;
+  }, []);
+
+  const setUserVolume = useCallback((userId: string, volume: number) => {
+    if (!userId) return;
+    const v = Math.max(0, Math.min(2, volume));
+    userVolumesRef.current[userId] = v;
+    try { localStorage.setItem(USER_VOL_KEY, JSON.stringify(userVolumesRef.current)); } catch {}
+    applyPeerGain(userId);
+  }, [applyPeerGain]);
+
+  const setUserMuted = useCallback((userId: string, muted: boolean) => {
+    if (!userId) return;
+    if (muted) userMutesRef.current[userId] = true;
+    else delete userMutesRef.current[userId];
+    try { localStorage.setItem(USER_MUTE_KEY, JSON.stringify(userMutesRef.current)); } catch {}
+    applyPeerGain(userId);
+  }, [applyPeerGain]);
+
+  /**
+   * Attach a per-peer WebAudio gain pipeline so this user's playback can be
+   * scaled 0..200%. The `audioEl` is muted (it still drives the MediaStream
+   * source), and the GainNode → ctx.destination handles actual playback.
+   * Idempotent — calling twice for the same peer reuses the existing pipeline.
+   */
+  const attachPeerGain = useCallback((userId: string, stream: MediaStream, audioEl: HTMLAudioElement) => {
+    if (!userId) return;
+    try {
+      // Tear down any prior pipeline for this peer (e.g. renegotiation)
+      const prevCtx = peerAudioCtxRef.current.get(userId);
+      if (prevCtx && prevCtx.state !== "closed") prevCtx.close().catch(() => {});
+      peerAudioCtxRef.current.delete(userId);
+      peerGainsRef.current.delete(userId);
+
+      const ctx = new AudioContext();
+      const src = ctx.createMediaStreamSource(stream);
+      const gain = ctx.createGain();
+      const muted = !!userMutesRef.current[userId];
+      const vol = userVolumesRef.current[userId];
+      const v = typeof vol === "number" && isFinite(vol) ? Math.max(0, Math.min(2, vol)) : 1;
+      gain.gain.value = muted ? 0 : v;
+      src.connect(gain);
+      gain.connect(ctx.destination);
+      peerAudioCtxRef.current.set(userId, ctx);
+      peerGainsRef.current.set(userId, gain);
+      // Mute the original element — playback now flows through the gain pipeline.
+      audioEl.muted = true;
+      audioEl.volume = 0;
+      // Tag the element for diagnostics
+      (audioEl as any).__cubblyPeerId = userId;
+      audioEl.setAttribute("data-cubbly-peer", userId);
+    } catch (e) {
+      console.warn("[Voice] attachPeerGain failed for", userId, e);
+      // Fallback: leave the audio el playing at the master output volume.
+    }
+  }, []);
+
   const animFrameRef = useRef<number>(0);
   const remoteAnimFrameRef = useRef<number>(0);
   // Track pre-deafen mute state so undeafen restores it
@@ -576,6 +670,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       }
       audioEl.play().catch(console.error);
       document.body.appendChild(audioEl);
+
+      // Route through per-peer GainNode so the user can scale this peer's
+      // playback 0–200% via the right-click menu (Discord-style).
+      const peerUserId = activeCall?.peerId;
+      if (peerUserId) attachPeerGain(peerUserId, remote, audioEl);
 
       // Cancel ANY prior remote analyser loop + close its AudioContext FIRST.
       // Without this, every track replace (network blip, renegotiation, camera
@@ -1685,6 +1784,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       if (el.__cubblyRemote) { el.pause(); el.srcObject = null; el.remove(); }
     });
 
+    // Tear down per-peer gain pipelines so AudioContexts don't leak between calls.
+    peerGainsRef.current.clear();
+    peerAudioCtxRef.current.forEach((ctx) => { try { if (ctx.state !== "closed") ctx.close().catch(() => {}); } catch {} });
+    peerAudioCtxRef.current.clear();
+
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
       channelRef.current = null;
@@ -2039,6 +2143,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       isScreenSharing, screenStream, remoteScreenStream, startScreenShare, stopScreenShare,
       ping,
       peerInstantState,
+      getUserVolume, setUserVolume, isUserMuted, setUserMuted,
     }}>
       {children}
     </VoiceContext.Provider>

@@ -7,6 +7,7 @@ import { defaultProfileColor, getProfileColor } from "@/lib/profileColors";
 import { useCallParticipants } from "@/hooks/useCallParticipants";
 import ScreenSharePicker, { ScreenShareType } from "./ScreenSharePicker";
 import FullscreenScreenShareViewer from "./FullscreenScreenShareViewer";
+import UserVolumeMenu from "./UserVolumeMenu";
 import micIcon from "@/assets/icons/microphone.svg";
 import micMuteIcon from "@/assets/icons/microphone-mute.svg";
 import headphoneIcon from "@/assets/icons/headphone.svg";
@@ -78,6 +79,8 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
   /** Custom branded full-screen viewer state. Replaces native requestFullscreen
    *  so viewers can't pause/PiP/download the inbound stream. */
   const [fullscreenView, setFullscreenView] = useState<{ stream: MediaStream; name: string; type: "screen" | "cam"; isLocal?: boolean } | null>(null);
+  /** Right-click "user volume" menu state for the peer's avatar. */
+  const [volumeMenu, setVolumeMenu] = useState<{ userId: string; name: string; x: number; y: number } | null>(null);
   const screenVideoRef = useRef<HTMLVideoElement>(null);
   const remoteScreenVideoRef = useRef<HTMLVideoElement>(null);
   const localCamRef = useRef<HTMLVideoElement>(null);
@@ -267,7 +270,14 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
         </div>
 
         {/* Recipient */}
-        <div className="flex flex-col items-center gap-2">
+        <div
+          className="flex flex-col items-center gap-2"
+          onContextMenu={(e) => {
+            if (!recipientUserId) return;
+            e.preventDefault();
+            setVolumeMenu({ userId: recipientUserId, name: recipientName, x: e.clientX, y: e.clientY });
+          }}
+        >
           <div className="relative">
             {!isWaiting && peerState?.is_video_on && remoteVideoStream ? (
               <div
@@ -437,6 +447,16 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
           type={fullscreenView.type}
           isLocal={fullscreenView.isLocal}
           onClose={() => setFullscreenView(null)}
+        />
+      )}
+
+      {volumeMenu && (
+        <UserVolumeMenu
+          userId={volumeMenu.userId}
+          displayName={volumeMenu.name}
+          x={volumeMenu.x}
+          y={volumeMenu.y}
+          onClose={() => setVolumeMenu(null)}
         />
       )}
     </div>

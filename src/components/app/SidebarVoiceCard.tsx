@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useVoice } from "@/contexts/VoiceContext";
 import { Conversation } from "@/hooks/useConversations";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import ScreenSharePicker, { ScreenShareType } from "./ScreenSharePicker";
 import callEndIcon from "@/assets/icons/call-end.svg";
 import videoIcon from "@/assets/icons/video-camera.svg";
 import screenshareIcon from "@/assets/icons/screenshare.svg";
@@ -57,6 +58,9 @@ const SidebarVoiceCard = ({ conversations, onOpenCall }: Props) => {
     toggleVideo,
   } = useVoice();
   const [elapsed, setElapsed] = useState(0);
+  // Local picker state so the bottom-corner Share button opens the same
+  // chooser as the call panel button (not just full-screen by default).
+  const [showSharePicker, setShowSharePicker] = useState(false);
 
   useEffect(() => {
     if (!activeCall?.startedAt) { setElapsed(0); return; }
@@ -181,7 +185,13 @@ const SidebarVoiceCard = ({ conversations, onOpenCall }: Props) => {
           <Tooltip>
             <TooltipTrigger asChild>
               <button
-                onClick={() => isScreenSharing ? stopScreenShare() : startScreenShare()}
+                onClick={() => {
+                  if (isScreenSharing) {
+                    stopScreenShare();
+                  } else {
+                    setShowSharePicker(true);
+                  }
+                }}
                 className="flex-1 flex items-center justify-center rounded-md py-1.5 transition-colors"
                 style={{ backgroundColor: isScreenSharing ? "rgba(59,165,92,0.2)" : "rgba(255,255,255,0.06)" }}
                 onMouseEnter={(e) => { if (!isScreenSharing) e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.12)"; }}
@@ -229,6 +239,15 @@ const SidebarVoiceCard = ({ conversations, onOpenCall }: Props) => {
           </Tooltip>
         </TooltipProvider>
       </div>
+
+      <ScreenSharePicker
+        isOpen={showSharePicker}
+        onClose={() => setShowSharePicker(false)}
+        onSelect={(type: ScreenShareType, options) => {
+          setShowSharePicker(false);
+          startScreenShare(type, options);
+        }}
+      />
     </div>
   );
 };
