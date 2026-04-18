@@ -321,6 +321,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   // Track pre-deafen mute state so undeafen restores it
   const preMuteStateRef = useRef<boolean>(false);
   const localStreamRef = useRef<MediaStream | null>(null);
+  // Stable peer userId for the current 1-on-1 call. We READ this in track-event
+  // callbacks (mic/screen `ontrack`) instead of `activeCall?.peerId`, which is
+  // stale inside closures captured before the call state updates. Without this,
+  // attachPeerGain() never binds and right-click volume controls do nothing.
+  const peerIdRef = useRef<string | null>(null);
   const endCallRef = useRef<() => void>(() => {});
   // Forward-ref to syncCallParticipantState (declared later) so the ICE-connected
   // handler can upsert our call_participants row the moment we connect — without
@@ -552,22 +557,24 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     });
 
     pc.ontrack = (event) => {
-      const remote = event.streams[0];
+      // CRITICAL: with `replaceTrack()` flow (camera toggle mid-call), the
+      // remote side often receives a track WITHOUT a usable `event.streams[0]`
+      // — that array can be empty. We have to synthesize a MediaStream from the
+      // raw track, otherwise the <video> tile binds to `null` and shows black.
       const isVideo = event.track.kind === "video";
-      console.log(`[Voice] 🎵 ontrack: kind=${event.track.kind}, label=${event.track.label}, enabled=${event.track.enabled}`);
+      const remote = event.streams[0] || new MediaStream([event.track]);
+      console.log(`[Voice] 🎵 ontrack: kind=${event.track.kind}, label=${event.track.label}, enabled=${event.track.enabled}, hasStream=${!!event.streams[0]}`);
 
       if (isVideo) {
         // The main PC carries the camera video — screen share uses a separate PC (screenPcRef)
         setRemoteVideoStream(remote);
-        // Listen for the track ending so the tile disappears when the peer turns off camera
         event.track.onended = () => setRemoteVideoStream(null);
-        // CRITICAL: when a peer enables their camera AFTER initial connect, the
-        // track arrives in a "muted" state and only fires onunmute once frames
-        // start flowing. Without this, the tile renders but stays black until
-        // the next state change → looks like "camera doesn't show for peer".
+        // When a peer enables camera AFTER initial connect, the track arrives
+        // "muted" and only fires onunmute once frames flow. Re-set the stream
+        // (force new reference) so React re-binds srcObject and triggers play().
         event.track.onunmute = () => {
-          console.log("[Voice] 🎥 remote video onunmute — frames flowing, refreshing tile");
-          setRemoteVideoStream(remote);
+          console.log("[Voice] 🎥 remote video onunmute — frames flowing");
+          setRemoteVideoStream(new MediaStream([event.track]));
         };
         event.track.onmute = () => { /* keep stream — UI may dim */ };
         return;
@@ -596,9 +603,17 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       document.body.appendChild(audioEl);
 
       // Route through per-peer GainNode so the user can scale this peer's
-      // playback 0–200% via the right-click menu (Discord-style).
-      const peerUserId = activeCall?.peerId;
-      if (peerUserId) attachPeerGain(peerUserId, remote, audioEl);
+      // playback 0–200% via the right-click menu (Discord-style). Read from
+      // the stable ref — `activeCall?.peerId` here is stale (captured when this
+      // PC was created, BEFORE setActiveCall fired), which is why volume
+      // controls silently did nothing in shipped builds.
+      const peerUserId = peerIdRef.current;
+      if (peerUserId) {
+        console.log("[Voice] 🔊 attaching peer gain for", peerUserId);
+        attachPeerGain(peerUserId, remote, audioEl, "mic");
+      } else {
+        console.warn("[Voice] ⚠️ ontrack(mic) but peerIdRef is null — volume controls will not bind");
+      }
 
       // Cancel ANY prior remote analyser loop + close its AudioContext FIRST.
       // Without this, every track replace (network blip, renegotiation, camera
@@ -998,7 +1013,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             // per-peer GainNode so the right-click "User Volume" slider AND
             // the fullscreen viewer's volume slider both control the
             // screen-share audio (not just the mic).
-            const peerUserId = activeCall?.peerId;
+            const peerUserId = peerIdRef.current;
             if (peerUserId && event.track.kind === "audio") {
               // Use a dedicated hidden <audio> element so we don't fight the
               // <video> element's autoplay/render path.
