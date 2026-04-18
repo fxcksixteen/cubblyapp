@@ -2133,6 +2133,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       isScreenSharing, screenStream, remoteScreenStream, startScreenShare, stopScreenShare,
       ping,
       peerInstantState,
+      getUserVolume, setUserVolume, isUserMuted, setUserMuted,
     }}>
       {children}
     </VoiceContext.Provider>
