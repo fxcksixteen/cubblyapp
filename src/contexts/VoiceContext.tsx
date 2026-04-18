@@ -1714,80 +1714,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [user, activeCall, screenShareSettings, settings.outputVolume]);
 
-  /**
-   * Start native WASAPI per-process audio capture for a window source and
-   * return a MediaStreamTrack that contains ONLY that process's audio.
-   * On any failure (old Windows, addon missing, target process refused
-   * loopback) returns `{ audioTrack: null, stop: () => {} }` and the share
-   * proceeds video-only.
-   */
-  const startNativeWindowAudio = useCallback(async (sourceId: string): Promise<{ audioTrack: MediaStreamTrack | null; stop: () => void }> => {
-    const api = (window as any).electronAPI;
-    if (!api?.startWindowAudioCapture) return { audioTrack: null, stop: () => {} };
-    const result = await api.startWindowAudioCapture(sourceId);
-    if (!result?.ok) {
-      console.warn("[Voice][NativeAudio] startWindowAudioCapture failed:", result?.error);
-      return { audioTrack: null, stop: () => {} };
-    }
-    const fmt = result.format || { sampleRate: 48000, channels: 2, floatPcm: true };
+  // Native per-window WASAPI audio capture lives in `@/lib/nativeWindowAudio`
+  // (shared with GroupCallContext). See startNativeWindowAudioStream.
 
-    // Build a Web Audio graph: AudioBufferSourceNodes (one per PCM chunk) →
-    // GainNode → MediaStreamAudioDestinationNode → MediaStreamTrack.
-    const ctx = new AudioContext({ sampleRate: fmt.sampleRate });
-    const dest = ctx.createMediaStreamDestination();
-    const gain = ctx.createGain();
-    gain.gain.value = 1.0;
-    gain.connect(dest);
-    try {
-      if (ctx.state === "suspended") await ctx.resume();
-    } catch {}
-
-    let nextStartTime = ctx.currentTime + 0.05; // 50ms initial buffer
-    const channels = fmt.channels || 2;
-    const sampleRate = fmt.sampleRate || 48000;
-
-    const unsubscribe = api.onWindowAudioPcm((buf: ArrayBuffer | Uint8Array) => {
-      try {
-        // Native sends float32 interleaved PCM. Deinterleave into per-channel
-        // Float32Arrays for AudioBuffer.copyToChannel.
-        const u8 = buf instanceof Uint8Array ? buf : new Uint8Array(buf as ArrayBuffer);
-        const f32 = new Float32Array(u8.buffer, u8.byteOffset, u8.byteLength / 4);
-        const framesPerChannel = f32.length / channels;
-        if (framesPerChannel <= 0) return;
-        const audioBuf = ctx.createBuffer(channels, framesPerChannel, sampleRate);
-        for (let ch = 0; ch < channels; ch++) {
-          const channelData = new Float32Array(framesPerChannel);
-          for (let i = 0; i < framesPerChannel; i++) {
-            channelData[i] = f32[i * channels + ch];
-          }
-          audioBuf.copyToChannel(channelData, ch);
-        }
-        const src = ctx.createBufferSource();
-        src.buffer = audioBuf;
-        src.connect(gain);
-        // Schedule contiguously so playback is gap-free.
-        const now = ctx.currentTime;
-        if (nextStartTime < now) nextStartTime = now + 0.02;
-        src.start(nextStartTime);
-        nextStartTime += audioBuf.duration;
-      } catch (e) {
-        console.warn("[Voice][NativeAudio] PCM frame decode failed:", e);
-      }
-    });
-
-    const audioTrack = dest.stream.getAudioTracks()[0] || null;
-    if (audioTrack) {
-      try { audioTrack.enabled = true; } catch {}
-    }
-
-    const stop = () => {
-      try { unsubscribe?.(); } catch {}
-      try { api.stopWindowAudioCapture?.(); } catch {}
-      try { audioTrack?.stop(); } catch {}
-      try { ctx.close(); } catch {}
-    };
-    return { audioTrack, stop };
-  }, []);
 
   const stopScreenShare = useCallback(() => {
     screenStream?.getTracks().forEach(t => t.stop());
