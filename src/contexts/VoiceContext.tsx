@@ -1522,7 +1522,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         // PCM frames into a fresh audio MediaStreamTrack added to `stream`.
         if (useNativeWindowAudio && selectedSourceId) {
           try {
-            const { audioTrack, stop } = await startNativeWindowAudio(selectedSourceId);
+            const { audioTrack, stop } = await startNativeWindowAudioStream(selectedSourceId);
             if (audioTrack) {
               stream.addTrack(audioTrack);
               nativeWindowAudioStopRef.current = stop;
