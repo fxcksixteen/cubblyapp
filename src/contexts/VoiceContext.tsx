@@ -1659,11 +1659,26 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
    * the new track (or a black frame when we set it back to null).
    */
   const toggleVideo = useCallback(async () => {
-    const transceiver = videoTransceiverRef.current;
-    if (!transceiver) {
-      console.warn("[Voice] Cannot toggle video — no transceiver. Are you in a call?");
+    let transceiver = videoTransceiverRef.current;
+    const pc = pcRef.current;
+    if (!pc) {
+      console.warn("[Voice] Cannot toggle video — no peer connection.");
       return;
     }
+    // If transceiver is missing (callee on old build), create one on the fly
+    // and trigger a renegotiation so the peer sees our video.
+    if (!transceiver) {
+      try {
+        transceiver = pc.addTransceiver("video", { direction: "sendrecv" });
+        videoTransceiverRef.current = transceiver;
+      } catch (e) {
+        console.warn("[Voice] Failed to add video transceiver on demand:", e);
+        return;
+      }
+    }
+    // CRITICAL: force sendrecv so the peer's m=video line accepts our track.
+    // Without this, replaceTrack succeeds locally but the peer never renders us.
+    try { transceiver.direction = "sendrecv"; } catch {}
     const sender = transceiver.sender;
     const currentlyOn = !!sender.track;
 
@@ -1676,17 +1691,23 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     };
 
     if (currentlyOn) {
-      // Turn off
       await sender.replaceTrack(null);
       localVideoStreamRef.current?.getTracks().forEach(t => t.stop());
       localVideoStreamRef.current = null;
       setLocalVideoStream(null);
       setActiveCall(prev => prev ? { ...prev, isVideoOn: false } : prev);
+      // Instant broadcast so peer hides the tile right away
+      try {
+        channelRef.current?.send({
+          type: "broadcast",
+          event: "voice-signal",
+          payload: { type: "peer-video", senderId: user?.id, isVideoOn: false },
+        });
+      } catch {}
       upsertVideoState(false);
       return;
     }
 
-    // Turn on — get camera stream
     try {
       const resMap: Record<string, { width: number; height: number }> = {
         "480p": { width: 854, height: 480 },
@@ -1708,20 +1729,37 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
       await sender.replaceTrack(videoTrack);
 
-      // Apply higher bitrate so video looks crisp
+      // If we had to create the transceiver fresh, we need to renegotiate so
+      // the peer learns there's a new m=video line in our SDP.
+      try {
+        if (pc.signalingState === "stable" && (transceiver.currentDirection !== "sendrecv" && transceiver.currentDirection !== "sendonly")) {
+          const offer = await pc.createOffer();
+          offer.sdp = setHighQualityOpus(offer.sdp || "");
+          await pc.setLocalDescription(offer);
+          channelRef.current?.send({
+            type: "broadcast",
+            event: "voice-signal",
+            payload: { type: "offer", sdp: offer, senderId: user?.id, callerAvatarUrl: outgoingCallMetaRef.current?.callerAvatarUrl },
+          });
+        }
+      } catch (e) {
+        console.warn("[Voice] Renegotiation after enabling video failed:", e);
+      }
+
       try {
         const params = sender.getParameters();
         if (!params.encodings || params.encodings.length === 0) {
           params.encodings = [{}];
         }
-        params.encodings[0].maxBitrate = 2_500_000; // 2.5 Mbps
+        params.encodings[0].maxBitrate = 2_500_000;
+        (params.encodings[0] as any).networkPriority = "high";
+        (params.encodings[0] as any).priority = "high";
         await sender.setParameters(params);
       } catch (e) {
         console.warn("[Voice] Could not set video encoding params:", e);
       }
 
       videoTrack.onended = () => {
-        // User pulled the cable / OS revoked permission → reflect off in UI
         setLocalVideoStream(null);
         localVideoStreamRef.current = null;
         setActiveCall(prev => prev ? { ...prev, isVideoOn: false } : prev);
@@ -1732,11 +1770,18 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       localVideoStreamRef.current = stream;
       setLocalVideoStream(stream);
       setActiveCall(prev => prev ? { ...prev, isVideoOn: true } : prev);
+      try {
+        channelRef.current?.send({
+          type: "broadcast",
+          event: "voice-signal",
+          payload: { type: "peer-video", senderId: user?.id, isVideoOn: true },
+        });
+      } catch {}
       upsertVideoState(true);
     } catch (e) {
       console.error("[Voice] Failed to start camera:", e);
     }
-  }, [settings.videoDeviceId, settings.videoResolution, settings.videoFrameRate, activeCall, upsertCurrentCallParticipantState]);
+  }, [settings.videoDeviceId, settings.videoResolution, settings.videoFrameRate, activeCall, upsertCurrentCallParticipantState, user]);
 
   useEffect(() => {
     if (!user) return;
