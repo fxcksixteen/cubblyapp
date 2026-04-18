@@ -1199,13 +1199,22 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
     const res = resolutionMap[effectiveQuality];
 
+    // High-quality screenshare *audio* constraints — disabling the voice DSP
+    // chain (echo/noise/AGC) is what stops music & game audio from sounding
+    // muffled and warbled. Stereo + 48 kHz so we don't downsample.
+    const screenAudioConstraints: any = {
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: false,
+      channelCount: 2,
+      sampleRate: 48000,
+    };
+
     try {
       let stream: MediaStream;
 
       // Electron path: use the modern display-capture pipeline. Main injects
       // the chosen source + 'loopback' audio via setDisplayMediaRequestHandler.
-      // The legacy chromeMediaSource constraint route is gone — it gave silent
-      // window shares.
       if (isElectron) {
         const api = (window as any).electronAPI;
         let selectedSourceId = options?.sourceId;
@@ -1233,7 +1242,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         try {
           stream = await navigator.mediaDevices.getDisplayMedia({
             video: videoConstraints,
-            audio: wantAudio,
+            audio: wantAudio ? screenAudioConstraints : false,
           } as any);
         } finally {
           try { await api.clearSelectedShareSource?.(); } catch {}
@@ -1244,9 +1253,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         }
       } else {
         // Browser path: standard getDisplayMedia.
-        // Only attempt audio when user is sharing an entire screen — window/tab cannot
-        // capture system audio, and trying to do so causes massive quality degradation
-        // and lag in some browsers (the OS forces a low-quality capture path).
         const allowAudio = effectiveAudio && type === "screen";
 
         const videoConstraints: any = {
@@ -1265,7 +1271,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         }
 
         const audioConstraint = allowAudio
-          ? ({ systemAudio: "include" } as any)
+          ? ({ ...screenAudioConstraints, systemAudio: "include" } as any)
           : false;
 
         stream = await navigator.mediaDevices.getDisplayMedia({
@@ -1276,8 +1282,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           selfBrowserSurface: "exclude",
         } as any);
 
-        // Hard guard: if for some reason audio tracks slipped through on a window/tab
-        // share, strip them out so we don't leak system audio.
         if (!allowAudio) {
           stream.getAudioTracks().forEach(t => { t.stop(); stream.removeTrack(t); });
         }
@@ -1286,26 +1290,38 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       setScreenStream(stream);
       setIsScreenSharing(true);
 
-      // Apply Optimization preset to the actual video track:
-      //   ultra   → contentHint='detail'  + max bitrate boost (best of both worlds)
-      //   clarity → contentHint='detail'
-      //   motion  → contentHint='motion'
-      // contentHint hints the encoder/scaler about temporal vs spatial quality tradeoffs.
+      // Apply Optimization preset to the actual video track. Bumped bitrates
+      // so "ultra" actually delivers a crisp stream to the *peer* (encoder
+      // adaptive degradation was crushing 8 Mbps targets).
       const opt = screenShareSettings.optimizeFor;
-      const hint = opt === "motion" ? "motion" : "detail"; // ultra & clarity → detail
+      const hint = opt === "motion" ? "motion" : "detail";
       const maxBitrate =
-        opt === "ultra" ? 8_000_000 : // 8 Mbps — premium
-        opt === "motion" ? 5_000_000 : // 5 Mbps — smoothness
-        4_000_000;                     // 4 Mbps — clarity
-      stream.getVideoTracks().forEach((t) => {
-        try { (t as any).contentHint = hint; } catch { /* unsupported */ }
-      });
+        opt === "ultra" ? 12_000_000 : // 12 Mbps — premium
+        opt === "motion" ? 8_000_000 : // 8 Mbps — smoothness
+        6_000_000;                     // 6 Mbps — clarity
+
+      // Force resolution / FPS via applyConstraints on the actual track —
+      // Electron's desktopCapturer ignores constraints at getDisplayMedia time
+      // so we must downscale post-capture.
+      for (const t of stream.getVideoTracks()) {
+        try { (t as any).contentHint = hint; } catch {}
+        try {
+          await (t as any).applyConstraints?.({
+            ...(res ? { width: res.width, height: res.height } : {}),
+            frameRate: effectiveFps,
+          });
+        } catch (e) {
+          console.warn("[Voice] applyConstraints on screen track failed:", e);
+        }
+        try {
+          const s = (t as any).getSettings?.();
+          console.log("[Voice] 🖥️ screen video track settings:", s);
+        } catch {}
+      }
 
       // Bot call → loopback screenshare (echo video + audio back to yourself)
       if (isBotCall) {
         console.log("[Voice][Loopback] 🖥️ Starting screenshare loopback self-test...");
-        console.log("[Voice][Loopback] Screen tracks:", stream.getTracks().map(t => `${t.kind}:${t.label}:enabled=${t.enabled}`));
-
         const localPc = new RTCPeerConnection({ iceServers: iceServersRef.current });
         const remotePc = new RTCPeerConnection({ iceServers: iceServersRef.current });
 
@@ -1316,28 +1332,16 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           if (e.candidate) localPc.addIceCandidate(e.candidate).catch(() => {});
         };
 
-        localPc.oniceconnectionstatechange = () => {
-          console.log("[Voice][Loopback] Screen localPc ICE:", localPc.iceConnectionState);
-          if (localPc.iceConnectionState === "connected" || localPc.iceConnectionState === "completed") {
-            console.log("[Voice][Loopback] ✅ Screenshare ICE CONNECTED — loopback should be playing!");
-          }
-          if (localPc.iceConnectionState === "failed") {
-            console.error("[Voice][Loopback] ❌ Screenshare ICE FAILED");
-          }
-        };
-
         remotePc.ontrack = (event) => {
-          console.log("[Voice][Loopback] ✅ Screen remotePc received track:", event.track.kind, event.track.label);
           if (event.track.kind === "video") {
             setRemoteScreenStream(event.streams[0]);
           } else if (event.track.kind === "audio") {
-            // Play screenshare audio back
             const audioEl = document.createElement("audio");
             audioEl.srcObject = event.streams[0];
             audioEl.autoplay = true;
             audioEl.volume = settings.outputVolume / 100;
             (audioEl as any).__cubblyRemote = true;
-            audioEl.play().then(() => console.log("[Voice][Loopback] ✅ Screenshare audio playing")).catch(e => console.error("[Voice][Loopback] ❌ Screenshare audio play failed:", e));
+            audioEl.play().catch(e => console.error("[Voice][Loopback] ❌ Screenshare audio play failed:", e));
             document.body.appendChild(audioEl);
           }
         };
@@ -1345,16 +1349,19 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         stream.getTracks().forEach(track => {
           const sender = localPc.addTrack(track, stream);
           if (track.kind === "video") applyScreenBitrate(sender, maxBitrate);
+          if (track.kind === "audio") applyScreenAudioBitrate(sender);
           track.onended = () => { stopScreenShare(); };
         });
 
         const offer = await localPc.createOffer();
+        offer.sdp = patchScreenShareOpusSdp(offer.sdp || "");
         await localPc.setLocalDescription(offer);
-        await remotePc.setRemoteDescription(offer);
+        const remoteOffer = { type: offer.type, sdp: offer.sdp };
+        await remotePc.setRemoteDescription(remoteOffer as RTCSessionDescriptionInit);
         const answer = await remotePc.createAnswer();
+        answer.sdp = patchScreenShareOpusSdp(answer.sdp || "");
         await remotePc.setLocalDescription(answer);
-        await localPc.setRemoteDescription(answer);
-        console.log("[Voice][Loopback] ✅ Screenshare offer/answer exchanged");
+        await localPc.setRemoteDescription({ type: answer.type, sdp: answer.sdp } as RTCSessionDescriptionInit);
 
         screenLoopbackPcRef.current = { local: localPc, remote: remotePc };
         screenPcRef.current = localPc;
@@ -1370,6 +1377,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       stream.getTracks().forEach(track => {
         const sender = screenPc.addTrack(track, stream);
         if (track.kind === "video") applyScreenBitrate(sender, maxBitrate);
+        if (track.kind === "audio") applyScreenAudioBitrate(sender);
         track.onended = () => {
           stopScreenShare();
         };
@@ -1386,7 +1394,25 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       };
 
       const offer = await screenPc.createOffer();
+      offer.sdp = patchScreenShareOpusSdp(offer.sdp || "");
       await screenPc.setLocalDescription(offer);
+
+      // Periodically log outbound stats so we can confirm the encoder is
+      // actually delivering the bitrate / resolution we asked for.
+      const statsInterval = setInterval(async () => {
+        if (!screenPcRef.current || screenPcRef.current !== screenPc) {
+          clearInterval(statsInterval);
+          return;
+        }
+        try {
+          const stats = await screenPc.getStats();
+          stats.forEach((report: any) => {
+            if (report.type === "outbound-rtp" && report.kind === "video") {
+              console.log(`[Voice] 🖥️ outbound screen video — ${report.frameWidth}x${report.frameHeight}@${report.framesPerSecond}fps, bitrate≈${Math.round((report.bytesSent || 0) * 8 / 1000)}kbps total`);
+            }
+          });
+        } catch {}
+      }, 5000);
 
       channelRef.current.send({
         type: "broadcast",
