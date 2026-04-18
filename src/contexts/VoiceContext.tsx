@@ -866,6 +866,23 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           screenPcRef.current?.close();
           screenPcRef.current = null;
         }
+
+        // Instant peer state (mute/deafen/video) — bypasses DB realtime lag.
+        if (payload.type === "peer-mute") {
+          setPeerInstantState((prev) => ({
+            ...prev,
+            is_muted: !!payload.isMuted,
+            is_deafened: !!payload.isDeafened,
+          }));
+          return;
+        }
+        if (payload.type === "peer-video") {
+          setPeerInstantState((prev) => ({
+            ...prev,
+            is_video_on: !!payload.isVideoOn,
+          }));
+          return;
+        }
       });
 
       channel.subscribe((status) => {
