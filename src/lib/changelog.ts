@@ -23,27 +23,12 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.6";
+export const CURRENT_VERSION = "0.2.5";
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    version: "0.2.6",
-    title: "Gaming performance pass",
-    date: "2026-04-18",
-    hero: bearImage,
-    newFeatures: [
-      "Cubbly is now MUCH lighter while you're in a game — the desktop app drops its CPU priority below your game so it stops fighting Marvel Rivals (and friends) for cycles",
-      "Animations and rendering now cap to 30fps when Cubbly isn't focused, so you won't feel it eating GPU while you're playing",
-      "Activity detection (the thing that scans for your running game) now polls way less often when a game has focus, eliminating the periodic stutter",
-    ],
-    bugFixes: [
-      "Fixed Cubbly causing in-game lag spikes even when Gaming Mode was off",
-      "Fixed call quality degrading mid-match because the activity scanner was hammering the CPU",
-    ],
-  },
-  {
     version: "0.2.5",
-    title: "Call quality, lower ping & desktop polish",
+    title: "Call quality, gaming performance & desktop polish",
     date: "2026-04-18",
     hero: bearImage,
     newFeatures: [
@@ -54,6 +39,9 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Lower-latency calls everywhere — added a Frankfurt TURN relay so users in MENA, Africa and Europe get noticeably lower ping",
       "Faster connection setup — calls connect quicker thanks to ICE candidate pre-pooling and tuned WebRTC config",
       "Snappier voice — reduced inbound audio jitter buffer so conversations feel less delayed",
+      "Cubbly is now MUCH lighter while you're in a game — the desktop app drops its CPU priority below your game so it stops fighting Marvel Rivals (and friends) for cycles",
+      "Animations and rendering now cap to 30fps when Cubbly isn't focused, so you won't feel it eating GPU while you're playing",
+      "Activity detection (the thing that scans for your running game) now polls way less often when a game has focus, eliminating the periodic stutter",
     ],
     bugFixes: [
       "Fixed your camera not actually appearing for other people in the call when you turned it on (it only showed for you)",
@@ -63,6 +51,11 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Fixed GIF replies showing the full Giphy URL instead of a clean 'GIF' label",
       "Fixed chat layout cramping action buttons off-screen on narrow / vertical monitors",
       "Fixed Gaming Mode silently tanking app performance instead of optimizing it",
+      "Fixed Cubbly causing in-game lag spikes even when Gaming Mode was off",
+      "Fixed call quality degrading mid-match because the activity scanner was hammering the CPU",
+      "Fixed speaking rings around user avatars not pulsing reactively in real calls — they now smoothly respond to volume for everyone in the call",
+      "Fixed peer's speaking ring permanently freezing at zero after a network blip or track replacement mid-call",
+      "Fixed speaking rings flickering on background noise the moment a call connected",
     ],
   },
   {
