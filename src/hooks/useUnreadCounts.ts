@@ -192,6 +192,10 @@ export function useUnreadCounts(activeConversationId: string | null) {
               : "Sent you a message",
             icon: profile?.avatar_url || "/favicon.ico",
             tag: `dm:${msg.conversation_id}`,
+            // We've already gated this on (not viewing && focused) above —
+            // bypass notify()'s own focus check so background-on-this-chat
+            // still fires the toast + taskbar flash.
+            force: true,
             onClick: () => {
               const path = `/@me/chat/${msg.conversation_id}`;
               if (window.location.hash) {
