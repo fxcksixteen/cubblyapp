@@ -277,30 +277,49 @@ const ScreenSharePicker = ({ isOpen, onClose, onSelect }: ScreenSharePickerProps
             <div className="px-4 pb-4 space-y-3">
               <div className="h-px" style={{ backgroundColor: "var(--app-border)" }} />
 
-              {/* Audio toggle */}
-              <button
-                onClick={() => setShareAudio(!shareAudio)}
-                className="flex w-full items-center justify-between rounded-xl px-4 py-3 transition-colors"
-                style={{ backgroundColor: "var(--app-bg-secondary)" }}
-              >
-                <div className="flex items-center gap-3">
-                  {shareAudio ? (
-                    <Volume2 className="h-4 w-4" style={{ color: "#3ba55c" }} />
-                  ) : (
-                    <VolumeX className="h-4 w-4" style={{ color: "var(--app-text-secondary)" }} />
-                  )}
-                  <span className="text-sm font-medium" style={{ color: "var(--app-text-primary)" }}>Share Audio</span>
-                </div>
-                <div
-                  className="h-5 w-9 rounded-full p-0.5 transition-colors duration-200"
-                  style={{ backgroundColor: shareAudio ? "#3ba55c" : "var(--app-bg-tertiary)" }}
-                >
-                  <div
-                    className="h-4 w-4 rounded-full bg-white shadow transition-transform duration-200"
-                    style={{ transform: shareAudio ? "translateX(16px)" : "translateX(0)" }}
-                  />
-                </div>
-              </button>
+              {/* Audio toggle — disabled for window/tab on desktop because Windows
+                  has no per-window loopback (would leak entire system audio). */}
+              {(() => {
+                const audioDisabled = isElectron && (hoveredType === "window" || hoveredType === "tab");
+                const effectiveAudio = audioDisabled ? false : shareAudio;
+                return (
+                  <>
+                    <button
+                      onClick={() => { if (!audioDisabled) setShareAudio(!shareAudio); }}
+                      disabled={audioDisabled}
+                      className="flex w-full items-center justify-between rounded-xl px-4 py-3 transition-colors"
+                      style={{
+                        backgroundColor: "var(--app-bg-secondary)",
+                        opacity: audioDisabled ? 0.5 : 1,
+                        cursor: audioDisabled ? "not-allowed" : "pointer",
+                      }}
+                    >
+                      <div className="flex items-center gap-3">
+                        {effectiveAudio ? (
+                          <Volume2 className="h-4 w-4" style={{ color: "#3ba55c" }} />
+                        ) : (
+                          <VolumeX className="h-4 w-4" style={{ color: "var(--app-text-secondary)" }} />
+                        )}
+                        <span className="text-sm font-medium" style={{ color: "var(--app-text-primary)" }}>Share Audio</span>
+                      </div>
+                      <div
+                        className="h-5 w-9 rounded-full p-0.5 transition-colors duration-200"
+                        style={{ backgroundColor: effectiveAudio ? "#3ba55c" : "var(--app-bg-tertiary)" }}
+                      >
+                        <div
+                          className="h-4 w-4 rounded-full bg-white shadow transition-transform duration-200"
+                          style={{ transform: effectiveAudio ? "translateX(16px)" : "translateX(0)" }}
+                        />
+                      </div>
+                    </button>
+                    {audioDisabled && (
+                      <p className="px-1 text-[11px]" style={{ color: "var(--app-text-secondary)" }}>
+                        Per-window audio isn't supported on Windows — only available when sharing your entire screen.
+                      </p>
+                    )}
+                  </>
+                );
+              })()}
 
               {/* FPS selector */}
               <div className="rounded-xl px-4 py-3" style={{ backgroundColor: "var(--app-bg-secondary)" }}>
