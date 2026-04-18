@@ -22,8 +22,15 @@ const formatDuration = (ms: number) => {
   return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 };
 
-const speakingShadow = (level: number) =>
-  `0 0 0 ${4 + level * 0.18}px rgba(59,165,92,${0.6 + level * 0.003}), 0 0 ${12 + level * 0.5}px rgba(59,165,92,${0.35 + level * 0.005})`;
+const SPEAKING_THRESHOLD = 10;
+const speakingShadow = (level: number) => {
+  const clamped = Math.max(SPEAKING_THRESHOLD, Math.min(100, level));
+  const t = (clamped - SPEAKING_THRESHOLD) / (100 - SPEAKING_THRESHOLD);
+  const eased = 1 - Math.pow(1 - t, 2);
+  const ring = 4 + eased * 10;
+  const glow = 12 + eased * 20;
+  return `0 0 0 ${ring}px rgba(59,165,92,${0.7 + eased * 0.25}), 0 0 ${glow}px rgba(59,165,92,${0.35 + eased * 0.35})`;
+};
 
 interface PeerTileProps {
   userId: string;
@@ -38,7 +45,7 @@ interface PeerTileProps {
 
 const PeerTile = ({ userId, displayName, avatarUrl, audioLevel, isMuted, isLocal, videoStream }: PeerTileProps) => {
   const color = getProfileColor(userId);
-  const speaking = audioLevel > 5 && !isMuted;
+  const speaking = audioLevel > SPEAKING_THRESHOLD && !isMuted;
   const videoRef = useRef<HTMLVideoElement | null>(null);
   useEffect(() => {
     if (videoRef.current && videoStream) {
@@ -51,10 +58,11 @@ const PeerTile = ({ userId, displayName, avatarUrl, audioLevel, isMuted, isLocal
     return (
       <div className="flex flex-col items-center gap-2">
         <div
-          className="relative overflow-hidden rounded-xl bg-black transition-all"
+          className="relative overflow-hidden rounded-xl bg-black"
           style={{
             width: 220,
             height: 124,
+            transition: "box-shadow 80ms linear",
             boxShadow: speaking ? speakingShadow(audioLevel) : "0 0 0 0px transparent",
           }}
         >
@@ -76,9 +84,10 @@ const PeerTile = ({ userId, displayName, avatarUrl, audioLevel, isMuted, isLocal
     <div className="flex flex-col items-center gap-2">
       <div className="relative">
         <div
-          className="flex h-20 w-20 items-center justify-center rounded-full text-2xl font-bold text-white transition-all duration-150 overflow-hidden"
+          className="flex h-20 w-20 items-center justify-center rounded-full text-2xl font-bold text-white overflow-hidden"
           style={{
             backgroundColor: color.bg,
+            transition: "box-shadow 80ms linear",
             boxShadow: speaking ? speakingShadow(audioLevel) : "0 0 0 0px transparent",
           }}
         >

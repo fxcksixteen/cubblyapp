@@ -10,7 +10,7 @@ import "./index.css";
 // Register the service worker for PWA + push (skipped inside Lovable preview iframe).
 registerServiceWorker();
 
-const APP_VERSION = "0.2.6";
+const APP_VERSION = "0.2.5";
 console.log(`%c🧸 Cubbly v${APP_VERSION} (pre-alpha)`, "color: hsl(32, 80%, 50%); font-weight: bold; font-size: 14px;");
 
 // Preload notification sounds in the background
