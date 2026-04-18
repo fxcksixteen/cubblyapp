@@ -510,7 +510,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
   const createPeerConnection = useCallback(() => {
     console.log("[Voice] 🔧 Creating RTCPeerConnection with", iceServersRef.current.length, "ICE servers");
-    const pc = new RTCPeerConnection({ iceServers: iceServersRef.current, iceTransportPolicy: "all" });
+    const pc = new RTCPeerConnection({
+      iceServers: iceServersRef.current,
+      iceTransportPolicy: "all",
+      bundlePolicy: "max-bundle",
+      rtcpMuxPolicy: "require",
+      iceCandidatePoolSize: 4,
+    });
 
     pc.ontrack = (event) => {
       const remote = event.streams[0];
@@ -525,6 +531,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         event.track.onmute = () => setRemoteVideoStream((s) => s); // keep but UI can dim
         return;
       }
+
+      // Lower the inbound audio jitter buffer for snappier real-time feel.
+      // 50ms is aggressive but cuts perceived latency by ~150ms vs the default.
+      try { (event.receiver as any).playoutDelayHint = 0.05; } catch { /* ignore */ }
 
       setRemoteStream(remote);
       const audioEl = document.createElement("audio");
@@ -1783,10 +1793,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
       await sender.replaceTrack(videoTrack);
 
-      // If we had to create the transceiver fresh, we need to renegotiate so
-      // the peer learns there's a new m=video line in our SDP.
+      // Always renegotiate when turning the camera ON. Even if the transceiver
+      // was pre-allocated as "sendrecv", some browsers (Safari/Firefox) don't
+      // forward the track to the peer until a fresh offer/answer cycle. Without
+      // this, the camera shows for YOU but never for the OTHER person.
       try {
-        if (pc.signalingState === "stable" && (transceiver.currentDirection !== "sendrecv" && transceiver.currentDirection !== "sendonly")) {
+        if (pc.signalingState === "stable") {
           const offer = await pc.createOffer();
           offer.sdp = setHighQualityOpus(offer.sdp || "");
           await pc.setLocalDescription(offer);

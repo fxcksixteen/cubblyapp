@@ -10,6 +10,7 @@ import ActivityPrivacySettings from "./settings/ActivityPrivacySettings";
 import GamingModeSettings from "./settings/GamingModeSettings";
 import NotificationSettings from "./settings/NotificationSettings";
 import UpdateLogsSettings from "./settings/UpdateLogsSettings";
+import AdvancedSettings from "./settings/AdvancedSettings";
 import { CURRENT_VERSION } from "@/lib/changelog";
 
 const APP_VERSION = CURRENT_VERSION;
@@ -486,6 +487,9 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
 
       case "update-logs":
         return <UpdateLogsSettings cardStyle={cardStyle as any} />;
+
+      case "advanced":
+        return <AdvancedSettings cardStyle={cardStyle as any} />;
 
       default:
         return (

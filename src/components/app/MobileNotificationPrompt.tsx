@@ -38,8 +38,16 @@ const MobileNotificationPrompt = () => {
     } catch { /* ignore */ }
 
     const perm = getNotificationPermission();
-    if (perm !== "default") {
-      // Already decided — don't bug them.
+    if (perm === "granted") {
+      // Permission already granted — make sure this device has an active push
+      // subscription (idempotent: re-runs on every mount in case the SW or
+      // sub got dropped). Critical for iOS where users grant once but the
+      // sub may not have been saved on the previous build.
+      subscribeToPush().catch(() => { /* ignore */ });
+      try { localStorage.setItem(STORAGE_KEY, "decided"); } catch { /* ignore */ }
+      return;
+    }
+    if (perm === "denied") {
       try { localStorage.setItem(STORAGE_KEY, "decided"); } catch { /* ignore */ }
       return;
     }

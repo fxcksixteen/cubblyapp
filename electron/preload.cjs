@@ -53,4 +53,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("update-status", listener);
     return () => ipcRenderer.removeListener("update-status", listener);
   },
+
+  // Discord-style taskbar flash
+  flashFrame: () => ipcRenderer.invoke("notification-flash"),
+
+  // Launch on system startup
+  getAutoLaunch: () => ipcRenderer.invoke("auto-launch-get"),
+  setAutoLaunch: (value) => ipcRenderer.invoke("auto-launch-set", value),
 });

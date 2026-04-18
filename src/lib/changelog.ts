@@ -23,9 +23,33 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.4";
+export const CURRENT_VERSION = "0.2.5";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.2.5",
+    title: "Call quality, lower ping & desktop polish",
+    date: "2026-04-18",
+    hero: bearImage,
+    newFeatures: [
+      "Window screen-share audio is FINALLY working on Windows — and now it sounds clear and stereo instead of muffled and crackly",
+      "Screen-share quality settings actually do something now — picking 1080p/60fps stays sharp on the viewer's side instead of compressing to a pixelated mess",
+      "Desktop notifications now flash the Cubbly icon in the Windows taskbar (Discord-style) when the app isn't focused",
+      "New 'Launch Cubbly on system startup' toggle in Settings → Advanced (on by default, can now be turned off)",
+      "Lower-latency calls everywhere — added a Frankfurt TURN relay so users in MENA, Africa and Europe get noticeably lower ping",
+      "Faster connection setup — calls connect quicker thanks to ICE candidate pre-pooling and tuned WebRTC config",
+      "Snappier voice — reduced inbound audio jitter buffer so conversations feel less delayed",
+    ],
+    bugFixes: [
+      "Fixed your camera not actually appearing for other people in the call when you turned it on (it only showed for you)",
+      "Fixed mute/deafen indicators only updating after a few seconds — they're now instant for everyone in the call",
+      "Fixed iOS PWA push notifications not arriving even after granting permission — they now work like a real app",
+      "Fixed mobile call overlay end-call button getting hidden behind the bottom safe area on iPhones",
+      "Fixed GIF replies showing the full Giphy URL instead of a clean 'GIF' label",
+      "Fixed chat layout cramping action buttons off-screen on narrow / vertical monitors",
+      "Fixed Gaming Mode silently tanking app performance instead of optimizing it",
+    ],
+  },
   {
     version: "0.2.4",
     title: "Calling, screen share & mobile fixes",

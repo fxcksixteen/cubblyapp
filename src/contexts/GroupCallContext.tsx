@@ -247,7 +247,13 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     const existing = pcsRef.current.get(peerId);
     if (existing) return existing;
 
-    const pc = new RTCPeerConnection({ iceServers: iceServersRef.current, iceTransportPolicy: "all" });
+    const pc = new RTCPeerConnection({
+      iceServers: iceServersRef.current,
+      iceTransportPolicy: "all",
+      bundlePolicy: "max-bundle",
+      rtcpMuxPolicy: "require",
+      iceCandidatePoolSize: 4,
+    });
     pcsRef.current.set(peerId, pc);
     makingOfferRef.current.set(peerId, false);
     ignoreOfferRef.current.set(peerId, false);
@@ -277,6 +283,8 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     pc.ontrack = (event) => {
       const stream = event.streams[0];
       if (event.track.kind === "audio") {
+        // Lower jitter buffer for snappier real-time feel
+        try { (event.receiver as any).playoutDelayHint = 0.05; } catch { /* ignore */ }
         let audioEl = document.querySelector<HTMLAudioElement>(`audio[data-group-peer="${peerId}"]`);
         if (!audioEl) {
           audioEl = document.createElement("audio");

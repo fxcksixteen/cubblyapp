@@ -26,17 +26,39 @@ autoUpdater.autoInstallOnAppQuit = true; // Fallback: install on quit if user ne
 autoUpdater.allowPrerelease = true;
 autoUpdater.allowDowngrade = false;
 
-// ----- Auto-launch on system startup (Discord-style) -----
-try {
-  if (process.platform === "win32" || process.platform === "darwin") {
-    app.setLoginItemSettings({
-      openAtLogin: true,
-      openAsHidden: false,
-      path: process.execPath,
-    });
+// ----- Auto-launch on system startup (Discord-style; user-toggleable) -----
+// Default ON, but only set on first launch ever — after that, respect whatever
+// the user chose in Settings → Advanced.
+const Store = (() => {
+  try { return require("electron-store"); } catch (_) { return null; }
+})();
+const settingsStore = Store ? new Store({ name: "cubbly-settings" }) : null;
+function applyLoginItem(open) {
+  try {
+    if (process.platform === "win32" || process.platform === "darwin") {
+      app.setLoginItemSettings({
+        openAtLogin: !!open,
+        openAsHidden: false,
+        path: process.execPath,
+      });
+    }
+  } catch (e) {
+    log.warn("[startup] failed to configure login item:", e?.message || e);
   }
+}
+try {
+  let openAtLogin = true;
+  if (settingsStore) {
+    if (settingsStore.has("openAtLogin")) {
+      openAtLogin = !!settingsStore.get("openAtLogin");
+    } else {
+      settingsStore.set("openAtLogin", true);
+    }
+  }
+  applyLoginItem(openAtLogin);
 } catch (e) {
-  log.warn("[startup] failed to configure login item:", e?.message || e);
+  log.warn("[startup] init login item failed:", e?.message || e);
+  applyLoginItem(true);
 }
 
 let mainWindow;
@@ -262,9 +284,46 @@ ipcMain.handle("show-notification", async (_evt, opts) => {
       }
     });
     n.show();
+    // Discord-style taskbar flash on Windows (auto-stops when window gains focus).
+    try {
+      if (mainWindow && !mainWindow.isFocused()) {
+        mainWindow.flashFrame(true);
+      }
+    } catch (_) { /* noop */ }
     return true;
   } catch (e) {
     log.warn("[notify] failed:", e?.message || e);
+    return false;
+  }
+});
+
+// Stop flashing once the window is focused (Electron does this automatically
+// on most platforms, but we belt-and-suspenders it here).
+ipcMain.handle("notification-flash", () => {
+  try {
+    if (mainWindow && !mainWindow.isFocused()) mainWindow.flashFrame(true);
+    return true;
+  } catch { return false; }
+});
+
+// ----- Auto-launch on startup IPC -----
+ipcMain.handle("auto-launch-get", () => {
+  try {
+    if (settingsStore && settingsStore.has("openAtLogin")) {
+      return !!settingsStore.get("openAtLogin");
+    }
+    const s = app.getLoginItemSettings();
+    return !!s.openAtLogin;
+  } catch { return true; }
+});
+ipcMain.handle("auto-launch-set", (_evt, value) => {
+  try {
+    const v = !!value;
+    if (settingsStore) settingsStore.set("openAtLogin", v);
+    applyLoginItem(v);
+    return true;
+  } catch (e) {
+    log.warn("[startup] set login item failed:", e?.message || e);
     return false;
   }
 });

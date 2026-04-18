@@ -85,6 +85,8 @@ export function notify(options: NotifyOptions) {
         icon: options.icon,
         silent: true,
       });
+      // Discord-style taskbar flash so users in another window/tab notice.
+      try { electronAPI.flashFrame?.(); } catch { /* ignore */ }
     } catch (e) {
       console.warn("[notify electron] failed:", e);
     }
