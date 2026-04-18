@@ -168,15 +168,24 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
   useEffect(() => {
     if (!isOpen) return;
     const handler = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") {
+        if (isMobile && activeCategory !== null) {
+          // On mobile, Escape backs out to the category list first.
+          setActiveCategory(null);
+        } else {
+          onClose();
+        }
+      }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [isOpen, onClose]);
+  }, [isOpen, isMobile, activeCategory, onClose]);
 
   if (!visible) return null;
 
-  const activeLabel = settingsSections.flatMap((section) => section.items).find((item) => item.id === activeCategory)?.label;
+  const activeLabel = activeCategory
+    ? settingsSections.flatMap((section) => section.items).find((item) => item.id === activeCategory)?.label
+    : "Settings";
   const panelStyle = { backgroundColor: "var(--app-bg-secondary)", borderColor: "var(--app-border)" } as const;
   const cardStyle = { backgroundColor: "var(--app-bg-tertiary)", borderColor: "var(--app-border)" } as const;
 
