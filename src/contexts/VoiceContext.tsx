@@ -543,7 +543,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         setRemoteVideoStream(remote);
         // Listen for the track ending so the tile disappears when the peer turns off camera
         event.track.onended = () => setRemoteVideoStream(null);
-        event.track.onmute = () => setRemoteVideoStream((s) => s); // keep but UI can dim
+        // CRITICAL: when a peer enables their camera AFTER initial connect, the
+        // track arrives in a "muted" state and only fires onunmute once frames
+        // start flowing. Without this, the tile renders but stays black until
+        // the next state change → looks like "camera doesn't show for peer".
+        event.track.onunmute = () => {
+          console.log("[Voice] 🎥 remote video onunmute — frames flowing, refreshing tile");
+          setRemoteVideoStream(remote);
+        };
+        event.track.onmute = () => { /* keep stream — UI may dim */ };
         return;
       }
 
@@ -1312,7 +1320,14 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           if (!selectedSource) throw new Error("No screen sources available");
           selectedSourceId = selectedSource.id;
         }
-        const wantAudio = effectiveAudio;
+        // CRITICAL: Windows has no per-window loopback. Asking for audio on a
+        // window/tab source LEAKS the entire system mix to the peer. Force
+        // audio off unless the user picked an entire screen.
+        const isScreenPick = typeof selectedSourceId === "string" && selectedSourceId.startsWith("screen:");
+        const wantAudio = effectiveAudio && isScreenPick;
+        if (effectiveAudio && !isScreenPick) {
+          console.warn("[Voice] Share-audio requested for non-screen source — disabled (Windows lacks per-window loopback).");
+        }
         await api.setSelectedShareSource(selectedSourceId, wantAudio);
 
         const videoConstraints: any = {
