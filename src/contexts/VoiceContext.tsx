@@ -992,7 +992,28 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         if (payload.type === "screen-offer") {
           const screenPc = new RTCPeerConnection({ iceServers: iceServersRef.current });
           screenPc.ontrack = (event) => {
-            setRemoteScreenStream(event.streams[0]);
+            const remoteScreen = event.streams[0];
+            setRemoteScreenStream(remoteScreen);
+            // If this stream carries an audio track, route it through the
+            // per-peer GainNode so the right-click "User Volume" slider AND
+            // the fullscreen viewer's volume slider both control the
+            // screen-share audio (not just the mic).
+            const peerUserId = activeCall?.peerId;
+            if (peerUserId && event.track.kind === "audio") {
+              // Use a dedicated hidden <audio> element so we don't fight the
+              // <video> element's autoplay/render path.
+              let el = document.querySelector<HTMLAudioElement>(`audio[data-cubbly-peer="${peerUserId}"][data-cubbly-kind="screen"]`);
+              if (!el) {
+                el = document.createElement("audio");
+                el.autoplay = true;
+                (el as any).playsInline = true;
+                (el as any).__cubblyRemote = true;
+                document.body.appendChild(el);
+              }
+              el.srcObject = remoteScreen;
+              el.play().catch(() => {});
+              attachPeerGain(peerUserId, remoteScreen, el, "screen");
+            }
           };
           screenPc.onicecandidate = (event) => {
             if (event.candidate) {
