@@ -128,6 +128,20 @@ export function usePeerGains(): PeerGainApi {
         gain.connect(ctx.destination);
         entry = { ctx, gain, sources: new Map() };
         peerEntriesRef.current.set(userId, entry);
+        // Register so the global gesture-resume below can wake it up later.
+        registerPeerCtx(ctx);
+      }
+
+      // CRITICAL: Browser/Electron autoplay policy creates AudioContexts in
+      // "suspended" state until a user gesture. If we leave it suspended the
+      // gain pipeline silently produces no audio AND the source <audio>/<video>
+      // is muted (we mute it below) — net result: peer is inaudible AND volume
+      // controls appear to do nothing. Resume aggressively; the join/accept
+      // button click counts as a gesture so this almost always succeeds.
+      if (entry.ctx.state === "suspended") {
+        entry.ctx.resume().catch((e) => {
+          console.warn("[PeerGain] AudioContext resume failed (will retry on next user gesture):", e);
+        });
       }
 
       // If this kind of stream is already attached for this peer, disconnect
@@ -143,12 +157,23 @@ export function usePeerGains(): PeerGainApi {
       entry.sources.set(streamKind, src);
 
       // Mute the source element — playback now flows through the gain pipeline.
-      mediaEl.muted = true;
+      // BUT: only mute it AFTER we confirm the AudioContext is actually running
+      // (or successfully resumed). If the context is permanently stuck suspended
+      // (no user gesture yet), keep the element audible so the peer isn't silent.
+      const applyMutePolicy = () => {
+        const running = entry!.ctx.state === "running";
+        mediaEl.muted = running;
+      };
+      applyMutePolicy();
+      // Re-check after a tick in case resume() resolved asynchronously.
+      setTimeout(applyMutePolicy, 100);
+
       mediaEl.setAttribute("data-cubbly-peer", userId);
       mediaEl.setAttribute("data-cubbly-kind", streamKind);
     } catch (e) {
       console.warn("[PeerGain] attach failed for", userId, streamKind, e);
       // Fallback: leave element playing at its own volume so we at least hear them.
+      try { mediaEl.muted = false; } catch {}
     }
   }, []);
 
