@@ -46,6 +46,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Fixed messages sometimes appearing ABOVE the call pill in chat — the merge now interleaves messages and call events atom-by-atom so the order is always correct",
       "Fixed mobile bug where tapping a chat in the DM sidebar sometimes opened a different chat instead — navigation now commits before the panel closes",
       "Screen-share picker now warns you upfront that audio sharing only works for full-screen captures on Windows",
+      "Fixed missing notifications, sound, and taskbar flash when a message arrived for the chat you had open but the app was minimized or behind another window — alerts now fire whenever the window isn't actually focused, even if you're 'on' that DM",
     ],
   },
   {
