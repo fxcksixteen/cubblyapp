@@ -45,7 +45,6 @@ const MobileCallOverlay = (props: Props) => {
       style={{
         backgroundColor: "var(--app-bg-tertiary)",
         paddingTop: "env(safe-area-inset-top, 0px)",
-        paddingBottom: "env(safe-area-inset-bottom, 0px)",
       }}
     >
       {/* Top bar with minimize/close */}
@@ -67,8 +66,13 @@ const MobileCallOverlay = (props: Props) => {
         </button>
       </div>
 
-      {/* CallPanel content fills the rest */}
-      <div className="flex-1 overflow-y-auto -mx-4">
+      {/* CallPanel content fills the rest. Padding-bottom (not margin) so the
+          end-call controls inside CallPanel never get clipped behind the iPhone
+          home-indicator safe area. */}
+      <div
+        className="flex-1 overflow-y-auto -mx-4"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)" }}
+      >
         <CallPanel {...props} />
       </div>
     </div>
