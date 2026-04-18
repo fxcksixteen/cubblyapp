@@ -112,26 +112,34 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
   useEffect(() => {
     if (screenVideoRef.current && screenStream) {
       screenVideoRef.current.srcObject = screenStream;
+      screenVideoRef.current.play().catch(() => {});
     }
   }, [screenStream]);
 
   useEffect(() => {
     if (remoteScreenVideoRef.current && remoteScreenStream) {
       remoteScreenVideoRef.current.srcObject = remoteScreenStream;
+      remoteScreenVideoRef.current.play().catch(() => {});
     }
   }, [remoteScreenStream]);
 
-  // Wire camera streams to <video> elements
+  // Wire camera streams to <video> elements. ALWAYS call play() after
+  // setting srcObject — autoplay alone fails silently when srcObject is
+  // assigned after the element mounts (which is exactly what happens when
+  // a peer turns on their camera mid-call). That's why remote camera tiles
+  // were rendering as black boxes for the other user.
   useEffect(() => {
-    if (localCamRef.current) {
-      localCamRef.current.srcObject = localVideoStream;
-    }
+    const el = localCamRef.current;
+    if (!el) return;
+    el.srcObject = localVideoStream || null;
+    if (localVideoStream) el.play().catch((e) => console.warn("[Voice] local cam play() failed:", e));
   }, [localVideoStream]);
 
   useEffect(() => {
-    if (remoteCamRef.current) {
-      remoteCamRef.current.srcObject = remoteVideoStream;
-    }
+    const el = remoteCamRef.current;
+    if (!el) return;
+    el.srcObject = remoteVideoStream || null;
+    if (remoteVideoStream) el.play().catch((e) => console.warn("[Voice] remote cam play() failed:", e));
   }, [remoteVideoStream]);
 
   if (!isThisCall || !activeCall) return null;

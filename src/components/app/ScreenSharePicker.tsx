@@ -17,10 +17,20 @@ interface DesktopSource {
   appIcon: string | null;
 }
 
+const isElectronEnv = typeof window !== "undefined" && !!(window as any).electronAPI;
 const typeOptions: { type: ScreenShareType; icon: typeof Monitor; label: string; description: string }[] = [
   { type: "screen", icon: Monitor, label: "Entire Screen", description: "Share your full screen with everything visible" },
   { type: "window", icon: AppWindow, label: "Window", description: "Share a specific application window" },
-  { type: "tab", icon: Globe, label: "Browser Tab", description: "Share a single browser tab with audio" },
+  // In Electron there is NO real tab capture API — we'd have to filter window
+  // sources by a browser-name heuristic, which is misleading. Relabel honestly.
+  {
+    type: "tab",
+    icon: Globe,
+    label: isElectronEnv ? "Browser Window" : "Browser Tab",
+    description: isElectronEnv
+      ? "Share an open browser window (Chrome, Firefox, Edge, etc.)"
+      : "Share a single browser tab with audio",
+  },
 ];
 
 const fpsOptions = [15, 30, 60];
