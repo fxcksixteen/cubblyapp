@@ -193,6 +193,8 @@ interface VoiceContextType {
   stopScreenShare: () => void;
   /** Round-trip latency in ms (polled from RTCPeerConnection.getStats during active call). 0 when not in a call. */
   ping: number;
+  /** Instant peer mute/deafen/video state from signaling channel (no DB lag). */
+  peerInstantState: { is_muted?: boolean; is_deafened?: boolean; is_video_on?: boolean };
 }
 
 const VoiceContext = createContext<VoiceContextType>({} as VoiceContextType);
