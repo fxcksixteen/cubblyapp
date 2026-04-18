@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Volume2, VolumeX, RotateCcw } from "lucide-react";
-import { useVoice } from "@/contexts/VoiceContext";
+import type { PeerGainApi } from "@/lib/peerGain";
 
 /**
  * Discord-style right-click controls for a peer's avatar in any voice/call UI.
@@ -14,6 +14,9 @@ import { useVoice } from "@/contexts/VoiceContext";
  *
  * Renders as a floating menu anchored at the click coords. Closes on outside
  * click, Escape, or scroll.
+ *
+ * `volumeApi` is passed in by the parent so the same menu component works
+ * for both 1-on-1 (`useVoice()`) and group calls (`useGroupCall()`).
  */
 
 export interface UserVolumeMenuProps {
@@ -25,10 +28,12 @@ export interface UserVolumeMenuProps {
   x: number;
   y: number;
   onClose: () => void;
+  /** Volume API from whichever call context is active (1-on-1 or group). */
+  volumeApi: Pick<PeerGainApi, "getUserVolume" | "setUserVolume" | "isUserMuted" | "setUserMuted">;
 }
 
-const UserVolumeMenu = ({ userId, displayName, x, y, onClose }: UserVolumeMenuProps) => {
-  const { getUserVolume, setUserVolume, isUserMuted, setUserMuted } = useVoice();
+const UserVolumeMenu = ({ userId, displayName, x, y, onClose, volumeApi }: UserVolumeMenuProps) => {
+  const { getUserVolume, setUserVolume, isUserMuted, setUserMuted } = volumeApi;
   const [volumePct, setVolumePct] = useState<number>(() => Math.round(getUserVolume(userId) * 100));
   const [muted, setMuted] = useState<boolean>(() => isUserMuted(userId));
   const menuRef = useRef<HTMLDivElement>(null);
@@ -95,14 +100,12 @@ const UserVolumeMenu = ({ userId, displayName, x, y, onClose }: UserVolumeMenuPr
       }}
       onContextMenu={(e) => e.preventDefault()}
     >
-      {/* Header */}
       <div className="px-3 pt-3 pb-2">
         <p className="truncate text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--app-text-secondary, #949ba4)" }}>
           {displayName}
         </p>
       </div>
 
-      {/* Volume slider */}
       <div className="px-3 pb-3">
         <div className="flex items-center justify-between mb-1.5">
           <span className="text-[12px] font-semibold">User Volume</span>
@@ -129,7 +132,6 @@ const UserVolumeMenu = ({ userId, displayName, x, y, onClose }: UserVolumeMenuPr
 
       <div className="h-px mx-2" style={{ backgroundColor: "var(--app-border, rgba(255,255,255,0.06))" }} />
 
-      {/* Actions */}
       <div className="p-1">
         <button
           onClick={handleMuteToggle}
