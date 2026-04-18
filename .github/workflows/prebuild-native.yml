@@ -52,7 +52,7 @@ jobs:
         env:
           npm_config_msvs_version: '2022'
         shell: cmd
-        run: npx --no-install prebuildify --napi --strip --electron --target=33.0.0 --arch=x64 --verbose
+        run: npx --no-install prebuildify --napi --strip -t electron@33.0.0 --arch=x64 --verbose
 
       - name: List prebuilds
         if: always()
