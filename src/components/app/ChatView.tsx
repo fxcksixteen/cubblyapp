@@ -351,40 +351,68 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
     setProfileCard({ userId: senderId, name: senderName, x: e.clientX, y: e.clientY });
   };
 
-  // Build grouped messages with time dividers
-  type ChatItem = 
+  // Build a flat, time-ordered list of "atoms" (single message, divider, or
+  // call event) FIRST, then group consecutive same-sender messages. This is
+  // the only way to guarantee a call pill sits at exactly the right boundary
+  // — grouping before interleaving meant a later message could end up inside
+  // a group whose start-timestamp predates the pill, visually placing the
+  // pill below messages that are actually older than it.
+  type ChatItem =
     | { type: "messages"; sender_id: string; sender_name: string; sender_avatar_url?: string | null; messages: Message[]; timestamp: number }
     | { type: "divider"; label: string; timestamp: number }
     | { type: "call-event"; event: typeof conversationCallEvents[0]; timestamp: number };
 
-  const items: ChatItem[] = [];
+  type Atom =
+    | { kind: "msg"; ts: number; msg: Message; showDivider: boolean; dividerLabel?: string }
+    | { kind: "call"; ts: number; event: typeof conversationCallEvents[0] };
 
+  const atoms: Atom[] = [];
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
-
-    if (i > 0 && shouldShowTimeDivider(messages[i - 1].created_at, msg.created_at)) {
-      items.push({ type: "divider", label: formatDateDivider(msg.created_at), timestamp: new Date(msg.created_at).getTime() - 1 });
-    }
-
-    const last = items[items.length - 1];
-    if (last && last.type === "messages" && last.sender_id === msg.sender_id) {
-      last.messages.push(msg);
-    } else {
-      items.push({ type: "messages", sender_id: msg.sender_id, sender_name: msg.sender_name || "Unknown", sender_avatar_url: msg.sender_avatar_url, messages: [msg], timestamp: new Date(msg.created_at).getTime() });
-    }
+    const ts = new Date(msg.created_at).getTime();
+    const showDivider = i > 0 && shouldShowTimeDivider(messages[i - 1].created_at, msg.created_at);
+    atoms.push({
+      kind: "msg",
+      ts,
+      msg,
+      showDivider,
+      dividerLabel: showDivider ? formatDateDivider(msg.created_at) : undefined,
+    });
   }
-
-  // Interleave call events by timestamp. Use `>= ts` so that when a message
-  // and a call pill share an identical millisecond timestamp, the pill always
-  // wins the earlier slot — this guarantees ALL messages render under the
-  // pill, never above it (matches Discord's behaviour).
   for (const evt of conversationCallEvents) {
-    const ts = new Date(evt.startedAt).getTime();
-    let insertIdx = items.length;
-    for (let i = 0; i < items.length; i++) {
-      if (items[i].timestamp >= ts) { insertIdx = i; break; }
+    atoms.push({ kind: "call", ts: new Date(evt.startedAt).getTime(), event: evt });
+  }
+  // Stable sort: by ts, with call pills coming BEFORE messages of equal ts
+  // (so any newly-arrived message of the same ms appears under the pill).
+  atoms.sort((a, b) => {
+    if (a.ts !== b.ts) return a.ts - b.ts;
+    if (a.kind === b.kind) return 0;
+    return a.kind === "call" ? -1 : 1;
+  });
+
+  const items: ChatItem[] = [];
+  for (const atom of atoms) {
+    if (atom.kind === "call") {
+      items.push({ type: "call-event", event: atom.event, timestamp: atom.ts });
+      continue;
     }
-    items.splice(insertIdx, 0, { type: "call-event", event: evt, timestamp: ts });
+    // message atom
+    if (atom.showDivider && atom.dividerLabel) {
+      items.push({ type: "divider", label: atom.dividerLabel, timestamp: atom.ts - 1 });
+    }
+    const last = items[items.length - 1];
+    if (last && last.type === "messages" && last.sender_id === atom.msg.sender_id) {
+      last.messages.push(atom.msg);
+    } else {
+      items.push({
+        type: "messages",
+        sender_id: atom.msg.sender_id,
+        sender_name: atom.msg.sender_name || "Unknown",
+        sender_avatar_url: atom.msg.sender_avatar_url,
+        messages: [atom.msg],
+        timestamp: atom.ts,
+      });
+    }
   }
 
   const showMembersPanel = !!(showGroupMembers && conversation?.is_group);

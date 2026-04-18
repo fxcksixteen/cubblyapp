@@ -301,6 +301,11 @@ const ScreenSharePicker = ({ isOpen, onClose, onSelect }: ScreenSharePickerProps
                   />
                 </div>
               </button>
+              {isElectron && shareAudio && (
+                <p className="px-1 text-[11px]" style={{ color: "var(--app-text-secondary)" }}>
+                  On Windows, audio is only shared when you pick <strong>Entire Screen</strong>. Window/Tab shares stay video-only (Windows can't isolate audio per app).
+                </p>
+              )}
 
               {/* FPS selector */}
               <div className="rounded-xl px-4 py-3" style={{ backgroundColor: "var(--app-bg-secondary)" }}>

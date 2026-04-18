@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { X, Check, LogOut, Pencil, Camera } from "lucide-react";
+import { X, Check, LogOut, Pencil, Camera, ChevronLeft, ChevronRight } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme, ThemeName } from "@/contexts/ThemeContext";
 import { defaultProfileColor } from "@/lib/profileColors";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useIsMobile } from "@/hooks/use-mobile";
 import VoiceVideoSettings from "./settings/VoiceVideoSettings";
 import ActivityPrivacySettings from "./settings/ActivityPrivacySettings";
 import GamingModeSettings from "./settings/GamingModeSettings";
@@ -74,7 +75,9 @@ interface PendingChanges {
 }
 
 const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
-  const [activeCategory, setActiveCategory] = useState<SettingsCategory>("my-account");
+  const isMobile = useIsMobile();
+  // null = category list view (mobile only). On desktop the sidebar is always visible.
+  const [activeCategory, setActiveCategory] = useState<SettingsCategory | null>(null);
   const { user, signOut } = useAuth();
   const { theme, setTheme } = useTheme();
   const [visible, setVisible] = useState(false);
@@ -150,6 +153,8 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
     if (isOpen) {
       setVisible(true);
       setPendingChanges({});
+      // Mobile: start in the category-list view. Desktop: open My Account directly.
+      setActiveCategory(isMobile ? null : "my-account");
       requestAnimationFrame(() => {
         requestAnimationFrame(() => setAnimating(true));
       });
@@ -158,20 +163,29 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
       const timer = setTimeout(() => setVisible(false), 250);
       return () => clearTimeout(timer);
     }
-  }, [isOpen]);
+  }, [isOpen, isMobile]);
 
   useEffect(() => {
     if (!isOpen) return;
     const handler = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") {
+        if (isMobile && activeCategory !== null) {
+          // On mobile, Escape backs out to the category list first.
+          setActiveCategory(null);
+        } else {
+          onClose();
+        }
+      }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [isOpen, onClose]);
+  }, [isOpen, isMobile, activeCategory, onClose]);
 
   if (!visible) return null;
 
-  const activeLabel = settingsSections.flatMap((section) => section.items).find((item) => item.id === activeCategory)?.label;
+  const activeLabel = activeCategory
+    ? settingsSections.flatMap((section) => section.items).find((item) => item.id === activeCategory)?.label
+    : "Settings";
   const panelStyle = { backgroundColor: "var(--app-bg-secondary)", borderColor: "var(--app-border)" } as const;
   const cardStyle = { backgroundColor: "var(--app-bg-tertiary)", borderColor: "var(--app-border)" } as const;
 
@@ -503,13 +517,137 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
       default:
         return (
           <div className="rounded-[24px] border p-5" style={cardStyle}>
-            <h2 className="text-xl font-bold" style={{ color: "var(--app-text-primary)" }}>{activeLabel}</h2>
+            <h2 className="text-xl font-bold" style={{ color: "var(--app-text-primary)" }}>{activeLabel || "Settings"}</h2>
             <p className="mt-3 text-sm" style={{ color: "var(--app-text-secondary)" }}>This section is scaffolded and keeps the popup layout consistent.</p>
           </div>
         );
     }
   };
 
+  // === MOBILE: Discord-style full-screen sheet with two-pane navigation ===
+  if (isMobile) {
+    return (
+      <div
+        ref={backdropRef}
+        className="app-themed fixed inset-0 z-50 transition-all duration-200 ease-out"
+        style={{
+          backgroundColor: animating ? "var(--app-bg-primary)" : "rgba(0,0,0,0)",
+          opacity: animating ? 1 : 0,
+        }}
+      >
+        <div
+          className="flex flex-col w-full"
+          style={{
+            backgroundColor: "var(--app-bg-primary)",
+            height: "100dvh",
+            paddingTop: "env(safe-area-inset-top, 0px)",
+          }}
+        >
+          {/* Sticky header — always shows a close (X) so users never get stuck */}
+          <div
+            className="flex h-14 items-center gap-2 border-b px-3 shrink-0"
+            style={{ borderColor: "var(--app-border)", backgroundColor: "var(--app-bg-primary)" }}
+          >
+            {activeCategory !== null ? (
+              <button
+                onClick={() => setActiveCategory(null)}
+                className="flex h-10 w-10 items-center justify-center rounded-full active:bg-[var(--app-hover)] touch-manipulation shrink-0"
+                aria-label="Back to settings"
+              >
+                <ChevronLeft className="h-5 w-5" style={{ color: "var(--app-text-primary)" }} />
+              </button>
+            ) : (
+              <div className="w-10 shrink-0" />
+            )}
+            <h1 className="flex-1 text-base font-bold truncate" style={{ color: "var(--app-text-primary)" }}>
+              {activeCategory ? activeLabel : "Settings"}
+            </h1>
+            <button
+              onClick={onClose}
+              className="flex h-10 w-10 items-center justify-center rounded-full active:bg-[var(--app-hover)] touch-manipulation shrink-0"
+              aria-label="Close settings"
+            >
+              <X className="h-5 w-5" style={{ color: "var(--app-text-primary)" }} />
+            </button>
+          </div>
+
+          {/* Body — either category list or detail pane */}
+          <div
+            className="flex-1 min-h-0 overflow-y-auto"
+            style={{ paddingBottom: hasChanges ? "calc(72px + env(safe-area-inset-bottom, 0px))" : "env(safe-area-inset-bottom, 0px)" }}
+          >
+            {activeCategory === null ? (
+              <div className="px-3 py-3">
+                {settingsSections.map((section) => (
+                  <div key={section.label} className="mb-5">
+                    <p className="px-3 pb-2 text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: "var(--app-text-secondary)" }}>
+                      {section.label}
+                    </p>
+                    <div className="rounded-2xl overflow-hidden border" style={panelStyle}>
+                      {section.items.map((item, idx) => (
+                        <button
+                          key={item.id}
+                          onClick={() => setActiveCategory(item.id)}
+                          className="flex w-full items-center justify-between px-4 py-3.5 text-left text-[15px] font-medium active:bg-[var(--app-hover)] touch-manipulation"
+                          style={{
+                            color: "var(--app-text-primary)",
+                            borderTop: idx === 0 ? "none" : "1px solid var(--app-border)",
+                          }}
+                        >
+                          <span>{item.label}</span>
+                          <ChevronRight className="h-4 w-4 shrink-0" style={{ color: "var(--app-text-secondary)" }} />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+
+                {/* Log Out pinned to the end of the scrollable list */}
+                <div className="mb-3 rounded-2xl overflow-hidden border" style={panelStyle}>
+                  <button
+                    onClick={handleLogout}
+                    className="flex w-full items-center justify-between px-4 py-3.5 text-left text-[15px] font-semibold text-[#f87171] active:bg-[var(--app-hover)] touch-manipulation"
+                  >
+                    Log Out
+                    <LogOut className="h-4 w-4" />
+                  </button>
+                </div>
+                <p className="px-4 pb-6 text-[11px]" style={{ color: "var(--app-text-secondary)" }}>
+                  Cubbly v{APP_VERSION}
+                </p>
+              </div>
+            ) : (
+              <div className="px-4 py-5">{renderContent()}</div>
+            )}
+          </div>
+
+          {/* Unsaved-changes bar above safe area */}
+          {hasChanges && (
+            <div
+              className="absolute left-0 right-0 flex items-center justify-between gap-2 px-4 py-3 border-t"
+              style={{
+                bottom: 0,
+                paddingBottom: "calc(12px + env(safe-area-inset-bottom, 0px))",
+                backgroundColor: "var(--app-bg-tertiary)",
+                borderColor: "var(--app-border)",
+                boxShadow: "0 -8px 24px rgba(0,0,0,0.3)",
+              }}
+            >
+              <p className="text-xs font-medium truncate" style={{ color: "var(--app-text-primary)" }}>Unsaved changes</p>
+              <div className="flex items-center gap-2 shrink-0">
+                <button onClick={discardChanges} className="rounded-full px-3 py-1.5 text-xs font-semibold" style={{ color: "var(--app-text-secondary)" }}>Reset</button>
+                <button onClick={applyChanges} disabled={saving} className="rounded-full px-4 py-1.5 text-xs font-semibold text-white bg-[#3ba55c] disabled:opacity-50">
+                  {saving ? "Saving..." : "Save"}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // === DESKTOP (unchanged) ===
   return (
     <div
       ref={backdropRef}

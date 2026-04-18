@@ -591,13 +591,18 @@ function installDisplayMediaHandler() {
           return;
         }
         const grant = { video: match };
-        if (pendingShareWantAudio) {
-          // 'loopback' = system audio capture on Windows; on macOS Electron will
-          // fall back to no audio (macOS has no public loopback API). Browsers/
-          // Linux behave per Chromium defaults.
+        // CRITICAL: Chromium/Electron's 'loopback' is system-wide on Windows —
+        // there is no per-window/per-process loopback API. So if the user picks
+        // a window or browser-tab source and we grant 'loopback', every other
+        // app's audio leaks into the share. Only honor loopback for full-screen
+        // sources (id starts with "screen:"). For window sources, drop audio.
+        const isScreenSource = typeof match.id === "string" && match.id.startsWith("screen:");
+        if (pendingShareWantAudio && isScreenSource) {
           grant.audio = "loopback";
+        } else if (pendingShareWantAudio && !isScreenSource) {
+          log.warn("[share] audio requested for non-screen source — dropping (Windows has no per-window loopback). source:", match.id);
         }
-        log.info("[share] granting source:", match.id, "withAudio:", pendingShareWantAudio);
+        log.info("[share] granting source:", match.id, "withAudio:", !!grant.audio);
         callback(grant);
       } catch (e) {
         log.error("[share] display-media handler failed:", e?.message || e);

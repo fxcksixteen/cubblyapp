@@ -7,7 +7,8 @@ import { useActivity } from "@/contexts/ActivityContext";
 import { useFriends } from "@/hooks/useFriends";
 import { Conversation } from "@/hooks/useConversations";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, X, Users } from "lucide-react";
+import { Plus, X, Users, MoreVertical } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { getProfileColor } from "@/lib/profileColors";
 import { activityLabel } from "@/lib/activityLabel";
 import { toast } from "sonner";
@@ -49,6 +50,7 @@ interface DMSidebarProps {
 
 
 const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversation, onOpenDM, onCreateGroup }: DMSidebarProps) => {
+  const isMobile = useIsMobile();
   const { user, onlineUserIds } = useAuth();
   const { activeCall, toggleMute, toggleDeafen } = useVoice();
   const { getActivity } = useActivity();
@@ -220,11 +222,30 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                         </p>
                       )}
                     </div>
-                    <X
-                      onClick={(e) => { e.stopPropagation(); onCloseConversation(conv.id); }}
-                      className="ml-auto h-4 w-4 shrink-0 opacity-0 group-hover:opacity-100"
-                      style={{ color: "var(--app-text-secondary, #949ba4)" }}
-                    />
+                    {isMobile ? (
+                      // Mobile: persistent ⋮ that opens the existing context menu.
+                      // Avoids the desktop hover-X that requires a double-tap on touch
+                      // (first tap reveals the X, second tap fires it → wrong-chat opens).
+                      <span
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          // Synthesize a contextmenu event on the row to open Radix's menu
+                          const target = e.currentTarget.parentElement as HTMLElement | null;
+                          target?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: e.clientX, clientY: e.clientY }));
+                        }}
+                        className="ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded touch-manipulation"
+                        style={{ color: "var(--app-text-secondary, #949ba4)" }}
+                        aria-label="More options"
+                      >
+                        <MoreVertical className="h-4 w-4" />
+                      </span>
+                    ) : (
+                      <X
+                        onClick={(e) => { e.stopPropagation(); onCloseConversation(conv.id); }}
+                        className="ml-auto h-4 w-4 shrink-0 opacity-0 group-hover:opacity-100"
+                        style={{ color: "var(--app-text-secondary, #949ba4)" }}
+                      />
+                    )}
                   </button>
                 </ContextMenuTrigger>
                 <ContextMenuContent
