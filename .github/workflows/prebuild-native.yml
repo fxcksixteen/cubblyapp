@@ -49,12 +49,15 @@ jobs:
           npm_config_build_from_source: 'true'
         run: npm install --ignore-scripts --include=dev
 
-      - name: Prebuild for Electron 33 (x64)
+      # N-API addons are ABI-stable across Node/Electron versions, so a single
+      # NAPI build works for Electron 33, 41, and beyond. Targeting the actual
+      # Electron version we ship (41) avoids any chance of header drift.
+      - name: Prebuild for Electron 41 (x64, NAPI)
         working-directory: native/win-audio-capture
         env:
           npm_config_msvs_version: '2022'
         shell: cmd
-        run: npx --no-install prebuildify --napi --strip -t electron@33.0.0 --arch=x64 --verbose
+        run: npx --no-install prebuildify --napi --strip -t electron@41.0.0 --arch=x64 --verbose
 
       - name: List prebuilds
         if: always()
@@ -76,6 +79,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "No prebuild changes to commit."
           else
-            git commit -m "chore(native): prebuild win-audio-capture for Electron 33 [skip ci]"
+            git commit -m "chore(native): prebuild win-audio-capture (NAPI, Electron 41) [skip ci]"
             git push origin HEAD:${GITHUB_REF_NAME}
           fi

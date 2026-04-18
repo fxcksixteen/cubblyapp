@@ -11,10 +11,61 @@
 let nativeBinding = null;
 let loadError = null;
 
+// Manual loader. We previously relied on `node-gyp-build`, but it only matches
+// strict prebuild filenames like `electron.napi.node` / `node.napi.node`. Our
+// CI emits `win-audio-capture.node`, so node-gyp-build silently failed to find
+// the binary in production — which is why per-window audio was always disabled
+// in shipped Electron builds. This loader scans the prebuilds dir for ANY
+// `.node` file and tries each in turn, so the addon actually loads regardless
+// of what naming convention the build pipeline used.
+function tryLoad(filePath) {
+  try {
+    const mod = require(filePath);
+    if (mod && (typeof mod.startCapture === "function" || typeof mod.start === "function")) {
+      return mod;
+    }
+  } catch (e) {
+    loadError = e;
+  }
+  return null;
+}
+
 try {
-  // Only attempt to load on Windows
   if (process.platform === "win32") {
-    nativeBinding = require("node-gyp-build")(__dirname);
+    const path = require("path");
+    const fs = require("fs");
+    const candidates = [];
+
+    // 1) Prebuilds for this platform/arch — accept ANY .node file inside.
+    const prebuildDir = path.join(__dirname, "prebuilds", `${process.platform}-${process.arch}`);
+    try {
+      if (fs.existsSync(prebuildDir)) {
+        for (const f of fs.readdirSync(prebuildDir)) {
+          if (f.endsWith(".node")) candidates.push(path.join(prebuildDir, f));
+        }
+      }
+    } catch (_) {}
+
+    // 2) `node-gyp rebuild` output (dev fallback).
+    candidates.push(path.join(__dirname, "build", "Release", "win_audio_capture.node"));
+    candidates.push(path.join(__dirname, "build", "Release", "win-audio-capture.node"));
+
+    // 3) Last resort: let node-gyp-build try.
+    let gypResolved = null;
+    try { gypResolved = require("node-gyp-build").path(__dirname); } catch (_) {}
+    if (gypResolved) candidates.push(gypResolved);
+
+    for (const cand of candidates) {
+      const mod = tryLoad(cand);
+      if (mod) {
+        nativeBinding = mod;
+        try { console.log("[win-audio-capture] loaded native binding from", cand); } catch (_) {}
+        break;
+      }
+    }
+    if (!nativeBinding) {
+      try { console.warn("[win-audio-capture] no native binding found in", candidates); } catch (_) {}
+    }
   }
 } catch (e) {
   loadError = e;

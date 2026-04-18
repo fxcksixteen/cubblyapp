@@ -266,8 +266,11 @@ const GroupCallPanel = ({ conversationId }: Props) => {
             avatarUrl={p.avatarUrl}
             audioLevel={p.audioLevel}
             isMuted={p.isMuted}
-            videoStream={p.isVideoOn ? p.videoStream : null}
-            onMaximize={p.isVideoOn && p.videoStream ? () => setFullscreenView({ stream: p.videoStream!, name: p.displayName, type: "cam" }) : undefined}
+            // Render whenever we actually have a remote video stream — never
+            // gate on `isVideoOn` boolean alone; that signal can lag/miss and
+            // hides the tile even though frames are arriving.
+            videoStream={p.videoStream || null}
+            onMaximize={p.videoStream ? () => setFullscreenView({ stream: p.videoStream!, name: p.displayName, type: "cam" }) : undefined}
             onContextMenu={(e) => { e.preventDefault(); setVolumeMenu({ userId: p.userId, name: p.displayName, x: e.clientX, y: e.clientY }); }}
           />
         ))}
