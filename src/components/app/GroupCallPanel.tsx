@@ -169,11 +169,13 @@ const GroupCallPanel = ({ conversationId }: Props) => {
     activeCall, peers, selfAudioLevel, leaveCall,
     toggleMute, toggleDeafen, toggleVideo, toggleScreenShare,
     localVideoStream, localScreenStream, ping,
+    getUserVolume, setUserVolume, isUserMuted, setUserMuted,
   } = useGroupCall();
+  const volumeApi = { getUserVolume, setUserVolume, isUserMuted, setUserMuted };
   const [elapsed, setElapsed] = useState(0);
   const [selfAvatar, setSelfAvatar] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [fullscreenView, setFullscreenView] = useState<{ stream: MediaStream; name: string; type: "screen" | "cam"; isLocal?: boolean } | null>(null);
+  const [fullscreenView, setFullscreenView] = useState<{ stream: MediaStream; name: string; type: "screen" | "cam"; isLocal?: boolean; peerId?: string } | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -221,7 +223,7 @@ const GroupCallPanel = ({ conversationId }: Props) => {
       {sharingPeer && (
         <ScreenShareViewer
           peer={sharingPeer}
-          onMaximize={() => sharingPeer.screenStream && setFullscreenView({ stream: sharingPeer.screenStream, name: sharingPeer.displayName, type: "screen" })}
+          onMaximize={() => sharingPeer.screenStream && setFullscreenView({ stream: sharingPeer.screenStream, name: sharingPeer.displayName, type: "screen", peerId: sharingPeer.userId })}
         />
       )}
       {activeCall.isScreenSharing && localScreenStream && (
@@ -337,6 +339,8 @@ const GroupCallPanel = ({ conversationId }: Props) => {
           sharerName={fullscreenView.name}
           type={fullscreenView.type}
           isLocal={fullscreenView.isLocal}
+          audioPeerId={fullscreenView.type === "screen" && !fullscreenView.isLocal ? fullscreenView.peerId : undefined}
+          volumeApi={volumeApi}
           onClose={() => setFullscreenView(null)}
         />
       )}

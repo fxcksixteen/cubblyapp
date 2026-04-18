@@ -63,7 +63,9 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
     localVideoStream, remoteVideoStream,
     currentCallEventId,
     peerInstantState,
+    getUserVolume, setUserVolume, isUserMuted, setUserMuted,
   } = useVoice();
+  const volumeApi = { getUserVolume, setUserVolume, isUserMuted, setUserMuted };
   const { getPeerState } = useCallParticipants(activeCall?.conversationId === conversationId ? currentCallEventId : null);
   const dbPeerState = getPeerState();
   // Merge: instant signaling state takes precedence; DB row is the fallback /
@@ -449,6 +451,9 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
           sharerName={fullscreenView.name}
           type={fullscreenView.type}
           isLocal={fullscreenView.isLocal}
+          // Only screen-share carries audio; remote-cam tiles + local previews don't.
+          audioPeerId={fullscreenView.type === "screen" && !fullscreenView.isLocal ? recipientUserId : undefined}
+          volumeApi={volumeApi}
           onClose={() => setFullscreenView(null)}
         />
       )}
@@ -459,6 +464,7 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
           displayName={volumeMenu.name}
           x={volumeMenu.x}
           y={volumeMenu.y}
+          volumeApi={volumeApi}
           onClose={() => setVolumeMenu(null)}
         />
       )}
