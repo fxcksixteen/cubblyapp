@@ -23,11 +23,11 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.5-hotfix.1";
+export const CURRENT_VERSION = "0.2.6";
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    version: "0.2.5-hotfix.1",
+    version: "0.2.6",
     title: "Crash fix — app stuck on 'Cubbly hit a snag'",
     date: "2026-04-18",
     hero: bearImage,
