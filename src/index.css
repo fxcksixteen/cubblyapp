@@ -226,3 +226,17 @@
 /* Safe area helpers */
 .safe-top { padding-top: env(safe-area-inset-top, 0px); }
 .safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
+
+/* ===== Gaming Mode suppression =====
+   Applied to <html> when GamingModeContext.isSuppressing is true. Cuts heavy
+   animations / transitions so the user's game gets the CPU/GPU back. */
+html.cubbly-gaming-mode *,
+html.cubbly-gaming-mode *::before,
+html.cubbly-gaming-mode *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+/* Keep critical UI feedback (typing dots, call ring) visible but cheap */
+html.cubbly-gaming-mode .typing-bounce { animation: none !important; opacity: 0.7; }

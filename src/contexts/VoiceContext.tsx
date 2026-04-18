@@ -268,6 +268,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const [remoteScreenStream, setRemoteScreenStream] = useState<MediaStream | null>(null);
 
+  // Expose a global flag so the heavy activity-poller (ActivityContext) can
+  // throttle itself while the user is in a call.
+  useEffect(() => {
+    (window as any).__cubblyInCall = !!activeCall && activeCall.state !== "ended";
+    return () => { (window as any).__cubblyInCall = false; };
+  }, [activeCall]);
+
   /**
    * Instant peer mute/deafen/video state, broadcast over the signaling
    * channel so the UI updates with zero latency. The DB-backed
