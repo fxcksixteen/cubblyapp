@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { playSound, playLooping, stopLooping } from "@/lib/sounds";
 import { startNativeWindowAudioStream } from "@/lib/nativeWindowAudio";
+import { usePeerGains } from "@/lib/peerGain";
 
 type ParticipantStatePatch = {
   is_muted?: boolean;
@@ -1761,9 +1762,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     });
 
     // Tear down per-peer gain pipelines so AudioContexts don't leak between calls.
-    peerGainsRef.current.clear();
-    peerAudioCtxRef.current.forEach((ctx) => { try { if (ctx.state !== "closed") ctx.close().catch(() => {}); } catch {} });
-    peerAudioCtxRef.current.clear();
+    clearAllPeerGains();
 
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
