@@ -566,12 +566,21 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         senders.forEach(s => {
           if (s.track?.kind === "audio") {
             s.track.enabled = true;
+            // Bump network priority so the OS prioritises voice packets
+            // over background traffic (game/download/etc).
+            try {
+              const params = s.getParameters();
+              if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
+              (params.encodings[0] as any).networkPriority = "high";
+              (params.encodings[0] as any).priority = "high";
+              params.encodings[0].maxBitrate = 128_000;
+              s.setParameters(params).catch(() => {});
+            } catch {}
             console.log("[Voice] Audio track enabled on ICE connected");
           }
         });
         // Upsert our call_participants row immediately so the peer can see
-        // our mute/deafen/video state from the moment we connect (otherwise
-        // the row only gets created the first time we toggle something).
+        // our mute/deafen/video state from the moment we connect.
         try { syncParticipantRef.current?.(); } catch {}
       }
       if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed") {
