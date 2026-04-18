@@ -126,6 +126,8 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
   // Local camera + screenshare track refs
   const localVideoTrackRef = useRef<MediaStreamTrack | null>(null);
   const localScreenTrackRef = useRef<MediaStreamTrack | null>(null);
+  /** Cleanup fn for an active native (WASAPI) per-window audio capture, if any. */
+  const nativeWindowAudioStopRef = useRef<(() => void) | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const callEventIdRef = useRef<string | null>(null);
   const callConvIdRef = useRef<string | null>(null);
