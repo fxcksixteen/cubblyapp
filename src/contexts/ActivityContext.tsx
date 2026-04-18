@@ -57,6 +57,7 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
   const [myGames, setMyGames] = useState<Array<{ id: string; process_name: string; display_name: string }>>([]);
   const lastSentRef = useRef<string | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollIntervalMsRef = useRef<number>(0);
 
   // ---- Fetch all visible activities + subscribe to realtime changes ----
   useEffect(() => {
