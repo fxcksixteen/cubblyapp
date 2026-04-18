@@ -175,7 +175,7 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
     // Use slow polling when gaming-mode suppression OR an active call is happening,
     // to avoid the heavy `tasklist` scan competing with WebRTC for CPU/wifi.
     const getInterval = () => {
-      const suppressing = (window as any).__cubblySuppressActive === true;
+      const suppressing = (window as any).__cubblySuppress === true;
       const inCall = (window as any).__cubblyInCall === true;
       return suppressing || inCall ? POLL_INTERVAL_SUPPRESSED_MS : POLL_INTERVAL_MS;
     };
