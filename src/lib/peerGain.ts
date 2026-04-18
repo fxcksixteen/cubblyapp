@@ -54,6 +54,14 @@ function registerPeerCtx(ctx: AudioContext) {
  * the same peer all route through the SAME GainNode. We track each stream's
  * AudioContext and source separately so we can tear them down individually.
  */
+interface AttachedMedia {
+  el: HTMLMediaElement;
+  /** True when this element is being routed through the WebAudio gain graph
+   * (so we mute the element). False when the graph is suspended/unavailable
+   * and we have to control loudness via element.volume + element.muted. */
+  routedThroughGraph: boolean;
+}
+
 interface PeerEntry {
   /** Shared gain node for this peer (every source connects into it). */
   gain: GainNode;
@@ -61,6 +69,9 @@ interface PeerEntry {
   ctx: AudioContext;
   /** Map<streamKey, MediaStreamAudioSourceNode> for cleanup on retattach. */
   sources: Map<string, MediaStreamAudioSourceNode>;
+  /** Map<streamKey, AttachedMedia> — elements we manage volume/mute on as
+   *  fallback when the WebAudio path isn't running. */
+  media: Map<string, AttachedMedia>;
 }
 
 export interface PeerGainApi {
@@ -68,17 +79,6 @@ export interface PeerGainApi {
   setUserVolume: (userId: string, volume: number) => void;
   isUserMuted: (userId: string) => boolean;
   setUserMuted: (userId: string, muted: boolean) => void;
-  /**
-   * Route the given stream through the per-peer GainNode for `userId`.
-   * Mutes the source media element so playback only flows through the gain pipeline.
-   *
-   * Accepts both HTMLAudioElement (mic playback) and HTMLVideoElement
-   * (screen-share whose `<video>` element also carries the audio track).
-   *
-   * `streamKind` differentiates concurrent streams from the same peer
-   * (e.g. "mic" + "screen") so they can be independently re-attached
-   * during renegotiation without tearing down the other.
-   */
   attachPeerGain: (
     userId: string,
     stream: MediaStream,
