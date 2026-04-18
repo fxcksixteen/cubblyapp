@@ -28,12 +28,16 @@ export const CURRENT_VERSION = "0.2.8";
 export const CHANGELOG: ChangelogEntry[] = [
   {
     version: "0.2.8",
-    title: "Camera fix — your peer actually sees you now",
+    title: "Native per-window audio + camera fix",
     date: "2026-04-18",
     hero: bearImage,
-    newFeatures: [],
+    newFeatures: [
+      "MAJOR: Cubbly now ships its own native Windows audio engine — when you share a single window or browser tab, only THAT app's sound is sent to the call (Spotify, music in your game, a YouTube tab, anything). No more 'audio only works when you share the whole screen'. Built on Windows 10 20H2's process-loopback APIs the same way Discord does it. Bundled .node binary, no install steps.",
+      "Screen-share picker now tells you upfront that Window and Browser Tab shares carry per-process audio, not your full system mix",
+    ],
     bugFixes: [
-      "CRITICAL: Fixed the long-standing bug where turning on your camera mid-call showed the preview to YOU but never reached the other person — the receiving side now forces its video transceiver back to sendrecv on every mid-call re-offer, so the next time you (or they) flip the camera on, it actually streams both ways",
+      "CRITICAL: Fixed turning your camera on mid-call showing the preview to YOU but never reaching the other person — the receiving side now forces its video transceiver back to sendrecv on every mid-call re-offer so the next camera flip actually streams both ways",
+      "Window/tab share-audio no longer silently drops — it routes through the new native capture path instead of being disabled",
     ],
   },
   {
