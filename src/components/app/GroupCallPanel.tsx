@@ -258,6 +258,7 @@ const GroupCallPanel = ({ conversationId }: Props) => {
             audioLevel={p.audioLevel}
             isMuted={p.isMuted}
             videoStream={p.isVideoOn ? p.videoStream : null}
+            onMaximize={p.isVideoOn && p.videoStream ? () => setFullscreenView({ stream: p.videoStream!, name: p.displayName, type: "cam" }) : undefined}
           />
         ))}
       </div>
