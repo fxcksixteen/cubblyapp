@@ -1542,7 +1542,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         }
       } else {
         // Browser path: standard getDisplayMedia.
-        const allowAudio = effectiveAudio && type === "screen";
+        const allowAudio = effectiveAudio && (type === "screen" || type === "tab");
 
         const videoConstraints: any = {
           frameRate: { ideal: effectiveFps, max: effectiveFps },
