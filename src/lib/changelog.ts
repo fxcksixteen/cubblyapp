@@ -23,9 +23,24 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.8";
+export const CURRENT_VERSION = "0.2.9";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.2.9",
+    title: "Group calls finally get per-window audio + camera fix",
+    date: "2026-04-18",
+    hero: bearImage,
+    newFeatures: [
+      "GROUP CALLS: Sharing a single window or browser tab in a group call now sends ONLY that app's audio (Spotify, a YouTube tab, your game's music) — same native WASAPI engine that 1-on-1 already uses, no more 'audio either leaks everything or nothing'",
+      "Browser web app: sharing a tab in a 1-on-1 call now correctly carries that tab's audio (previously silently disabled)",
+    ],
+    bugFixes: [
+      "CRITICAL: Fixed remote camera tiles disappearing or never appearing in group calls when someone turned their camera on mid-call — newly negotiated tracks arrive in a 'muted' state and we now correctly listen for unmute (when frames actually start flowing) instead of clearing the tile",
+      "Group call window/tab share-audio no longer leaks your full system mix to everyone — only the chosen app's audio is sent, the same way Discord does it",
+      "Unified the 1-on-1 and group native-audio capture paths into one shared module so they can't drift apart again",
+    ],
+  },
   {
     version: "0.2.8",
     title: "Native per-window audio + camera fix",
