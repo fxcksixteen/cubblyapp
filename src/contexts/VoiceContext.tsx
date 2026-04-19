@@ -2182,6 +2182,44 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     return () => clearInterval(interval);
   }, [activeCall?.state]);
 
+  // CRITICAL: when the app/tab closes mid-call, mark our participant row as
+  // left AND set the call_event to ended (so the chat pill flips from
+  // "Ongoing Call" to "Call Ended" automatically — not just when someone
+  // clicks the red button). Uses fetch + keepalive so the request survives
+  // unload, mirroring ActivityContext's pattern.
+  useEffect(() => {
+    if (!activeCall || !user || !currentCallEventId) return;
+    const handleUnload = () => {
+      try {
+        const baseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+        const apikey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
+        const headers = {
+          apikey,
+          Authorization: `Bearer ${apikey}`,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal",
+        };
+        const endedAt = new Date().toISOString();
+        // Mark our participant row left.
+        fetch(
+          `${baseUrl}/rest/v1/call_participants?call_event_id=eq.${currentCallEventId}&user_id=eq.${user.id}&left_at=is.null`,
+          { method: "PATCH", headers, keepalive: true, body: JSON.stringify({ left_at: endedAt }) }
+        ).catch(() => {});
+        // End the call_event so the pill flips to "Call Ended" for both sides.
+        fetch(
+          `${baseUrl}/rest/v1/call_events?id=eq.${currentCallEventId}`,
+          { method: "PATCH", headers, keepalive: true, body: JSON.stringify({ state: "ended", ended_at: endedAt }) }
+        ).catch(() => {});
+      } catch { /* ignore */ }
+    };
+    window.addEventListener("beforeunload", handleUnload);
+    window.addEventListener("pagehide", handleUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleUnload);
+      window.removeEventListener("pagehide", handleUnload);
+    };
+  }, [activeCall, user, currentCallEventId]);
+
   return (
     <VoiceContext.Provider value={{
       settings, updateSettings, screenShareSettings, updateScreenShareSettings,
