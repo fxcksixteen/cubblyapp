@@ -23,16 +23,17 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.14";
+export const CURRENT_VERSION = "0.2.15";
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    version: "0.2.14",
-    title: "Voice calls stay smooth while gaming + auto-update pipeline fixed",
+    version: "0.2.15",
+    title: "Window screenshare audio fixed + auto-update pipeline live",
     date: "2026-04-19",
     hero: bearImage,
     newFeatures: [],
     bugFixes: [
+      "CRITICAL: Window screen-share audio now actually works on Windows — fixed the WASAPI format negotiation (32-bit float PCM) that was silently failing with HRESULT 0x88890021",
       "MAJOR: Voice calls no longer lag or spike to 3000ms ping the moment you (or anyone in the call) opens a fullscreen game like Valorant or Marvel Rivals — Cubbly now keeps its audio + network pipeline running at full priority even when another app takes focus",
       "Auto-update pipeline fixed end-to-end so future patches actually reach you instead of getting stuck mid-release",
     ],
