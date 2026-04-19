@@ -608,7 +608,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
         </div>
       )}
 
-      {!conversation?.is_group && latestOngoingCallEvent && !liveCallInThisChat && !!recipientUserId && (
+      {!conversation?.is_group && latestOngoingCallEvent && latestEventRejoinable && !liveCallInThisChat && !!recipientUserId && (
         <div className="shrink-0 border-b px-4 py-3" style={{ borderColor: "var(--app-border)", backgroundColor: "var(--app-bg-secondary)" }}>
           <div className="flex items-center justify-between gap-3 rounded-xl border px-3 py-3" style={{ borderColor: "var(--app-border)", backgroundColor: "var(--app-bg-tertiary)" }}>
             <div className="flex min-w-0 items-center gap-3">
@@ -688,7 +688,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
               }
 
               if (item.type === "call-event") {
-                const canRejoin = item.event.state === "ongoing" && !conversation?.is_group && !!recipientUserId && !liveCallInThisChat;
+                const canRejoin = item.event.state === "ongoing" && !conversation?.is_group && !!recipientUserId && !liveCallInThisChat && rejoinableEventIds.has(item.event.id);
                 const isRejoiningThisEvent = rejoiningEventId === item.event.id;
                 return (
                   <CallEventMessage
