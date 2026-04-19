@@ -2233,29 +2233,20 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
   // Auto-end behavior:
   // - 30s timeout while RINGING (unanswered) — Discord-like.
-  // - 5min timeout once CONNECTED but alone (peer left and never came back).
-  // - Stop the *incoming* ringtone after 30s so we don't ring forever.
+  // NOTE: removed the 5-min "lonely" auto-hangup. It was a blind wall-clock
+  // timer that killed connected calls whether or not the peer was actually
+  // gone. Discord doesn't auto-end connected calls; neither do we.
   useEffect(() => {
     if (!activeCall) return;
     let unansweredTimer: ReturnType<typeof setTimeout> | null = null;
-    let lonelyTimer: ReturnType<typeof setTimeout> | null = null;
-
     if (activeCall.state === "calling" || activeCall.state === "ringing") {
       unansweredTimer = setTimeout(() => {
         console.log("[Voice] ⏰ 30s ring timeout — auto-ending unanswered call");
         endCallRef.current();
       }, 30_000);
     }
-    if (activeCall.state === "connected") {
-      // We'll bail after 5 minutes if the peer never reconnects.
-      lonelyTimer = setTimeout(() => {
-        console.log("[Voice] ⏰ 5-min lonely timeout — auto-ending call");
-        endCallRef.current();
-      }, 5 * 60 * 1000);
-    }
     return () => {
       if (unansweredTimer) clearTimeout(unansweredTimer);
-      if (lonelyTimer) clearTimeout(lonelyTimer);
     };
   }, [activeCall?.conversationId, activeCall?.state]);
 
