@@ -72,7 +72,7 @@ const shouldShowTimeDivider = (prevDate: string, currDate: string): boolean => {
 
 const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUserId, conversation, showGroupMembers, onLeftGroup }: ChatViewProps) => {
   const { user } = useAuth();
-  const { activeCall, callEvents } = useVoice();
+  const { activeCall, callEvents, startCall } = useVoice();
   const { messages, loading, sendMessage, loadOlder, hasMore, loadingOlder } = useMessages(conversationId);
   const [input, setInput] = useState("");
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
@@ -572,6 +572,11 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                     state={item.event.state}
                     startedAt={item.event.startedAt}
                     endedAt={item.event.endedAt}
+                    onJoin={
+                      item.event.state === "ongoing" && !conversation?.is_group && recipientUserId
+                        ? () => startCall(conversationId, recipientUserId, recipientName)
+                        : undefined
+                    }
                   />
                 );
               }

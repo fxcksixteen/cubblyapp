@@ -12,12 +12,41 @@ type IceServer = {
   credential?: string;
 };
 
+const turnHostsByRegion: Record<string, string> = {
+  "eu-west": "europe.relay.metered.ca",
+  "eu-central": "europe.relay.metered.ca",
+  "us-east": "a.relay.metered.ca",
+  "us-west": "a.relay.metered.ca",
+  "south-america": "a.relay.metered.ca",
+  "asia-east": "asia.relay.metered.ca",
+  "asia-south": "asia.relay.metered.ca",
+  "australia": "asia.relay.metered.ca",
+};
+
+function getOrderedTurnHosts(preferredRegion?: string | null) {
+  const fallbackHosts = [
+    "europe.relay.metered.ca",
+    "a.relay.metered.ca",
+    "asia.relay.metered.ca",
+  ];
+
+  const preferredHost = preferredRegion
+    ? turnHostsByRegion[preferredRegion.trim().toLowerCase()]
+    : undefined;
+
+  if (!preferredHost) return fallbackHosts;
+  return [preferredHost, ...fallbackHosts.filter((host) => host !== preferredHost)];
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
+    const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
+    const preferredRegion = typeof body?.preferredRegion === "string" ? body.preferredRegion : undefined;
+
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -58,11 +87,7 @@ serve(async (req) => {
     //   asia.relay.metered.ca   = Asia
     // The browser's ICE agent will pick the lowest-latency one automatically.
     if (turnUsername && turnCredential) {
-      const regions = [
-        "europe.relay.metered.ca", // Frankfurt — closest for Palestine, MENA, EU
-        "a.relay.metered.ca",       // US fallback
-        "asia.relay.metered.ca",    // Asia fallback
-      ];
+      const regions = getOrderedTurnHosts(preferredRegion);
       for (const host of regions) {
         iceServers.push(
           { urls: `turn:${host}:80`, username: turnUsername, credential: turnCredential },

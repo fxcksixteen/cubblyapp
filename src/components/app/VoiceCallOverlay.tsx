@@ -8,6 +8,7 @@ import { useCallParticipants } from "@/hooks/useCallParticipants";
 import ScreenSharePicker, { ScreenShareType } from "./ScreenSharePicker";
 import FullscreenScreenShareViewer from "./FullscreenScreenShareViewer";
 import UserVolumeMenu from "./UserVolumeMenu";
+import { Button } from "@/components/ui/button";
 import micIcon from "@/assets/icons/microphone.svg";
 import micMuteIcon from "@/assets/icons/microphone-mute.svg";
 import headphoneIcon from "@/assets/icons/headphone.svg";
@@ -481,7 +482,7 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
 };
 
 /** Pill-shaped call event shown in chat history */
-export const CallEventMessage = ({ state, startedAt, endedAt }: {
+export const CallEventMessage = ({ state, startedAt, endedAt, onJoin }: {
   state: "ongoing" | "ended" | "missed";
   startedAt: string;
   endedAt?: string;
@@ -542,6 +543,16 @@ export const CallEventMessage = ({ state, startedAt, endedAt }: {
             {startTime} • {getDurationDisplay()}
           </span>
         </div>
+
+        {state === "ongoing" && onJoin && (
+          <Button
+            size="sm"
+            onClick={onJoin}
+            className="h-8 rounded-full px-3"
+          >
+            Rejoin
+          </Button>
+        )}
       </div>
     </div>
   );
