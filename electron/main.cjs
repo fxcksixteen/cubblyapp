@@ -273,6 +273,11 @@ ipcMain.on("window-maximize", () => {
 ipcMain.on("window-close", () => { mainWindow?.close(); });
 ipcMain.handle("window-is-maximized", () => mainWindow?.isMaximized() ?? false);
 
+// IPC: real packaged app version (proves to renderer what was actually installed)
+ipcMain.handle("get-app-version", () => {
+  try { return app.getVersion(); } catch { return null; }
+});
+
 // IPC: updater
 ipcMain.on("check-for-updates", () => {
   try { autoUpdater.checkForUpdates(); }
