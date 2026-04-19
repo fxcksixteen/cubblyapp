@@ -132,8 +132,10 @@ bool ProcessLoopbackCapture::Start(DWORD pid, PcmCallback cb, std::string& error
   // the IAudioClient between attempts because Initialize() can only succeed
   // ONCE per client instance.
   uint32_t mixSr = 48000;
+  HRESULT mixFormatHr = E_NOTIMPL;
   WAVEFORMATEX* mixFormat = nullptr;
   hr = audioClient_->GetMixFormat(&mixFormat);
+  mixFormatHr = hr;
   if (SUCCEEDED(hr) && mixFormat) {
     if (mixFormat->nSamplesPerSec) {
       mixSr = mixFormat->nSamplesPerSec;
@@ -222,8 +224,8 @@ bool ProcessLoopbackCapture::Start(DWORD pid, PcmCallback cb, std::string& error
 
   if (!initialized) {
     errorOut = "IAudioClient::Initialize failed for all candidate formats";
-    if (FAILED(hr)) {
-      errorOut += " (GetMixFormat=" + HrToString(hr) + ")";
+    if (FAILED(mixFormatHr)) {
+      errorOut += " (GetMixFormat=" + HrToString(mixFormatHr) + ")";
     }
     if (!lastErr.empty()) {
       errorOut += ". Last: " + lastErr;

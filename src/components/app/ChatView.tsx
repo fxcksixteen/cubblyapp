@@ -190,7 +190,20 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
     setFirstUnreadId(null);
     setUnreadOnEntry(0);
     setShowNewBar(false);
+    setRejoiningEventId(null);
   }, [conversationId]);
+
+  useEffect(() => {
+    if (!rejoiningEventId) return;
+    const joinedThisConversation = activeCall?.conversationId === conversationId;
+    const targetEventStillOngoing = callEvents.some((event) => event.id === rejoiningEventId && event.state === "ongoing");
+    if (joinedThisConversation || !targetEventStillOngoing) {
+      setRejoiningEventId(null);
+      return;
+    }
+    const timeout = window.setTimeout(() => setRejoiningEventId((current) => current === rejoiningEventId ? null : current), 8000);
+    return () => window.clearTimeout(timeout);
+  }, [rejoiningEventId, activeCall?.conversationId, conversationId, callEvents]);
 
   // Capture the first-unread snapshot the FIRST time messages are loaded for this conversation.
   useEffect(() => {
@@ -583,7 +596,8 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                             if (isRejoiningThisEvent) return;
                             setRejoiningEventId(item.event.id);
                             try {
-                              startCall(conversationId, recipientUserId!, recipientName);
+                              void Promise.resolve((startCall as unknown as (cid: string, pid: string, name: string) => Promise<void>)(conversationId, recipientUserId!, recipientName))
+                                .catch(() => setRejoiningEventId(null));
                             } catch {
                               setRejoiningEventId(null);
                             }
