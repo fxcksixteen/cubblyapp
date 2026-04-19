@@ -126,12 +126,24 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
     });
   }, []);
 
+  const markAsReadNow = useCallback(async () => {
+    if (!conversationId) return;
+    try { await supabase.rpc("mark_conversation_read", { _conversation_id: conversationId }); } catch {}
+    setShowNewBar(false);
+    setUnreadOnEntry(0);
+  }, [conversationId]);
+
   const handleScroll = useCallback(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
     const threshold = 150;
-    userHasScrolledUpRef.current =
-      container.scrollHeight - container.scrollTop - container.clientHeight >= threshold;
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    const atBottom = distanceFromBottom < threshold;
+    userHasScrolledUpRef.current = !atBottom;
+    // Hitting the bottom dismisses the blue bar and marks the conversation read.
+    if (atBottom && (showNewBar || unreadOnEntry > 0)) {
+      void markAsReadNow();
+    }
     // Discord-style: when scrolled near the top, fetch older messages
     if (container.scrollTop < 200 && hasMore && !loadingOlder) {
       const prevHeight = container.scrollHeight;
@@ -142,7 +154,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
         });
       });
     }
-  }, [hasMore, loadingOlder, loadOlder]);
+  }, [hasMore, loadingOlder, loadOlder, showNewBar, unreadOnEntry, markAsReadNow]);
 
   useEffect(() => {
     const n = messages.length;
@@ -153,6 +165,36 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
     prevMessageCountRef.current = n;
   }, [messages.length, messages, user?.id, scrollToBottom]);
 
+  // Reset unread tracking when switching conversations
+  useEffect(() => {
+    initialUnreadCapturedRef.current = false;
+    setFirstUnreadId(null);
+    setUnreadOnEntry(0);
+    setShowNewBar(false);
+  }, [conversationId]);
+
+  // Capture the first-unread snapshot the FIRST time messages are loaded for this conversation.
+  useEffect(() => {
+    if (loading || messages.length === 0 || initialUnreadCapturedRef.current || !user) return;
+    initialUnreadCapturedRef.current = true;
+    (async () => {
+      const { data: part } = await supabase
+        .from("conversation_participants")
+        .select("last_read_at")
+        .eq("conversation_id", conversationId)
+        .eq("user_id", user.id)
+        .maybeSingle();
+      const lastRead = part?.last_read_at;
+      if (!lastRead) return;
+      const unread = messages.filter(m => m.sender_id !== user.id && new Date(m.created_at).getTime() > new Date(lastRead).getTime());
+      if (unread.length > 0) {
+        setFirstUnreadId(unread[0].id);
+        setUnreadOnEntry(unread.length);
+        setShowNewBar(true);
+      }
+    })();
+  }, [loading, messages, conversationId, user]);
+
   // Scroll to bottom on initial load and conversation switch + auto-focus input
   useEffect(() => {
     if (!loading && messages.length > 0) {
@@ -162,9 +204,11 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
       // Extra delayed scrolls for long conversations where DOM takes time to render
       const t1 = setTimeout(() => scrollToBottom(), 150);
       const t2 = setTimeout(() => scrollToBottom(), 400);
-      return () => { clearTimeout(t1); clearTimeout(t2); };
+      // After the auto-scroll lands at the bottom, mark as read.
+      const t3 = setTimeout(() => { void markAsReadNow(); }, 600);
+      return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
     }
-  }, [loading, conversationId, scrollToBottom]);
+  }, [loading, conversationId, scrollToBottom, markAsReadNow]);
 
   // Auto-focus message input on conversation switch
   useEffect(() => {
