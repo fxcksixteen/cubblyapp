@@ -487,6 +487,12 @@ const AppLayout = () => {
           }}
           createGroupConversation={createGroupConversation}
         />
+        <CallConflictModal
+          open={!!conflictModal}
+          variant={conflictModal?.variant || "same-device"}
+          onConfirm={async () => { const p = conflictModal?.pending; setConflictModal(null); if (p) await p(); }}
+          onCancel={() => setConflictModal(null)}
+        />
       </div>
     );
   }
@@ -680,6 +686,12 @@ const AppLayout = () => {
           navigate(`/@me/chat/${convId}`, { replace: true });
         }}
         createGroupConversation={createGroupConversation}
+      />
+      <CallConflictModal
+        open={!!conflictModal}
+        variant={conflictModal?.variant || "same-device"}
+        onConfirm={async () => { const p = conflictModal?.pending; setConflictModal(null); if (p) await p(); }}
+        onCancel={() => setConflictModal(null)}
       />
     </div>
   );
