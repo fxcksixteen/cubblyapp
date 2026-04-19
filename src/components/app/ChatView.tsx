@@ -113,7 +113,25 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
     }
   }, [lastMsgSenderId, messages.length]);
 
-  const conversationCallEvents = callEvents.filter(e => e.conversationId === conversationId);
+  // Filter call events for THIS conversation, but enforce the invariant that
+  // there can only ever be ONE "ongoing" pill at a time per chat (multiple
+  // would be a stale-data bug — only one call can actually be live in a chat).
+  // We keep the most recent ongoing one and demote any older "ongoing"
+  // duplicates to "ended" visually so the chat history is coherent.
+  const conversationCallEvents = (() => {
+    const all = callEvents.filter(e => e.conversationId === conversationId);
+    const ongoingByStart = all
+      .filter(e => e.state === "ongoing")
+      .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
+    const keepOngoingId = ongoingByStart[0]?.id;
+    return all.map(e => {
+      if (e.state === "ongoing" && e.id !== keepOngoingId) {
+        // Stale duplicate — render as ended
+        return { ...e, state: "ended" as const, endedAt: e.endedAt || new Date().toISOString() };
+      }
+      return e;
+    });
+  })();
 
   // ---- Auto-scroll ----
   const scrollToBottom = useCallback(() => {
@@ -195,20 +213,20 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
     })();
   }, [loading, messages, conversationId, user]);
 
-  // Scroll to bottom on initial load and conversation switch + auto-focus input
+  // Scroll to bottom on initial load and conversation switch + auto-focus input.
+  // We DO NOT auto-mark-as-read on load — the user has to actually scroll to
+  // bottom (or click "Mark as Read") for the blue "New Messages" bar and the
+  // red "NEW" divider to dismiss. This is what the user expected and what
+  // makes both indicators actually visible after switching chats.
   useEffect(() => {
     if (!loading && messages.length > 0) {
-      // Reset scroll-up flag on conversation switch
       userHasScrolledUpRef.current = false;
       scrollToBottom();
-      // Extra delayed scrolls for long conversations where DOM takes time to render
       const t1 = setTimeout(() => scrollToBottom(), 150);
       const t2 = setTimeout(() => scrollToBottom(), 400);
-      // After the auto-scroll lands at the bottom, mark as read.
-      const t3 = setTimeout(() => { void markAsReadNow(); }, 600);
-      return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+      return () => { clearTimeout(t1); clearTimeout(t2); };
     }
-  }, [loading, conversationId, scrollToBottom, markAsReadNow]);
+  }, [loading, conversationId, scrollToBottom]);
 
   // Auto-focus message input on conversation switch
   useEffect(() => {
