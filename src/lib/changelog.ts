@@ -23,9 +23,24 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.17";
+export const CURRENT_VERSION = "0.2.18";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.2.18",
+    title: "Real rejoin gating, cross-device ring sanity & WASAPI format negotiation",
+    date: "2026-04-19",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Rejoin banner at the top of a DM no longer lies — it now only appears when YOU previously left an ongoing call AND someone else is still actually live in it. No more 'Ongoing call in this chat' for calls nobody is in.",
+      "Rejoin button on the in-chat call pill is now gated to the same real condition. A fresh outgoing/incoming call no longer shows 'Rejoin' before anyone has even left.",
+      "Clicking Rejoin no longer drops both users into a fake 'calling' limbo — startCall now refuses to reuse a call_event whose only active participant is you, and ends that stale event instead of pretending it's joinable.",
+      "Declining a stale incoming-call card on a secondary device (web/other tab) no longer kills the live call you've already answered on your primary device. Decline is now a true sibling-only ring dismissal — never a hangup signal to the other party.",
+      "Accepting a call on one device now reliably stops the ringtone and incoming UI on every other device/tab of yours via an explicit cross-session dismissal broadcast.",
+      "CRITICAL: Window screen-share audio (WASAPI process loopback) now uses real format negotiation — IsFormatSupported() runs first, the client's suggested 'closest match' format is adopted, and we expanded the candidate list (added 16kHz mono and reordered float fallbacks). This is the actual fix for HRESULT 0x88890021 (AUDCLNT_E_UNSUPPORTED_FORMAT) on machines that rejected every blind candidate before.",
+    ],
+  },
   {
     version: "0.2.17",
     title: "Rejoin UI fixes + cross-device call sync",
