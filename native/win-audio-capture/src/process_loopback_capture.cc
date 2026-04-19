@@ -123,17 +123,12 @@ bool ProcessLoopbackCapture::Start(DWORD pid, PcmCallback cb, std::string& error
   }
   audioClient_ = client;
 
-  // PROCESS_LOOPBACK is finicky — Windows only accepts the system mix format
-  // for the activated client (and even within that, only certain
-  // subtype/channel combinations). Hardcoding 44.1kHz/stereo/float fails on
-  // ANY system whose default endpoint runs at 48kHz (most of them) with
-  // AUDCLNT_E_UNSUPPORTED_FORMAT (0x88890021), which is exactly what the user
-  // kept hitting.
-  //
-  // Strategy: ask WASAPI what it wants via GetMixFormat(), then negotiate via
-  // IsFormatSupported() and fall back to a closest-match if needed. We expose
-  // whatever sample rate / channel count we end up with through PcmFormat so
-  // the JS side can build an AudioBuffer that matches.
+  // PROCESS_LOOPBACK is finicky. Even GetMixFormat() returns a format that
+  // Initialize() may reject with AUDCLNT_E_UNSUPPORTED_FORMAT (0x88890021)
+  // on some drivers. Strategy: try a list of candidate formats in order and
+  // accept the first one Initialize() accepts. We always tear down and
+  // re-create the IAudioClient between attempts because Initialize() can
+  // only succeed ONCE per client instance.
   WAVEFORMATEX* mixFormat = nullptr;
   hr = audioClient_->GetMixFormat(&mixFormat);
   if (FAILED(hr) || !mixFormat) {
@@ -142,32 +137,80 @@ bool ProcessLoopbackCapture::Start(DWORD pid, PcmCallback cb, std::string& error
     if (comInitedHere) ::CoUninitialize();
     return false;
   }
-
-  // Some systems return WAVE_FORMAT_EXTENSIBLE — that's fine, Initialize()
-  // accepts it. Make sure cbSize is honored (EXTENSIBLE has a 22-byte tail).
-  // Build a heap copy we can keep alive past Initialize().
-  std::vector<uint8_t> wfxBuf(sizeof(WAVEFORMATEX) + mixFormat->cbSize);
-  std::memcpy(wfxBuf.data(), mixFormat, wfxBuf.size());
-  WAVEFORMATEX* wfxPtr = reinterpret_cast<WAVEFORMATEX*>(wfxBuf.data());
+  uint32_t mixSr = mixFormat->nSamplesPerSec ? mixFormat->nSamplesPerSec : 48000;
   ::CoTaskMemFree(mixFormat);
   mixFormat = nullptr;
 
+  // Build candidate formats. PROCESS_LOOPBACK on most Windows builds is
+  // happiest with WAVEFORMATEXTENSIBLE int16 stereo at the endpoint sample
+  // rate. We also try 48k / 44.1k explicitly so machines whose endpoint
+  // reports an oddball rate still find a winner.
+  struct Cand { uint32_t sr; uint16_t ch; uint16_t bits; bool floatPcm; };
+  std::vector<Cand> candidates = {
+    { mixSr, 2, 16, false },
+    { 48000, 2, 16, false },
+    { 44100, 2, 16, false },
+    { mixSr, 2, 32, true },
+    { 48000, 2, 32, true },
+  };
+
   // 200ms buffer, event-driven, loopback mode is implicit via PROCESS_LOOPBACK
-  // activation type (passing AUDCLNT_STREAMFLAGS_LOOPBACK is invalid here).
-  // AUTOCONVERTPCM is still set so WASAPI can resample if needed.
+  // activation type. AUTOCONVERTPCM lets WASAPI resample if needed.
   DWORD streamFlags = AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
                       AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
                       AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY;
   REFERENCE_TIME bufferDuration = 200 * 10000; // 200ms in 100-ns units
 
-  hr = audioClient_->Initialize(AUDCLNT_SHAREMODE_SHARED, streamFlags,
-                                bufferDuration, 0, wfxPtr, nullptr);
-  if (FAILED(hr)) {
-    errorOut = "IAudioClient::Initialize failed (mix fmt sr=" +
-               std::to_string(wfxPtr->nSamplesPerSec) + " ch=" +
-               std::to_string(wfxPtr->nChannels) + " bits=" +
-               std::to_string(wfxPtr->wBitsPerSample) + " tag=" +
-               std::to_string(wfxPtr->wFormatTag) + "): " + HrToString(hr);
+  bool initialized = false;
+  std::string lastErr;
+  Cand chosen{};
+  for (const auto& c : candidates) {
+    // Build WAVEFORMATEXTENSIBLE — most reliable shape for PROCESS_LOOPBACK.
+    WAVEFORMATEXTENSIBLE wfx{};
+    wfx.Format.wFormatTag = WAVE_FORMAT_EXTENSIBLE;
+    wfx.Format.nChannels = c.ch;
+    wfx.Format.nSamplesPerSec = c.sr;
+    wfx.Format.wBitsPerSample = c.bits;
+    wfx.Format.nBlockAlign = (c.ch * c.bits) / 8;
+    wfx.Format.nAvgBytesPerSec = wfx.Format.nSamplesPerSec * wfx.Format.nBlockAlign;
+    wfx.Format.cbSize = 22;
+    wfx.Samples.wValidBitsPerSample = c.bits;
+    wfx.dwChannelMask = (c.ch == 2) ? (SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT) : SPEAKER_FRONT_CENTER;
+    wfx.SubFormat = c.floatPcm ? KSDATAFORMAT_SUBTYPE_IEEE_FLOAT : KSDATAFORMAT_SUBTYPE_PCM;
+
+    hr = audioClient_->Initialize(AUDCLNT_SHAREMODE_SHARED, streamFlags,
+                                  bufferDuration, 0,
+                                  reinterpret_cast<WAVEFORMATEX*>(&wfx), nullptr);
+    if (SUCCEEDED(hr)) {
+      chosen = c;
+      initialized = true;
+      break;
+    }
+    lastErr = "candidate sr=" + std::to_string(c.sr) + " ch=" + std::to_string(c.ch) +
+              " bits=" + std::to_string(c.bits) + " float=" + (c.floatPcm ? "1" : "0") +
+              " -> " + HrToString(hr);
+
+    // Initialize() can only be called once per IAudioClient. Re-activate a
+    // fresh one for the next attempt.
+    audioClient_.Reset();
+    auto handler2 = Microsoft::WRL::Make<ActivationHandler>();
+    if (!handler2) { lastErr += " | retry alloc failed"; continue; }
+    ComPtr<IActivateAudioInterfaceAsyncOperation> asyncOp2;
+    HRESULT hra = ::ActivateAudioInterfaceAsync(
+        VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK,
+        __uuidof(IAudioClient),
+        &activateParams,
+        handler2.Get(),
+        &asyncOp2);
+    if (FAILED(hra)) { lastErr += " | re-activate failed " + HrToString(hra); continue; }
+    ComPtr<IAudioClient> client2;
+    HRESULT hrw = handler2->Wait(&client2);
+    if (FAILED(hrw) || !client2) { lastErr += " | re-activate wait failed " + HrToString(hrw); continue; }
+    audioClient_ = client2;
+  }
+
+  if (!initialized) {
+    errorOut = "IAudioClient::Initialize failed for ALL candidate formats. Last: " + lastErr;
     audioClient_.Reset();
     if (comInitedHere) ::CoUninitialize();
     return false;
@@ -209,17 +252,10 @@ bool ProcessLoopbackCapture::Start(DWORD pid, PcmCallback cb, std::string& error
     return false;
   }
 
-  // Detect float vs PCM-int. WAVE_FORMAT_EXTENSIBLE wraps the real subtype in
-  // SubFormat; the renderer needs to know whether to read Float32 or Int16.
-  bool isFloat = (wfxPtr->wFormatTag == WAVE_FORMAT_IEEE_FLOAT);
-  if (wfxPtr->wFormatTag == WAVE_FORMAT_EXTENSIBLE && wfxPtr->cbSize >= 22) {
-    auto* ext = reinterpret_cast<WAVEFORMATEXTENSIBLE*>(wfxPtr);
-    isFloat = (ext->SubFormat == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT);
-  }
-  format_.sampleRate = wfxPtr->nSamplesPerSec;
-  format_.channels = wfxPtr->nChannels;
-  format_.bitsPerSample = wfxPtr->wBitsPerSample;
-  format_.floatPcm = isFloat;
+  format_.sampleRate = chosen.sr;
+  format_.channels = chosen.ch;
+  format_.bitsPerSample = chosen.bits;
+  format_.floatPcm = chosen.floatPcm;
 
   running_ = true;
   workerThread_ = std::thread([this]() { RunCaptureLoop(); });
