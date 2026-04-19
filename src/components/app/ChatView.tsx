@@ -333,6 +333,11 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
     setAttachMenuOpen(false);
     setReplyTo(null);
     broadcastStopTyping();
+    // Replying to the chat dismisses the red NEW divider AND the blue bar.
+    setFirstUnreadId(null);
+    setShowNewBar(false);
+    setUnreadOnEntry(0);
+    void markAsReadNow();
 
     setUploading(true);
 
