@@ -84,7 +84,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const user = session?.user;
     if (!user) return;
     // CRITICAL: attach .on() before .subscribe()
-    const channel = supabase.channel(`my-profile-status:${user.id}`);
+    const uniqueSuffix = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const channel = supabase.channel(`my-profile-status:${user.id}:${uniqueSuffix}`);
     channel.on(
       "postgres_changes",
       { event: "UPDATE", schema: "public", table: "profiles", filter: `user_id=eq.${user.id}` },
