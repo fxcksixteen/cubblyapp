@@ -84,6 +84,11 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
   const [peerTyping, setPeerTyping] = useState(false);
   const [replyTo, setReplyTo] = useState<{ id: string; sender_name: string; content: string } | null>(null);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  /** First unread message id captured ON ENTRY. Stays until reply or chat re-entry. Drives the red "NEW" divider. */
+  const [firstUnreadId, setFirstUnreadId] = useState<string | null>(null);
+  /** Count of unread on entry — drives the blue "New Messages" top bar. Cleared by scrolling to bottom OR clicking dismiss. */
+  const [unreadOnEntry, setUnreadOnEntry] = useState<number>(0);
+  const [showNewBar, setShowNewBar] = useState(false);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -95,6 +100,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
   const lastTypingBroadcast = useRef(0);
   const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const typingChannelReadyRef = useRef(false);
+  const initialUnreadCapturedRef = useRef(false);
 
   useAutoGrowTextarea(messageInputRef, input, 6);
 
