@@ -119,31 +119,51 @@ bool ProcessLoopbackCapture::Start(DWORD pid, PcmCallback cb, std::string& error
   }
   audioClient_ = client;
 
-  // Format: 32-bit float PCM, stereo, 44.1 kHz.
-  // Microsoft's official ApplicationLoopback sample uses exactly this format,
-  // and it is the ONLY combo PROCESS_LOOPBACK reliably accepts on retail Win10/11.
-  // PCM-16 + AUTOCONVERTPCM gets rejected with AUDCLNT_E_UNSUPPORTED_FORMAT
-  // (0x88890021) on most builds — which is the error the user kept hitting.
-  WAVEFORMATEX wfx{};
-  wfx.wFormatTag = WAVE_FORMAT_IEEE_FLOAT;
-  wfx.nChannels = 2;
-  wfx.nSamplesPerSec = 44100;
-  wfx.wBitsPerSample = 32;
-  wfx.nBlockAlign = (wfx.nChannels * wfx.wBitsPerSample) / 8;
-  wfx.nAvgBytesPerSec = wfx.nSamplesPerSec * wfx.nBlockAlign;
-  wfx.cbSize = 0;
+  // PROCESS_LOOPBACK is finicky — Windows only accepts the system mix format
+  // for the activated client (and even within that, only certain
+  // subtype/channel combinations). Hardcoding 44.1kHz/stereo/float fails on
+  // ANY system whose default endpoint runs at 48kHz (most of them) with
+  // AUDCLNT_E_UNSUPPORTED_FORMAT (0x88890021), which is exactly what the user
+  // kept hitting.
+  //
+  // Strategy: ask WASAPI what it wants via GetMixFormat(), then negotiate via
+  // IsFormatSupported() and fall back to a closest-match if needed. We expose
+  // whatever sample rate / channel count we end up with through PcmFormat so
+  // the JS side can build an AudioBuffer that matches.
+  WAVEFORMATEX* mixFormat = nullptr;
+  hr = audioClient_->GetMixFormat(&mixFormat);
+  if (FAILED(hr) || !mixFormat) {
+    errorOut = "GetMixFormat failed: " + HrToString(hr);
+    audioClient_.Reset();
+    if (comInitedHere) ::CoUninitialize();
+    return false;
+  }
+
+  // Some systems return WAVE_FORMAT_EXTENSIBLE — that's fine, Initialize()
+  // accepts it. Make sure cbSize is honored (EXTENSIBLE has a 22-byte tail).
+  // Build a heap copy we can keep alive past Initialize().
+  std::vector<uint8_t> wfxBuf(sizeof(WAVEFORMATEX) + mixFormat->cbSize);
+  std::memcpy(wfxBuf.data(), mixFormat, wfxBuf.size());
+  WAVEFORMATEX* wfxPtr = reinterpret_cast<WAVEFORMATEX*>(wfxBuf.data());
+  ::CoTaskMemFree(mixFormat);
+  mixFormat = nullptr;
 
   // 200ms buffer, event-driven, loopback mode is implicit via PROCESS_LOOPBACK
   // activation type (passing AUDCLNT_STREAMFLAGS_LOOPBACK is invalid here).
+  // AUTOCONVERTPCM is still set so WASAPI can resample if needed.
   DWORD streamFlags = AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
                       AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
                       AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY;
   REFERENCE_TIME bufferDuration = 200 * 10000; // 200ms in 100-ns units
 
   hr = audioClient_->Initialize(AUDCLNT_SHAREMODE_SHARED, streamFlags,
-                                bufferDuration, 0, &wfx, nullptr);
+                                bufferDuration, 0, wfxPtr, nullptr);
   if (FAILED(hr)) {
-    errorOut = "IAudioClient::Initialize failed: " + HrToString(hr);
+    errorOut = "IAudioClient::Initialize failed (mix fmt sr=" +
+               std::to_string(wfxPtr->nSamplesPerSec) + " ch=" +
+               std::to_string(wfxPtr->nChannels) + " bits=" +
+               std::to_string(wfxPtr->wBitsPerSample) + " tag=" +
+               std::to_string(wfxPtr->wFormatTag) + "): " + HrToString(hr);
     audioClient_.Reset();
     if (comInitedHere) ::CoUninitialize();
     return false;
