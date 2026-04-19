@@ -84,6 +84,11 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
   const [peerTyping, setPeerTyping] = useState(false);
   const [replyTo, setReplyTo] = useState<{ id: string; sender_name: string; content: string } | null>(null);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  /** First unread message id captured ON ENTRY. Stays until reply or chat re-entry. Drives the red "NEW" divider. */
+  const [firstUnreadId, setFirstUnreadId] = useState<string | null>(null);
+  /** Count of unread on entry — drives the blue "New Messages" top bar. Cleared by scrolling to bottom OR clicking dismiss. */
+  const [unreadOnEntry, setUnreadOnEntry] = useState<number>(0);
+  const [showNewBar, setShowNewBar] = useState(false);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -95,6 +100,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
   const lastTypingBroadcast = useRef(0);
   const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const typingChannelReadyRef = useRef(false);
+  const initialUnreadCapturedRef = useRef(false);
 
   useAutoGrowTextarea(messageInputRef, input, 6);
 
@@ -120,12 +126,24 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
     });
   }, []);
 
+  const markAsReadNow = useCallback(async () => {
+    if (!conversationId) return;
+    try { await supabase.rpc("mark_conversation_read", { _conversation_id: conversationId }); } catch {}
+    setShowNewBar(false);
+    setUnreadOnEntry(0);
+  }, [conversationId]);
+
   const handleScroll = useCallback(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
     const threshold = 150;
-    userHasScrolledUpRef.current =
-      container.scrollHeight - container.scrollTop - container.clientHeight >= threshold;
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    const atBottom = distanceFromBottom < threshold;
+    userHasScrolledUpRef.current = !atBottom;
+    // Hitting the bottom dismisses the blue bar and marks the conversation read.
+    if (atBottom && (showNewBar || unreadOnEntry > 0)) {
+      void markAsReadNow();
+    }
     // Discord-style: when scrolled near the top, fetch older messages
     if (container.scrollTop < 200 && hasMore && !loadingOlder) {
       const prevHeight = container.scrollHeight;
@@ -136,7 +154,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
         });
       });
     }
-  }, [hasMore, loadingOlder, loadOlder]);
+  }, [hasMore, loadingOlder, loadOlder, showNewBar, unreadOnEntry, markAsReadNow]);
 
   useEffect(() => {
     const n = messages.length;
@@ -147,6 +165,36 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
     prevMessageCountRef.current = n;
   }, [messages.length, messages, user?.id, scrollToBottom]);
 
+  // Reset unread tracking when switching conversations
+  useEffect(() => {
+    initialUnreadCapturedRef.current = false;
+    setFirstUnreadId(null);
+    setUnreadOnEntry(0);
+    setShowNewBar(false);
+  }, [conversationId]);
+
+  // Capture the first-unread snapshot the FIRST time messages are loaded for this conversation.
+  useEffect(() => {
+    if (loading || messages.length === 0 || initialUnreadCapturedRef.current || !user) return;
+    initialUnreadCapturedRef.current = true;
+    (async () => {
+      const { data: part } = await supabase
+        .from("conversation_participants")
+        .select("last_read_at")
+        .eq("conversation_id", conversationId)
+        .eq("user_id", user.id)
+        .maybeSingle();
+      const lastRead = part?.last_read_at;
+      if (!lastRead) return;
+      const unread = messages.filter(m => m.sender_id !== user.id && new Date(m.created_at).getTime() > new Date(lastRead).getTime());
+      if (unread.length > 0) {
+        setFirstUnreadId(unread[0].id);
+        setUnreadOnEntry(unread.length);
+        setShowNewBar(true);
+      }
+    })();
+  }, [loading, messages, conversationId, user]);
+
   // Scroll to bottom on initial load and conversation switch + auto-focus input
   useEffect(() => {
     if (!loading && messages.length > 0) {
@@ -156,9 +204,11 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
       // Extra delayed scrolls for long conversations where DOM takes time to render
       const t1 = setTimeout(() => scrollToBottom(), 150);
       const t2 = setTimeout(() => scrollToBottom(), 400);
-      return () => { clearTimeout(t1); clearTimeout(t2); };
+      // After the auto-scroll lands at the bottom, mark as read.
+      const t3 = setTimeout(() => { void markAsReadNow(); }, 600);
+      return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
     }
-  }, [loading, conversationId, scrollToBottom]);
+  }, [loading, conversationId, scrollToBottom, markAsReadNow]);
 
   // Auto-focus message input on conversation switch
   useEffect(() => {
@@ -283,6 +333,11 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
     setAttachMenuOpen(false);
     setReplyTo(null);
     broadcastStopTyping();
+    // Replying to the chat dismisses the red NEW divider AND the blue bar.
+    setFirstUnreadId(null);
+    setShowNewBar(false);
+    setUnreadOnEntry(0);
+    void markAsReadNow();
 
     setUploading(true);
 
@@ -425,6 +480,22 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
   return (
     <div className="flex flex-1 min-h-0 overflow-hidden">
       <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
+      {/* Blue "New Messages" bar — sits ABOVE the call panel so it's always visible */}
+      {showNewBar && unreadOnEntry > 0 && (
+        <div
+          className="shrink-0 flex items-center justify-between gap-3 px-4 py-2 text-xs font-semibold"
+          style={{ backgroundColor: "#5865f2", color: "#ffffff" }}
+        >
+          <span>New Messages — {unreadOnEntry}</span>
+          <button
+            onClick={() => { void markAsReadNow(); }}
+            className="rounded px-2 py-1 text-[11px] font-bold uppercase tracking-wide transition-colors hover:bg-white/15"
+          >
+            Mark as Read
+          </button>
+        </div>
+      )}
+
       {/* Discord-style call panel — group call OR 1-on-1 call (mutually exclusive) */}
       <div className="shrink-0 max-h-[50vh] overflow-y-auto">
         {conversation?.is_group ? (
@@ -488,8 +559,16 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                 );
               }
 
+              const groupContainsFirstUnread = !!firstUnreadId && item.messages.some(m => m.id === firstUnreadId);
               return (
-                <div key={idx} className="mt-4 first:mt-0 flex gap-3 rounded px-2 py-1 relative group" style={{ transition: "background-color 0.15s" }} onMouseEnter={e => (e.currentTarget.style.backgroundColor = "var(--app-hover, #2e3035)")} onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}>
+                <div key={idx}>
+                  {groupContainsFirstUnread && (
+                    <div className="my-3 flex items-center gap-2" data-new-divider>
+                      <div className="flex-1 h-px" style={{ backgroundColor: "#ed4245" }} />
+                      <span className="text-[10px] font-bold tracking-wider px-2 rounded" style={{ color: "#ffffff", backgroundColor: "#ed4245" }}>NEW</span>
+                    </div>
+                  )}
+                <div className="mt-4 first:mt-0 flex gap-3 rounded px-2 py-1 relative group" style={{ transition: "background-color 0.15s" }} onMouseEnter={e => (e.currentTarget.style.backgroundColor = "var(--app-hover, #2e3035)")} onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}>
                   {item.sender_avatar_url ? (
                     <img
                       src={item.sender_avatar_url}
@@ -596,6 +675,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                       );
                     })}
                   </div>
+                </div>
                 </div>
               );
             })}

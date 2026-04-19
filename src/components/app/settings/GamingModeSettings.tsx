@@ -27,6 +27,13 @@ const GamingModeSettings = ({ cardStyle }: GamingModeSettingsProps) => {
 
   return (
     <div className="space-y-5">
+      <div>
+        <h2 className="text-2xl font-bold" style={{ color: "var(--app-text-primary)" }}>Gaming Mode</h2>
+        <p className="mt-2 text-sm" style={{ color: "var(--app-text-secondary)" }}>
+          Throttle Cubbly automatically while you're in a game so it stays out of the way.
+        </p>
+      </div>
+
       {/* Live status */}
       <div className="rounded-[24px] border p-5" style={cardStyle}>
         <div className="flex items-center gap-3">

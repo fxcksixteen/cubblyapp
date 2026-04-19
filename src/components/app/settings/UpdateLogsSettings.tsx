@@ -24,14 +24,21 @@ const UpdateLogsSettings = forwardRef<HTMLDivElement, UpdateLogsSettingsProps>(
 
     return (
       <div ref={ref} className="space-y-5">
+        <div>
+          <h2 className="text-2xl font-bold" style={{ color: "var(--app-text-primary)" }}>Update Logs</h2>
+          <p className="mt-2 text-sm" style={{ color: "var(--app-text-secondary)" }}>
+            Every patch we've shipped, with full notes. Currently on v{latestVersion}.
+          </p>
+        </div>
+
         <div className="rounded-[24px] border p-5" style={cardStyle}>
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
-              <h2 className="text-2xl font-bold" style={{ color: "var(--app-text-primary)" }}>
-                Update Logs
-              </h2>
-              <p className="mt-2 text-sm" style={{ color: "var(--app-text-secondary)" }}>
-                Current shipped patch: v{latestVersion}. You can also force a GitHub update check anytime.
+              <p className="text-sm font-semibold" style={{ color: "var(--app-text-primary)" }}>
+                Check for a new version
+              </p>
+              <p className="mt-1 text-xs" style={{ color: "var(--app-text-secondary)" }}>
+                You can force a GitHub update check anytime — Cubbly will install the latest patch silently in the background.
               </p>
             </div>
             {isElectron && (

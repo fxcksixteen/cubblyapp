@@ -35,7 +35,7 @@ const AdvancedSettings = ({ cardStyle }: Props) => {
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold" style={{ color: "var(--app-text-primary)" }}>Advanced</h2>
-        <p className="mt-1 text-sm" style={{ color: "var(--app-text-secondary)" }}>
+        <p className="mt-2 text-sm" style={{ color: "var(--app-text-secondary)" }}>
           System integration and power-user settings.
         </p>
       </div>
