@@ -121,7 +121,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
 
-    const channel = supabase.channel("online-presence", {
+    // Unique suffix per mount — prevents "cannot add presence callbacks
+    // after subscribe()" crashes under StrictMode/HMR (same root cause that
+    // was blocking call joins).
+    const uniqueSuffix = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const channel = supabase.channel(`online-presence:${uniqueSuffix}`, {
       config: { presence: { key: user.id } },
     });
 

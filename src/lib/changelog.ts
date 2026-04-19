@@ -23,9 +23,20 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.21";
+export const CURRENT_VERSION = "0.2.22";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.2.22",
+    title: "Critical: calls actually connect again + iOS PWA splash restored",
+    date: "2026-04-19",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "CRITICAL: fixed an app crash that was triggering the 'Cubbly hit a snag' error screen the moment the second person tried to join a call. The realtime channel for live mute/deafen state was being reused across mounts, causing a 'cannot add postgres_changes callbacks after subscribe()' crash that broke the call. Same fix applied to the voice-presence and online-presence channels.",
+      "iOS PWA splash now shows the same animated bears webm as desktop instead of the static bear-emoji fallback, with a couple of extra play() retries so iOS Safari actually starts the video.",
+    ],
+  },
   {
     version: "0.2.21",
     title: "Window screenshare audio: add missing LOOPBACK init flag",

@@ -38,10 +38,15 @@ export function useActiveCallElsewhere() {
   const [elsewhere, setElsewhere] = useState<ElsewhereCall | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
-  // Subscribe to presence
+  // Subscribe to presence.
+  // CRITICAL: unique suffix per mount — under StrictMode/HMR a leftover
+  // channel with the same name throws "cannot add presence callbacks ...
+  // after subscribe()" on the next mount, which crashes the whole app via
+  // the ErrorBoundary and prevents the user from joining a call.
   useEffect(() => {
     if (!user) return;
-    const channel = supabase.channel(`voice-presence:${user.id}`, {
+    const uniqueSuffix = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const channel = supabase.channel(`voice-presence:${user.id}:${uniqueSuffix}`, {
       config: { presence: { key: DEVICE_ID } },
     });
     channelRef.current = channel;
