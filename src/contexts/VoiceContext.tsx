@@ -372,37 +372,38 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         }
       });
 
-    // Realtime subscription for call events
-    const callChannel = supabase
-      .channel("call-events-realtime")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "call_events" },
-        (payload) => {
-          const row = payload.new as any;
-          if (payload.eventType === "INSERT") {
-            setCallEvents(prev => {
-              if (prev.some(e => e.id === row.id)) return prev;
-              return [...prev, {
-                id: row.id,
-                conversationId: row.conversation_id,
-                state: row.state as "ongoing" | "ended" | "missed",
-                startedAt: row.started_at,
-                endedAt: row.ended_at || undefined,
-              }];
-            });
-          } else if (payload.eventType === "UPDATE") {
-            setCallEvents(prev =>
-              prev.map(e =>
-                e.id === row.id
-                  ? { ...e, state: row.state, endedAt: row.ended_at || undefined }
-                  : e
-              )
-            );
-          }
+    // Realtime subscription for call events. CRITICAL: attach all .on()
+    // listeners BEFORE calling .subscribe(), or supabase-js throws
+    // "cannot add postgres_changes callbacks ... after subscribe()".
+    const callChannel = supabase.channel("call-events-realtime");
+    callChannel.on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "call_events" },
+      (payload) => {
+        const row = payload.new as any;
+        if (payload.eventType === "INSERT") {
+          setCallEvents(prev => {
+            if (prev.some(e => e.id === row.id)) return prev;
+            return [...prev, {
+              id: row.id,
+              conversationId: row.conversation_id,
+              state: row.state as "ongoing" | "ended" | "missed",
+              startedAt: row.started_at,
+              endedAt: row.ended_at || undefined,
+            }];
+          });
+        } else if (payload.eventType === "UPDATE") {
+          setCallEvents(prev =>
+            prev.map(e =>
+              e.id === row.id
+                ? { ...e, state: row.state, endedAt: row.ended_at || undefined }
+                : e
+            )
+          );
         }
-      )
-      .subscribe();
+      }
+    );
+    callChannel.subscribe();
 
     return () => {
       supabase.removeChannel(callChannel);

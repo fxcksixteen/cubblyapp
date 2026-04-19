@@ -78,27 +78,28 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
     };
     fetchAll();
 
-    const channel = supabase
-      .channel("user-activities-global")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "user_activities" },
-        (payload) => {
-          setActivities((prev) => {
-            const next = new Map(prev);
-            const newRow: any = payload.new;
-            const oldRow: any = payload.old;
-            if (payload.eventType === "DELETE") {
-              if (oldRow?.user_id) next.delete(oldRow.user_id);
-            } else if (newRow?.user_id) {
-              if (newRow.privacy_visible) next.set(newRow.user_id, newRow);
-              else next.delete(newRow.user_id);
-            }
-            return next;
-          });
-        }
-      )
-      .subscribe();
+    // CRITICAL: attach .on() before .subscribe() — supabase-js will throw
+    // "cannot add postgres_changes callbacks after subscribe()" otherwise.
+    const channel = supabase.channel("user-activities-global");
+    channel.on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "user_activities" },
+      (payload) => {
+        setActivities((prev) => {
+          const next = new Map(prev);
+          const newRow: any = payload.new;
+          const oldRow: any = payload.old;
+          if (payload.eventType === "DELETE") {
+            if (oldRow?.user_id) next.delete(oldRow.user_id);
+          } else if (newRow?.user_id) {
+            if (newRow.privacy_visible) next.set(newRow.user_id, newRow);
+            else next.delete(newRow.user_id);
+          }
+          return next;
+        });
+      }
+    );
+    channel.subscribe();
 
     return () => {
       supabase.removeChannel(channel);
