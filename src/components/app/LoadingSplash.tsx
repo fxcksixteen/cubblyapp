@@ -22,22 +22,6 @@ interface LoadingSplashProps {
   onComplete?: () => void;
 }
 
-// iOS Safari (especially as an installed PWA) silently rejects autoplay of our
-// webm on first paint — no user gesture, no codec guarantee. Detecting iOS and
-// falling back to a CSS-only animation keeps the splash from sitting frozen.
-function isIOSPWA(): boolean {
-  if (typeof window === "undefined") return false;
-  const ua = navigator.userAgent || "";
-  const isIOS = /iPad|iPhone|iPod/.test(ua) || (ua.includes("Mac") && "ontouchend" in document);
-  if (!isIOS) return false;
-  const standalone =
-    (window.navigator as any).standalone === true ||
-    window.matchMedia?.("(display-mode: standalone)").matches;
-  // Even non-standalone iOS Safari struggles with the webm autoplay, so fall
-  // back for any iOS device — guarantees a moving splash.
-  return isIOS || standalone;
-}
-
 const LoadingSplash = ({ minDuration = 2200, onComplete }: LoadingSplashProps) => {
   const [fading, setFading] = useState(false);
   const [hidden, setHidden] = useState(false);
