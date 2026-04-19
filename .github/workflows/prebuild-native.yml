@@ -26,6 +26,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.head_ref || github.ref_name }}
+          fetch-depth: 0
 
       - name: Setup Node 20
         uses: actions/setup-node@v4
@@ -80,7 +81,6 @@ jobs:
             echo "No prebuild changes to commit."
           else
             git commit -m "chore(native): prebuild win-audio-capture (NAPI, Electron 41) [skip ci]"
-            # Push explicitly to refs/heads/<branch> so git doesn't try to update
-            # a same-named tag (e.g. branch "v0.2.13" colliding with tag "v0.2.13").
+            git pull --rebase origin "${GITHUB_REF_NAME}"
             git push origin "HEAD:refs/heads/${GITHUB_REF_NAME}"
           fi
