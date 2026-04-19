@@ -136,8 +136,19 @@ export function useRemoteHangupListener() {
     const ch = supabase.channel(`voice-control:${user.id}`);
     ch.on("broadcast", { event: "hangup" }, ({ payload }) => {
       if (payload?.exceptDeviceId === DEVICE_ID) return;
-      if (activeCall) endCall();
-      if (groupCall.activeCall) groupCall.leaveCall();
+      // Only honor a remote hangup if it explicitly targets the call we're in.
+      // A blind broadcast must NOT be allowed to drop an active call — that
+      // was killing live calls whenever any other tab/device chattered.
+      const targetConv = payload?.conversationId as string | undefined;
+      if (activeCall) {
+        if (targetConv && targetConv === activeCall.conversationId) endCall();
+        return;
+      }
+      if (groupCall.activeCall) {
+        if (targetConv && targetConv === groupCall.activeCall.conversationId) groupCall.leaveCall();
+        return;
+      }
+      // No active call here — nothing to hang up.
     }).subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [user?.id, activeCall, groupCall.activeCall, endCall]);
