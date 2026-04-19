@@ -23,9 +23,26 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.12";
+export const CURRENT_VERSION = "0.2.13";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.2.13",
+    title: "Screen-share audio, link previews, video player & a real message box",
+    date: "2026-04-19",
+    hero: bearImage,
+    newFeatures: [
+      "Links in chat are now clickable AND get a rich preview card showing the page title, description and image — fetched server-side so it works even on private bucket links and never leaks your IP",
+      "MP4, MOV and WebM video attachments now render with a built-in Cubbly video player — controls, fullscreen, save to disk, no more downloading just to watch a clip",
+      "Message input is now a real multi-line box: Shift+Enter for newlines, Enter to send, auto-grows up to 6 lines then scrolls — no more text marching off into infinity",
+      "Soft 1000-character limit on messages with a counter that appears at 750/1000, turns orange at 900, red at 1000",
+      "iOS PWA splash now uses an animated CSS fallback (breathing bear + pulse rings) since iOS Safari refuses to autoplay the webm — no more frozen splash on iPhone home-screen launches",
+    ],
+    bugFixes: [
+      "CRITICAL: Window screen-share audio now actually works — root cause was AUDCLNT_E_UNSUPPORTED_FORMAT (HRESULT 0x88890021) because the native loopback engine refuses WAVE_FORMAT_IEEE_FLOAT; switched to PCM 16-bit stereo 44.1kHz (the only format Microsoft's official ApplicationLoopback sample uses) and added Int16→Float32 conversion on the JS side",
+      "Camera tile no longer stays a black rectangle when the other person turns their camera off — now correctly checks the peer's is_video_on state and falls back to the avatar circle the moment they disable video",
+    ],
+  },
   {
     version: "0.2.12",
     title: "Camera, volume, and screen-share audio: fixed at the runtime layer",
