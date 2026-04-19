@@ -80,5 +80,7 @@ jobs:
             echo "No prebuild changes to commit."
           else
             git commit -m "chore(native): prebuild win-audio-capture (NAPI, Electron 41) [skip ci]"
-            git push origin HEAD:${GITHUB_REF_NAME}
+            # Push explicitly to refs/heads/<branch> so git doesn't try to update
+            # a same-named tag (e.g. branch "v0.2.13" colliding with tag "v0.2.13").
+            git push origin "HEAD:refs/heads/${GITHUB_REF_NAME}"
           fi
