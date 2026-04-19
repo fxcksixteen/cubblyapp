@@ -205,10 +205,17 @@ bool ProcessLoopbackCapture::Start(DWORD pid, PcmCallback cb, std::string& error
     return false;
   }
 
-  format_.sampleRate = wfx.nSamplesPerSec;
-  format_.channels = wfx.nChannels;
-  format_.bitsPerSample = wfx.wBitsPerSample;
-  format_.floatPcm = true;
+  // Detect float vs PCM-int. WAVE_FORMAT_EXTENSIBLE wraps the real subtype in
+  // SubFormat; the renderer needs to know whether to read Float32 or Int16.
+  bool isFloat = (wfxPtr->wFormatTag == WAVE_FORMAT_IEEE_FLOAT);
+  if (wfxPtr->wFormatTag == WAVE_FORMAT_EXTENSIBLE && wfxPtr->cbSize >= 22) {
+    auto* ext = reinterpret_cast<WAVEFORMATEXTENSIBLE*>(wfxPtr);
+    isFloat = (ext->SubFormat == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT);
+  }
+  format_.sampleRate = wfxPtr->nSamplesPerSec;
+  format_.channels = wfxPtr->nChannels;
+  format_.bitsPerSample = wfxPtr->wBitsPerSample;
+  format_.floatPcm = isFloat;
 
   running_ = true;
   workerThread_ = std::thread([this]() { RunCaptureLoop(); });
