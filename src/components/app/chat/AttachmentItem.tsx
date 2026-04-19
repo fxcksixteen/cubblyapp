@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import folderFileIcon from "@/assets/icons/folder-file.svg";
 import ImageLightbox from "@/components/app/ImageLightbox";
+import VideoLightbox from "@/components/app/VideoLightbox";
+import { Maximize2 } from "lucide-react";
 
 interface Attachment {
   name: string;
@@ -76,7 +78,11 @@ const AttachmentItem = ({ attachment }: AttachmentItemProps) => {
   }, [attachment.url]);
 
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [videoLightboxOpen, setVideoLightboxOpen] = useState(false);
   const isImage = attachment.type.startsWith("image/");
+  const isVideo =
+    attachment.type.startsWith("video/") ||
+    /\.(mp4|mov|webm|m4v|mkv)$/i.test(attachment.name);
 
   if (isImage) {
     return (
@@ -114,6 +120,34 @@ const AttachmentItem = ({ attachment }: AttachmentItemProps) => {
         </button>
         {lightboxOpen && (
           <ImageLightbox url={url} name={attachment.name} onClose={() => setLightboxOpen(false)} />
+        )}
+      </>
+    );
+  }
+
+  if (isVideo) {
+    return (
+      <>
+        <div className="group relative mt-1 max-w-sm overflow-hidden rounded-lg bg-black">
+          <video
+            src={url}
+            controls
+            preload="metadata"
+            playsInline
+            className="max-h-[360px] max-w-full rounded-lg"
+            onError={() => setErrored(true)}
+          />
+          <button
+            type="button"
+            onClick={() => setVideoLightboxOpen(true)}
+            className="absolute top-2 right-2 flex h-7 w-7 items-center justify-center rounded-md bg-black/60 text-white opacity-0 group-hover:opacity-100 hover:bg-black/80 transition-opacity"
+            title="Fullscreen"
+          >
+            <Maximize2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        {videoLightboxOpen && (
+          <VideoLightbox url={url} name={attachment.name} onClose={() => setVideoLightboxOpen(false)} />
         )}
       </>
     );

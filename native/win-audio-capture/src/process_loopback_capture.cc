@@ -119,12 +119,16 @@ bool ProcessLoopbackCapture::Start(DWORD pid, PcmCallback cb, std::string& error
   }
   audioClient_ = client;
 
-  // Format: 32-bit float, stereo, 48kHz — matches Web Audio cleanly.
+  // Format: PCM 16-bit, stereo, 44.1 kHz.
+  // PROCESS_LOOPBACK activation rejects WAVE_FORMAT_IEEE_FLOAT with
+  // AUDCLNT_E_UNSUPPORTED_FORMAT (HRESULT 0x88890021). Microsoft's official
+  // ApplicationLoopback sample uses exactly this combo and it's the only
+  // format combo the loopback engine reliably accepts.
   WAVEFORMATEX wfx{};
-  wfx.wFormatTag = WAVE_FORMAT_IEEE_FLOAT;
+  wfx.wFormatTag = WAVE_FORMAT_PCM;
   wfx.nChannels = 2;
-  wfx.nSamplesPerSec = 48000;
-  wfx.wBitsPerSample = 32;
+  wfx.nSamplesPerSec = 44100;
+  wfx.wBitsPerSample = 16;
   wfx.nBlockAlign = (wfx.nChannels * wfx.wBitsPerSample) / 8;
   wfx.nAvgBytesPerSec = wfx.nSamplesPerSec * wfx.nBlockAlign;
   wfx.cbSize = 0;
@@ -184,7 +188,7 @@ bool ProcessLoopbackCapture::Start(DWORD pid, PcmCallback cb, std::string& error
   format_.sampleRate = wfx.nSamplesPerSec;
   format_.channels = wfx.nChannels;
   format_.bitsPerSample = wfx.wBitsPerSample;
-  format_.floatPcm = true;
+  format_.floatPcm = false;
 
   running_ = true;
   workerThread_ = std::thread([this]() { RunCaptureLoop(); });

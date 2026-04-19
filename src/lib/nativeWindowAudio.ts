@@ -36,7 +36,7 @@ export async function startNativeWindowAudioStream(sourceId: string): Promise<Na
   }
   console.log("[NativeWindowAudio] capture started, format:", result.format);
 
-  const fmt = result.format || { sampleRate: 48000, channels: 2, floatPcm: true };
+  const fmt = result.format || { sampleRate: 44100, channels: 2, floatPcm: false, bitsPerSample: 16 };
 
   const ctx = new AudioContext({ sampleRate: fmt.sampleRate });
   const dest = ctx.createMediaStreamDestination();
@@ -49,24 +49,37 @@ export async function startNativeWindowAudioStream(sourceId: string): Promise<Na
 
   let nextStartTime = ctx.currentTime + 0.05;
   const channels = fmt.channels || 2;
-  const sampleRate = fmt.sampleRate || 48000;
+  const sampleRate = fmt.sampleRate || 44100;
+  const isFloat = !!fmt.floatPcm;
+  const bytesPerSample = isFloat ? 4 : 2;
   let pcmFramesReceived = 0;
 
   const unsubscribe = api.onWindowAudioPcm((buf: ArrayBuffer | Uint8Array) => {
     try {
       const u8 = buf instanceof Uint8Array ? buf : new Uint8Array(buf as ArrayBuffer);
-      const f32 = new Float32Array(u8.buffer, u8.byteOffset, u8.byteLength / 4);
-      const framesPerChannel = f32.length / channels;
+      const totalSamples = u8.byteLength / bytesPerSample;
+      const framesPerChannel = totalSamples / channels;
       if (framesPerChannel <= 0) return;
       pcmFramesReceived++;
       if (pcmFramesReceived === 1 || pcmFramesReceived === 50) {
-        console.log("[NativeWindowAudio] PCM frame #" + pcmFramesReceived + ", frames=" + framesPerChannel);
+        console.log("[NativeWindowAudio] PCM frame #" + pcmFramesReceived + ", frames=" + framesPerChannel + ", isFloat=" + isFloat);
       }
+
+      // Source view: Float32 (legacy) or Int16 (current native impl).
+      let getSample: (i: number) => number;
+      if (isFloat) {
+        const f32 = new Float32Array(u8.buffer, u8.byteOffset, totalSamples);
+        getSample = (i) => f32[i];
+      } else {
+        const i16 = new Int16Array(u8.buffer, u8.byteOffset, totalSamples);
+        getSample = (i) => i16[i] / 32768;
+      }
+
       const audioBuf = ctx.createBuffer(channels, framesPerChannel, sampleRate);
       for (let ch = 0; ch < channels; ch++) {
         const channelData = new Float32Array(framesPerChannel);
         for (let i = 0; i < framesPerChannel; i++) {
-          channelData[i] = f32[i * channels + ch];
+          channelData[i] = getSample(i * channels + ch);
         }
         audioBuf.copyToChannel(channelData, ch);
       }
