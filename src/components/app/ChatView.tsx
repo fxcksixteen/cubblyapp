@@ -676,6 +676,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                     })}
                   </div>
                 </div>
+                </div>
               );
             })}
           </>
