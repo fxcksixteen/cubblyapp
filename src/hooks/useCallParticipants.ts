@@ -39,17 +39,22 @@ export function useCallParticipants(callEventId: string | null) {
     fetchParticipants();
   }, [fetchParticipants]);
 
-  // Realtime updates for mute/deafen changes
+  // Realtime updates for mute/deafen changes.
+  // CRITICAL: append a unique suffix to the channel name. Under React StrictMode
+  // (dev) and HMR, supabase-js can hold on to a half-torn-down channel with
+  // the same name, and the next mount throws "cannot add postgres_changes
+  // callbacks ... after subscribe()". A fresh name per mount sidesteps that
+  // entirely and means a crash here can never break joining a call.
   useEffect(() => {
     if (!callEventId) return;
-    const channel = supabase
-      .channel(`call-participants:${callEventId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "call_participants", filter: `call_event_id=eq.${callEventId}` },
-        () => fetchParticipants()
-      )
-      .subscribe();
+    const uniqueSuffix = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const channel = supabase.channel(`call-participants:${callEventId}:${uniqueSuffix}`);
+    channel.on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "call_participants", filter: `call_event_id=eq.${callEventId}` },
+      () => fetchParticipants()
+    );
+    channel.subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [callEventId, fetchParticipants]);
 
