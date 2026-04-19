@@ -2174,8 +2174,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     if (!user) return;
     const globalChannel = supabase.channel(`voice-global:${user.id}`);
-    globalChannel.on("broadcast", { event: "incoming-call" }, async ({ payload }) => {
-      if (payload.targetId === user.id && !activeCall) {
+    globalChannel
+      .on("broadcast", { event: "incoming-call" }, async ({ payload }) => {
+        const sameCallAlreadyOpen =
+          activeCall?.conversationId === payload.conversationId ||
+          incomingCall?.callEventId === payload.callEventId;
+        if (payload.targetId !== user.id || activeCall || sameCallAlreadyOpen) return;
+
         try {
           await setupSignaling(payload.conversationId);
           setIncomingCall({
@@ -2185,16 +2190,32 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             callerAvatarUrl: payload.callerAvatarUrl,
             callEventId: payload.callEventId,
           });
-          // Incoming call ringtone (respects DND inside playLooping)
           playLooping("incomingCall", { volume: 0.5 });
         } catch (e) {
           console.error("Failed to setup signaling for incoming call:", e);
         }
-      }
-    });
+      })
+      .on("broadcast", { event: "incoming-call-dismiss" }, ({ payload }) => {
+        const matchesIncoming =
+          incomingCall?.callEventId === payload.callEventId ||
+          incomingCall?.conversationId === payload.conversationId;
+        const matchesActive =
+          activeCall?.conversationId === payload.conversationId && activeCall?.state !== "connected";
+
+        if (!matchesIncoming && !matchesActive) return;
+
+        stopLooping("incomingCall");
+        setIncomingCall((current) => {
+          if (!current) return current;
+          if (current.callEventId === payload.callEventId || current.conversationId === payload.conversationId) {
+            return null;
+          }
+          return current;
+        });
+      });
     globalChannel.subscribe();
     return () => { supabase.removeChannel(globalChannel); };
-  }, [user, activeCall, setupSignaling]);
+  }, [user, activeCall, incomingCall, setupSignaling]);
 
   // Stop incoming ringtone as soon as we accept (incomingCall cleared) or it's superseded.
   useEffect(() => {
