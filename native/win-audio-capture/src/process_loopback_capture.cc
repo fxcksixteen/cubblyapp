@@ -194,11 +194,18 @@ bool ProcessLoopbackCapture::Start(DWORD pid, PcmCallback cb, std::string& error
     const char* label;
   };
   const std::vector<StreamFlagsVariant> streamFlagVariants = {
-    { AUDCLNT_STREAMFLAGS_EVENTCALLBACK, "direct" },
-    { AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
+    // IMPORTANT: even with PROCESS_LOOPBACK activation, the official Microsoft
+    // sample still sets AUDCLNT_STREAMFLAGS_LOOPBACK on Initialize(). Omitting
+    // it appears to make some drivers reject EVERY candidate with
+    // AUDCLNT_E_UNSUPPORTED_FORMAT.
+    { AUDCLNT_STREAMFLAGS_LOOPBACK |
+          AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+      "loopback-direct" },
+    { AUDCLNT_STREAMFLAGS_LOOPBACK |
+          AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
           AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
           AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
-      "convert" },
+      "loopback-convert" },
   };
 
   // 200ms buffer, event-driven, loopback mode is implicit via PROCESS_LOOPBACK
