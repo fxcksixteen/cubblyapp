@@ -2233,29 +2233,20 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
   // Auto-end behavior:
   // - 30s timeout while RINGING (unanswered) — Discord-like.
-  // - 5min timeout once CONNECTED but alone (peer left and never came back).
-  // - Stop the *incoming* ringtone after 30s so we don't ring forever.
+  // NOTE: removed the 5-min "lonely" auto-hangup. It was a blind wall-clock
+  // timer that killed connected calls whether or not the peer was actually
+  // gone. Discord doesn't auto-end connected calls; neither do we.
   useEffect(() => {
     if (!activeCall) return;
     let unansweredTimer: ReturnType<typeof setTimeout> | null = null;
-    let lonelyTimer: ReturnType<typeof setTimeout> | null = null;
-
     if (activeCall.state === "calling" || activeCall.state === "ringing") {
       unansweredTimer = setTimeout(() => {
         console.log("[Voice] ⏰ 30s ring timeout — auto-ending unanswered call");
         endCallRef.current();
       }, 30_000);
     }
-    if (activeCall.state === "connected") {
-      // We'll bail after 5 minutes if the peer never reconnects.
-      lonelyTimer = setTimeout(() => {
-        console.log("[Voice] ⏰ 5-min lonely timeout — auto-ending call");
-        endCallRef.current();
-      }, 5 * 60 * 1000);
-    }
     return () => {
       if (unansweredTimer) clearTimeout(unansweredTimer);
-      if (lonelyTimer) clearTimeout(lonelyTimer);
     };
   }, [activeCall?.conversationId, activeCall?.state]);
 
@@ -2292,14 +2283,16 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     return () => clearInterval(interval);
   }, [activeCall?.state]);
 
-  // CRITICAL: when the app/tab closes mid-call, mark our participant row as
-  // left AND set the call_event to ended (so the chat pill flips from
-  // "Ongoing Call" to "Call Ended" automatically — not just when someone
-  // clicks the red button). Uses fetch + keepalive so the request survives
-  // unload, mirroring ActivityContext's pattern.
+  // When the app/tab closes mid-call, mark our own participant row as left.
+  // Do NOT force-end the entire call_event — that was kicking the other user
+  // out whenever we backgrounded a mobile tab / minimized / hit bfcache.
+  // The event will be auto-cleaned by startCall's "no active participants"
+  // pruning the next time anyone tries to use it.
   useEffect(() => {
     if (!activeCall || !user || !currentCallEventId) return;
-    const handleUnload = () => {
+    const handleUnload = (e?: Event) => {
+      // Skip bfcache navigations — the page is being frozen, not closed.
+      if (e && (e as PageTransitionEvent).persisted) return;
       try {
         const baseUrl = import.meta.env.VITE_SUPABASE_URL as string;
         const apikey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
@@ -2310,15 +2303,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           Prefer: "return=minimal",
         };
         const endedAt = new Date().toISOString();
-        // Mark our participant row left.
+        // Only mark our own participant row left. Leave call_event alone.
         fetch(
           `${baseUrl}/rest/v1/call_participants?call_event_id=eq.${currentCallEventId}&user_id=eq.${user.id}&left_at=is.null`,
           { method: "PATCH", headers, keepalive: true, body: JSON.stringify({ left_at: endedAt }) }
-        ).catch(() => {});
-        // End the call_event so the pill flips to "Call Ended" for both sides.
-        fetch(
-          `${baseUrl}/rest/v1/call_events?id=eq.${currentCallEventId}`,
-          { method: "PATCH", headers, keepalive: true, body: JSON.stringify({ state: "ended", ended_at: endedAt }) }
         ).catch(() => {});
       } catch { /* ignore */ }
     };

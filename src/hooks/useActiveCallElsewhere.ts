@@ -98,8 +98,10 @@ export function useActiveCallElsewhere() {
   }, [activeCall, groupCall.activeCall]);
 
   /** Tell the other device(s) to drop their call so this device can take over. */
-  const requestRemoteHangup = useCallback(async () => {
+  const requestRemoteHangup = useCallback(async (conversationId?: string) => {
     if (!user) return;
+    const target = conversationId || elsewhere?.conversationId;
+    if (!target) return;
     const signal = supabase.channel(`voice-control:${user.id}`);
     return new Promise<void>((resolve) => {
       signal.subscribe((status) => {
@@ -107,7 +109,7 @@ export function useActiveCallElsewhere() {
           signal.send({
             type: "broadcast",
             event: "hangup",
-            payload: { exceptDeviceId: DEVICE_ID },
+            payload: { exceptDeviceId: DEVICE_ID, conversationId: target },
           }).finally(() => {
             setTimeout(() => {
               supabase.removeChannel(signal);
@@ -117,7 +119,7 @@ export function useActiveCallElsewhere() {
         }
       });
     });
-  }, [user?.id]);
+  }, [user?.id, elsewhere?.conversationId]);
 
   return { elsewhere, deviceId: DEVICE_ID, requestRemoteHangup };
 }
@@ -136,8 +138,19 @@ export function useRemoteHangupListener() {
     const ch = supabase.channel(`voice-control:${user.id}`);
     ch.on("broadcast", { event: "hangup" }, ({ payload }) => {
       if (payload?.exceptDeviceId === DEVICE_ID) return;
-      if (activeCall) endCall();
-      if (groupCall.activeCall) groupCall.leaveCall();
+      // Only honor a remote hangup if it explicitly targets the call we're in.
+      // A blind broadcast must NOT be allowed to drop an active call — that
+      // was killing live calls whenever any other tab/device chattered.
+      const targetConv = payload?.conversationId as string | undefined;
+      if (activeCall) {
+        if (targetConv && targetConv === activeCall.conversationId) endCall();
+        return;
+      }
+      if (groupCall.activeCall) {
+        if (targetConv && targetConv === groupCall.activeCall.conversationId) groupCall.leaveCall();
+        return;
+      }
+      // No active call here — nothing to hang up.
     }).subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [user?.id, activeCall, groupCall.activeCall, endCall]);
