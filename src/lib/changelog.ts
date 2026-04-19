@@ -23,9 +23,21 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.19";
+export const CURRENT_VERSION = "0.2.20";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.2.20",
+    title: "WASAPI init fallback pass + realtime crash fix",
+    date: "2026-04-19",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Window screen-share audio now tries both classic WAVEFORMATEX and WAVEFORMATEXTENSIBLE layouts, plus a direct shared-mode initialize pass before the AUTOCONVERTPCM path, which fixes machines that reject every previous process-loopback candidate with AUDCLNT_E_UNSUPPORTED_FORMAT.",
+      "The native error trace now records which format shape (classic vs extensible) and init flag path (direct vs convert) Windows accepted or rejected, so the next failure tells us exactly which WASAPI route is blocked.",
+      "Fixed the runtime crash 'cannot add postgres_changes callbacks ... after subscribe()' by giving the affected realtime channels unique names per mount instead of accidentally reusing already-subscribed channels.",
+    ],
+  },
   {
     version: "0.2.19",
     title: "Deep WASAPI debug tracing for window screenshare audio",
