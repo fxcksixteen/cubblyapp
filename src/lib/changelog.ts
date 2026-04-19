@@ -23,9 +23,20 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.20";
+export const CURRENT_VERSION = "0.2.21";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.2.21",
+    title: "Window screenshare audio: add missing LOOPBACK init flag",
+    date: "2026-04-19",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Window screen-share audio capture now sets AUDCLNT_STREAMFLAGS_LOOPBACK on IAudioClient::Initialize, matching Microsoft's official process-loopback sample. Without this flag the driver was rejecting every format candidate with AUDCLNT_E_UNSUPPORTED_FORMAT, which is what the v0.2.20 trace finally proved.",
+      "Both init paths (direct and AUTOCONVERTPCM) now go through the LOOPBACK flag, so machines that need format conversion still work.",
+    ],
+  },
   {
     version: "0.2.20",
     title: "WASAPI init fallback pass + realtime crash fix",
