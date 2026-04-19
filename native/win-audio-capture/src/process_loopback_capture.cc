@@ -123,14 +123,12 @@ bool ProcessLoopbackCapture::Start(DWORD pid, PcmCallback cb, std::string& error
   }
   audioClient_ = client;
 
-  // PROCESS_LOOPBACK is finicky. On some Windows builds / drivers the virtual
-  // process-loopback client even returns E_NOTIMPL from GetMixFormat(), so we
-  // must NOT treat that as fatal. Strategy: try a list of sane candidate
-  // formats directly and accept the first one Initialize() accepts. If
-  // GetMixFormat() works we use its sample rate as the first candidate; if it
-  // doesn't, we fall back to common rates. We always tear down and re-create
-  // the IAudioClient between attempts because Initialize() can only succeed
-  // ONCE per client instance.
+  // PROCESS_LOOPBACK is finicky. Some Windows builds even return E_NOTIMPL
+  // from GetMixFormat(). Strategy: try a list of sane candidate formats but
+  // FIRST consult IsFormatSupported() in shared mode and use its suggested
+  // "closest match" format when the client offers one. We always tear down
+  // and re-create the IAudioClient between attempts because Initialize()
+  // can only succeed ONCE per client instance.
   uint32_t mixSr = 48000;
   HRESULT mixFormatHr = E_NOTIMPL;
   WAVEFORMATEX* mixFormat = nullptr;
@@ -149,22 +147,24 @@ bool ProcessLoopbackCapture::Start(DWORD pid, PcmCallback cb, std::string& error
     }
   }
 
-  // Build candidate formats. PROCESS_LOOPBACK on most Windows builds is
-  // happiest with WAVEFORMATEXTENSIBLE int16 stereo at the endpoint sample
-  // rate. We also try 48k / 44.1k explicitly so machines whose endpoint
-  // reports an oddball rate still find a winner.
+  // Build candidate formats. Most-likely-to-work first: WAVEFORMATEXTENSIBLE
+  // int16 stereo at common rates. Then mono, then float fallbacks. We've seen
+  // machines reject 0x88890021 on every blind candidate, so we now also probe
+  // IsFormatSupported() for each one and accept the client's suggested closest
+  // match instead.
   struct Cand { uint32_t sr; uint16_t ch; uint16_t bits; bool floatPcm; };
   std::vector<Cand> candidates = {
     { mixSr, 2, 16, false },
     { 48000, 2, 16, false },
     { 44100, 2, 16, false },
-    { 32000, 2, 16, false },
     { mixSr, 1, 16, false },
     { 48000, 1, 16, false },
     { 44100, 1, 16, false },
-    { mixSr, 2, 32, true },
+    { 32000, 2, 16, false },
+    { 16000, 1, 16, false },
     { 48000, 2, 32, true },
     { 44100, 2, 32, true },
+    { mixSr, 2, 32, true },
   };
 
   // 200ms buffer, event-driven, loopback mode is implicit via PROCESS_LOOPBACK
@@ -174,12 +174,8 @@ bool ProcessLoopbackCapture::Start(DWORD pid, PcmCallback cb, std::string& error
                       AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY;
   REFERENCE_TIME bufferDuration = 200 * 10000; // 200ms in 100-ns units
 
-  bool initialized = false;
-  std::string lastErr;
-  Cand chosen{};
-  for (const auto& c : candidates) {
-    // Build WAVEFORMATEXTENSIBLE — most reliable shape for PROCESS_LOOPBACK.
-    WAVEFORMATEXTENSIBLE wfx{};
+  auto buildWfx = [](const Cand& c, WAVEFORMATEXTENSIBLE& wfx) {
+    ZeroMemory(&wfx, sizeof(wfx));
     wfx.Format.wFormatTag = WAVE_FORMAT_EXTENSIBLE;
     wfx.Format.nChannels = c.ch;
     wfx.Format.nSamplesPerSec = c.sr;
@@ -190,36 +186,85 @@ bool ProcessLoopbackCapture::Start(DWORD pid, PcmCallback cb, std::string& error
     wfx.Samples.wValidBitsPerSample = c.bits;
     wfx.dwChannelMask = (c.ch == 2) ? (SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT) : SPEAKER_FRONT_CENTER;
     wfx.SubFormat = c.floatPcm ? KSDATAFORMAT_SUBTYPE_IEEE_FLOAT : KSDATAFORMAT_SUBTYPE_PCM;
+  };
 
-    hr = audioClient_->Initialize(AUDCLNT_SHAREMODE_SHARED, streamFlags,
-                                  bufferDuration, 0,
-                                  reinterpret_cast<WAVEFORMATEX*>(&wfx), nullptr);
-    if (SUCCEEDED(hr)) {
-      chosen = c;
-      initialized = true;
-      break;
-    }
-    lastErr = "candidate sr=" + std::to_string(c.sr) + " ch=" + std::to_string(c.ch) +
-              " bits=" + std::to_string(c.bits) + " float=" + (c.floatPcm ? "1" : "0") +
-              " -> " + HrToString(hr);
-
-    // Initialize() can only be called once per IAudioClient. Re-activate a
-    // fresh one for the next attempt.
-    audioClient_.Reset();
+  auto reactivate = [&](Microsoft::WRL::ComPtr<IAudioClient>& outClient, std::string& errAccum) -> bool {
     auto handler2 = Microsoft::WRL::Make<ActivationHandler>();
-    if (!handler2) { lastErr += " | retry alloc failed"; continue; }
-    ComPtr<IActivateAudioInterfaceAsyncOperation> asyncOp2;
+    if (!handler2) { errAccum += " | re-activate alloc failed"; return false; }
+    Microsoft::WRL::ComPtr<IActivateAudioInterfaceAsyncOperation> asyncOp2;
     HRESULT hra = ::ActivateAudioInterfaceAsync(
         VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK,
         __uuidof(IAudioClient),
         &activateParams,
         handler2.Get(),
         &asyncOp2);
-    if (FAILED(hra)) { lastErr += " | re-activate failed " + HrToString(hra); continue; }
-    ComPtr<IAudioClient> client2;
+    if (FAILED(hra)) { errAccum += " | re-activate failed " + HrToString(hra); return false; }
+    Microsoft::WRL::ComPtr<IAudioClient> client2;
     HRESULT hrw = handler2->Wait(&client2);
-    if (FAILED(hrw) || !client2) { lastErr += " | re-activate wait failed " + HrToString(hrw); continue; }
-    audioClient_ = client2;
+    if (FAILED(hrw) || !client2) { errAccum += " | re-activate wait failed " + HrToString(hrw); return false; }
+    outClient = client2;
+    return true;
+  };
+
+  bool initialized = false;
+  std::string lastErr;
+  Cand chosen{};
+  for (const auto& c : candidates) {
+    WAVEFORMATEXTENSIBLE wfx{};
+    buildWfx(c, wfx);
+
+    // Probe IsFormatSupported first. If the client offers a "closest match"
+    // we use that for Initialize() instead of our hand-rolled wfx — that's
+    // the entire point of the negotiation API and is what unblocks machines
+    // that respond AUDCLNT_E_UNSUPPORTED_FORMAT (0x88890021) to every blind
+    // attempt.
+    WAVEFORMATEX* suggested = nullptr;
+    HRESULT supportedHr = audioClient_->IsFormatSupported(
+        AUDCLNT_SHAREMODE_SHARED,
+        reinterpret_cast<WAVEFORMATEX*>(&wfx),
+        &suggested);
+
+    WAVEFORMATEX* useFmt = reinterpret_cast<WAVEFORMATEX*>(&wfx);
+    Cand effective = c;
+    if (supportedHr == S_FALSE && suggested) {
+      // Client suggested a closer format — adopt it.
+      useFmt = suggested;
+      effective.sr = suggested->nSamplesPerSec;
+      effective.ch = suggested->nChannels;
+      effective.bits = suggested->wBitsPerSample;
+      effective.floatPcm = false;
+      if (suggested->wFormatTag == WAVE_FORMAT_EXTENSIBLE && suggested->cbSize >= 22) {
+        const WAVEFORMATEXTENSIBLE* sx = reinterpret_cast<const WAVEFORMATEXTENSIBLE*>(suggested);
+        effective.floatPcm = (sx->SubFormat == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT);
+      } else if (suggested->wFormatTag == WAVE_FORMAT_IEEE_FLOAT) {
+        effective.floatPcm = true;
+      }
+    } else if (supportedHr != S_OK) {
+      // Not supported and no suggestion — skip cheap; record reason and try next.
+      lastErr = "candidate sr=" + std::to_string(c.sr) + " ch=" + std::to_string(c.ch) +
+                " bits=" + std::to_string(c.bits) + " float=" + (c.floatPcm ? "1" : "0") +
+                " IsFormatSupported=" + HrToString(supportedHr);
+      if (suggested) { ::CoTaskMemFree(suggested); suggested = nullptr; }
+      continue;
+    }
+
+    hr = audioClient_->Initialize(AUDCLNT_SHAREMODE_SHARED, streamFlags,
+                                  bufferDuration, 0, useFmt, nullptr);
+    if (SUCCEEDED(hr)) {
+      chosen = effective;
+      initialized = true;
+      if (suggested) { ::CoTaskMemFree(suggested); suggested = nullptr; }
+      break;
+    }
+    lastErr = "candidate sr=" + std::to_string(effective.sr) + " ch=" + std::to_string(effective.ch) +
+              " bits=" + std::to_string(effective.bits) + " float=" + (effective.floatPcm ? "1" : "0") +
+              " Initialize=" + HrToString(hr) + " (probe=" + HrToString(supportedHr) + ")";
+    if (suggested) { ::CoTaskMemFree(suggested); suggested = nullptr; }
+
+    // Initialize() can only be called once per IAudioClient. Re-activate
+    // a fresh one for the next attempt.
+    audioClient_.Reset();
+    if (!reactivate(audioClient_, lastErr)) continue;
   }
 
   if (!initialized) {
