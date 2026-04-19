@@ -23,9 +23,24 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.13";
+export const CURRENT_VERSION = "0.2.14";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.2.14",
+    title: "Smarter unread, cleaner chat, no more accidental double-calls",
+    date: "2026-04-19",
+    hero: bearImage,
+    newFeatures: [
+      "Discord-style 'NEW' divider now appears above the first unread message when you re-open a chat — sticks until you reply or leave + come back, so you can scroll past it as much as you want without losing your place",
+      "Blue 'New Messages — [count] · Mark as Read' bar pinned to the top of the chat (above any active call panel) — click 'Mark as Read' to dismiss, or just scroll to the bottom and it goes away on its own",
+      "Scrolling to the latest message now instantly clears the unread badge under the Cubbly logo — no more chasing a phantom red dot after you've already seen the message",
+      "Trying to start a call while you're already in one elsewhere now pops a clean confirm modal: 'You're already in a call on another device — disconnect & reconnect here?' (cross-device) or 'End your current call & start a new one?' (same device)",
+    ],
+    bugFixes: [
+      "Settings → Notifications and → Advanced no longer have inconsistent header treatments versus the other tabs — every settings page now has the same title + subtitle pattern",
+    ],
+  },
   {
     version: "0.2.13",
     title: "Screen-share audio, link previews, video player & a real message box",
@@ -36,44 +51,43 @@ export const CHANGELOG: ChangelogEntry[] = [
       "MP4, MOV and WebM video attachments now render with a built-in Cubbly video player — controls, fullscreen, save to disk, no more downloading just to watch a clip",
       "Message input is now a real multi-line box: Shift+Enter for newlines, Enter to send, auto-grows up to 6 lines then scrolls — no more text marching off into infinity",
       "Soft 1000-character limit on messages with a counter that appears at 750/1000, turns orange at 900, red at 1000",
-      "iOS PWA splash now uses an animated CSS fallback (breathing bear + pulse rings) since iOS Safari refuses to autoplay the webm — no more frozen splash on iPhone home-screen launches",
+      "iOS PWA splash now uses an animated fallback so the loader never appears frozen on iPhone home-screen launches",
     ],
     bugFixes: [
-      "CRITICAL: Window screen-share audio now actually works — root cause was AUDCLNT_E_UNSUPPORTED_FORMAT (HRESULT 0x88890021) because the native loopback engine refuses WAVE_FORMAT_IEEE_FLOAT; switched to PCM 16-bit stereo 44.1kHz (the only format Microsoft's official ApplicationLoopback sample uses) and added Int16→Float32 conversion on the JS side",
-      "Camera tile no longer stays a black rectangle when the other person turns their camera off — now correctly checks the peer's is_video_on state and falls back to the avatar circle the moment they disable video",
+      "CRITICAL: Window screen-share audio now actually works on Windows — fixed the underlying format-negotiation issue that was silently dropping the capture stream",
+      "Camera tile no longer stays a black rectangle when the other person turns their camera off — now falls back to their avatar circle the moment they disable video",
     ],
   },
   {
     version: "0.2.12",
-    title: "Camera, volume, and screen-share audio: fixed at the runtime layer",
+    title: "Camera, volume, and screen-share audio fixes",
     date: "2026-04-18",
     hero: bearImage,
     newFeatures: [
-      "DevTools is now reachable in the packaged desktop app via F12 or Ctrl/Cmd+Shift+I — when something breaks you can actually see why instead of guessing",
-      "Window-audio capture pipeline now logs every step (HWND parse, PID resolve, addon load, PCM frames, outgoing track) so failures are diagnosable in seconds, not patches",
+      "DevTools is now reachable in the packaged desktop app via F12 or Ctrl/Cmd+Shift+I — when something breaks you can actually see why",
+      "Window-audio capture now logs every step end-to-end so failures are diagnosable in seconds, not patches",
     ],
     bugFixes: [
-      "CRITICAL: Right-click peer volume slider and 'Mute (you only)' now ACTUALLY change what you hear — the per-peer gain pipeline was binding to a stale call state and silently never connecting; now uses a stable peer-id ref so it binds the moment the first audio packet arrives",
-      "CRITICAL: Volume controls now work even when the WebAudio graph stays suspended — they fall through to the raw audio/video element's volume + muted, so the slider is never a dead control",
-      "CRITICAL: Remote camera tile now renders for the OTHER user the instant the track arrives — when a peer turned on camera mid-call, event.streams[0] could be empty and the tile bound to null; we now synthesise a MediaStream from the raw track and force play() on every assignment",
-      "CRITICAL: Per-window screen-share audio HWND parsing now accepts both decimal AND hex window handles — the previous decimal-only parser silently rejected hex sourceIds on some Windows versions, killing audio capture before it started",
-      "Browser tab option in the Electron picker is now correctly labeled 'Browser Window' — it was never real tab capture, just a name-filtered window list, and the wrong label kept setting expectations the desktop app couldn't meet",
+      "CRITICAL: Right-click peer volume slider and 'Mute (you only)' now ACTUALLY change what you hear — controls were binding to a stale call state and silently never connecting; now bind the moment the first audio packet arrives",
+      "CRITICAL: Volume controls now work even when the audio pipeline takes a moment to wake up — never a dead slider",
+      "CRITICAL: Remote camera tile now renders for the OTHER user the instant the track arrives when they turn their camera on mid-call",
+      "CRITICAL: Per-window screen-share audio now correctly identifies the source window across all Windows versions — previously some window IDs were silently rejected, killing audio capture before it started",
+      "Browser tab option in the Electron picker is now correctly labeled 'Browser Window' to match what it actually does",
     ],
   },
   {
     version: "0.2.11",
-    title: "Calls actually work: native binary loads, controls drive audio, peer cam visible",
+    title: "Calls actually work: controls drive audio, peer cam visible",
     date: "2026-04-18",
     hero: bearImage,
     newFeatures: [
-      "Right-click 'User Volume' slider, 'Mute (you only)', and the fullscreen viewer's slider now move REAL playback in 1-on-1 and group calls — the per-peer audio pipeline now resumes on the first click/keypress instead of staying silently suspended",
+      "Right-click 'User Volume' slider, 'Mute (you only)', and the fullscreen viewer's slider now move REAL playback in 1-on-1 and group calls — pipeline resumes on the first interaction instead of staying silently suspended",
     ],
     bugFixes: [
-      "CRITICAL: Native per-window/tab audio capture is now actually loaded inside the packaged Electron app — the previous loader silently failed to find the bundled .node binary because of a filename mismatch, so window/tab share audio quietly fell back to 'video only' for everyone. Now scans the prebuilds directory for any .node file and loads the first one that matches the addon ABI",
-      "CRITICAL: Remote camera tile in 1-on-1 calls now appears for the OTHER user the moment frames arrive — the tile no longer waits on the lagging signaling boolean that was hiding the video even when the stream was live",
-      "CRITICAL: Group call peer-camera tiles render whenever a video stream is present, not gated on the easily-missed isVideoOn flag — fixes 'they turned camera on, I never saw it'",
-      "Native addon prebuild workflow now targets Electron 41 (matches the shipped runtime) instead of Electron 33 — even though NAPI is ABI-stable, this removes any chance of header drift on the next rebuild",
-      "Per-peer GainNode pipeline no longer leaves the source <audio>/<video> element silently muted when the AudioContext is suspended — falls back to direct element playback so you never end up with dead controls AND no audio at the same time",
+      "CRITICAL: Per-window/tab audio capture is now actually active inside the packaged Electron app — was silently falling back to 'video only' for everyone before",
+      "CRITICAL: Remote camera tile in 1-on-1 calls now appears for the OTHER user the moment frames arrive — no longer waits on a lagging signaling flag",
+      "CRITICAL: Group call peer-camera tiles render whenever a video stream is present — fixes 'they turned camera on, I never saw it'",
+      "Per-peer audio pipeline no longer leaves the source element silently muted while the controls show full volume — falls back to direct element playback as a safety net",
     ],
   },
   {
@@ -85,9 +99,8 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Desktop updater now ships the real post-0.2.9 call fixes as a new app version so Electron can actually detect and install them",
     ],
     bugFixes: [
-      "Fixed desktop users getting stuck on an older broken 0.2.9 build even after 'updating' — the patch now ships as 0.2.10 so auto-update sees it as newer",
-      "GitHub native-addon prebuild workflow now pushes back to the branch correctly instead of failing on detached HEAD during the commit step",
-      "Includes the already-implemented call fixes: remote camera visibility on mid-call enable, per-user volume/local mute for mic + screenshare audio in 1-on-1 and group calls, working fullscreen PiP, and native per-window audio wiring for Electron shares",
+      "Fixed desktop users getting stuck on an older broken 0.2.9 build even after 'updating'",
+      "Includes the already-implemented call fixes: remote camera visibility on mid-call enable, per-user volume/local mute for mic + screenshare audio in 1-on-1 and group calls, working fullscreen PiP, and per-window audio wiring",
     ],
   },
   {
@@ -96,33 +109,33 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: "2026-04-18",
     hero: bearImage,
     newFeatures: [
-      "GROUP CALLS: Sharing a single window or browser tab in a group call now sends ONLY that app's audio (Spotify, a YouTube tab, your game's music) — same native WASAPI engine that 1-on-1 already uses, no more 'audio either leaks everything or nothing'",
+      "GROUP CALLS: Sharing a single window or browser tab in a group call now sends ONLY that app's audio (Spotify, a YouTube tab, your game's music) — same engine that 1-on-1 already uses",
       "Browser web app: sharing a tab in a 1-on-1 call now correctly carries that tab's audio (previously silently disabled)",
-      "Right-click any user in a 1-on-1 OR group call → the volume slider (0–200%) and 'Mute (you only)' now actually work — and they control BOTH that person's mic AND their screen-share audio (one slider for everything you hear from them)",
-      "Fullscreen screen-share viewer: Picture-in-Picture button now works (no more silent fail) — pop a friend's screen out into a floating window while you keep doing other things",
-      "Fullscreen viewer's volume slider now goes 0–200% and shares state with the right-click menu — adjusting one updates the other instantly",
+      "Right-click any user in a 1-on-1 OR group call → the volume slider (0–200%) and 'Mute (you only)' now actually work — controls BOTH that person's mic AND their screen-share audio",
+      "Fullscreen screen-share viewer: Picture-in-Picture button now works — pop a friend's screen out into a floating window",
+      "Fullscreen viewer's volume slider now goes 0–200% and shares state with the right-click menu",
     ],
     bugFixes: [
-      "CRITICAL: Fixed remote camera tiles disappearing or never appearing in group calls when someone turned their camera on mid-call — newly negotiated tracks arrive in a 'muted' state and we now correctly listen for unmute (when frames actually start flowing) instead of clearing the tile",
-      "Group call window/tab share-audio no longer leaks your full system mix to everyone — only the chosen app's audio is sent, the same way Discord does it",
-      "Unified the 1-on-1 and group native-audio capture paths into one shared module so they can't drift apart again",
-      "Per-user volume / local mute were silently doing NOTHING in group calls — now wired up and persisted forever in localStorage (settings carry across reloads, calls, and re-installs)",
-      "Per-user volume in 1-on-1 only affected the peer's mic, not their screen-share audio — both are now routed through the same gain node",
-      "Fullscreen viewer's volume slider was changing the wrong audio element (the hidden one kept playing) — now drives the actual playback pipeline",
+      "CRITICAL: Fixed remote camera tiles disappearing or never appearing in group calls when someone turned their camera on mid-call",
+      "Group call window/tab share-audio no longer leaks your full system mix to everyone — only the chosen app's audio is sent",
+      "Unified the 1-on-1 and group audio capture paths into one shared module so they can't drift apart again",
+      "Per-user volume / local mute were silently doing NOTHING in group calls — now wired up and persisted forever in localStorage",
+      "Per-user volume in 1-on-1 only affected the peer's mic, not their screen-share audio — both now respond to the same control",
+      "Fullscreen viewer's volume slider was changing the wrong audio element — now drives the actual playback pipeline",
     ],
   },
   {
     version: "0.2.8",
-    title: "Native per-window audio + camera fix",
+    title: "Per-window audio + camera fix",
     date: "2026-04-18",
     hero: bearImage,
     newFeatures: [
-      "MAJOR: Cubbly now ships its own native Windows audio engine — when you share a single window or browser tab, only THAT app's sound is sent to the call (Spotify, music in your game, a YouTube tab, anything). No more 'audio only works when you share the whole screen'. Built on Windows 10 20H2's process-loopback APIs the same way Discord does it. Bundled .node binary, no install steps.",
+      "MAJOR: When you share a single window or browser tab on Windows, only THAT app's sound is sent to the call (Spotify, music in your game, a YouTube tab, anything). No more 'audio only works when you share the whole screen'.",
       "Screen-share picker now tells you upfront that Window and Browser Tab shares carry per-process audio, not your full system mix",
     ],
     bugFixes: [
-      "CRITICAL: Fixed turning your camera on mid-call showing the preview to YOU but never reaching the other person — the receiving side now forces its video transceiver back to sendrecv on every mid-call re-offer so the next camera flip actually streams both ways",
-      "Window/tab share-audio no longer silently drops — it routes through the new native capture path instead of being disabled",
+      "CRITICAL: Fixed turning your camera on mid-call showing the preview to YOU but never reaching the other person — the next camera flip now correctly streams both ways",
+      "Window/tab share-audio no longer silently drops",
     ],
   },
   {
