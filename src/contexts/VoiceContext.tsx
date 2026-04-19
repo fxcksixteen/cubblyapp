@@ -170,6 +170,8 @@ interface VoiceContextType {
   activeCall: ActiveCall | null;
   startCall: (conversationId: string, peerId: string, peerName: string) => void;
   acceptCall: () => void;
+  /** Dismiss an incoming-call ring on THIS device without ending any active call. */
+  declineIncoming: () => void;
   endCall: () => void;
   incomingCall: { conversationId: string; callerId: string; callerName: string; callerAvatarUrl?: string; offer?: RTCSessionDescriptionInit; callEventId?: string } | null;
   toggleMute: () => void;
@@ -1283,17 +1285,24 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           .limit(1)
           .maybeSingle();
         if (existing?.id) {
-          const { count: activeParticipantCount } = await supabase
+          // Count OTHER participants still active (exclude self). Joining your
+          // own zombie row is what created the "rejoin into a fake call where
+          // both users sit in calling-limbo" bug — we must only treat the
+          // event as live if a non-self user has left_at IS NULL.
+          const { data: liveRows } = await supabase
             .from("call_participants")
-            .select("id", { count: "exact", head: true })
+            .select("user_id")
             .eq("call_event_id", existing.id)
             .is("left_at", null);
 
-          if ((activeParticipantCount || 0) > 0) {
+          const otherActive = (liveRows || []).some((r: any) => r.user_id !== user.id);
+
+          if (otherActive) {
             callEventId = existing.id;
             isJoiningExisting = true;
             console.log("[Voice] 🔁 Joining existing ongoing call_event:", callEventId);
           } else {
+            // No real peer present — close this stale event and start a fresh call.
             await supabase.from("call_events").update({ state: "ended", ended_at: new Date().toISOString() } as any).eq("id", existing.id);
           }
         }
@@ -1406,6 +1415,22 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       console.error("[Voice] ❌ Failed to start call:", e);
     }
   }, [user, setupSignaling, startLoopbackTest, ensureOwnParticipantRow]);
+
+  /**
+   * Dismiss the incoming-call ring on THIS device only — does NOT hang up an
+   * already-connected call on a sibling device. Use this when the user clicks
+   * the "decline" button on a stale incoming card (e.g. they already answered
+   * on the desktop app and the web tab is still ringing). Sends a sibling
+   * dismissal so any other tabs of mine also clear their ring.
+   */
+  const declineIncoming = useCallback(async () => {
+    if (!incomingCall) return;
+    const { conversationId, callEventId } = incomingCall;
+    stopLooping("incomingCall");
+    setIncomingCall(null);
+    acceptedIncomingCallRef.current = null;
+    try { void broadcastIncomingCallDismiss(conversationId, callEventId); } catch {}
+  }, [incomingCall, broadcastIncomingCallDismiss]);
 
   const acceptCall = useCallback(async () => {
     if (!incomingCall || !user) return;
@@ -1867,8 +1892,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     setRemoteVideoStream(null);
     videoTransceiverRef.current = null;
 
-    // Only broadcast hangup if WE initiated it (not a remote hangup)
-    if (!isRemoteHangup.current && channelRef.current && user) {
+    // Only broadcast hangup if WE initiated it AND we actually had a peer
+    // connection. Without the pcRef guard, declining a stale incoming ring on
+    // a secondary device would push a `hangup` onto the shared signaling
+    // channel and KILL the live call on the primary device.
+    if (!isRemoteHangup.current && channelRef.current && user && pcRef.current) {
       channelRef.current.send({
         type: "broadcast",
         event: "voice-signal",
@@ -2321,7 +2349,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   return (
     <VoiceContext.Provider value={{
       settings, updateSettings, screenShareSettings, updateScreenShareSettings,
-      activeCall, startCall, acceptCall, endCall,
+      activeCall, startCall, acceptCall, declineIncoming, endCall,
       incomingCall, toggleMute, toggleDeafen, toggleVideo,
       localStream, remoteStream, localVideoStream, remoteVideoStream,
       audioLevel, remoteAudioLevel, availableDevices, refreshDevices, callEvents, currentCallEventId, detectedRegion,

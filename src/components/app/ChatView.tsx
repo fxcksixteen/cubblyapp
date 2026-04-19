@@ -91,6 +91,15 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
   const [unreadOnEntry, setUnreadOnEntry] = useState<number>(0);
   const [showNewBar, setShowNewBar] = useState(false);
   const [rejoiningEventId, setRejoiningEventId] = useState<string | null>(null);
+  /**
+   * Set of call_event ids that are TRULY rejoinable for the current user:
+   *   - the event is still ongoing
+   *   - I have a participant row with left_at != null (I previously left)
+   *   - at least one OTHER participant still has left_at IS NULL (someone is still live)
+   * Without this, the rejoin banner/button were false-positives — appearing for
+   * brand-new outgoing calls and for "ongoing" events that nobody was actually in.
+   */
+  const [rejoinableEventIds, setRejoinableEventIds] = useState<Set<string>>(new Set());
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -220,6 +229,62 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
     const timeout = window.setTimeout(() => setRejoiningEventId((current) => current === rejoiningEventId ? null : current), 8000);
     return () => window.clearTimeout(timeout);
   }, [rejoiningEventId, activeCall?.conversationId, conversationId, callEvents]);
+
+  // ── Rejoinable detection ────────────────────────────────────────────────
+  // For each ongoing call_event in this DM, an event is "rejoinable for me"
+  // ONLY when:
+  //   (1) I have a participant row with left_at != null  (I previously left)
+  //   (2) at least one OTHER participant has left_at IS NULL (someone live)
+  // We re-evaluate whenever ongoing events change in this conversation, and
+  // subscribe to call_participants realtime so leave/rejoin reflects live.
+  const ongoingIdsForChat = conversationCallEvents
+    .filter(e => e.state === "ongoing")
+    .map(e => e.id)
+    .join(",");
+  useEffect(() => {
+    if (!user) { setRejoinableEventIds(new Set()); return; }
+    let cancelled = false;
+    const ids = ongoingIdsForChat ? ongoingIdsForChat.split(",") : [];
+    if (ids.length === 0) { setRejoinableEventIds(new Set()); return; }
+
+    const computeFor = async (eventId: string): Promise<boolean> => {
+      const { data } = await supabase
+        .from("call_participants")
+        .select("user_id, left_at")
+        .eq("call_event_id", eventId);
+      if (!data) return false;
+      const myRow = data.find(r => r.user_id === user.id);
+      const iLeft = !!myRow && myRow.left_at !== null;
+      const otherLive = data.some(r => r.user_id !== user.id && r.left_at === null);
+      return iLeft && otherLive;
+    };
+
+    const recompute = async () => {
+      const results = await Promise.all(ids.map(async id => [id, await computeFor(id)] as const));
+      if (cancelled) return;
+      const next = new Set<string>();
+      for (const [id, ok] of results) if (ok) next.add(id);
+      setRejoinableEventIds(next);
+    };
+    void recompute();
+
+    const channel = supabase
+      .channel(`rejoinable:${conversationId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "call_participants" },
+        (payload: any) => {
+          const evtId = payload.new?.call_event_id || payload.old?.call_event_id;
+          if (evtId && ids.includes(evtId)) void recompute();
+        }
+      )
+      .subscribe();
+
+    return () => { cancelled = true; supabase.removeChannel(channel); };
+  }, [ongoingIdsForChat, user, conversationId]);
+
+  /** True if the latest-ongoing event in this DM is genuinely rejoinable for me right now. */
+  const latestEventRejoinable = !!latestOngoingCallEvent && rejoinableEventIds.has(latestOngoingCallEvent.id);
 
   // Capture the first-unread snapshot the FIRST time messages are loaded for this conversation.
   useEffect(() => {
@@ -543,7 +608,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
         </div>
       )}
 
-      {!conversation?.is_group && latestOngoingCallEvent && !liveCallInThisChat && !!recipientUserId && (
+      {!conversation?.is_group && latestOngoingCallEvent && latestEventRejoinable && !liveCallInThisChat && !!recipientUserId && (
         <div className="shrink-0 border-b px-4 py-3" style={{ borderColor: "var(--app-border)", backgroundColor: "var(--app-bg-secondary)" }}>
           <div className="flex items-center justify-between gap-3 rounded-xl border px-3 py-3" style={{ borderColor: "var(--app-border)", backgroundColor: "var(--app-bg-tertiary)" }}>
             <div className="flex min-w-0 items-center gap-3">
@@ -623,7 +688,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
               }
 
               if (item.type === "call-event") {
-                const canRejoin = item.event.state === "ongoing" && !conversation?.is_group && !!recipientUserId && !liveCallInThisChat;
+                const canRejoin = item.event.state === "ongoing" && !conversation?.is_group && !!recipientUserId && !liveCallInThisChat && rejoinableEventIds.has(item.event.id);
                 const isRejoiningThisEvent = rejoiningEventId === item.event.id;
                 return (
                   <CallEventMessage
