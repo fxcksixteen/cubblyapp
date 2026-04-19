@@ -393,7 +393,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
     const attachRegex = /\[attachments\](.*?)\[\/attachments\]/s;
     const match = content.match(attachRegex);
     const text = content.replace(attachRegex, "").trim();
-    let attachments: { name: string; url: string; size: number; type: string }[] = [];
+    let attachments: { name: string; path?: string; url?: string; size: number; type: string }[] = [];
     if (match) {
       try { attachments = JSON.parse(match[1]); } catch {}
     }
