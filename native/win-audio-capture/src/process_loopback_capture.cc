@@ -5,9 +5,13 @@
 #include <combaseapi.h>
 #include <propvarutil.h>
 #include <avrt.h>
+#include <ks.h>
+#include <ksmedia.h>
+#include <mmreg.h>
 
 #include <cstring>
 #include <sstream>
+#include <string>
 
 using Microsoft::WRL::ComPtr;
 
