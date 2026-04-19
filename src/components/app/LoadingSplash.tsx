@@ -93,8 +93,7 @@ const LoadingSplash = ({ minDuration = 2200, onComplete }: LoadingSplashProps) =
         loop
         muted
         playsInline
-        // @ts-expect-error — vendor attribute that helps iOS keep the video silent + inline
-        webkit-playsinline="true"
+        {...({ "webkit-playsinline": "true" } as any)}
         className="w-[260px] h-[260px] object-contain select-none"
         style={{ backgroundColor: SPLASH_BG_COLOR }}
       />
