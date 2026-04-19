@@ -20,10 +20,18 @@ const isPreviewHost = () => {
   return h.includes("id-preview--") || h.includes("lovableproject.com") || h.includes("lovable.app");
 };
 
+const isElectron = () => {
+  if (typeof window === "undefined") return false;
+  if ((window as any).electronAPI?.isElectron) return true;
+  // Electron loads via file:// — service workers can't be installed there anyway.
+  if (window.location.protocol === "file:") return true;
+  return /electron/i.test(navigator.userAgent || "");
+};
+
 export async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (typeof window === "undefined" || !("serviceWorker" in navigator)) return null;
 
-  if (isInIframe || isPreviewHost()) {
+  if (isInIframe || isPreviewHost() || isElectron()) {
     // Defensive cleanup so a previously-registered SW can't keep serving stale content.
     try {
       const regs = await navigator.serviceWorker.getRegistrations();
