@@ -170,6 +170,8 @@ interface VoiceContextType {
   activeCall: ActiveCall | null;
   startCall: (conversationId: string, peerId: string, peerName: string) => void;
   acceptCall: () => void;
+  /** Dismiss an incoming-call ring on THIS device without ending any active call. */
+  declineIncoming: () => void;
   endCall: () => void;
   incomingCall: { conversationId: string; callerId: string; callerName: string; callerAvatarUrl?: string; offer?: RTCSessionDescriptionInit; callEventId?: string } | null;
   toggleMute: () => void;
@@ -1890,8 +1892,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     setRemoteVideoStream(null);
     videoTransceiverRef.current = null;
 
-    // Only broadcast hangup if WE initiated it (not a remote hangup)
-    if (!isRemoteHangup.current && channelRef.current && user) {
+    // Only broadcast hangup if WE initiated it AND we actually had a peer
+    // connection. Without the pcRef guard, declining a stale incoming ring on
+    // a secondary device would push a `hangup` onto the shared signaling
+    // channel and KILL the live call on the primary device.
+    if (!isRemoteHangup.current && channelRef.current && user && pcRef.current) {
       channelRef.current.send({
         type: "broadcast",
         event: "voice-signal",
@@ -2344,7 +2349,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   return (
     <VoiceContext.Provider value={{
       settings, updateSettings, screenShareSettings, updateScreenShareSettings,
-      activeCall, startCall, acceptCall, endCall,
+      activeCall, startCall, acceptCall, declineIncoming, endCall,
       incomingCall, toggleMute, toggleDeafen, toggleVideo,
       localStream, remoteStream, localVideoStream, remoteVideoStream,
       audioLevel, remoteAudioLevel, availableDevices, refreshDevices, callEvents, currentCallEventId, detectedRegion,
