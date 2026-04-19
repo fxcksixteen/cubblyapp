@@ -1206,7 +1206,31 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     console.log(`[Voice] 📞 startCall — peer: ${peerName} (${peerId}), bot: ${isBotCall}`);
 
     try {
-      const callEventId = crypto.randomUUID();
+      // ─── Hardcoded invariant: only ONE call can ever be ongoing per chat. ───
+      // Before starting a fresh one, check the DB for an existing ongoing
+      // call_event in this conversation. If it exists, REUSE its id (we're
+      // joining the live call) instead of inserting a second event — that
+      // was the source of "two Ongoing Call pills" after a restart.
+      let callEventId: string | null = null;
+      let isJoiningExisting = false;
+      try {
+        const { data: existing } = await supabase
+          .from("call_events")
+          .select("id, started_at")
+          .eq("conversation_id", conversationId)
+          .eq("state", "ongoing")
+          .order("started_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (existing?.id) {
+          callEventId = existing.id;
+          isJoiningExisting = true;
+          console.log("[Voice] 🔁 Joining existing ongoing call_event:", callEventId);
+        }
+      } catch (e) {
+        console.warn("[Voice] could not check for existing call_event:", e);
+      }
+      if (!callEventId) callEventId = crypto.randomUUID();
 
       incomingCandidateQueue.current = [];
       outgoingCandidateBuffer.current = [];
@@ -1224,37 +1248,35 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         isDeafened: false,
         isVideoOn: false,
       });
-      // Bind stable peer id so ontrack callbacks can route through per-peer gain.
       peerIdRef.current = peerId;
 
-      // Outgoing ring sound (skipped for bot self-test calls)
       if (!isBotCall) {
         playLooping("outgoingRing", { volume: 0.4 });
       }
 
-      setCallEvents(prev => [...prev, {
-        id: callEventId,
-        conversationId,
-        state: "ongoing",
-        startedAt: new Date().toISOString(),
-      }]);
+      // Only insert a new call_event row if we're NOT joining an existing one.
+      if (!isJoiningExisting) {
+        setCallEvents(prev => [...prev, {
+          id: callEventId!,
+          conversationId,
+          state: "ongoing",
+          startedAt: new Date().toISOString(),
+        }]);
+        supabase.from("call_events").insert({
+          id: callEventId,
+          conversation_id: conversationId,
+          caller_id: user.id,
+          state: "ongoing",
+        } as any).then(() => {});
+      }
       setCurrentCallEventId(callEventId);
 
-      supabase.from("call_events").insert({
-        id: callEventId,
-        conversation_id: conversationId,
-        caller_id: user.id,
-        state: "ongoing",
-      } as any).then(() => {});
-
       if (isBotCall) {
-        // Loopback self-test: full WebRTC pipeline echoing your own voice
         console.log("[Voice] 🤖 Bot call detected — starting loopback self-test");
         await startLoopbackTest(conversationId);
         return;
       }
 
-      // Normal call flow
       const channel = await setupSignaling(conversationId);
 
       let callerAvatarUrl: string | undefined;
