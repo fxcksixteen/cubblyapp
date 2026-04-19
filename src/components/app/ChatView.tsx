@@ -559,8 +559,16 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                 );
               }
 
+              const groupContainsFirstUnread = !!firstUnreadId && item.messages.some(m => m.id === firstUnreadId);
               return (
-                <div key={idx} className="mt-4 first:mt-0 flex gap-3 rounded px-2 py-1 relative group" style={{ transition: "background-color 0.15s" }} onMouseEnter={e => (e.currentTarget.style.backgroundColor = "var(--app-hover, #2e3035)")} onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}>
+                <div key={idx}>
+                  {groupContainsFirstUnread && (
+                    <div className="my-3 flex items-center gap-2" data-new-divider>
+                      <div className="flex-1 h-px" style={{ backgroundColor: "#ed4245" }} />
+                      <span className="text-[10px] font-bold tracking-wider px-2 rounded" style={{ color: "#ffffff", backgroundColor: "#ed4245" }}>NEW</span>
+                    </div>
+                  )}
+                <div className="mt-4 first:mt-0 flex gap-3 rounded px-2 py-1 relative group" style={{ transition: "background-color 0.15s" }} onMouseEnter={e => (e.currentTarget.style.backgroundColor = "var(--app-hover, #2e3035)")} onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}>
                   {item.sender_avatar_url ? (
                     <img
                       src={item.sender_avatar_url}
