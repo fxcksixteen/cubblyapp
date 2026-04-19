@@ -580,7 +580,8 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
               }
 
               if (item.type === "call-event") {
-                const canRejoin = item.event.state === "ongoing" && !conversation?.is_group && !!recipientUserId && activeCall?.conversationId !== conversationId;
+                const liveCallInThisChat = activeCall?.conversationId === conversationId;
+                const canRejoin = item.event.state === "ongoing" && !conversation?.is_group && !!recipientUserId && !liveCallInThisChat;
                 const isRejoiningThisEvent = rejoiningEventId === item.event.id;
                 return (
                   <CallEventMessage
@@ -588,6 +589,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                     state={item.event.state}
                     startedAt={item.event.startedAt}
                     endedAt={item.event.endedAt}
+                    live={liveCallInThisChat && item.event.state === "ongoing"}
                     joinDisabled={isRejoiningThisEvent}
                     joinLabel={isRejoiningThisEvent ? "Rejoining..." : "Rejoin"}
                     onJoin={
