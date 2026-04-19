@@ -372,37 +372,38 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         }
       });
 
-    // Realtime subscription for call events
-    const callChannel = supabase
-      .channel("call-events-realtime")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "call_events" },
-        (payload) => {
-          const row = payload.new as any;
-          if (payload.eventType === "INSERT") {
-            setCallEvents(prev => {
-              if (prev.some(e => e.id === row.id)) return prev;
-              return [...prev, {
-                id: row.id,
-                conversationId: row.conversation_id,
-                state: row.state as "ongoing" | "ended" | "missed",
-                startedAt: row.started_at,
-                endedAt: row.ended_at || undefined,
-              }];
-            });
-          } else if (payload.eventType === "UPDATE") {
-            setCallEvents(prev =>
-              prev.map(e =>
-                e.id === row.id
-                  ? { ...e, state: row.state, endedAt: row.ended_at || undefined }
-                  : e
-              )
-            );
-          }
+    // Realtime subscription for call events. CRITICAL: attach all .on()
+    // listeners BEFORE calling .subscribe(), or supabase-js throws
+    // "cannot add postgres_changes callbacks ... after subscribe()".
+    const callChannel = supabase.channel("call-events-realtime");
+    callChannel.on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "call_events" },
+      (payload) => {
+        const row = payload.new as any;
+        if (payload.eventType === "INSERT") {
+          setCallEvents(prev => {
+            if (prev.some(e => e.id === row.id)) return prev;
+            return [...prev, {
+              id: row.id,
+              conversationId: row.conversation_id,
+              state: row.state as "ongoing" | "ended" | "missed",
+              startedAt: row.started_at,
+              endedAt: row.ended_at || undefined,
+            }];
+          });
+        } else if (payload.eventType === "UPDATE") {
+          setCallEvents(prev =>
+            prev.map(e =>
+              e.id === row.id
+                ? { ...e, state: row.state, endedAt: row.ended_at || undefined }
+                : e
+            )
+          );
         }
-      )
-      .subscribe();
+      }
+    );
+    callChannel.subscribe();
 
     return () => {
       supabase.removeChannel(callChannel);
@@ -1205,7 +1206,31 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     console.log(`[Voice] 📞 startCall — peer: ${peerName} (${peerId}), bot: ${isBotCall}`);
 
     try {
-      const callEventId = crypto.randomUUID();
+      // ─── Hardcoded invariant: only ONE call can ever be ongoing per chat. ───
+      // Before starting a fresh one, check the DB for an existing ongoing
+      // call_event in this conversation. If it exists, REUSE its id (we're
+      // joining the live call) instead of inserting a second event — that
+      // was the source of "two Ongoing Call pills" after a restart.
+      let callEventId: string | null = null;
+      let isJoiningExisting = false;
+      try {
+        const { data: existing } = await supabase
+          .from("call_events")
+          .select("id, started_at")
+          .eq("conversation_id", conversationId)
+          .eq("state", "ongoing")
+          .order("started_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (existing?.id) {
+          callEventId = existing.id;
+          isJoiningExisting = true;
+          console.log("[Voice] 🔁 Joining existing ongoing call_event:", callEventId);
+        }
+      } catch (e) {
+        console.warn("[Voice] could not check for existing call_event:", e);
+      }
+      if (!callEventId) callEventId = crypto.randomUUID();
 
       incomingCandidateQueue.current = [];
       outgoingCandidateBuffer.current = [];
@@ -1223,37 +1248,35 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         isDeafened: false,
         isVideoOn: false,
       });
-      // Bind stable peer id so ontrack callbacks can route through per-peer gain.
       peerIdRef.current = peerId;
 
-      // Outgoing ring sound (skipped for bot self-test calls)
       if (!isBotCall) {
         playLooping("outgoingRing", { volume: 0.4 });
       }
 
-      setCallEvents(prev => [...prev, {
-        id: callEventId,
-        conversationId,
-        state: "ongoing",
-        startedAt: new Date().toISOString(),
-      }]);
+      // Only insert a new call_event row if we're NOT joining an existing one.
+      if (!isJoiningExisting) {
+        setCallEvents(prev => [...prev, {
+          id: callEventId!,
+          conversationId,
+          state: "ongoing",
+          startedAt: new Date().toISOString(),
+        }]);
+        supabase.from("call_events").insert({
+          id: callEventId,
+          conversation_id: conversationId,
+          caller_id: user.id,
+          state: "ongoing",
+        } as any).then(() => {});
+      }
       setCurrentCallEventId(callEventId);
 
-      supabase.from("call_events").insert({
-        id: callEventId,
-        conversation_id: conversationId,
-        caller_id: user.id,
-        state: "ongoing",
-      } as any).then(() => {});
-
       if (isBotCall) {
-        // Loopback self-test: full WebRTC pipeline echoing your own voice
         console.log("[Voice] 🤖 Bot call detected — starting loopback self-test");
         await startLoopbackTest(conversationId);
         return;
       }
 
-      // Normal call flow
       const channel = await setupSignaling(conversationId);
 
       let callerAvatarUrl: string | undefined;
@@ -2098,28 +2121,39 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [activeCall?.state]);
 
-  // Auto-end call if it's been "calling/ringing" for 3 minutes with no answer,
-  // OR if we've been alone in a connected call for 3 minutes.
-  // Also auto-stop incoming ringtone after 45s if user doesn't respond (don't ring forever).
+  // Auto-end behavior:
+  // - 30s timeout while RINGING (unanswered) — Discord-like.
+  // - 5min timeout once CONNECTED but alone (peer left and never came back).
+  // - Stop the *incoming* ringtone after 30s so we don't ring forever.
   useEffect(() => {
     if (!activeCall) return;
-    const startedRinging = Date.now();
-    const lonelyTimer = setTimeout(() => {
-      // If still not connected after 3 minutes → auto-hangup
-      if (activeCall.state === "calling" || activeCall.state === "ringing") {
-        console.log("[Voice] ⏰ 3-minute ring timeout — auto-ending call");
+    let unansweredTimer: ReturnType<typeof setTimeout> | null = null;
+    let lonelyTimer: ReturnType<typeof setTimeout> | null = null;
+
+    if (activeCall.state === "calling" || activeCall.state === "ringing") {
+      unansweredTimer = setTimeout(() => {
+        console.log("[Voice] ⏰ 30s ring timeout — auto-ending unanswered call");
         endCallRef.current();
-      }
-    }, 3 * 60 * 1000);
-    return () => clearTimeout(lonelyTimer);
+      }, 30_000);
+    }
+    if (activeCall.state === "connected") {
+      // We'll bail after 5 minutes if the peer never reconnects.
+      lonelyTimer = setTimeout(() => {
+        console.log("[Voice] ⏰ 5-min lonely timeout — auto-ending call");
+        endCallRef.current();
+      }, 5 * 60 * 1000);
+    }
+    return () => {
+      if (unansweredTimer) clearTimeout(unansweredTimer);
+      if (lonelyTimer) clearTimeout(lonelyTimer);
+    };
   }, [activeCall?.conversationId, activeCall?.state]);
 
-  // Auto-stop *incoming* ringtone after 45s — don't ring the user forever
   useEffect(() => {
     if (!incomingCall) return;
     const t = setTimeout(() => {
       stopLooping("incomingCall");
-    }, 45_000);
+    }, 30_000);
     return () => clearTimeout(t);
   }, [incomingCall?.callEventId]);
 
@@ -2147,6 +2181,44 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     }, 2000);
     return () => clearInterval(interval);
   }, [activeCall?.state]);
+
+  // CRITICAL: when the app/tab closes mid-call, mark our participant row as
+  // left AND set the call_event to ended (so the chat pill flips from
+  // "Ongoing Call" to "Call Ended" automatically — not just when someone
+  // clicks the red button). Uses fetch + keepalive so the request survives
+  // unload, mirroring ActivityContext's pattern.
+  useEffect(() => {
+    if (!activeCall || !user || !currentCallEventId) return;
+    const handleUnload = () => {
+      try {
+        const baseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+        const apikey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
+        const headers = {
+          apikey,
+          Authorization: `Bearer ${apikey}`,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal",
+        };
+        const endedAt = new Date().toISOString();
+        // Mark our participant row left.
+        fetch(
+          `${baseUrl}/rest/v1/call_participants?call_event_id=eq.${currentCallEventId}&user_id=eq.${user.id}&left_at=is.null`,
+          { method: "PATCH", headers, keepalive: true, body: JSON.stringify({ left_at: endedAt }) }
+        ).catch(() => {});
+        // End the call_event so the pill flips to "Call Ended" for both sides.
+        fetch(
+          `${baseUrl}/rest/v1/call_events?id=eq.${currentCallEventId}`,
+          { method: "PATCH", headers, keepalive: true, body: JSON.stringify({ state: "ended", ended_at: endedAt }) }
+        ).catch(() => {});
+      } catch { /* ignore */ }
+    };
+    window.addEventListener("beforeunload", handleUnload);
+    window.addEventListener("pagehide", handleUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleUnload);
+      window.removeEventListener("pagehide", handleUnload);
+    };
+  }, [activeCall, user, currentCallEventId]);
 
   return (
     <VoiceContext.Provider value={{

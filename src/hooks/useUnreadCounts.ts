@@ -137,103 +137,105 @@ export function useUnreadCounts(activeConversationId: string | null) {
   useEffect(() => {
     if (!user) return;
 
-    const channel = supabase
-      .channel(`unread-watcher:${user.id}`)
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "messages" },
-        async (payload) => {
-          const msg = payload.new as any;
-          if (msg.sender_id === user.id) return;
+    // CRITICAL: attach .on() listeners BEFORE .subscribe(), otherwise
+    // supabase-js throws "cannot add postgres_changes callbacks after subscribe()".
+    const channel = supabase.channel(`unread-watcher:${user.id}`);
+    channel.on(
+      "postgres_changes",
+      { event: "INSERT", schema: "public", table: "messages" },
+      async (payload) => {
+        const msg = payload.new as any;
+        if (msg.sender_id === user.id) return;
 
-          // Verify I'm a participant — otherwise ignore
-          const lastRead = lastReadByConvRef.current.get(msg.conversation_id);
-          if (lastRead === undefined) {
-            // Not in our cache yet — refetch
-            await fetchUnread();
-            return;
-          }
-
-          // Only treat the chat as "open" when the window is ACTUALLY focused.
-          // If the app is minimized / in the background / behind another window,
-          // we still want a sound + notification + taskbar flash even though the
-          // user technically has that DM route open.
-          const windowFocused = typeof document !== "undefined" && document.hasFocus();
-          const isViewingAndFocused = activeConvRef.current === msg.conversation_id && windowFocused;
-          if (isViewingAndFocused) {
-            await supabase.rpc("mark_conversation_read", { _conversation_id: msg.conversation_id });
-            lastReadByConvRef.current.set(msg.conversation_id, new Date().toISOString());
-            return;
-          }
-
-          const notificationPrefs = getNotificationPreferences();
-
-          if (notificationPrefs.messageSoundEnabled) {
-            // force=true so the sound still plays even if focus flickers back
-            // (we already verified above that we want to alert).
-            playSound("message", { force: true });
-          }
-
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("display_name, avatar_url")
-            .eq("user_id", msg.sender_id)
-            .maybeSingle();
-
-          const senderName = profile?.display_name || "Someone";
-          const preview = (msg.content || "")
-            .replace(/\[attachments\].*?\[\/attachments\]/s, "📎 Attachment")
-            .trim()
-            .slice(0, 140);
-          notify({
-            title: senderName,
-            body: notificationPrefs.showMessagePreview
-              ? preview || "Sent you a message"
-              : "Sent you a message",
-            icon: profile?.avatar_url || "/favicon.ico",
-            tag: `dm:${msg.conversation_id}`,
-            // We've already gated this on (not viewing && focused) above —
-            // bypass notify()'s own focus check so background-on-this-chat
-            // still fires the toast + taskbar flash.
-            force: true,
-            onClick: () => {
-              const path = `/@me/chat/${msg.conversation_id}`;
-              if (window.location.hash) {
-                window.location.hash = path;
-              } else {
-                window.history.pushState({}, "", path);
-                window.dispatchEvent(new PopStateEvent("popstate"));
-              }
-            },
-          });
-
-          setUnreadByConv((prev) => {
-            const next = new Map(prev);
-            const existing = next.get(msg.conversation_id);
-            next.set(msg.conversation_id, {
-              conversationId: msg.conversation_id,
-              count: (existing?.count ?? 0) + 1,
-              lastSenderId: msg.sender_id,
-              lastSenderName: profile?.display_name ?? existing?.lastSenderName,
-              lastSenderAvatar: profile?.avatar_url ?? existing?.lastSenderAvatar,
-              lastMessageAt: msg.created_at,
-              isGroup: existing?.isGroup,
-              groupName: existing?.groupName,
-              groupPictureUrl: existing?.groupPictureUrl,
-            });
-            return next;
-          });
+        // Verify I'm a participant — otherwise ignore
+        const lastRead = lastReadByConvRef.current.get(msg.conversation_id);
+        if (lastRead === undefined) {
+          // Not in our cache yet — refetch
+          await fetchUnread();
+          return;
         }
-      )
-      // When my participant row changes (e.g. last_read_at updated from another tab), refetch
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "conversation_participants", filter: `user_id=eq.${user.id}` },
-        () => {
-          fetchUnread();
+
+        // Only treat the chat as "open" when the window is ACTUALLY focused.
+        const windowFocused = typeof document !== "undefined" && document.hasFocus();
+        const isViewingAndFocused = activeConvRef.current === msg.conversation_id && windowFocused;
+        if (isViewingAndFocused) {
+          await supabase.rpc("mark_conversation_read", { _conversation_id: msg.conversation_id });
+          lastReadByConvRef.current.set(msg.conversation_id, new Date().toISOString());
+          return;
         }
-      )
-      .subscribe();
+
+        const notificationPrefs = getNotificationPreferences();
+
+        if (notificationPrefs.messageSoundEnabled) {
+          playSound("message", { force: true });
+        }
+
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("display_name, avatar_url")
+          .eq("user_id", msg.sender_id)
+          .maybeSingle();
+
+        // Conversation metadata so the server-sidebar pill can show the GROUP
+        // icon instead of the sender's avatar when this is a group chat.
+        const { data: conv } = await supabase
+          .from("conversations")
+          .select("is_group, name, picture_url")
+          .eq("id", msg.conversation_id)
+          .maybeSingle();
+
+        const senderName = profile?.display_name || "Someone";
+        const preview = (msg.content || "")
+          .replace(/\[attachments\].*?\[\/attachments\]/s, "📎 Attachment")
+          .trim()
+          .slice(0, 140);
+        notify({
+          title: conv?.is_group ? `${senderName} • ${conv.name || "Group"}` : senderName,
+          body: notificationPrefs.showMessagePreview
+            ? preview || "Sent you a message"
+            : "Sent you a message",
+          icon: profile?.avatar_url || "/favicon.ico",
+          tag: `dm:${msg.conversation_id}`,
+          force: true,
+          onClick: () => {
+            const path = `/@me/chat/${msg.conversation_id}`;
+            if (window.location.hash) {
+              window.location.hash = path;
+            } else {
+              window.history.pushState({}, "", path);
+              window.dispatchEvent(new PopStateEvent("popstate"));
+            }
+          },
+        });
+
+        setUnreadByConv((prev) => {
+          const next = new Map(prev);
+          const existing = next.get(msg.conversation_id);
+          next.set(msg.conversation_id, {
+            conversationId: msg.conversation_id,
+            count: (existing?.count ?? 0) + 1,
+            lastSenderId: msg.sender_id,
+            lastSenderName: profile?.display_name ?? existing?.lastSenderName,
+            lastSenderAvatar: profile?.avatar_url ?? existing?.lastSenderAvatar,
+            lastMessageAt: msg.created_at,
+            // Always trust freshly-fetched conv metadata so the server-sidebar
+            // pill shows the GROUP icon (not the sender's pfp) for group chats.
+            isGroup: conv?.is_group ?? existing?.isGroup,
+            groupName: conv?.name ?? existing?.groupName ?? null,
+            groupPictureUrl: conv?.picture_url ?? existing?.groupPictureUrl ?? null,
+          });
+          return next;
+        });
+      }
+    );
+    channel.on(
+      "postgres_changes",
+      { event: "UPDATE", schema: "public", table: "conversation_participants", filter: `user_id=eq.${user.id}` },
+      () => {
+        fetchUnread();
+      }
+    );
+    channel.subscribe();
 
     return () => {
       supabase.removeChannel(channel);

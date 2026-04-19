@@ -83,18 +83,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     const user = session?.user;
     if (!user) return;
-    const channel = supabase
-      .channel(`my-profile-status:${user.id}`)
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "profiles", filter: `user_id=eq.${user.id}` },
-        (payload) => {
-          const newStatus = (payload.new as any)?.status || "online";
-          setMyStatusState(newStatus);
-          syncDnd(newStatus === "dnd");
-        }
-      )
-      .subscribe();
+    // CRITICAL: attach .on() before .subscribe()
+    const channel = supabase.channel(`my-profile-status:${user.id}`);
+    channel.on(
+      "postgres_changes",
+      { event: "UPDATE", schema: "public", table: "profiles", filter: `user_id=eq.${user.id}` },
+      (payload) => {
+        const newStatus = (payload.new as any)?.status || "online";
+        setMyStatusState(newStatus);
+        syncDnd(newStatus === "dnd");
+      }
+    );
+    channel.subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [session?.user?.id]);
 

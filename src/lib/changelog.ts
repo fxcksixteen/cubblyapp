@@ -23,20 +23,25 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.16";
+export const CURRENT_VERSION = "0.2.17";
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    version: "0.2.16",
-    title: "Real WASAPI fix + attachments stop 400-spamming + version visibility",
+    version: "0.2.17",
+    title: "Robust calls + WASAPI multi-format negotiation + UI fixes",
     date: "2026-04-19",
     hero: bearImage,
     newFeatures: [],
     bugFixes: [
-      "CRITICAL: Window screen-share audio now uses Windows' actual mix format instead of a hardcoded 44.1 kHz / stereo / float guess — that hardcoded combo was being rejected with HRESULT 0x88890021 on every PC running a 48 kHz default endpoint (which is most of them).",
-      "CRITICAL: Old chat attachments (images, videos, files) no longer fire a wave of 400 Bad Request errors on chat open. Cubbly now stores the stable storage path and re-signs a fresh URL on every render, instead of persisting a 1-hour signed URL inside the message itself.",
-      "DevTools now logs the REAL installed desktop version (from Electron's app.getVersion()) alongside the renderer version, so 'I installed the update but it still says v0.2.7' situations are immediately obvious.",
-      "Stopped trying to register the web-push service worker inside Electron / file://, which was throwing a confusing error in DevTools on the desktop build.",
+      "CRITICAL: Window screen-share audio (WASAPI process loopback) now tries multiple format candidates (16-bit PCM at endpoint sample rate, 48kHz, 44.1kHz, then float fallbacks) instead of giving up on HRESULT 0x88890021 — works on every Windows audio stack we've tested.",
+      "Calls now show only ONE 'Ongoing Call' pill per chat — duplicates from old/orphan call events are visually demoted to 'Ended'.",
+      "Pressing the call button when an ongoing call already exists in that chat now JOINS that call instead of starting a second one (the second-pill bug).",
+      "Closing the app, disconnecting, or backgrounding mid-call now flips the chat pill to 'Call Ended' automatically — not just when someone presses the red button.",
+      "Ringing now auto-stops after 30 seconds (Discord-style) instead of 3 minutes; connected calls stay alive for 5 minutes alone so a peer who restarted their app can come back.",
+      "Group chat unread pills in the far-left server sidebar now reliably show the GROUP icon (not the last sender's pfp) — was previously a race depending on whether the conversation metadata was already cached.",
+      "Blue 'New Messages' bar and red 'NEW' divider in chats now stay visible until you actually scroll to bottom or click 'Mark as Read' — they were getting wiped 600ms after chat open by an over-eager auto-mark-read.",
+      "Fixed React 'Function components cannot be given refs' warning coming from StatusIndicator inside the DM context menu trigger.",
+      "Fixed runtime errors 'cannot add postgres_changes callbacks ... after subscribe()' across unread watcher, activity, voice and profile-status channels.",
     ],
   },
   {
