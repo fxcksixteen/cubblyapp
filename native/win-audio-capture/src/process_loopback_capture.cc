@@ -147,45 +147,89 @@ bool ProcessLoopbackCapture::Start(DWORD pid, PcmCallback cb, std::string& error
     }
   }
 
-  // Build candidate formats. Most-likely-to-work first: WAVEFORMATEXTENSIBLE
-  // int16 stereo at common rates. Then mono, then float fallbacks. We've seen
-  // machines reject 0x88890021 on every blind candidate, so we now also probe
-  // IsFormatSupported() for each one and accept the client's suggested closest
-  // match instead.
-  struct Cand { uint32_t sr; uint16_t ch; uint16_t bits; bool floatPcm; };
+  // Build candidate formats. IMPORTANT: some machines reject every
+  // WAVEFORMATEXTENSIBLE blind guess with AUDCLNT_E_UNSUPPORTED_FORMAT even for
+  // banal stereo PCM, so we now try BOTH classic WAVEFORMATEX (PCM / IEEE_FLOAT)
+  // and WAVEFORMATEXTENSIBLE representations. We also try a direct shared-mode
+  // init path before the AUTOCONVERTPCM path because some process-loopback
+  // drivers appear to reject the conversion flags entirely.
+  enum class FormatShape {
+    Classic,
+    Extensible,
+  };
+  struct Cand {
+    uint32_t sr;
+    uint16_t ch;
+    uint16_t bits;
+    bool floatPcm;
+    FormatShape shape;
+  };
   std::vector<Cand> candidates = {
-    { mixSr, 2, 16, false },
-    { 48000, 2, 16, false },
-    { 44100, 2, 16, false },
-    { mixSr, 1, 16, false },
-    { 48000, 1, 16, false },
-    { 44100, 1, 16, false },
-    { 32000, 2, 16, false },
-    { 16000, 1, 16, false },
-    { 48000, 2, 32, true },
-    { 44100, 2, 32, true },
-    { mixSr, 2, 32, true },
+    { mixSr, 2, 16, false, FormatShape::Classic },
+    { mixSr, 2, 16, false, FormatShape::Extensible },
+    { 48000, 2, 16, false, FormatShape::Classic },
+    { 48000, 2, 16, false, FormatShape::Extensible },
+    { 44100, 2, 16, false, FormatShape::Classic },
+    { 44100, 2, 16, false, FormatShape::Extensible },
+    { mixSr, 1, 16, false, FormatShape::Classic },
+    { mixSr, 1, 16, false, FormatShape::Extensible },
+    { 48000, 1, 16, false, FormatShape::Classic },
+    { 48000, 1, 16, false, FormatShape::Extensible },
+    { 44100, 1, 16, false, FormatShape::Classic },
+    { 44100, 1, 16, false, FormatShape::Extensible },
+    { 32000, 2, 16, false, FormatShape::Classic },
+    { 32000, 2, 16, false, FormatShape::Extensible },
+    { 16000, 1, 16, false, FormatShape::Classic },
+    { 16000, 1, 16, false, FormatShape::Extensible },
+    { 48000, 2, 32, true, FormatShape::Classic },
+    { 48000, 2, 32, true, FormatShape::Extensible },
+    { 44100, 2, 32, true, FormatShape::Classic },
+    { 44100, 2, 32, true, FormatShape::Extensible },
+    { mixSr, 2, 32, true, FormatShape::Classic },
+    { mixSr, 2, 32, true, FormatShape::Extensible },
+  };
+
+  struct StreamFlagsVariant {
+    DWORD flags;
+    const char* label;
+  };
+  const std::vector<StreamFlagsVariant> streamFlagVariants = {
+    { AUDCLNT_STREAMFLAGS_EVENTCALLBACK, "direct" },
+    { AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
+          AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
+          AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
+      "convert" },
   };
 
   // 200ms buffer, event-driven, loopback mode is implicit via PROCESS_LOOPBACK
-  // activation type. AUTOCONVERTPCM lets WASAPI resample if needed.
-  DWORD streamFlags = AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
-                      AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
-                      AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY;
+  // activation type.
   REFERENCE_TIME bufferDuration = 200 * 10000; // 200ms in 100-ns units
 
-  auto buildWfx = [](const Cand& c, WAVEFORMATEXTENSIBLE& wfx) {
-    ZeroMemory(&wfx, sizeof(wfx));
-    wfx.Format.wFormatTag = WAVE_FORMAT_EXTENSIBLE;
-    wfx.Format.nChannels = c.ch;
-    wfx.Format.nSamplesPerSec = c.sr;
-    wfx.Format.wBitsPerSample = c.bits;
-    wfx.Format.nBlockAlign = (c.ch * c.bits) / 8;
-    wfx.Format.nAvgBytesPerSec = wfx.Format.nSamplesPerSec * wfx.Format.nBlockAlign;
-    wfx.Format.cbSize = 22;
-    wfx.Samples.wValidBitsPerSample = c.bits;
-    wfx.dwChannelMask = (c.ch == 2) ? (SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT) : SPEAKER_FRONT_CENTER;
-    wfx.SubFormat = c.floatPcm ? KSDATAFORMAT_SUBTYPE_IEEE_FLOAT : KSDATAFORMAT_SUBTYPE_PCM;
+  auto buildWfx = [](const Cand& c, WAVEFORMATEXTENSIBLE& ext, WAVEFORMATEX& classic) -> WAVEFORMATEX* {
+    if (c.shape == FormatShape::Extensible) {
+      ZeroMemory(&ext, sizeof(ext));
+      ext.Format.wFormatTag = WAVE_FORMAT_EXTENSIBLE;
+      ext.Format.nChannels = c.ch;
+      ext.Format.nSamplesPerSec = c.sr;
+      ext.Format.wBitsPerSample = c.bits;
+      ext.Format.nBlockAlign = (c.ch * c.bits) / 8;
+      ext.Format.nAvgBytesPerSec = ext.Format.nSamplesPerSec * ext.Format.nBlockAlign;
+      ext.Format.cbSize = 22;
+      ext.Samples.wValidBitsPerSample = c.bits;
+      ext.dwChannelMask = (c.ch == 2) ? (SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT) : SPEAKER_FRONT_CENTER;
+      ext.SubFormat = c.floatPcm ? KSDATAFORMAT_SUBTYPE_IEEE_FLOAT : KSDATAFORMAT_SUBTYPE_PCM;
+      return reinterpret_cast<WAVEFORMATEX*>(&ext);
+    }
+
+    ZeroMemory(&classic, sizeof(classic));
+    classic.wFormatTag = c.floatPcm ? WAVE_FORMAT_IEEE_FLOAT : WAVE_FORMAT_PCM;
+    classic.nChannels = c.ch;
+    classic.nSamplesPerSec = c.sr;
+    classic.wBitsPerSample = c.bits;
+    classic.nBlockAlign = (c.ch * c.bits) / 8;
+    classic.nAvgBytesPerSec = classic.nSamplesPerSec * classic.nBlockAlign;
+    classic.cbSize = 0;
+    return &classic;
   };
 
   auto reactivate = [&](Microsoft::WRL::ComPtr<IAudioClient>& outClient, std::string& errAccum) -> bool {
@@ -215,67 +259,69 @@ bool ProcessLoopbackCapture::Start(DWORD pid, PcmCallback cb, std::string& error
   int candIdx = 0;
   for (const auto& c : candidates) {
     candIdx++;
-    WAVEFORMATEXTENSIBLE wfx{};
-    buildWfx(c, wfx);
-
-    // Probe IsFormatSupported first. If the client offers a "closest match"
-    // we use that for Initialize() instead of our hand-rolled wfx — that's
-    // the entire point of the negotiation API and is what unblocks machines
-    // that respond AUDCLNT_E_UNSUPPORTED_FORMAT (0x88890021) to every blind
-    // attempt.
-    WAVEFORMATEX* suggested = nullptr;
-    HRESULT supportedHr = audioClient_->IsFormatSupported(
-        AUDCLNT_SHAREMODE_SHARED,
-        reinterpret_cast<WAVEFORMATEX*>(&wfx),
-        &suggested);
-
-    WAVEFORMATEX* useFmt = reinterpret_cast<WAVEFORMATEX*>(&wfx);
     Cand effective = c;
-    if (supportedHr == S_FALSE && suggested) {
-      // Client suggested a closer format — adopt it.
-      useFmt = suggested;
-      effective.sr = suggested->nSamplesPerSec;
-      effective.ch = suggested->nChannels;
-      effective.bits = suggested->wBitsPerSample;
-      effective.floatPcm = false;
-      if (suggested->wFormatTag == WAVE_FORMAT_EXTENSIBLE && suggested->cbSize >= 22) {
-        const WAVEFORMATEXTENSIBLE* sx = reinterpret_cast<const WAVEFORMATEXTENSIBLE*>(suggested);
-        effective.floatPcm = (sx->SubFormat == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT);
-      } else if (suggested->wFormatTag == WAVE_FORMAT_IEEE_FLOAT) {
-        effective.floatPcm = true;
+    for (const auto& flagVariant : streamFlagVariants) {
+      WAVEFORMATEXTENSIBLE ext{};
+      WAVEFORMATEX classic{};
+      WAVEFORMATEX* builtFmt = buildWfx(c, ext, classic);
+
+      // Probe IsFormatSupported first. If the client offers a "closest match"
+      // we use that for Initialize() instead of our hand-rolled format.
+      WAVEFORMATEX* suggested = nullptr;
+      HRESULT supportedHr = audioClient_->IsFormatSupported(
+          AUDCLNT_SHAREMODE_SHARED,
+          builtFmt,
+          &suggested);
+
+      WAVEFORMATEX* useFmt = builtFmt;
+      effective = c;
+      if (supportedHr == S_FALSE && suggested) {
+        useFmt = suggested;
+        effective.sr = suggested->nSamplesPerSec;
+        effective.ch = suggested->nChannels;
+        effective.bits = suggested->wBitsPerSample;
+        effective.shape = (suggested->wFormatTag == WAVE_FORMAT_EXTENSIBLE)
+            ? FormatShape::Extensible
+            : FormatShape::Classic;
+        effective.floatPcm = false;
+        if (suggested->wFormatTag == WAVE_FORMAT_EXTENSIBLE && suggested->cbSize >= 22) {
+          const WAVEFORMATEXTENSIBLE* sx = reinterpret_cast<const WAVEFORMATEXTENSIBLE*>(suggested);
+          effective.floatPcm = (sx->SubFormat == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT);
+        } else if (suggested->wFormatTag == WAVE_FORMAT_IEEE_FLOAT) {
+          effective.floatPcm = true;
+        }
       }
-    }
-    // NOTE: even when IsFormatSupported returns E_NOTIMPL (0x80004001), some
-    // process-loopback clients still ACCEPT a working format on Initialize().
-    // So we no longer skip on probe failure — we always attempt Initialize
-    // and log the per-candidate result. That's the only way to find what
-    // a stubborn machine actually accepts.
 
-    std::string candLine = "[#" + std::to_string(candIdx) + " sr=" + std::to_string(effective.sr) +
-                           " ch=" + std::to_string(effective.ch) +
-                           " bits=" + std::to_string(effective.bits) +
-                           " float=" + (effective.floatPcm ? "1" : "0") +
-                           " probe=" + HrToString(supportedHr) + " adopted=" +
-                           (supportedHr == S_FALSE && useFmt != reinterpret_cast<WAVEFORMATEX*>(&wfx) ? "yes" : "no") + "]";
+      std::string candLine = "[#" + std::to_string(candIdx) + " sr=" + std::to_string(effective.sr) +
+                             " ch=" + std::to_string(effective.ch) +
+                             " bits=" + std::to_string(effective.bits) +
+                             " float=" + (effective.floatPcm ? "1" : "0") +
+                             " shape=" + (effective.shape == FormatShape::Extensible ? "ext" : "classic") +
+                             " flags=" + flagVariant.label +
+                             " probe=" + HrToString(supportedHr) + " adopted=" +
+                             (supportedHr == S_FALSE && useFmt != builtFmt ? "yes" : "no") + "]";
 
-    hr = audioClient_->Initialize(AUDCLNT_SHAREMODE_SHARED, streamFlags,
-                                  bufferDuration, 0, useFmt, nullptr);
-    candLine += " Init=" + HrToString(hr);
-    allAttempts += candLine + " | ";
+      hr = audioClient_->Initialize(AUDCLNT_SHAREMODE_SHARED, flagVariant.flags,
+                                    bufferDuration, 0, useFmt, nullptr);
+      candLine += " Init=" + HrToString(hr);
+      allAttempts += candLine + " | ";
 
-    if (SUCCEEDED(hr)) {
-      chosen = effective;
-      initialized = true;
+      if (SUCCEEDED(hr)) {
+        chosen = effective;
+        initialized = true;
+        if (suggested) { ::CoTaskMemFree(suggested); suggested = nullptr; }
+        break;
+      }
+
+      lastErr = candLine;
       if (suggested) { ::CoTaskMemFree(suggested); suggested = nullptr; }
-      break;
-    }
-    lastErr = candLine;
-    if (suggested) { ::CoTaskMemFree(suggested); suggested = nullptr; }
 
-    // Initialize() can only be called once per IAudioClient. Re-activate
-    // a fresh one for the next attempt.
-    audioClient_.Reset();
-    if (!reactivate(audioClient_, lastErr)) continue;
+      // Initialize() can only be called once per IAudioClient. Re-activate
+      // a fresh one for the next attempt.
+      audioClient_.Reset();
+      if (!reactivate(audioClient_, lastErr)) break;
+    }
+    if (initialized) break;
   }
 
   if (!initialized) {
