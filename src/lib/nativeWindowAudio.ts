@@ -23,10 +23,21 @@ export async function startNativeWindowAudioStream(sourceId: string): Promise<Na
     return { audioTrack: null, stop: () => {} };
   }
 
-  console.log("[NativeWindowAudio] requesting capture for sourceId:", sourceId);
+  console.log("[NativeWindowAudio] ▶ requesting capture for sourceId:", sourceId);
+  const t0 = performance.now();
   const result = await api.startWindowAudioCapture(sourceId);
+  const dt = (performance.now() - t0).toFixed(0);
+  console.log("[NativeWindowAudio] ◀ startWindowAudioCapture returned in " + dt + "ms:", result);
   if (!result?.ok) {
-    console.warn("[NativeWindowAudio] startWindowAudioCapture failed:", result?.error);
+    console.error("[NativeWindowAudio] ❌ FAILED. Full error from main process:");
+    console.error("  " + (result?.error || "(no error message)"));
+    console.error("[NativeWindowAudio] Hint: error trace above lists EVERY format candidate Windows tried.");
+    console.error("  - 'Init=HRESULT 0x80004001' = E_NOTIMPL (process-loopback driver doesn't implement that path)");
+    console.error("  - 'Init=HRESULT 0x88890021' = AUDCLNT_E_UNSUPPORTED_FORMAT");
+    console.error("  - 'Init=HRESULT 0x88890017' = AUDCLNT_E_DEVICE_IN_USE");
+    console.error("  - 'Init=HRESULT 0x8889000F' = AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED");
+    console.error("  - If pid=0 in the trace, the HWND→PID resolution failed (check Electron main log).");
+    console.error("  - If ALL candidates show E_NOTIMPL, the target process has no active WASAPI session yet — try playing audio in the source app BEFORE starting the share.");
     // Surface the error so the UI can tell the user instead of silently
     // falling back to video-only.
     try {
@@ -34,7 +45,7 @@ export async function startNativeWindowAudioStream(sourceId: string): Promise<Na
     } catch {}
     return { audioTrack: null, stop: () => {} };
   }
-  console.log("[NativeWindowAudio] capture started, format:", result.format);
+  console.log("[NativeWindowAudio] ✅ capture started, format:", result.format);
 
   const fmt = result.format || { sampleRate: 44100, channels: 2, floatPcm: false, bitsPerSample: 16 };
 
