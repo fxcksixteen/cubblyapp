@@ -2099,28 +2099,39 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [activeCall?.state]);
 
-  // Auto-end call if it's been "calling/ringing" for 3 minutes with no answer,
-  // OR if we've been alone in a connected call for 3 minutes.
-  // Also auto-stop incoming ringtone after 45s if user doesn't respond (don't ring forever).
+  // Auto-end behavior:
+  // - 30s timeout while RINGING (unanswered) — Discord-like.
+  // - 5min timeout once CONNECTED but alone (peer left and never came back).
+  // - Stop the *incoming* ringtone after 30s so we don't ring forever.
   useEffect(() => {
     if (!activeCall) return;
-    const startedRinging = Date.now();
-    const lonelyTimer = setTimeout(() => {
-      // If still not connected after 3 minutes → auto-hangup
-      if (activeCall.state === "calling" || activeCall.state === "ringing") {
-        console.log("[Voice] ⏰ 3-minute ring timeout — auto-ending call");
+    let unansweredTimer: ReturnType<typeof setTimeout> | null = null;
+    let lonelyTimer: ReturnType<typeof setTimeout> | null = null;
+
+    if (activeCall.state === "calling" || activeCall.state === "ringing") {
+      unansweredTimer = setTimeout(() => {
+        console.log("[Voice] ⏰ 30s ring timeout — auto-ending unanswered call");
         endCallRef.current();
-      }
-    }, 3 * 60 * 1000);
-    return () => clearTimeout(lonelyTimer);
+      }, 30_000);
+    }
+    if (activeCall.state === "connected") {
+      // We'll bail after 5 minutes if the peer never reconnects.
+      lonelyTimer = setTimeout(() => {
+        console.log("[Voice] ⏰ 5-min lonely timeout — auto-ending call");
+        endCallRef.current();
+      }, 5 * 60 * 1000);
+    }
+    return () => {
+      if (unansweredTimer) clearTimeout(unansweredTimer);
+      if (lonelyTimer) clearTimeout(lonelyTimer);
+    };
   }, [activeCall?.conversationId, activeCall?.state]);
 
-  // Auto-stop *incoming* ringtone after 45s — don't ring the user forever
   useEffect(() => {
     if (!incomingCall) return;
     const t = setTimeout(() => {
       stopLooping("incomingCall");
-    }, 45_000);
+    }, 30_000);
     return () => clearTimeout(t);
   }, [incomingCall?.callEventId]);
 
