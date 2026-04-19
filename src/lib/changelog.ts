@@ -27,23 +27,8 @@ export const CURRENT_VERSION = "0.2.13";
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    version: "0.2.14",
-    title: "Smarter unread, cleaner chat, no more accidental double-calls",
-    date: "2026-04-19",
-    hero: bearImage,
-    newFeatures: [
-      "Discord-style 'NEW' divider now appears above the first unread message when you re-open a chat — sticks until you reply or leave + come back, so you can scroll past it as much as you want without losing your place",
-      "Blue 'New Messages — [count] · Mark as Read' bar pinned to the top of the chat (above any active call panel) — click 'Mark as Read' to dismiss, or just scroll to the bottom and it goes away on its own",
-      "Scrolling to the latest message now instantly clears the unread badge under the Cubbly logo — no more chasing a phantom red dot after you've already seen the message",
-      "Trying to start a call while you're already in one elsewhere now pops a clean confirm modal: 'You're already in a call on another device — disconnect & reconnect here?' (cross-device) or 'End your current call & start a new one?' (same device)",
-    ],
-    bugFixes: [
-      "Settings → Notifications and → Advanced no longer have inconsistent header treatments versus the other tabs — every settings page now has the same title + subtitle pattern",
-    ],
-  },
-  {
     version: "0.2.13",
-    title: "Screen-share audio, link previews, video player & a real message box",
+    title: "Smarter unread, link previews, video player, real message box & call conflict handling",
     date: "2026-04-19",
     hero: bearImage,
     newFeatures: [
@@ -51,11 +36,16 @@ export const CHANGELOG: ChangelogEntry[] = [
       "MP4, MOV and WebM video attachments now render with a built-in Cubbly video player — controls, fullscreen, save to disk, no more downloading just to watch a clip",
       "Message input is now a real multi-line box: Shift+Enter for newlines, Enter to send, auto-grows up to 6 lines then scrolls — no more text marching off into infinity",
       "Soft 1000-character limit on messages with a counter that appears at 750/1000, turns orange at 900, red at 1000",
+      "Discord-style 'NEW' divider now appears above the first unread message when you re-open a chat — sticks until you reply or leave + come back, so you can scroll past it as much as you want without losing your place",
+      "Blue 'New Messages — [count] · Mark as Read' bar pinned to the top of the chat (above any active call panel) — click 'Mark as Read' to dismiss, or just scroll to the bottom and it goes away on its own",
+      "Scrolling to the latest message now instantly clears the unread badge under the Cubbly logo — no more chasing a phantom red dot after you've already seen the message",
+      "Trying to start a call while you're already in one elsewhere now pops a clean confirm modal: 'You're already in a call on another device — disconnect & reconnect here?' (cross-device) or 'End your current call & start a new one?' (same device)",
       "iOS PWA splash now uses an animated fallback so the loader never appears frozen on iPhone home-screen launches",
     ],
     bugFixes: [
       "CRITICAL: Window screen-share audio now actually works on Windows — fixed the underlying format-negotiation issue that was silently dropping the capture stream",
       "Camera tile no longer stays a black rectangle when the other person turns their camera off — now falls back to their avatar circle the moment they disable video",
+      "Settings → Notifications and → Advanced no longer have inconsistent header treatments versus the other tabs — every settings page now has the same title + subtitle pattern",
     ],
   },
   {
