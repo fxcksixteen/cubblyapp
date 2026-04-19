@@ -23,9 +23,21 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.18";
+export const CURRENT_VERSION = "0.2.19";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.2.19",
+    title: "Deep WASAPI debug tracing for window screenshare audio",
+    date: "2026-04-19",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Window screen-share audio capture now produces a full per-candidate WASAPI trace (PID, GetMixFormat HRESULT, every format attempt with sample rate / channels / bits / float flag / IsFormatSupported probe / Initialize HRESULT) so we can finally see WHY a machine rejects every format instead of just 'failed for all candidates'.",
+      "Renderer-side [NativeWindowAudio] error log now decodes common WASAPI HRESULTs inline (E_NOTIMPL, AUDCLNT_E_UNSUPPORTED_FORMAT, AUDCLNT_E_DEVICE_IN_USE, etc.) with troubleshooting hints, so devtools shows what the hex code actually means.",
+      "Native layer no longer silently skips Initialize() when IsFormatSupported() returns E_NOTIMPL — some process-loopback drivers lie on the probe but accept the format on Initialize, and we were giving up too early.",
+    ],
+  },
   {
     version: "0.2.18",
     title: "Real rejoin gating, cross-device ring sanity & WASAPI format negotiation",
