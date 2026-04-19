@@ -208,8 +208,13 @@ bool ProcessLoopbackCapture::Start(DWORD pid, PcmCallback cb, std::string& error
 
   bool initialized = false;
   std::string lastErr;
+  std::string allAttempts;  // Verbose log of EVERY candidate attempt for debug surfacing.
   Cand chosen{};
+  allAttempts += "pid=" + std::to_string(pid) + " mixSr=" + std::to_string(mixSr) +
+                 " mixFmtHr=" + HrToString(mixFormatHr) + " | ";
+  int candIdx = 0;
   for (const auto& c : candidates) {
+    candIdx++;
     WAVEFORMATEXTENSIBLE wfx{};
     buildWfx(c, wfx);
 
@@ -239,26 +244,32 @@ bool ProcessLoopbackCapture::Start(DWORD pid, PcmCallback cb, std::string& error
       } else if (suggested->wFormatTag == WAVE_FORMAT_IEEE_FLOAT) {
         effective.floatPcm = true;
       }
-    } else if (supportedHr != S_OK) {
-      // Not supported and no suggestion — skip cheap; record reason and try next.
-      lastErr = "candidate sr=" + std::to_string(c.sr) + " ch=" + std::to_string(c.ch) +
-                " bits=" + std::to_string(c.bits) + " float=" + (c.floatPcm ? "1" : "0") +
-                " IsFormatSupported=" + HrToString(supportedHr);
-      if (suggested) { ::CoTaskMemFree(suggested); suggested = nullptr; }
-      continue;
     }
+    // NOTE: even when IsFormatSupported returns E_NOTIMPL (0x80004001), some
+    // process-loopback clients still ACCEPT a working format on Initialize().
+    // So we no longer skip on probe failure — we always attempt Initialize
+    // and log the per-candidate result. That's the only way to find what
+    // a stubborn machine actually accepts.
+
+    std::string candLine = "[#" + std::to_string(candIdx) + " sr=" + std::to_string(effective.sr) +
+                           " ch=" + std::to_string(effective.ch) +
+                           " bits=" + std::to_string(effective.bits) +
+                           " float=" + (effective.floatPcm ? "1" : "0") +
+                           " probe=" + HrToString(supportedHr) + " adopted=" +
+                           (supportedHr == S_FALSE && useFmt != reinterpret_cast<WAVEFORMATEX*>(&wfx) ? "yes" : "no") + "]";
 
     hr = audioClient_->Initialize(AUDCLNT_SHAREMODE_SHARED, streamFlags,
                                   bufferDuration, 0, useFmt, nullptr);
+    candLine += " Init=" + HrToString(hr);
+    allAttempts += candLine + " | ";
+
     if (SUCCEEDED(hr)) {
       chosen = effective;
       initialized = true;
       if (suggested) { ::CoTaskMemFree(suggested); suggested = nullptr; }
       break;
     }
-    lastErr = "candidate sr=" + std::to_string(effective.sr) + " ch=" + std::to_string(effective.ch) +
-              " bits=" + std::to_string(effective.bits) + " float=" + (effective.floatPcm ? "1" : "0") +
-              " Initialize=" + HrToString(hr) + " (probe=" + HrToString(supportedHr) + ")";
+    lastErr = candLine;
     if (suggested) { ::CoTaskMemFree(suggested); suggested = nullptr; }
 
     // Initialize() can only be called once per IAudioClient. Re-activate
@@ -268,13 +279,7 @@ bool ProcessLoopbackCapture::Start(DWORD pid, PcmCallback cb, std::string& error
   }
 
   if (!initialized) {
-    errorOut = "IAudioClient::Initialize failed for all candidate formats";
-    if (FAILED(mixFormatHr)) {
-      errorOut += " (GetMixFormat=" + HrToString(mixFormatHr) + ")";
-    }
-    if (!lastErr.empty()) {
-      errorOut += ". Last: " + lastErr;
-    }
+    errorOut = "IAudioClient::Initialize failed for ALL candidates. Trace: " + allAttempts;
     audioClient_.Reset();
     if (comInitedHere) ::CoUninitialize();
     return false;
