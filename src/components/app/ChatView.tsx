@@ -89,6 +89,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
   /** Count of unread on entry — drives the blue "New Messages" top bar. Cleared by scrolling to bottom OR clicking dismiss. */
   const [unreadOnEntry, setUnreadOnEntry] = useState<number>(0);
   const [showNewBar, setShowNewBar] = useState(false);
+  const [rejoiningEventId, setRejoiningEventId] = useState<string | null>(null);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -566,15 +567,27 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
               }
 
               if (item.type === "call-event") {
+                const canRejoin = item.event.state === "ongoing" && !conversation?.is_group && !!recipientUserId && activeCall?.conversationId !== conversationId;
+                const isRejoiningThisEvent = rejoiningEventId === item.event.id;
                 return (
                   <CallEventMessage
                     key={item.event.id}
                     state={item.event.state}
                     startedAt={item.event.startedAt}
                     endedAt={item.event.endedAt}
+                    joinDisabled={isRejoiningThisEvent}
+                    joinLabel={isRejoiningThisEvent ? "Rejoining..." : "Rejoin"}
                     onJoin={
-                      item.event.state === "ongoing" && !conversation?.is_group && recipientUserId
-                        ? () => startCall(conversationId, recipientUserId, recipientName)
+                      canRejoin
+                        ? () => {
+                            if (isRejoiningThisEvent) return;
+                            setRejoiningEventId(item.event.id);
+                            try {
+                              startCall(conversationId, recipientUserId!, recipientName);
+                            } catch {
+                              setRejoiningEventId(null);
+                            }
+                          }
                         : undefined
                     }
                   />
