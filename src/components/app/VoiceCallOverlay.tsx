@@ -482,11 +482,13 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
 };
 
 /** Pill-shaped call event shown in chat history */
-export const CallEventMessage = ({ state, startedAt, endedAt, onJoin }: {
+export const CallEventMessage = ({ state, startedAt, endedAt, onJoin, joinDisabled = false, joinLabel = "Rejoin" }: {
   state: "ongoing" | "ended" | "missed";
   startedAt: string;
   endedAt?: string;
   onJoin?: () => void;
+  joinDisabled?: boolean;
+  joinLabel?: string;
 }) => {
   const [elapsed, setElapsed] = useState(0);
 
@@ -548,9 +550,10 @@ export const CallEventMessage = ({ state, startedAt, endedAt, onJoin }: {
           <Button
             size="sm"
             onClick={onJoin}
+            disabled={joinDisabled}
             className="h-8 rounded-full px-3"
           >
-            Rejoin
+            {joinLabel}
           </Button>
         )}
       </div>

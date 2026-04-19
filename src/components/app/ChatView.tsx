@@ -89,6 +89,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
   /** Count of unread on entry — drives the blue "New Messages" top bar. Cleared by scrolling to bottom OR clicking dismiss. */
   const [unreadOnEntry, setUnreadOnEntry] = useState<number>(0);
   const [showNewBar, setShowNewBar] = useState(false);
+  const [rejoiningEventId, setRejoiningEventId] = useState<string | null>(null);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -189,7 +190,20 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
     setFirstUnreadId(null);
     setUnreadOnEntry(0);
     setShowNewBar(false);
+    setRejoiningEventId(null);
   }, [conversationId]);
+
+  useEffect(() => {
+    if (!rejoiningEventId) return;
+    const joinedThisConversation = activeCall?.conversationId === conversationId;
+    const targetEventStillOngoing = callEvents.some((event) => event.id === rejoiningEventId && event.state === "ongoing");
+    if (joinedThisConversation || !targetEventStillOngoing) {
+      setRejoiningEventId(null);
+      return;
+    }
+    const timeout = window.setTimeout(() => setRejoiningEventId((current) => current === rejoiningEventId ? null : current), 8000);
+    return () => window.clearTimeout(timeout);
+  }, [rejoiningEventId, activeCall?.conversationId, conversationId, callEvents]);
 
   // Capture the first-unread snapshot the FIRST time messages are loaded for this conversation.
   useEffect(() => {
@@ -566,15 +580,28 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
               }
 
               if (item.type === "call-event") {
+                const canRejoin = item.event.state === "ongoing" && !conversation?.is_group && !!recipientUserId && activeCall?.conversationId !== conversationId;
+                const isRejoiningThisEvent = rejoiningEventId === item.event.id;
                 return (
                   <CallEventMessage
                     key={item.event.id}
                     state={item.event.state}
                     startedAt={item.event.startedAt}
                     endedAt={item.event.endedAt}
+                    joinDisabled={isRejoiningThisEvent}
+                    joinLabel={isRejoiningThisEvent ? "Rejoining..." : "Rejoin"}
                     onJoin={
-                      item.event.state === "ongoing" && !conversation?.is_group && recipientUserId
-                        ? () => startCall(conversationId, recipientUserId, recipientName)
+                      canRejoin
+                        ? () => {
+                            if (isRejoiningThisEvent) return;
+                            setRejoiningEventId(item.event.id);
+                            try {
+                              void Promise.resolve((startCall as unknown as (cid: string, pid: string, name: string) => Promise<void>)(conversationId, recipientUserId!, recipientName))
+                                .catch(() => setRejoiningEventId(null));
+                            } catch {
+                              setRejoiningEventId(null);
+                            }
+                          }
                         : undefined
                     }
                   />

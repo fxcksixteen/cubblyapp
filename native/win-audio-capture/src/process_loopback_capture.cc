@@ -123,23 +123,31 @@ bool ProcessLoopbackCapture::Start(DWORD pid, PcmCallback cb, std::string& error
   }
   audioClient_ = client;
 
-  // PROCESS_LOOPBACK is finicky. Even GetMixFormat() returns a format that
-  // Initialize() may reject with AUDCLNT_E_UNSUPPORTED_FORMAT (0x88890021)
-  // on some drivers. Strategy: try a list of candidate formats in order and
-  // accept the first one Initialize() accepts. We always tear down and
-  // re-create the IAudioClient between attempts because Initialize() can
-  // only succeed ONCE per client instance.
+  // PROCESS_LOOPBACK is finicky. On some Windows builds / drivers the virtual
+  // process-loopback client even returns E_NOTIMPL from GetMixFormat(), so we
+  // must NOT treat that as fatal. Strategy: try a list of sane candidate
+  // formats directly and accept the first one Initialize() accepts. If
+  // GetMixFormat() works we use its sample rate as the first candidate; if it
+  // doesn't, we fall back to common rates. We always tear down and re-create
+  // the IAudioClient between attempts because Initialize() can only succeed
+  // ONCE per client instance.
+  uint32_t mixSr = 48000;
+  HRESULT mixFormatHr = E_NOTIMPL;
   WAVEFORMATEX* mixFormat = nullptr;
   hr = audioClient_->GetMixFormat(&mixFormat);
-  if (FAILED(hr) || !mixFormat) {
-    errorOut = "GetMixFormat failed: " + HrToString(hr);
-    audioClient_.Reset();
-    if (comInitedHere) ::CoUninitialize();
-    return false;
+  mixFormatHr = hr;
+  if (SUCCEEDED(hr) && mixFormat) {
+    if (mixFormat->nSamplesPerSec) {
+      mixSr = mixFormat->nSamplesPerSec;
+    }
+    ::CoTaskMemFree(mixFormat);
+    mixFormat = nullptr;
+  } else {
+    if (mixFormat) {
+      ::CoTaskMemFree(mixFormat);
+      mixFormat = nullptr;
+    }
   }
-  uint32_t mixSr = mixFormat->nSamplesPerSec ? mixFormat->nSamplesPerSec : 48000;
-  ::CoTaskMemFree(mixFormat);
-  mixFormat = nullptr;
 
   // Build candidate formats. PROCESS_LOOPBACK on most Windows builds is
   // happiest with WAVEFORMATEXTENSIBLE int16 stereo at the endpoint sample
@@ -150,8 +158,13 @@ bool ProcessLoopbackCapture::Start(DWORD pid, PcmCallback cb, std::string& error
     { mixSr, 2, 16, false },
     { 48000, 2, 16, false },
     { 44100, 2, 16, false },
+    { 32000, 2, 16, false },
+    { mixSr, 1, 16, false },
+    { 48000, 1, 16, false },
+    { 44100, 1, 16, false },
     { mixSr, 2, 32, true },
     { 48000, 2, 32, true },
+    { 44100, 2, 32, true },
   };
 
   // 200ms buffer, event-driven, loopback mode is implicit via PROCESS_LOOPBACK
@@ -210,7 +223,13 @@ bool ProcessLoopbackCapture::Start(DWORD pid, PcmCallback cb, std::string& error
   }
 
   if (!initialized) {
-    errorOut = "IAudioClient::Initialize failed for ALL candidate formats. Last: " + lastErr;
+    errorOut = "IAudioClient::Initialize failed for all candidate formats";
+    if (FAILED(mixFormatHr)) {
+      errorOut += " (GetMixFormat=" + HrToString(mixFormatHr) + ")";
+    }
+    if (!lastErr.empty()) {
+      errorOut += ". Last: " + lastErr;
+    }
     audioClient_.Reset();
     if (comInitedHere) ::CoUninitialize();
     return false;
