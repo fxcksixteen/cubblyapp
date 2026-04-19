@@ -14,6 +14,21 @@ registerServiceWorker();
 const APP_VERSION = CURRENT_VERSION;
 console.log(`%c🧸 Cubbly v${APP_VERSION} (pre-alpha)`, "color: hsl(32, 80%, 50%); font-weight: bold; font-size: 14px;");
 
+// In Electron, also log the REAL packaged app version so we can immediately
+// tell when an old installer is still running stale code.
+const electronApi = (window as any).electronAPI;
+if (electronApi?.getAppVersion) {
+  electronApi.getAppVersion().then((v: string | null) => {
+    console.log(
+      `%c🖥  Electron desktop build: v${v || "unknown"}  (renderer expects v${APP_VERSION})`,
+      "color: hsl(200, 80%, 55%); font-weight: bold;"
+    );
+    if (v && v !== APP_VERSION) {
+      console.warn(`[cubbly] Desktop build mismatch — installed=${v}, renderer=${APP_VERSION}. Reinstall the latest .exe.`);
+    }
+  });
+}
+
 // Preload notification sounds in the background
 preloadAllSounds();
 

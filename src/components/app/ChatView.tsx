@@ -341,15 +341,14 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
 
     setUploading(true);
 
-    const attachmentUrls: { name: string; url: string; size: number; type: string }[] = [];
+    // Persist the STABLE storage path on each attachment, not a short-lived
+    // signed URL. AttachmentItem will sign on demand on every mount/refresh.
+    const attachmentUrls: { name: string; path: string; size: number; type: string }[] = [];
     for (const pf of currentFiles) {
       const path = `${conversationId}/${Date.now()}-${pf.file.name}`;
       const { error } = await supabase.storage.from("chat-attachments").upload(path, pf.file);
       if (!error) {
-        const { data: signedData } = await supabase.storage.from("chat-attachments").createSignedUrl(path, 3600);
-        if (signedData?.signedUrl) {
-          attachmentUrls.push({ name: pf.file.name, url: signedData.signedUrl, size: pf.file.size, type: pf.file.type });
-        }
+        attachmentUrls.push({ name: pf.file.name, path, size: pf.file.size, type: pf.file.type });
       }
     }
 
@@ -394,7 +393,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
     const attachRegex = /\[attachments\](.*?)\[\/attachments\]/s;
     const match = content.match(attachRegex);
     const text = content.replace(attachRegex, "").trim();
-    let attachments: { name: string; url: string; size: number; type: string }[] = [];
+    let attachments: { name: string; path?: string; url?: string; size: number; type: string }[] = [];
     if (match) {
       try { attachments = JSON.parse(match[1]); } catch {}
     }

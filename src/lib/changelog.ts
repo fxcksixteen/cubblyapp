@@ -23,19 +23,31 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.15";
+export const CURRENT_VERSION = "0.2.16";
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    version: "0.2.15",
-    title: "Window screenshare audio fixed + auto-update pipeline live",
+    version: "0.2.16",
+    title: "Real WASAPI fix + attachments stop 400-spamming + version visibility",
     date: "2026-04-19",
     hero: bearImage,
     newFeatures: [],
     bugFixes: [
-      "CRITICAL: Window screen-share audio now actually works on Windows — fixed the WASAPI format negotiation (32-bit float PCM) that was silently failing with HRESULT 0x88890021",
-      "MAJOR: Voice calls no longer lag or spike to 3000ms ping the moment you (or anyone in the call) opens a fullscreen game like Valorant or Marvel Rivals — Cubbly now keeps its audio + network pipeline running at full priority even when another app takes focus",
-      "Auto-update pipeline fixed end-to-end so future patches actually reach you instead of getting stuck mid-release",
+      "CRITICAL: Window screen-share audio now uses Windows' actual mix format instead of a hardcoded 44.1 kHz / stereo / float guess — that hardcoded combo was being rejected with HRESULT 0x88890021 on every PC running a 48 kHz default endpoint (which is most of them).",
+      "CRITICAL: Old chat attachments (images, videos, files) no longer fire a wave of 400 Bad Request errors on chat open. Cubbly now stores the stable storage path and re-signs a fresh URL on every render, instead of persisting a 1-hour signed URL inside the message itself.",
+      "DevTools now logs the REAL installed desktop version (from Electron's app.getVersion()) alongside the renderer version, so 'I installed the update but it still says v0.2.7' situations are immediately obvious.",
+      "Stopped trying to register the web-push service worker inside Electron / file://, which was throwing a confusing error in DevTools on the desktop build.",
+    ],
+  },
+  {
+    version: "0.2.15",
+    title: "Window screenshare audio attempt + voice-call lag fix",
+    date: "2026-04-19",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Voice calls no longer lag or spike to 3000ms ping the moment you (or anyone in the call) opens a fullscreen game — Cubbly keeps its audio + network pipeline at full priority even when another app takes focus.",
+      "First attempt at fixing the window screen-share audio failure (turned out to need a deeper format-negotiation rewrite — see v0.2.16).",
     ],
   },
   {
