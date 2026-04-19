@@ -3,7 +3,7 @@ import { useMessages, Message, MessageStatus } from "@/hooks/useMessages";
 import { useAuth } from "@/contexts/AuthContext";
 import { useVoice } from "@/contexts/VoiceContext";
 import { supabase } from "@/integrations/supabase/client";
-import { X, Reply as ReplyIcon } from "lucide-react";
+import { Phone, X, Reply as ReplyIcon } from "lucide-react";
 import { defaultProfileColor, getProfileColor } from "@/lib/profileColors";
 import { CallPanel, CallEventMessage } from "./VoiceCallOverlay";
 import GroupCallPanel from "./GroupCallPanel";
@@ -18,6 +18,7 @@ import InlineGif from "./chat/InlineGif";
 import LinkPreview from "./chat/LinkPreview";
 import GroupMembersPanel from "./GroupMembersPanel";
 import { linkifyText, extractFirstUrl } from "@/lib/linkify";
+import { Button } from "@/components/ui/button";
 import sendIcon from "@/assets/icons/send.svg";
 import folderFileIcon from "@/assets/icons/folder-file.svg";
 import gifIcon from "@/assets/icons/gif.svg";
@@ -133,6 +134,21 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
       return e;
     });
   })();
+  const latestOngoingCallEvent = conversationCallEvents
+    .filter((event) => event.state === "ongoing")
+    .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())[0];
+  const liveCallInThisChat = activeCall?.conversationId === conversationId;
+
+  const handleRejoin = (eventId: string) => {
+    if (!recipientUserId || rejoiningEventId === eventId) return;
+    setRejoiningEventId(eventId);
+    try {
+      void Promise.resolve((startCall as unknown as (cid: string, pid: string, name: string) => Promise<void>)(conversationId, recipientUserId, recipientName))
+        .catch(() => setRejoiningEventId(null));
+    } catch {
+      setRejoiningEventId(null);
+    }
+  };
 
   // ---- Auto-scroll ----
   const scrollToBottom = useCallback(() => {
@@ -527,6 +543,33 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
         </div>
       )}
 
+      {!conversation?.is_group && latestOngoingCallEvent && !liveCallInThisChat && !!recipientUserId && (
+        <div className="shrink-0 border-b px-4 py-3" style={{ borderColor: "var(--app-border)", backgroundColor: "var(--app-bg-secondary)" }}>
+          <div className="flex items-center justify-between gap-3 rounded-xl border px-3 py-3" style={{ borderColor: "var(--app-border)", backgroundColor: "var(--app-bg-tertiary)" }}>
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                <Phone className="h-4 w-4" />
+                <span className="absolute -inset-1 rounded-full border border-primary/40 animate-pulse" />
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold" style={{ color: "var(--app-text-primary)" }}>Ongoing call in this chat</p>
+                <p className="truncate text-xs" style={{ color: "var(--app-text-secondary)" }}>
+                  Join back in without starting a second call.
+                </p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              onClick={() => handleRejoin(latestOngoingCallEvent.id)}
+              disabled={rejoiningEventId === latestOngoingCallEvent.id}
+              className="shrink-0 rounded-full"
+            >
+              {rejoiningEventId === latestOngoingCallEvent.id ? "Rejoining..." : "Join Call"}
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Discord-style call panel — group call OR 1-on-1 call (mutually exclusive) */}
       <div className="shrink-0 max-h-[50vh] overflow-y-auto">
         {conversation?.is_group ? (
@@ -580,7 +623,6 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
               }
 
               if (item.type === "call-event") {
-                const liveCallInThisChat = activeCall?.conversationId === conversationId;
                 const canRejoin = item.event.state === "ongoing" && !conversation?.is_group && !!recipientUserId && !liveCallInThisChat;
                 const isRejoiningThisEvent = rejoiningEventId === item.event.id;
                 return (
@@ -589,21 +631,11 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                     state={item.event.state}
                     startedAt={item.event.startedAt}
                     endedAt={item.event.endedAt}
-                    live={liveCallInThisChat && item.event.state === "ongoing"}
                     joinDisabled={isRejoiningThisEvent}
                     joinLabel={isRejoiningThisEvent ? "Rejoining..." : "Rejoin"}
                     onJoin={
                       canRejoin
-                        ? () => {
-                            if (isRejoiningThisEvent) return;
-                            setRejoiningEventId(item.event.id);
-                            try {
-                              void Promise.resolve((startCall as unknown as (cid: string, pid: string, name: string) => Promise<void>)(conversationId, recipientUserId!, recipientName))
-                                .catch(() => setRejoiningEventId(null));
-                            } catch {
-                              setRejoiningEventId(null);
-                            }
-                          }
+                        ? () => handleRejoin(item.event.id)
                         : undefined
                     }
                   />
