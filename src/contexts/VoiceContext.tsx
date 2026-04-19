@@ -1283,17 +1283,24 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           .limit(1)
           .maybeSingle();
         if (existing?.id) {
-          const { count: activeParticipantCount } = await supabase
+          // Count OTHER participants still active (exclude self). Joining your
+          // own zombie row is what created the "rejoin into a fake call where
+          // both users sit in calling-limbo" bug — we must only treat the
+          // event as live if a non-self user has left_at IS NULL.
+          const { data: liveRows } = await supabase
             .from("call_participants")
-            .select("id", { count: "exact", head: true })
+            .select("user_id")
             .eq("call_event_id", existing.id)
             .is("left_at", null);
 
-          if ((activeParticipantCount || 0) > 0) {
+          const otherActive = (liveRows || []).some((r: any) => r.user_id !== user.id);
+
+          if (otherActive) {
             callEventId = existing.id;
             isJoiningExisting = true;
             console.log("[Voice] 🔁 Joining existing ongoing call_event:", callEventId);
           } else {
+            // No real peer present — close this stale event and start a fresh call.
             await supabase.from("call_events").update({ state: "ended", ended_at: new Date().toISOString() } as any).eq("id", existing.id);
           }
         }
