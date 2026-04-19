@@ -34,6 +34,8 @@ import MobileCallOverlay from "@/components/app/mobile/MobileCallOverlay";
 import YouPage from "@/pages/YouPage";
 import GroupMembersPanel from "@/components/app/GroupMembersPanel";
 import MobileNotificationPrompt from "@/components/app/MobileNotificationPrompt";
+import CallConflictModal from "@/components/app/CallConflictModal";
+import { useActiveCallElsewhere, useRemoteHangupListener } from "@/hooks/useActiveCallElsewhere";
 
 type FriendTab = "online" | "all" | "pending" | "blocked" | "add";
 
@@ -141,42 +143,78 @@ const AppLayout = () => {
   const currentUsername = user?.user_metadata?.username?.toLowerCase() || "";
   const isAdmin = currentUsername === "kaszy";
 
+  const { elsewhere, requestRemoteHangup } = useActiveCallElsewhere();
+  useRemoteHangupListener();
+  const [conflictModal, setConflictModal] = useState<
+    | { variant: "elsewhere" | "same-device"; pending: () => void | Promise<void> }
+    | null
+  >(null);
+
+  /** Returns true if a conflict modal was shown (caller should bail). */
+  const checkCallConflict = (proceed: () => void | Promise<void>): boolean => {
+    // Different-device active call → cross-device conflict
+    if (elsewhere) {
+      setConflictModal({
+        variant: "elsewhere",
+        pending: async () => { await requestRemoteHangup(); setTimeout(() => { void proceed(); }, 400); },
+      });
+      return true;
+    }
+    // Same-device active call in a DIFFERENT conversation → same-device conflict
+    const localCallConvId = activeCall?.conversationId || groupCall.activeCall?.conversationId;
+    if (localCallConvId && localCallConvId !== activeConvId) {
+      setConflictModal({
+        variant: "same-device",
+        pending: async () => {
+          if (activeCall) endCall();
+          if (groupCall.activeCall) groupCall.leaveCall();
+          setTimeout(() => { void proceed(); }, 400);
+        },
+      });
+      return true;
+    }
+    return false;
+  };
+
   const handleVoiceCall = async () => {
     if (isInCall) {
       if (groupCall.activeCall?.conversationId === activeConvId) groupCall.leaveCall();
       else endCall();
       return;
     }
-    if (activeConv?.is_group && activeConvId) {
-      // Start a group call: ring every other member
-      const memberIds = activeConv.members.map(m => m.user_id);
-      const callName = activeConv.name?.trim() || activeConv.members.map(m => m.display_name).join(", ");
-      await groupCall.startCall(activeConvId, callName, memberIds);
-      return;
-    }
-    if (activeConv && !activeConv.is_group && activeParticipant) {
-      if (activeParticipant.user_id === BOT_USER_ID && !isAdmin) {
-        try {
-          const { data: { session } } = await supabase.auth.getSession();
-          await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat-with-bot`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-              "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-            },
-            body: JSON.stringify({
-              conversation_id: activeConvId,
-              user_message: "[SYSTEM: The user just tried to start a voice call with you. Explain that you're a text-based AI and can't join voice calls yet, but you'd love to help test other features or just chat! Be warm and helpful.]",
-            }),
-          });
-        } catch (e) {
-          console.error("Failed to notify bot about call:", e);
-        }
+    const proceed = async () => {
+      if (activeConv?.is_group && activeConvId) {
+        const memberIds = activeConv.members.map(m => m.user_id);
+        const callName = activeConv.name?.trim() || activeConv.members.map(m => m.display_name).join(", ");
+        await groupCall.startCall(activeConvId, callName, memberIds);
         return;
       }
-      startCall(activeConvId!, activeParticipant.user_id, activeParticipant.display_name);
-    }
+      if (activeConv && !activeConv.is_group && activeParticipant) {
+        if (activeParticipant.user_id === BOT_USER_ID && !isAdmin) {
+          try {
+            const { data: { session } } = await supabase.auth.getSession();
+            await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat-with-bot`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+                "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+              },
+              body: JSON.stringify({
+                conversation_id: activeConvId,
+                user_message: "[SYSTEM: The user just tried to start a voice call with you. Explain that you're a text-based AI and can't join voice calls yet, but you'd love to help test other features or just chat! Be warm and helpful.]",
+              }),
+            });
+          } catch (e) {
+            console.error("Failed to notify bot about call:", e);
+          }
+          return;
+        }
+        startCall(activeConvId!, activeParticipant.user_id, activeParticipant.display_name);
+      }
+    };
+    if (checkCallConflict(proceed)) return;
+    await proceed();
   };
 
   /** 1-on-1 video: start the call first if needed, then toggle camera. */
@@ -184,17 +222,19 @@ const AppLayout = () => {
     if (!activeConv || activeConv.is_group || !activeParticipant) return;
     if (activeParticipant.user_id === BOT_USER_ID) return;
     const alreadyInThisCall = activeCall?.conversationId === activeConvId;
-    if (!alreadyInThisCall) {
-      startCall(activeConvId!, activeParticipant.user_id, activeParticipant.display_name);
-      // Wait briefly for ICE to come up before toggling video so the
-      // transceiver exists when we call replaceTrack.
-      const start = Date.now();
-      while (Date.now() - start < 8000) {
-        await new Promise((r) => setTimeout(r, 250));
-        if (activeCall?.conversationId === activeConvId && activeCall.state === "connected") break;
+    const proceed = async () => {
+      if (!alreadyInThisCall) {
+        startCall(activeConvId!, activeParticipant.user_id, activeParticipant.display_name);
+        const start = Date.now();
+        while (Date.now() - start < 8000) {
+          await new Promise((r) => setTimeout(r, 250));
+          if (activeCall?.conversationId === activeConvId && activeCall.state === "connected") break;
+        }
       }
-    }
-    try { await toggleVideo(); } catch (e) { console.error("[Video] toggle failed:", e); }
+      try { await toggleVideo(); } catch (e) { console.error("[Video] toggle failed:", e); }
+    };
+    if (!alreadyInThisCall && checkCallConflict(proceed)) return;
+    await proceed();
   };
 
   // Mobile swipe target: the main chat content area
