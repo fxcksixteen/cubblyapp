@@ -16,6 +16,13 @@ const ActivityPrivacySettings = ({ cardStyle }: ActivityPrivacySettingsProps) =>
 
   return (
     <div className="space-y-5">
+      <div>
+        <h2 className="text-2xl font-bold" style={{ color: "var(--app-text-primary)" }}>Activity Privacy</h2>
+        <p className="mt-2 text-sm" style={{ color: "var(--app-text-secondary)" }}>
+          Control what game and activity info gets shared with your friends and groups.
+        </p>
+      </div>
+
       {/* Share toggle */}
       <div className="rounded-[24px] border p-5" style={cardStyle}>
         <div className="flex items-start justify-between gap-4">
