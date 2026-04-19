@@ -1,3 +1,4 @@
+import { forwardRef } from "react";
 import statusIdleIcon from "@/assets/icons/status-idle.svg";
 import statusDndIcon from "@/assets/icons/status-dnd.svg";
 import statusInvisibleIcon from "@/assets/icons/status-invisible.svg";
@@ -9,7 +10,6 @@ interface StatusIndicatorProps {
   className?: string;
 }
 
-// Sizes calibrated so idle/dnd/invisible match the visual weight of the green online dot.
 const sizeMap = {
   sm: { container: "h-[15px] w-[15px]", icon: "h-[14px] w-[14px]", border: "border-[2.5px]" },
   md: { container: "h-[18px] w-[18px]", icon: "h-[16px] w-[16px]", border: "border-[3px]" },
@@ -30,42 +30,42 @@ const statusFilterMap: Record<string, string> = {
   offline: "brightness(0) saturate(100%) invert(55%) sepia(7%) saturate(500%) hue-rotate(182deg) brightness(92%) contrast(87%)",
 };
 
-const StatusIndicator = ({ status, size = "sm", borderColor = "#313338", className = "" }: StatusIndicatorProps) => {
-  const s = sizeMap[size];
-  const icon = statusIconMap[status];
+const StatusIndicator = forwardRef<HTMLDivElement, StatusIndicatorProps>(
+  ({ status, size = "sm", borderColor = "#313338", className = "" }, ref) => {
+    const s = sizeMap[size];
+    const icon = statusIconMap[status];
 
-  if (status === "online") {
+    if (status === "online") {
+      return (
+        <div
+          ref={ref}
+          className={`${s.container} rounded-full ${s.border} bg-[#3ba55c] ${className}`}
+          style={{ borderColor }}
+        />
+      );
+    }
+
+    if (icon) {
+      return (
+        <div
+          ref={ref}
+          className={`${s.container} rounded-full ${s.border} flex items-center justify-center bg-[#313338] ${className}`}
+          style={{ borderColor, backgroundColor: borderColor }}
+        >
+          <img src={icon} alt={status} className={s.icon} style={{ filter: statusFilterMap[status] }} />
+        </div>
+      );
+    }
+
     return (
       <div
-        className={`${s.container} rounded-full ${s.border} bg-[#3ba55c] ${className}`}
+        ref={ref}
+        className={`${s.container} rounded-full ${s.border} bg-[#747f8d] ${className}`}
         style={{ borderColor }}
       />
     );
   }
-
-  if (icon) {
-    return (
-      <div
-        className={`${s.container} rounded-full ${s.border} flex items-center justify-center bg-[#313338] ${className}`}
-        style={{ borderColor, backgroundColor: borderColor }}
-      >
-        <img
-          src={icon}
-          alt={status}
-          className={s.icon}
-          style={{ filter: statusFilterMap[status] }}
-        />
-      </div>
-    );
-  }
-
-  // Fallback
-  return (
-    <div
-      className={`${s.container} rounded-full ${s.border} bg-[#747f8d] ${className}`}
-      style={{ borderColor }}
-    />
-  );
-};
+);
+StatusIndicator.displayName = "StatusIndicator";
 
 export default StatusIndicator;
