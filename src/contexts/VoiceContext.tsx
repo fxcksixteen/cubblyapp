@@ -1414,6 +1414,22 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [user, setupSignaling, startLoopbackTest, ensureOwnParticipantRow]);
 
+  /**
+   * Dismiss the incoming-call ring on THIS device only — does NOT hang up an
+   * already-connected call on a sibling device. Use this when the user clicks
+   * the "decline" button on a stale incoming card (e.g. they already answered
+   * on the desktop app and the web tab is still ringing). Sends a sibling
+   * dismissal so any other tabs of mine also clear their ring.
+   */
+  const declineIncoming = useCallback(async () => {
+    if (!incomingCall) return;
+    const { conversationId, callEventId } = incomingCall;
+    stopLooping("incomingCall");
+    setIncomingCall(null);
+    acceptedIncomingCallRef.current = null;
+    try { void broadcastIncomingCallDismiss(conversationId, callEventId); } catch {}
+  }, [incomingCall, broadcastIncomingCallDismiss]);
+
   const acceptCall = useCallback(async () => {
     if (!incomingCall || !user) return;
 
