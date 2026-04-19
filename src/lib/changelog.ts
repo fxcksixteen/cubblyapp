@@ -23,12 +23,12 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.17";
+export const CURRENT_VERSION = "0.2.16";
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    version: "0.2.17",
-    title: "Robust calls + WASAPI multi-format negotiation + UI fixes",
+    version: "0.2.16",
+    title: "Robust calls + rejoin UI + TURN region preference",
     date: "2026-04-19",
     hero: bearImage,
     newFeatures: [],

@@ -347,12 +347,17 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     if (!user) return;
-    supabase.functions.invoke("get-turn-credentials").then(({ data, error }) => {
-      if (!error && data?.iceServers) {
-        iceServersRef.current = data.iceServers;
-      }
-    });
-  }, [user]);
+    const preferredRegion = settings.serverRegion === "auto" ? detectedRegion : settings.serverRegion;
+    supabase.functions
+      .invoke("get-turn-credentials", {
+        body: { preferredRegion },
+      })
+      .then(({ data, error }) => {
+        if (!error && data?.iceServers) {
+          iceServersRef.current = data.iceServers;
+        }
+      });
+  }, [user, settings.serverRegion, detectedRegion]);
 
   useEffect(() => {
     if (!user) return;
