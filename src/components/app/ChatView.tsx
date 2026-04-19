@@ -480,6 +480,22 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
   return (
     <div className="flex flex-1 min-h-0 overflow-hidden">
       <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
+      {/* Blue "New Messages" bar — sits ABOVE the call panel so it's always visible */}
+      {showNewBar && unreadOnEntry > 0 && (
+        <div
+          className="shrink-0 flex items-center justify-between gap-3 px-4 py-2 text-xs font-semibold"
+          style={{ backgroundColor: "#5865f2", color: "#ffffff" }}
+        >
+          <span>New Messages — {unreadOnEntry}</span>
+          <button
+            onClick={() => { void markAsReadNow(); }}
+            className="rounded px-2 py-1 text-[11px] font-bold uppercase tracking-wide transition-colors hover:bg-white/15"
+          >
+            Mark as Read
+          </button>
+        </div>
+      )}
+
       {/* Discord-style call panel — group call OR 1-on-1 call (mutually exclusive) */}
       <div className="shrink-0 max-h-[50vh] overflow-y-auto">
         {conversation?.is_group ? (
