@@ -4,9 +4,9 @@
   "description": "Windows WASAPI per-process loopback audio capture as a native Node addon for Electron",
   "main": "index.js",
   "scripts": {
-    "install": "prebuild-install --runtime=electron --target=33.0.0 || node-gyp rebuild",
+    "install": "node-gyp-build",
     "rebuild": "node-gyp rebuild",
-    "prebuild": "prebuildify --napi --strip --electron --target=33.0.0"
+    "prebuild": "prebuildify --napi --strip -t electron@41.0.0 --arch=x64"
   },
   "dependencies": {
     "node-addon-api": "^7.1.1",
