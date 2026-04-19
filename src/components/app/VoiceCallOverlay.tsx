@@ -292,7 +292,7 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
           }}
         >
           <div className="relative">
-            {!isWaiting && remoteVideoStream ? (
+            {!isWaiting && remoteVideoStream && peerState?.is_video_on ? (
               <div
                 className={`group relative overflow-hidden rounded-2xl bg-black ${
                   hasScreenShare ? "h-20 w-28" : "h-[140px] w-[200px]"
