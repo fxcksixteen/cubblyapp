@@ -91,6 +91,15 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
   const [unreadOnEntry, setUnreadOnEntry] = useState<number>(0);
   const [showNewBar, setShowNewBar] = useState(false);
   const [rejoiningEventId, setRejoiningEventId] = useState<string | null>(null);
+  /**
+   * Set of call_event ids that are TRULY rejoinable for the current user:
+   *   - the event is still ongoing
+   *   - I have a participant row with left_at != null (I previously left)
+   *   - at least one OTHER participant still has left_at IS NULL (someone is still live)
+   * Without this, the rejoin banner/button were false-positives — appearing for
+   * brand-new outgoing calls and for "ongoing" events that nobody was actually in.
+   */
+  const [rejoinableEventIds, setRejoinableEventIds] = useState<Set<string>>(new Set());
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
