@@ -382,7 +382,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     // Realtime subscription for call events. CRITICAL: attach all .on()
     // listeners BEFORE calling .subscribe(), or supabase-js throws
     // "cannot add postgres_changes callbacks ... after subscribe()".
-    const callChannel = supabase.channel("call-events-realtime");
+    const uniqueSuffix = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const callChannel = supabase.channel(`call-events-realtime:${user.id}:${uniqueSuffix}`);
     callChannel.on(
       "postgres_changes",
       { event: "*", schema: "public", table: "call_events" },

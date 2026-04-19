@@ -139,7 +139,8 @@ export function useUnreadCounts(activeConversationId: string | null) {
 
     // CRITICAL: attach .on() listeners BEFORE .subscribe(), otherwise
     // supabase-js throws "cannot add postgres_changes callbacks after subscribe()".
-    const channel = supabase.channel(`unread-watcher:${user.id}`);
+    const uniqueSuffix = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const channel = supabase.channel(`unread-watcher:${user.id}:${uniqueSuffix}`);
     channel.on(
       "postgres_changes",
       { event: "INSERT", schema: "public", table: "messages" },

@@ -80,7 +80,8 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
 
     // CRITICAL: attach .on() before .subscribe() — supabase-js will throw
     // "cannot add postgres_changes callbacks after subscribe()" otherwise.
-    const channel = supabase.channel("user-activities-global");
+    const uniqueSuffix = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const channel = supabase.channel(`user-activities-global:${user.id}:${uniqueSuffix}`);
     channel.on(
       "postgres_changes",
       { event: "*", schema: "public", table: "user_activities" },
