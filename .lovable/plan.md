@@ -1,52 +1,102 @@
 
+Goal: fix the two issues that are still real in the shipped desktop app:
+1) old chat attachments are still requesting expired signed URLs and throwing 400s
+2) per-window screenshare audio still fails with `IAudioClient::Initialize failed: HRESULT 0x88890021`
 
-## Six fixes for v0.2.13
+What I found:
+- The attachment system still stores short-lived signed URLs inside message content in `src/components/app/ChatView.tsx`. That means old messages permanently carry expired URLs.
+- `src/components/app/chat/AttachmentItem.tsx` tries to re-sign on mount, but it initializes `<img>/<video>/<a>` with the stale URL first, so the app still fires failing GETs before the refresh finishes. That matches the 400 spam you pasted.
+- The native audio addon in `native/win-audio-capture/src/process_loopback_capture.cc` is still forcing one exact format (`44.1kHz`, stereo, `WAVE_FORMAT_IEEE_FLOAT`) instead of negotiating from the activated client/device. That is the most likely cause of `0x88890021`.
+- Your desktop screenshot still shows `Cubbly v0.2.7`, while the repo now says `0.2.15`. So the installed build is stale or at least not proving the packaged renderer/native binary matches current source. Until that is fixed, even good code can look “not fixed”.
+- There are also unrelated devtools/runtime problems still active:
+  - service worker registration is running under `file://` in Electron
+  - several realtime subscriptions call `.subscribe()` too early, then add `postgres_changes` listeners after
+  - one context-menu component is triggering a ref warning
 
-### 1. Window screenshare audio — root cause found
-`HRESULT 0x88890021` = `AUDCLNT_E_UNSUPPORTED_FORMAT`. Process loopback (`AUDCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK`) does **not** accept a hand-rolled `WAVEFORMATEX` with `WAVE_FORMAT_IEEE_FLOAT`. Microsoft's official sample uses **`WAVE_FORMAT_PCM` 16-bit stereo 44100Hz** — that's literally the only format combo the loopback engine accepts.
+Do I know what the issue is?
+Yes:
+- Attachments: wrong persistence model + stale URL rendered before refresh.
+- Window audio: fragile WASAPI initialization strategy, plus no hard proof the packaged app is actually the latest build.
 
-Fix in `native/win-audio-capture/src/process_loopback_capture.cc`:
-- Switch `WAVEFORMATEX` to `wFormatTag=WAVE_FORMAT_PCM`, `wBitsPerSample=16`, `nChannels=2`, `nSamplesPerSec=44100`.
-- Update `format_.bitsPerSample=16`, `floatPcm=false`, `sampleRate=44100`.
-- In `src/lib/nativeWindowAudio.ts`, decode incoming PCM as `Int16Array` → convert to `Float32` (`/ 32768`) before pushing into the AudioBuffer, and use the negotiated sample rate.
+Implementation plan:
+1. Fix attachment persistence at the source
+- Change message attachment metadata to store stable storage object info instead of signed URLs.
+- Store something like:
+  - `name`
+  - `path`
+  - `size`
+  - `type`
+  - optional legacy `url` only for backward compatibility
+- Update upload logic in `src/components/app/ChatView.tsx` so new messages save object paths, not 1-hour signed URLs.
 
-### 2. Camera tile stays black when peer turns camera off (screenshot bug)
-In `VoiceCallOverlay.tsx` line 295, gate the `<video>` tile on **both** `remoteVideoStream` *and* `peerState?.is_video_on`. When the peer toggles camera off, fall back to the avatar circle (same branch as no-stream).
+2. Make attachment rendering backward-compatible and stop the 400 spam
+- Update `src/components/app/chat/AttachmentItem.tsx` to:
+  - prefer `attachment.path`
+  - fall back to extracting a path from old signed URLs for legacy messages
+  - wait for a fresh signed URL before rendering media/download links
+  - avoid ever mounting `<img>` / `<video>` with an expired URL first
+- Add a tiny loading/file-placeholder state while re-signing.
+- Ensure image, video, and file download all use the freshly generated URL.
 
-### 3. Clickable links + URL preview cards in chat
-- New `src/lib/linkify.tsx`: split message text on a URL regex, render plain text + `<a>` tags (`target=_blank`, security rels, accent color, hover underline).
-- New `src/components/app/chat/LinkPreview.tsx`: lightweight OG-card. Calls a new edge function `link-preview` that fetches the URL server-side and parses `<title>`, `og:title`, `og:description`, `og:image` (avoids CORS, hides user IP). Cached in-memory by URL for the session.
-- Use linkify wherever `text` from `parseContent(msg.content)` is rendered. Show up to 1 preview card per message under the bubble.
+3. Audit storage access rules for private attachments
+- Verify the backend policies for the `chat-attachments` bucket support upload + signed URL generation for conversation members.
+- If missing or too loose, add a migration to tighten/fix them without breaking existing files.
 
-### 4. Built-in video player for mp4/mov/webm attachments
-Extend `AttachmentItem.tsx` with a third branch when `attachment.type.startsWith("video/")`:
-- Render a Cubbly-styled `<video controls preload="metadata" playsInline>` capped at `max-h-[360px]` with rounded corners matching image attachments.
-- Click thumbnail → opens existing-style fullscreen lightbox (new `VideoLightbox.tsx` mirroring `ImageLightbox`) with custom dark controls.
+4. Replace the native WASAPI format hack with proper negotiation
+- Rework `native/win-audio-capture/src/process_loopback_capture.cc` to stop hardcoding one format.
+- Use the activated audio client’s supported/mix format path, then initialize with the format Windows actually accepts for process loopback.
+- Keep the same JS-facing output contract so `src/lib/nativeWindowAudio.ts` stays compatible.
+- Preserve the current per-process PID resolution flow in `electron/main.cjs`, but improve native error reporting so failures say exactly which negotiation step failed.
 
-### 5. Multi-line auto-growing message box + 1000 char limit + counter
-In `ChatView.tsx`:
-- Replace the `<input type="text">` (line 674) with a `<textarea>` that auto-grows to ~6 lines then scrolls. Use a small `useAutoGrowTextarea(ref)` hook that resets `height: auto` then `scrollHeight` on every change.
-- Enforce `maxLength={1000}` and hard-truncate on paste.
-- Render counter `{input.length}/1000` in the bottom-right corner of the input row, only when `input.length >= 750`. Color shifts: secondary → orange at 900 → red at 1000.
-- `Enter` sends, `Shift+Enter` newlines. Update all refs from `HTMLInputElement` → `HTMLTextAreaElement` (focus calls, `useTypeToFocus`).
+5. Make the shipped app prove its real version
+- Expose the desktop app version from Electron main/preload using `app.getVersion()`.
+- Show/log the packaged desktop version from Electron rather than only the renderer changelog constant.
+- Keep the changelog version in sync, but make stale packaged builds obvious immediately.
+- This prevents another “repo says 0.2.15 but installed app says 0.2.7” situation.
 
-### 6. iOS PWA loading animation
-The webm autoplay in `LoadingSplash.tsx` is silently rejected on iOS Safari/standalone PWA on first paint (no user gesture, codec quirks). Fix:
-- Detect iOS standalone (`navigator.standalone === true || display-mode: standalone` + iOS UA).
-- On iOS, replace the `<video>` with an animated CSS/SVG fallback (same warm tone, gentle pulsing/breathing logo) so the splash never appears frozen.
-- Keep the webm path for everything else.
+6. Remove Electron-only devtools noise
+- Disable service worker registration when running inside Electron / `file://`.
+- That should remove the packaged-app SW error from devtools.
 
-### Files touched
-- `native/win-audio-capture/src/process_loopback_capture.cc`
-- `src/lib/nativeWindowAudio.ts`
-- `src/components/app/VoiceCallOverlay.tsx`
+7. Fix the realtime runtime errors
+- Update the affected files so all `.on("postgres_changes", ...)` handlers are attached before `.subscribe()`:
+  - `src/hooks/useUnreadCounts.ts`
+  - `src/contexts/ActivityContext.tsx`
+  - `src/contexts/VoiceContext.tsx`
+  - `src/contexts/AuthContext.tsx`
+- This should eliminate the repeated realtime channel errors.
+
+8. Fix the context-menu ref warning
+- Review `src/components/ui/context-menu.tsx` and any caller passing custom components into Radix slots/content.
+- Patch the ref forwarding chain so `ContextMenuContent` stops warning in devtools.
+
+Validation after implementation:
+- Old image/video/file attachments open without any 400 requests in devtools.
+- New attachments persist across refresh/relogin because they are path-based, not URL-based.
+- Window-only screenshare audio starts without `0x88890021`.
+- Packaged app devtools shows the correct desktop version, not `v0.2.7`.
+- Electron no longer logs service worker registration errors.
+- Realtime subscription errors are gone.
+- End-to-end test:
+  - send attachments
+  - reload and reopen old messages
+  - start a 1-on-1 call
+  - share a single app window with audio
+  - verify remote user hears only that app’s audio
+
+Files likely involved:
 - `src/components/app/ChatView.tsx`
-- `src/components/app/chat/AttachmentItem.tsx` + new `VideoLightbox.tsx`
-- `src/lib/linkify.tsx` (new) + `src/components/app/chat/LinkPreview.tsx` (new)
-- `supabase/functions/link-preview/index.ts` (new edge function)
-- `src/components/app/LoadingSplash.tsx`
-- `package.json` + `src/lib/changelog.ts` → bump to **v0.2.13**
+- `src/components/app/chat/AttachmentItem.tsx`
+- `src/lib/nativeWindowAudio.ts`
+- `native/win-audio-capture/src/process_loopback_capture.cc`
+- `electron/main.cjs`
+- `electron/preload.cjs`
+- `src/main.tsx`
+- `src/hooks/useUnreadCounts.ts`
+- `src/contexts/ActivityContext.tsx`
+- `src/contexts/VoiceContext.tsx`
+- `src/contexts/AuthContext.tsx`
+- `src/components/ui/context-menu.tsx`
+- backend migration(s) for storage policies if needed
 
-### Release rule
-Native addon source changed → workflow must rebuild prebuilds. Confirm the GH Actions `prebuild-native.yml` runs on push (it does). Then your existing `git pull && set BUILD_TARGET=electron && npm run build:electron && npx electron-builder --win nsis --x64 --publish always` ships it.
-
+Because I’m in read-only mode, I can’t apply the fixes yet. Once you approve, I’ll switch to implementation mode and patch all of this in one pass.
