@@ -563,7 +563,7 @@ export const CallEventMessage = ({ state, startedAt, endedAt, onJoin, joinDisabl
 
 /** Incoming call notification overlay */
 const VoiceCallOverlay = () => {
-  const { incomingCall, activeCall, acceptCall, endCall } = useVoice();
+  const { incomingCall, activeCall, acceptCall, declineIncoming } = useVoice();
 
   if (incomingCall && !activeCall) {
     const callerAvatar = incomingCall.callerAvatarUrl;
@@ -594,7 +594,7 @@ const VoiceCallOverlay = () => {
           <img src={callIcon} alt="Accept" className="h-5 w-5" style={{ filter: "brightness(0) invert(1)" }} />
         </button>
         <button
-          onClick={endCall}
+          onClick={declineIncoming}
           className="flex h-10 w-10 items-center justify-center rounded-full bg-[#ed4245] text-white hover:bg-[#c73b3e] transition-colors"
           title="Decline"
         >
