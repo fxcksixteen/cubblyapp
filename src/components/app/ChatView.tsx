@@ -96,6 +96,8 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
   const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const typingChannelReadyRef = useRef(false);
 
+  useAutoGrowTextarea(messageInputRef, input, 6);
+
   const isBotConversation = recipientUserId === BOT_USER_ID;
 
   const lastMsgSenderId = messages.length > 0 ? messages[messages.length - 1].sender_id : null;
@@ -653,8 +655,8 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
 
       {/* Input */}
       <div className="px-4 pb-4">
-        <div className="flex items-center gap-2 rounded-lg px-4 py-2.5 relative" style={{ backgroundColor: "var(--app-input, #383a40)" }}>
-          <div className="relative">
+        <div className="flex items-end gap-2 rounded-lg px-4 py-2.5 relative" style={{ backgroundColor: "var(--app-input, #383a40)" }}>
+          <div className="relative pb-1">
             <button
               onClick={() => setAttachMenuOpen(!attachMenuOpen)}
               className="flex h-5 w-5 shrink-0 items-center justify-center transition-transform"
@@ -680,18 +682,25 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
             )}
           </div>
 
-          <input
+          <textarea
             ref={messageInputRef}
-            type="text"
+            rows={1}
             value={input}
+            maxLength={1000}
             onChange={(e) => {
-              const v = e.target.value;
+              // Hard truncate (defensive — maxLength already enforces it)
+              const v = e.target.value.slice(0, 1000);
               setInput(v);
               if (v.trim()) broadcastTyping();
               else broadcastStopTyping();
             }}
             onBlur={broadcastStopTyping}
-            onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
             onPaste={(e) => {
               // Ctrl+V image paste — grab image items from the clipboard and queue them as attachments
               const items = e.clipboardData?.items;
@@ -702,7 +711,6 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                 if (it.kind === "file" && it.type.startsWith("image/")) {
                   const f = it.getAsFile();
                   if (f) {
-                    // Give pasted screenshots a friendlier name
                     const ext = (f.type.split("/")[1] || "png").split("+")[0];
                     const named = new File([f], `pasted-${Date.now()}.${ext}`, { type: f.type });
                     imageFiles.push(named);
@@ -715,15 +723,40 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                   ...prev,
                   ...imageFiles.map((f) => ({ file: f, id: `paste-${Date.now()}-${Math.random()}` })),
                 ]);
+                return;
+              }
+              // Truncate pasted text so we never exceed the limit
+              const pastedText = e.clipboardData?.getData("text");
+              if (pastedText && input.length + pastedText.length > 1000) {
+                e.preventDefault();
+                const room = Math.max(0, 1000 - input.length);
+                const next = (input + pastedText.slice(0, room)).slice(0, 1000);
+                setInput(next);
               }
             }}
             placeholder={`Message @${recipientName}`}
-            className="flex-1 bg-transparent text-sm outline-none placeholder:text-[#6d6f78]"
+            className="flex-1 resize-none bg-transparent text-sm outline-none placeholder:text-[#6d6f78] leading-[1.4] py-1"
             data-typing-input
-            style={{ color: "var(--app-text-primary, #dbdee1)" }}
+            style={{ color: "var(--app-text-primary, #dbdee1)", maxHeight: "168px" }}
           />
 
-          <div className="relative flex items-center">
+          {input.length >= 750 && (
+            <span
+              className="absolute bottom-1 right-12 text-[11px] font-medium tabular-nums select-none pointer-events-none"
+              style={{
+                color:
+                  input.length >= 1000
+                    ? "#ed4245"
+                    : input.length >= 900
+                      ? "#faa61a"
+                      : "var(--app-text-secondary, #949ba4)",
+              }}
+            >
+              {input.length}/1000
+            </span>
+          )}
+
+          <div className="relative flex items-center pb-1">
             <button
               onClick={() => setGifPickerOpen(!gifPickerOpen)}
               className="flex items-center justify-center"
@@ -740,7 +773,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
           <button
             onClick={handleSend}
             disabled={uploading || (!input.trim() && pendingFiles.length === 0)}
-            className="flex items-center justify-center disabled:opacity-30 transition-opacity"
+            className="flex items-center justify-center disabled:opacity-30 transition-opacity pb-1"
           >
             <img src={sendIcon} alt="Send" className="h-5 w-5 invert opacity-80" />
           </button>
