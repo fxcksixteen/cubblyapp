@@ -119,16 +119,16 @@ bool ProcessLoopbackCapture::Start(DWORD pid, PcmCallback cb, std::string& error
   }
   audioClient_ = client;
 
-  // Format: PCM 16-bit, stereo, 44.1 kHz.
-  // PROCESS_LOOPBACK activation rejects WAVE_FORMAT_IEEE_FLOAT with
-  // AUDCLNT_E_UNSUPPORTED_FORMAT (HRESULT 0x88890021). Microsoft's official
-  // ApplicationLoopback sample uses exactly this combo and it's the only
-  // format combo the loopback engine reliably accepts.
+  // Format: 32-bit float PCM, stereo, 44.1 kHz.
+  // Microsoft's official ApplicationLoopback sample uses exactly this format,
+  // and it is the ONLY combo PROCESS_LOOPBACK reliably accepts on retail Win10/11.
+  // PCM-16 + AUTOCONVERTPCM gets rejected with AUDCLNT_E_UNSUPPORTED_FORMAT
+  // (0x88890021) on most builds — which is the error the user kept hitting.
   WAVEFORMATEX wfx{};
-  wfx.wFormatTag = WAVE_FORMAT_PCM;
+  wfx.wFormatTag = WAVE_FORMAT_IEEE_FLOAT;
   wfx.nChannels = 2;
   wfx.nSamplesPerSec = 44100;
-  wfx.wBitsPerSample = 16;
+  wfx.wBitsPerSample = 32;
   wfx.nBlockAlign = (wfx.nChannels * wfx.wBitsPerSample) / 8;
   wfx.nAvgBytesPerSec = wfx.nSamplesPerSec * wfx.nBlockAlign;
   wfx.cbSize = 0;
@@ -188,7 +188,7 @@ bool ProcessLoopbackCapture::Start(DWORD pid, PcmCallback cb, std::string& error
   format_.sampleRate = wfx.nSamplesPerSec;
   format_.channels = wfx.nChannels;
   format_.bitsPerSample = wfx.wBitsPerSample;
-  format_.floatPcm = false;
+  format_.floatPcm = true;
 
   running_ = true;
   workerThread_ = std::thread([this]() { RunCaptureLoop(); });
