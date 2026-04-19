@@ -12,9 +12,12 @@ import MessageActions from "./chat/MessageActions";
 import MessageContextMenu from "./chat/MessageContextMenu";
 import UserProfileCard from "./chat/UserProfileCard";
 import { useTypeToFocus } from "@/hooks/useTypeToFocus";
+import { useAutoGrowTextarea } from "@/hooks/useAutoGrowTextarea";
 import AttachmentItem from "./chat/AttachmentItem";
 import InlineGif from "./chat/InlineGif";
+import LinkPreview from "./chat/LinkPreview";
 import GroupMembersPanel from "./GroupMembersPanel";
+import { linkifyText, extractFirstUrl } from "@/lib/linkify";
 import sendIcon from "@/assets/icons/send.svg";
 import folderFileIcon from "@/assets/icons/folder-file.svg";
 import gifIcon from "@/assets/icons/gif.svg";
@@ -84,7 +87,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const messageInputRef = useRef<HTMLInputElement>(null);
+  const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const userHasScrolledUpRef = useRef(false);
   const prevMessageCountRef = useRef(0);
@@ -572,9 +575,15 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                               /^https?:\/\/.*\.(gif|giphy)/i.test(text) ? (
                                 <InlineGif url={text} />
                               ) : (
-                                <p className={`text-[15px] leading-relaxed ${msg.status === "sending" ? "opacity-50" : ""}`} style={{ color: "var(--app-text-primary, #dbdee1)" }}>
-                                  {text}
-                                </p>
+                                <>
+                                  <p className={`text-[15px] leading-relaxed whitespace-pre-wrap break-words ${msg.status === "sending" ? "opacity-50" : ""}`} style={{ color: "var(--app-text-primary, #dbdee1)" }}>
+                                    {linkifyText(text)}
+                                  </p>
+                                  {(() => {
+                                    const firstUrl = extractFirstUrl(text);
+                                    return firstUrl ? <LinkPreview url={firstUrl} /> : null;
+                                  })()}
+                                </>
                               )
                             )}
                             {attachments.map((att, ai) => (
