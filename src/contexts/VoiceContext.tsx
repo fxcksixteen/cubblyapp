@@ -774,6 +774,55 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   // Store pending offer so we can re-send when recipient signals ready
   const pendingOfferRef = useRef<{ offer: RTCSessionDescriptionInit; conversationId: string; callEventId: string } | null>(null);
 
+  const ensureOwnParticipantRow = useCallback(async (callEventId: string, overrides?: ParticipantStatePatch) => {
+    if (!user) return;
+    const { data: existing } = await supabase
+      .from("call_participants")
+      .select("id")
+      .eq("call_event_id", callEventId)
+      .eq("user_id", user.id)
+      .is("left_at", null)
+      .maybeSingle();
+
+    if (existing?.id) {
+      if (overrides && Object.keys(overrides).length > 0) {
+        await supabase.from("call_participants").update(overrides as any).eq("id", existing.id);
+      }
+      return;
+    }
+
+    await supabase.from("call_participants").insert({
+      call_event_id: callEventId,
+      user_id: user.id,
+      is_muted: false,
+      is_deafened: false,
+      is_video_on: false,
+      is_screen_sharing: false,
+      ...(overrides || {}),
+    } as any);
+  }, [user]);
+
+  const broadcastIncomingCallDismiss = useCallback(async (conversationId: string, callEventId?: string) => {
+    if (!user) return;
+    const channel = supabase.channel(`voice-global:${user.id}`);
+    await new Promise<void>((resolve) => {
+      channel.subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          channel.send({
+            type: "broadcast",
+            event: "incoming-call-dismiss",
+            payload: { conversationId, callEventId, userId: user.id },
+          }).finally(() => {
+            setTimeout(() => {
+              supabase.removeChannel(channel);
+              resolve();
+            }, 250);
+          });
+        }
+      });
+    });
+  }, [user]);
+
   const initializeOutgoingConnection = useCallback(async (channel: ReturnType<typeof supabase.channel>, conversationId: string) => {
     if (!user) return;
     if (pcRef.current || pendingOfferRef.current) {
@@ -865,6 +914,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
         if (payload.type === "ready-for-offer") {
           try {
+            if (!outgoingCallMetaRef.current && activeCall?.conversationId === conversationId && currentCallEventId) {
+              outgoingCallMetaRef.current = {
+                conversationId,
+                callEventId: currentCallEventId,
+              };
+            }
             await initializeOutgoingConnection(channel, conversationId);
           } catch (e) {
             console.error("[Voice] Failed to initialize outgoing connection:", e);
@@ -1228,9 +1283,19 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           .limit(1)
           .maybeSingle();
         if (existing?.id) {
-          callEventId = existing.id;
-          isJoiningExisting = true;
-          console.log("[Voice] 🔁 Joining existing ongoing call_event:", callEventId);
+          const { count: activeParticipantCount } = await supabase
+            .from("call_participants")
+            .select("id", { count: "exact", head: true })
+            .eq("call_event_id", existing.id)
+            .is("left_at", null);
+
+          if ((activeParticipantCount || 0) > 0) {
+            callEventId = existing.id;
+            isJoiningExisting = true;
+            console.log("[Voice] 🔁 Joining existing ongoing call_event:", callEventId);
+          } else {
+            await supabase.from("call_events").update({ state: "ended", ended_at: new Date().toISOString() } as any).eq("id", existing.id);
+          }
         }
       } catch (e) {
         console.warn("[Voice] could not check for existing call_event:", e);
@@ -1258,6 +1323,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       if (!isBotCall) {
         playLooping("outgoingRing", { volume: 0.4 });
       }
+
+      await ensureOwnParticipantRow(callEventId!);
 
       // Only insert a new call_event row if we're NOT joining an existing one.
       if (!isJoiningExisting) {
@@ -1296,6 +1363,21 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         callerAvatarUrl,
       };
 
+      if (isJoiningExisting) {
+        console.log("[Voice] 📡 Rejoin requested — asking active peer for an offer without re-ringing them");
+        channel.send({
+          type: "broadcast",
+          event: "voice-signal",
+          payload: {
+            type: "ready-for-offer",
+            senderId: user.id,
+            senderName: user.user_metadata?.display_name || "User",
+            callEventId,
+          },
+        });
+        return;
+      }
+
       const recipientGlobalChannel = supabase.channel(`voice-global:${peerId}`);
       recipientGlobalChannel.subscribe(async (status) => {
         if (status === "SUBSCRIBED") {
@@ -1323,7 +1405,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     } catch (e) {
       console.error("[Voice] ❌ Failed to start call:", e);
     }
-  }, [user, setupSignaling, startLoopbackTest]);
+  }, [user, setupSignaling, startLoopbackTest, ensureOwnParticipantRow]);
 
   const acceptCall = useCallback(async () => {
     if (!incomingCall || !user) return;
@@ -1374,6 +1456,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       });
       peerIdRef.current = acceptedCall.callerId;
       setIncomingCall(null);
+      void broadcastIncomingCallDismiss(acceptedCall.conversationId, acceptedCallEventId);
+      await ensureOwnParticipantRow(acceptedCallEventId);
 
       if (acceptedCall.offer) {
         console.log("[Voice] 📥 Callee has offer, setting remote description and creating answer...");
@@ -1420,7 +1504,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     } catch (e) {
       console.error("Failed to accept call:", e);
     }
-  }, [incomingCall, user, setupSignaling, getUserMedia, createPeerConnection, startAudioLevelMonitor, flushQueuedIceCandidates]);
+  }, [incomingCall, user, setupSignaling, getUserMedia, createPeerConnection, startAudioLevelMonitor, flushQueuedIceCandidates, broadcastIncomingCallDismiss, ensureOwnParticipantRow]);
 
   // Screen share loopback ref for bot calls
   const screenLoopbackPcRef = useRef<{ local: RTCPeerConnection; remote: RTCPeerConnection } | null>(null);
@@ -2090,8 +2174,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     if (!user) return;
     const globalChannel = supabase.channel(`voice-global:${user.id}`);
-    globalChannel.on("broadcast", { event: "incoming-call" }, async ({ payload }) => {
-      if (payload.targetId === user.id && !activeCall) {
+    globalChannel
+      .on("broadcast", { event: "incoming-call" }, async ({ payload }) => {
+        const sameCallAlreadyOpen =
+          activeCall?.conversationId === payload.conversationId ||
+          incomingCall?.callEventId === payload.callEventId;
+        if (payload.targetId !== user.id || activeCall || sameCallAlreadyOpen) return;
+
         try {
           await setupSignaling(payload.conversationId);
           setIncomingCall({
@@ -2101,16 +2190,32 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             callerAvatarUrl: payload.callerAvatarUrl,
             callEventId: payload.callEventId,
           });
-          // Incoming call ringtone (respects DND inside playLooping)
           playLooping("incomingCall", { volume: 0.5 });
         } catch (e) {
           console.error("Failed to setup signaling for incoming call:", e);
         }
-      }
-    });
+      })
+      .on("broadcast", { event: "incoming-call-dismiss" }, ({ payload }) => {
+        const matchesIncoming =
+          incomingCall?.callEventId === payload.callEventId ||
+          incomingCall?.conversationId === payload.conversationId;
+        const matchesActive =
+          activeCall?.conversationId === payload.conversationId && activeCall?.state !== "connected";
+
+        if (!matchesIncoming && !matchesActive) return;
+
+        stopLooping("incomingCall");
+        setIncomingCall((current) => {
+          if (!current) return current;
+          if (current.callEventId === payload.callEventId || current.conversationId === payload.conversationId) {
+            return null;
+          }
+          return current;
+        });
+      });
     globalChannel.subscribe();
     return () => { supabase.removeChannel(globalChannel); };
-  }, [user, activeCall, setupSignaling]);
+  }, [user, activeCall, incomingCall, setupSignaling]);
 
   // Stop incoming ringtone as soon as we accept (incomingCall cleared) or it's superseded.
   useEffect(() => {

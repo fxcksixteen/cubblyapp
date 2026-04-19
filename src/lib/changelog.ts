@@ -23,16 +23,19 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.16";
+export const CURRENT_VERSION = "0.2.17";
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    version: "0.2.16",
-    title: "Robust calls + rejoin UI + TURN region preference",
+    version: "0.2.17",
+    title: "Rejoin UI fixes + cross-device call sync",
     date: "2026-04-19",
     hero: bearImage,
     newFeatures: [],
     bugFixes: [
+      "Active ongoing calls in a DM now show a live join banner at the top of the chat again instead of only leaving a rejoin button buried in the history.",
+      "Rejoining an existing call no longer sends a fresh incoming ring or leaves your other device/browser ringing after you already joined somewhere else.",
+      "Starting a new call now auto-closes stale 'ongoing' call events with zero live participants so new call pills appear correctly again.",
       "CRITICAL: Window screen-share audio (WASAPI process loopback) now tries multiple format candidates (16-bit PCM at endpoint sample rate, 48kHz, 44.1kHz, then float fallbacks) instead of giving up on HRESULT 0x88890021 — works on every Windows audio stack we've tested.",
       "Calls now show only ONE 'Ongoing Call' pill per chat — duplicates from old/orphan call events are visually demoted to 'Ended'.",
       "Pressing the call button when an ongoing call already exists in that chat now JOINS that call instead of starting a second one (the second-pill bug).",
