@@ -98,8 +98,10 @@ export function useActiveCallElsewhere() {
   }, [activeCall, groupCall.activeCall]);
 
   /** Tell the other device(s) to drop their call so this device can take over. */
-  const requestRemoteHangup = useCallback(async () => {
+  const requestRemoteHangup = useCallback(async (conversationId?: string) => {
     if (!user) return;
+    const target = conversationId || elsewhere?.conversationId;
+    if (!target) return;
     const signal = supabase.channel(`voice-control:${user.id}`);
     return new Promise<void>((resolve) => {
       signal.subscribe((status) => {
@@ -107,7 +109,7 @@ export function useActiveCallElsewhere() {
           signal.send({
             type: "broadcast",
             event: "hangup",
-            payload: { exceptDeviceId: DEVICE_ID },
+            payload: { exceptDeviceId: DEVICE_ID, conversationId: target },
           }).finally(() => {
             setTimeout(() => {
               supabase.removeChannel(signal);
@@ -117,7 +119,7 @@ export function useActiveCallElsewhere() {
         }
       });
     });
-  }, [user?.id]);
+  }, [user?.id, elsewhere?.conversationId]);
 
   return { elsewhere, deviceId: DEVICE_ID, requestRemoteHangup };
 }
