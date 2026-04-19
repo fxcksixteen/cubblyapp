@@ -150,47 +150,22 @@ function createWindow() {
     frame: false,
     titleBarStyle: "hidden",
     backgroundColor: "#1e1610",
-    // Lower process priority for the renderer so a fullscreen game keeps
-    // GPU/CPU priority. Cubbly stays responsive, but doesn't fight Marvel
-    // Rivals for cycles.
+    // Voice-chat app: the renderer runs WebRTC audio + network. We must NOT
+    // demote its priority or throttle background timers — doing so causes
+    // catastrophic ping spikes (>3000ms) the moment a fullscreen game grabs
+    // focus, because the audio/RTC threads get descheduled. Discord behaves
+    // the same way: renderer stays at normal priority, full timer rate.
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
       preload: path.join(__dirname, "preload.cjs"),
-      // CRITICAL for gaming perf: when our window is hidden / minimized /
-      // occluded by a fullscreen game, throttle background timers and
-      // requestAnimationFrame down to ~1Hz. Default true, but make it
-      // explicit so it isn't accidentally disabled later.
-      backgroundThrottling: true,
+      // CRITICAL: disable Chromium's background throttling. When true (default),
+      // a backgrounded/occluded window has its timers + rAF throttled to ~1Hz,
+      // which destroys WebRTC audio packetization timing under a fullscreen
+      // game and causes massive lag/ping spikes in voice chat.
+      backgroundThrottling: false,
     },
   });
-
-  // Drop the renderer process priority to BELOW_NORMAL so a foreground game
-  // always wins CPU scheduling. The window stays interactive when the user
-  // tabs back to it, but doesn't compete with the game for cycles.
-  try {
-    mainWindow.webContents.on("did-finish-load", () => {
-      try {
-        const pid = mainWindow?.webContents?.getOSProcessId?.();
-        if (pid && process.platform === "win32") {
-          // Use wmic to set BelowNormal priority on the renderer process.
-          // Best-effort; failing here is non-fatal.
-          exec(`wmic process where ProcessId=${pid} CALL setpriority "below normal"`, () => {});
-        }
-      } catch (_) { /* noop */ }
-    });
-  } catch (_) { /* noop */ }
-
-  // Cap the renderer's frame rate to 30fps when we're not focused so animations
-  // don't burn GPU cycles while the user is in a game.
-  try {
-    mainWindow.on("blur", () => {
-      try { mainWindow?.webContents?.setFrameRate?.(30); } catch (_) {}
-    });
-    mainWindow.on("focus", () => {
-      try { mainWindow?.webContents?.setFrameRate?.(60); } catch (_) {}
-    });
-  } catch (_) { /* noop */ }
 
   Menu.setApplicationMenu(null);
 
