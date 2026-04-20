@@ -480,7 +480,7 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
 }
 
 /* ─── Camera Section (used inside Video Tab) ─── */
-function CameraSection({ settings, updateSettings, availableDevices, cardStyle }: any) {
+function CameraSection({ settings, updateSettings, availableDevices, cardStyle, captureLocked, captureLockReason }: any) {
   const [testing, setTesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -494,6 +494,14 @@ function CameraSection({ settings, updateSettings, availableDevices, cardStyle }
   };
 
   const startTest = async () => {
+    if (captureLocked) {
+      setError(
+        captureLockReason === "in-call"
+          ? "Stop the call before previewing your camera."
+          : "Camera preview isn't supported in the iOS PWA."
+      );
+      return;
+    }
     setError(null);
     try {
       const resMap: Record<string, { width: number; height: number }> = {
