@@ -1,6 +1,7 @@
 import SwiftUI
 import Photos
 import PhotosUI
+import AVFoundation
 
 /// Discord-style attach sheet: shows the user's most-recent camera-roll items
 /// inline as a 3-column grid for instant selection, with a "More from Library"
@@ -306,5 +307,3 @@ private struct AssetThumb: View {
     }
 }
 
-// AVURLAsset import for video export.
-import AVFoundation
