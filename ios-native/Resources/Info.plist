@@ -29,10 +29,24 @@
     <true/>
     <key>UIUserInterfaceStyle</key>
     <string>Dark</string>
+    <key>UILaunchStoryboardName</key>
+    <string>LaunchScreen</string>
     <key>UIAppFonts</key>
     <array>
-        <string>Nunito-Variable.ttf</string>
-        <string>Nunito-Italic-Variable.ttf</string>
+        <string>Nunito-Light.ttf</string>
+        <string>Nunito-LightItalic.ttf</string>
+        <string>Nunito-Regular.ttf</string>
+        <string>Nunito-RegularItalic.ttf</string>
+        <string>Nunito-Medium.ttf</string>
+        <string>Nunito-MediumItalic.ttf</string>
+        <string>Nunito-SemiBold.ttf</string>
+        <string>Nunito-SemiBoldItalic.ttf</string>
+        <string>Nunito-Bold.ttf</string>
+        <string>Nunito-BoldItalic.ttf</string>
+        <string>Nunito-ExtraBold.ttf</string>
+        <string>Nunito-ExtraBoldItalic.ttf</string>
+        <string>Nunito-Black.ttf</string>
+        <string>Nunito-BlackItalic.ttf</string>
     </array>
 </dict>
 </plist>
