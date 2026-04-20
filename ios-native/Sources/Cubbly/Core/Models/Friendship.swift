@@ -16,3 +16,11 @@ struct Friendship: Codable, Identifiable, Hashable {
         case updatedAt = "updated_at"
     }
 }
+
+/// Friendship plus the OTHER user's profile (denormalised for the UI).
+struct FriendEntry: Identifiable, Hashable {
+    let friendship: Friendship
+    let profile: Profile
+
+    var id: UUID { friendship.id }
+}
