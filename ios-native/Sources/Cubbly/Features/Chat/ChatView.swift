@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 import Supabase
 import Realtime
 
@@ -18,6 +19,8 @@ struct ChatView: View {
     @State private var draft = ""
     @State private var replyingTo: ChatMessage?
     @State private var showGifPicker = false
+    @State private var showAttachments = false
+    @State private var attachExpanded = false
     @State private var typingUserNames: [String] = []
     @State private var channel: RealtimeChannelV2?
     @State private var typingChannel: RealtimeChannelV2?
@@ -51,6 +54,18 @@ struct ChatView: View {
                 showGifPicker = false
                 Task { await sendRaw(content: url) }
             }
+            .presentationDetents([.medium, .large])
+        }
+        .sheet(isPresented: $showAttachments) {
+            AttachmentsPicker { items in
+                Task { await sendAttachments(items) }
+            }
+            .presentationDetents([.large])
+        }
+        .onChange(of: showAttachments) { _, isOpen in
+            withAnimation(.easeInOut(duration: 0.2)) { attachExpanded = isOpen }
+        }
+
             .presentationDetents([.medium, .large])
         }
         .task {
@@ -101,14 +116,18 @@ struct ChatView: View {
             }
             Spacer()
 
-            Button {} label: {
-                SVGIcon(name: "call", size: 18, tint: Theme.Colors.textSecondary)
+            HStack(spacing: 18) {
+                Button {} label: {
+                    SVGIcon(name: "call", size: 20, tint: Theme.Colors.textSecondary)
+                }
+                Button {} label: {
+                    SVGIcon(name: "video-camera", size: 20, tint: Theme.Colors.textSecondary)
+                }
             }
-            Button {} label: {
-                SVGIcon(name: "video-camera", size: 18, tint: Theme.Colors.textSecondary)
-            }
+            .padding(.trailing, 4)
         }
-        .padding(.horizontal, 8)
+        .padding(.leading, 8)
+        .padding(.trailing, 14)
         .padding(.vertical, 6)
         .background(Theme.Colors.bgPrimary)
     }
@@ -215,29 +234,56 @@ struct ChatView: View {
     // MARK: - Composer
 
     private var composer: some View {
-        HStack(spacing: 8) {
-            Button { showGifPicker = true } label: {
-                SVGIcon(name: "gif", size: 22, tint: Theme.Colors.textSecondary)
+        let hasDraft = !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return HStack(spacing: 10) {
+            Button {
+                showAttachments.toggle()
+            } label: {
+                ZStack {
+                    Circle()
+                        .fill(Theme.Colors.bgTertiary)
+                        .frame(width: 36, height: 36)
+                    Image(systemName: "plus")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .rotationEffect(.degrees(attachExpanded ? 45 : 0))
+                        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: attachExpanded)
+                }
             }
+            .buttonStyle(.plain)
 
-            TextField("Message \(conversation.displayName)", text: $draft, axis: .vertical)
-                .font(Theme.Fonts.body)
-                .foregroundStyle(Theme.Colors.textPrimary)
-                .textInputAutocapitalization(.sentences)
-                .lineLimit(1...5)
-                .padding(.vertical, 10)
-                .padding(.horizontal, 12)
-                .background(Theme.Colors.bgTertiary)
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .onChange(of: draft) { _, _ in broadcastTyping() }
-                .onSubmit { Task { await send() } }
+            HStack(alignment: .bottom, spacing: 6) {
+                TextField("Message \(conversation.displayName)", text: $draft, axis: .vertical)
+                    .font(Theme.Fonts.body)
+                    .foregroundStyle(Theme.Colors.textPrimary)
+                    .textInputAutocapitalization(.sentences)
+                    .lineLimit(1...5)
+                    .onChange(of: draft) { _, _ in broadcastTyping() }
+                    .onSubmit { Task { await send() } }
+
+                Button { showGifPicker = true } label: {
+                    SVGIcon(name: "gif", size: 22, tint: Theme.Colors.textSecondary)
+                        .padding(.bottom, 2)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.vertical, 8)
+            .padding(.horizontal, 12)
+            .background(Theme.Colors.bgTertiary)
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
 
             Button { Task { await send() } } label: {
-                SVGIcon(name: "send", size: 20,
-                        tint: draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                              ? Theme.Colors.textMuted : Theme.Colors.primary)
+                ZStack {
+                    Circle()
+                        .fill(hasDraft ? Theme.Colors.primary : Theme.Colors.bgTertiary)
+                        .frame(width: 36, height: 36)
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundStyle(hasDraft ? .white : Theme.Colors.textMuted)
+                }
             }
-            .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .buttonStyle(.plain)
+            .disabled(!hasDraft)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
@@ -362,6 +408,14 @@ struct ChatView: View {
 
     private func markRead() async {
         try? await ConversationsRepository().markRead(conversationID: conversation.id)
+    }
+
+    /// Stub: send each picked attachment as a separate message. For now we
+    /// just send a placeholder text — full storage upload lands in the next
+    /// iteration alongside the chat-attachments bucket.
+    private func sendAttachments(_ items: [PhotosPickerItem]) async {
+        guard !items.isEmpty else { return }
+        await sendRaw(content: "📎 Sent \(items.count) attachment\(items.count == 1 ? "" : "s")")
     }
 
     // MARK: - Realtime (messages + typing)
@@ -515,13 +569,9 @@ private struct MessageBubble: View {
                 }
 
                 if isGifURL(message.content), let url = URL(string: message.content) {
-                    AsyncImage(url: url) { image in
-                        image.resizable().scaledToFit()
-                    } placeholder: {
-                        Rectangle().fill(Theme.Colors.bgSecondary).frame(height: 120)
-                    }
-                    .frame(maxWidth: 240)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    AnimatedGIFView(url: url)
+                        .frame(width: 220, height: 160)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 } else {
                     Text(message.content)
                         .font(Theme.Fonts.body)
@@ -569,6 +619,10 @@ private struct MessageBubble: View {
 
     private func isGifURL(_ s: String) -> Bool {
         let lower = s.lowercased()
-        return (lower.hasPrefix("http") && (lower.contains(".gif") || lower.contains("giphy.com")))
+        guard lower.hasPrefix("http") else { return false }
+        return lower.contains(".gif")
+            || lower.contains("giphy.com")
+            || lower.contains("media.giphy")
+            || lower.contains("tenor.com")
     }
 }
