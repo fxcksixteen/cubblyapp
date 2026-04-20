@@ -1,5 +1,15 @@
 import SwiftUI
 
+/// Posted when the user taps Voice/Video Call from the Friends tab. ChatView
+/// listens and auto-starts the corresponding call once it appears.
+extension Notification.Name {
+    static let cubblyAutoStartCall = Notification.Name("cubbly.autoStartCall")
+}
+struct AutoStartCallPayload {
+    let conversationID: UUID
+    let video: Bool
+}
+
 /// Friends tab — mirrors the web app: Online / All / Pending / Blocked / Add.
 struct FriendsView: View {
     @EnvironmentObject private var session: SessionStore
@@ -26,25 +36,59 @@ struct FriendsView: View {
     @State private var search: String = ""
     @State private var addUsername: String = ""
     @State private var addStatus: (ok: Bool, msg: String)?
+    @State private var openConversation: ConversationSummary?
+    @State private var confirmRemove: FriendEntry?
+    @State private var confirmBlock: FriendEntry?
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            tabBar
+        NavigationStack {
+            VStack(spacing: 0) {
+                header
+                tabBar
 
-            if tab == .add {
-                addFriendView
-            } else {
-                searchBar
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 6)
-                listForTab
+                if tab == .add {
+                    addFriendView
+                } else {
+                    searchBar
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 6)
+                    listForTab
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Theme.Colors.bgPrimary)
+            .navigationDestination(item: $openConversation) { conv in
+                ChatView(conversation: conv)
+                    .environmentObject(session)
+                    .environmentObject(presence)
+            }
+            .task { await load() }
+            .refreshable { await load() }
+            .alert("Remove Friend?", isPresented: Binding(
+                get: { confirmRemove != nil },
+                set: { if !$0 { confirmRemove = nil } }
+            )) {
+                Button("Remove", role: .destructive) {
+                    if let e = confirmRemove { Task { await remove(e) } }
+                    confirmRemove = nil
+                }
+                Button("Cancel", role: .cancel) { confirmRemove = nil }
+            } message: {
+                Text("You can always send another friend request later.")
+            }
+            .alert("Block User?", isPresented: Binding(
+                get: { confirmBlock != nil },
+                set: { if !$0 { confirmBlock = nil } }
+            )) {
+                Button("Block", role: .destructive) {
+                    if let e = confirmBlock { Task { await block(e) } }
+                    confirmBlock = nil
+                }
+                Button("Cancel", role: .cancel) { confirmBlock = nil }
+            } message: {
+                Text("They won't be able to message or call you.")
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.Colors.bgPrimary)
-        .task { await load() }
-        .refreshable { await load() }
     }
 
     // MARK: - Header
@@ -163,13 +207,19 @@ struct FriendsView: View {
                     ScrollView {
                         LazyVStack(spacing: 0) {
                             ForEach(list) { entry in
-                                FriendRow(entry: entry, tab: tab,
-                                          currentUserID: session.currentUserID,
-                                          onAccept: { Task { await accept(entry) } },
-                                          onDecline: { Task { await remove(entry) } },
-                                          onRemove: { Task { await remove(entry) } },
-                                          onBlock: { Task { await block(entry) } },
-                                          onUnblock: { Task { await remove(entry) } })
+                                FriendRow(
+                                    entry: entry,
+                                    tab: tab,
+                                    currentUserID: session.currentUserID,
+                                    onAccept: { Task { await accept(entry) } },
+                                    onDecline: { Task { await remove(entry) } },
+                                    onMessage: { Task { await openDM(with: entry, video: nil) } },
+                                    onVoiceCall: { Task { await openDM(with: entry, video: false) } },
+                                    onVideoCall: { Task { await openDM(with: entry, video: true) } },
+                                    onRemove: { confirmRemove = entry },
+                                    onBlock: { confirmBlock = entry },
+                                    onUnblock: { Task { await remove(entry) } }
+                                )
                                 Divider().background(Theme.Colors.divider).padding(.leading, 68)
                             }
                         }
@@ -281,6 +331,10 @@ struct FriendsView: View {
         do {
             entries = try await FriendsRepository().listMine(currentUserID: me)
             errorMessage = nil
+        } catch is CancellationError {
+            errorMessage = nil
+        } catch let urlError as URLError where urlError.code == .cancelled {
+            errorMessage = nil
         } catch {
             errorMessage = "Couldn't load friends: \(error.localizedDescription)"
         }
@@ -311,6 +365,35 @@ struct FriendsView: View {
         try? await FriendsRepository().block(friendshipID: entry.friendship.id)
         await load()
     }
+
+    /// Opens (or creates) the DM with this friend. If `video` is non-nil, posts
+    /// a notification once the chat appears so it can auto-start the call.
+    private func openDM(with entry: FriendEntry, video: Bool?) async {
+        do {
+            let convID = try await ConversationsRepository().openOrCreateDM(with: entry.profile.userID)
+            let summary = ConversationSummary(
+                id: convID,
+                isGroup: false,
+                name: nil,
+                pictureURL: nil,
+                members: [entry.profile],
+                lastMessage: nil,
+                lastMessageAt: nil,
+                updatedAt: Date()
+            )
+            openConversation = summary
+            if let video {
+                try? await Task.sleep(nanoseconds: 300_000_000)
+                NotificationCenter.default.post(
+                    name: .cubblyAutoStartCall,
+                    object: AutoStartCallPayload(conversationID: convID, video: video)
+                )
+            }
+        } catch {
+            // Surface as an inline message on the friends tab.
+            errorMessage = "Couldn't open DM: \(error.localizedDescription)"
+        }
+    }
 }
 
 // MARK: - Friend row
@@ -321,6 +404,9 @@ private struct FriendRow: View {
     let currentUserID: UUID?
     let onAccept: () -> Void
     let onDecline: () -> Void
+    let onMessage: () -> Void
+    let onVoiceCall: () -> Void
+    let onVideoCall: () -> Void
     let onRemove: () -> Void
     let onBlock: () -> Void
     let onUnblock: () -> Void
@@ -356,6 +442,11 @@ private struct FriendRow: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .contentShape(Rectangle())
+        .onTapGesture {
+            // Tapping a row (outside the action buttons) opens the DM, matching
+            // the web app's behaviour.
+            if tab == .online || tab == .all { onMessage() }
+        }
     }
 
     private var subtitle: String {
@@ -384,8 +475,41 @@ private struct FriendRow: View {
             iconButton(systemName: "arrow.uturn.backward", color: Theme.Colors.textSecondary, action: onUnblock)
         default:
             HStack(spacing: 8) {
-                iconButton(systemName: "bubble.left.fill", color: Theme.Colors.textSecondary, action: { /* open DM coming next */ })
-                iconButton(systemName: "ellipsis", color: Theme.Colors.textSecondary, action: onRemove)
+                iconButton(systemName: "bubble.left.fill", color: Theme.Colors.textSecondary, action: onMessage)
+                Menu {
+                    Button {
+                        onMessage()
+                    } label: {
+                        Label("Message", systemImage: "bubble.left.fill")
+                    }
+                    Button {
+                        onVoiceCall()
+                    } label: {
+                        Label("Voice Call", systemImage: "phone.fill")
+                    }
+                    Button {
+                        onVideoCall()
+                    } label: {
+                        Label("Video Call", systemImage: "video.fill")
+                    }
+                    Divider()
+                    Button(role: .destructive) {
+                        onRemove()
+                    } label: {
+                        Label("Remove Friend", systemImage: "person.fill.badge.minus")
+                    }
+                    Button(role: .destructive) {
+                        onBlock()
+                    } label: {
+                        Label("Block", systemImage: "nosign")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .frame(width: 32, height: 32)
+                        .background(Circle().fill(Theme.Colors.bgSecondary))
+                }
             }
         }
     }

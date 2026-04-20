@@ -168,6 +168,12 @@ struct DMListView: View {
         do {
             conversations = try await ConversationsRepository().listSummaries(currentUserID: userID)
             errorMessage = nil
+        } catch is CancellationError {
+            // Pull-to-refresh fires a fresh task and cancels the previous one;
+            // a CancellationError here just means "user kept pulling" — silent.
+            errorMessage = nil
+        } catch let urlError as URLError where urlError.code == .cancelled {
+            errorMessage = nil
         } catch {
             errorMessage = "Couldn't load conversations: \(error.localizedDescription)"
         }

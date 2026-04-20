@@ -6,6 +6,15 @@ import SwiftUI
 struct ServerRail: View {
     var body: some View {
         VStack(spacing: 10) {
+            // Cubbly wordmark above the home pill (matches web + desktop).
+            if let wm = UIImage(named: "cubbly-wordmark") {
+                Image(uiImage: wm)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 56, height: 22)
+                    .padding(.bottom, 2)
+            }
+
             // Cubbly home pill — uses the real PNG logo.
             ZStack {
                 if let img = UIImage(named: "cubbly-logo") {
@@ -16,7 +25,6 @@ struct ServerRail: View {
                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                         .shadow(color: .black.opacity(0.25), radius: 6, x: 0, y: 4)
                 } else {
-                    // Fallback to gradient + emoji if the asset is missing.
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .fill(LinearGradient(
                             colors: [Theme.Colors.primary, Theme.Colors.primaryGlow],
