@@ -43,8 +43,6 @@ struct YouView: View {
         .onAppear { status = session.currentProfile?.status ?? "online" }
     }
 
-    // MARK: - Banner + avatar
-
     private var bannerAndAvatar: some View {
         let displayName = session.currentProfile?.displayName ?? "You"
         let username = session.currentProfile?.username ?? "user"
@@ -53,26 +51,13 @@ struct YouView: View {
         let liveStatus = me.map { presence.effectiveStatus(for: $0, storedStatus: status) } ?? status
         let online = me.map { presence.isOnline($0) } ?? true
         let bannerURL = session.currentProfile?.bannerURL.flatMap(URL.init(string:))
-        let isAnimatedBanner = (session.currentProfile?.bannerURL?.lowercased().contains(".gif") ?? false)
-            || (session.currentProfile?.bannerURL?.lowercased().contains("giphy") ?? false)
 
         return VStack(alignment: .leading, spacing: 0) {
             ZStack(alignment: .bottomLeading) {
                 ZStack {
                     Rectangle().fill(bannerColor)
                     if let bannerURL {
-                        if isAnimatedBanner {
-                            AnimatedImageView(url: bannerURL, contentMode: .scaleAspectFill)
-                        } else {
-                            AsyncImage(url: bannerURL) { phase in
-                                switch phase {
-                                case .success(let image):
-                                    image.resizable().scaledToFill()
-                                default:
-                                    Rectangle().fill(bannerColor)
-                                }
-                            }
-                        }
+                        AnimatedImageView(url: bannerURL, contentMode: .scaleAspectFill)
                     }
                 }
                 .frame(height: 132)
@@ -105,8 +90,6 @@ struct YouView: View {
         }
     }
 
-    // MARK: - Status picker
-
     private var statusPicker: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("STATUS")
@@ -138,8 +121,6 @@ struct YouView: View {
             }
         }
     }
-
-    // MARK: - Settings rows
 
     private var settingsList: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -215,8 +196,6 @@ struct YouView: View {
             Button("Cancel", role: .cancel) {}
         }
     }
-
-    // MARK: - Actions
 
     private func updateStatus(_ next: String) async {
         guard let userID = session.currentUserID else { return }

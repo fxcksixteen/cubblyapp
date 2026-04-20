@@ -38,13 +38,6 @@ struct DMListView: View {
                     .environmentObject(session)
                     .environmentObject(presence)
             }
-            .horizontalSwipe(left: {
-                if openConversation == nil,
-                   let id = lastChat.lastConversationID,
-                   let conv = cache.conversations.first(where: { $0.id == id }) {
-                    openConversation = conv
-                }
-            })
             .onChange(of: openConversation?.id) { _, newID in
                 if let id = newID { lastChat.lastConversationID = id }
             }
@@ -64,15 +57,12 @@ struct DMListView: View {
                     didInitialLoad = true
                     await load(silently: !cache.conversations.isEmpty)
                 } else {
-                    // Silent refresh on tab return — keeps existing rows on screen.
                     await load(silently: true)
                 }
             }
             .refreshable { await load(silently: false) }
         }
     }
-
-    // MARK: - Header
 
     private var header: some View {
         HStack {
@@ -106,8 +96,6 @@ struct DMListView: View {
         .background(Theme.Colors.bgTertiary)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
-
-    // MARK: - Content
 
     @ViewBuilder
     private var content: some View {
@@ -178,7 +166,6 @@ struct DMListView: View {
             cache.lastLoaded = Date()
             errorMessage = nil
         } catch is CancellationError {
-            // Pull-to-refresh cancellations: silent.
             errorMessage = nil
         } catch let urlError as URLError where urlError.code == .cancelled {
             errorMessage = nil
@@ -189,8 +176,6 @@ struct DMListView: View {
         }
     }
 }
-
-// MARK: - DM row
 
 private struct DMRow: View {
     let conversation: ConversationSummary

@@ -8,12 +8,13 @@ struct FriendsRepository {
     /// Returns all friendships involving the current user, with the OTHER
     /// user's profile attached.
     func listMine(currentUserID: UUID) async throws -> [FriendEntry] {
-        let rows: [Friendship] = try await client
+        let allRows: [Friendship] = try await client
             .from("friendships")
             .select()
             .execute()
             .value
 
+        let rows = allRows.filter { $0.requesterID == currentUserID || $0.addresseeID == currentUserID }
         let otherIDs = rows.map { $0.requesterID == currentUserID ? $0.addresseeID : $0.requesterID }
         guard !otherIDs.isEmpty else { return [] }
 
