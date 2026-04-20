@@ -1,0 +1,4 @@
+# Drop Nunito-Regular.ttf, Nunito-SemiBold.ttf, Nunito-Bold.ttf, Nunito-Black.ttf
+# here. They're auto-registered at launch via CubblyApp.registerFonts().
+# We don't bundle them in the repo to keep size down — grab from
+# https://fonts.google.com/specimen/Nunito and drop them in this folder.
