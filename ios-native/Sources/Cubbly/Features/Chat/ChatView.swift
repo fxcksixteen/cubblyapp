@@ -233,29 +233,56 @@ struct ChatView: View {
     // MARK: - Composer
 
     private var composer: some View {
-        HStack(spacing: 8) {
-            Button { showGifPicker = true } label: {
-                SVGIcon(name: "gif", size: 22, tint: Theme.Colors.textSecondary)
+        let hasDraft = !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return HStack(spacing: 10) {
+            Button {
+                showAttachments.toggle()
+            } label: {
+                ZStack {
+                    Circle()
+                        .fill(Theme.Colors.bgTertiary)
+                        .frame(width: 36, height: 36)
+                    Image(systemName: "plus")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .rotationEffect(.degrees(attachExpanded ? 45 : 0))
+                        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: attachExpanded)
+                }
             }
+            .buttonStyle(.plain)
 
-            TextField("Message \(conversation.displayName)", text: $draft, axis: .vertical)
-                .font(Theme.Fonts.body)
-                .foregroundStyle(Theme.Colors.textPrimary)
-                .textInputAutocapitalization(.sentences)
-                .lineLimit(1...5)
-                .padding(.vertical, 10)
-                .padding(.horizontal, 12)
-                .background(Theme.Colors.bgTertiary)
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .onChange(of: draft) { _, _ in broadcastTyping() }
-                .onSubmit { Task { await send() } }
+            HStack(alignment: .bottom, spacing: 6) {
+                TextField("Message \(conversation.displayName)", text: $draft, axis: .vertical)
+                    .font(Theme.Fonts.body)
+                    .foregroundStyle(Theme.Colors.textPrimary)
+                    .textInputAutocapitalization(.sentences)
+                    .lineLimit(1...5)
+                    .onChange(of: draft) { _, _ in broadcastTyping() }
+                    .onSubmit { Task { await send() } }
+
+                Button { showGifPicker = true } label: {
+                    SVGIcon(name: "gif", size: 22, tint: Theme.Colors.textSecondary)
+                        .padding(.bottom, 2)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.vertical, 8)
+            .padding(.horizontal, 12)
+            .background(Theme.Colors.bgTertiary)
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
 
             Button { Task { await send() } } label: {
-                SVGIcon(name: "send", size: 20,
-                        tint: draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                              ? Theme.Colors.textMuted : Theme.Colors.primary)
+                ZStack {
+                    Circle()
+                        .fill(hasDraft ? Theme.Colors.primary : Theme.Colors.bgTertiary)
+                        .frame(width: 36, height: 36)
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundStyle(hasDraft ? .white : Theme.Colors.textMuted)
+                }
             }
-            .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .buttonStyle(.plain)
+            .disabled(!hasDraft)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
