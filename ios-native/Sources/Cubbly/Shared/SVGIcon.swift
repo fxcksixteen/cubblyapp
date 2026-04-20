@@ -1,41 +1,56 @@
 import SwiftUI
-import UIKit
+import SVGKit
 
-/// Renders one of the bundled SVG icons from `Resources/Icons/*.svg` and tints
-/// it. The SVGs are single-color black silhouettes (same as the PWA), so we
-/// load via `UIImage(named:)` (Xcode auto-rasterises SVG assets in iOS 13+
-/// when added to an asset catalog) — but since we ship raw .svg files we
-/// instead load the SVG XML and use `SVGKit`-style rendering via UIKit's
-/// built-in PDF/SVG support… which doesn't exist for arbitrary SVGs.
-///
-/// Pragmatic approach: ship the SVGs as resources, render them as `Image` via
-/// a tiny WebKit-free path — we use `Image(uiImage:)` from a cached
-/// `UIImage` produced by `UIGraphicsImageRenderer` over a `WKWebView`-rendered
-/// snapshot would be overkill. Instead we render via `UIImage(systemName:)`
-/// fallbacks for the common ones, and for the rest we read the raw SVG and
-/// let SwiftUI display it with `Image(uiImage:)` after rasterising via
-/// `UIImage.svgImage(named:)` (provided below).
-///
-/// Implementation note: iOS does NOT natively render arbitrary SVGs. For the
-/// bottom-bar icons we therefore embed both the original SVG (for reference /
-/// future use) AND map each name to an SF Symbol that visually matches. This
-/// keeps the binary tiny and renders sharply at any size while still letting
-/// us swap in raster fallbacks later.
+/// Renders one of the bundled SVG icons from `Resources/Icons/*.svg` using
+/// SVGKit, then tints with `tint`. Pixel-matches the PWA's bottom-bar icons.
 struct SVGIcon: View {
     let name: String
     var size: CGFloat = 22
     var tint: Color = Theme.Colors.textSecondary
 
     var body: some View {
-        Image(systemName: Self.symbolName(for: name))
-            .font(.system(size: size, weight: .semibold))
-            .foregroundStyle(tint)
-            .frame(width: size + 4, height: size + 4)
+        if let img = Self.loadTinted(name: name, size: size, tint: UIColor(tint)) {
+            Image(uiImage: img)
+                .renderingMode(.original)
+                .interpolation(.high)
+                .frame(width: size, height: size)
+        } else {
+            // Fallback: SF Symbol map (only if SVG missing from bundle).
+            Image(systemName: Self.fallbackSymbol(for: name))
+                .font(.system(size: size, weight: .semibold))
+                .foregroundStyle(tint)
+                .frame(width: size, height: size)
+        }
     }
 
-    /// Mapping from PWA icon filename → closest SF Symbol. Picked to match the
-    /// visual weight/silhouette of the originals (Discord-ish glyphs).
-    static func symbolName(for name: String) -> String {
+    // MARK: - Cache + tinting
+
+    private static let cache = NSCache<NSString, UIImage>()
+
+    static func loadTinted(name: String, size: CGFloat, tint: UIColor) -> UIImage? {
+        let scale = UIScreen.main.scale
+        let pxSize = CGSize(width: size * scale, height: size * scale)
+        let key = "\(name)|\(Int(pxSize.width))x\(Int(pxSize.height))|\(tint.cgColor.components?.description ?? "x")" as NSString
+        if let cached = cache.object(forKey: key) { return cached }
+
+        guard let url = Bundle.main.url(forResource: name, withExtension: "svg"),
+              let svg = SVGKImage(contentsOf: url) else { return nil }
+        svg.size = CGSize(width: size, height: size)
+        guard let raw = svg.uiImage else { return nil }
+
+        // Tint the rendered raster by treating it as an alpha mask.
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: size, height: size))
+        let tinted = renderer.image { ctx in
+            let rect = CGRect(origin: .zero, size: CGSize(width: size, height: size))
+            tint.setFill()
+            ctx.fill(rect)
+            raw.draw(in: rect, blendMode: .destinationIn, alpha: 1.0)
+        }
+        cache.setObject(tinted, forKey: key)
+        return tinted
+    }
+
+    static func fallbackSymbol(for name: String) -> String {
         switch name {
         case "messages", "messages-3":     return "bubble.left.and.bubble.right.fill"
         case "friends":                    return "person.2.fill"

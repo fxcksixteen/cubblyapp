@@ -47,12 +47,15 @@ final class SessionStore: ObservableObject {
             if let session {
                 state = .signedIn(userID: session.user.id)
                 await refreshProfile(userID: session.user.id)
+                await PresenceService.shared.start(userID: session.user.id)
             } else {
                 state = .signedOut
+                await PresenceService.shared.stop()
             }
         case .signedOut:
             state = .signedOut
             currentProfile = nil
+            await PresenceService.shared.stop()
         case .passwordRecovery, .mfaChallengeVerified, .userDeleted:
             break
         @unknown default:
@@ -64,7 +67,6 @@ final class SessionStore: ObservableObject {
         do {
             currentProfile = try await ProfilesRepository().fetchProfile(userID: userID)
         } catch {
-            // Non-fatal — UI can still load with no profile cached.
             print("[SessionStore] failed to load profile:", error)
         }
     }

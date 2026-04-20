@@ -4,6 +4,7 @@ import SwiftUI
 /// status dot, status picker grid, settings rows, sign out.
 struct YouView: View {
     @EnvironmentObject private var session: SessionStore
+    @EnvironmentObject private var presence: PresenceService
     @State private var status: String = "online"
     @State private var showingSignOutConfirm = false
 
@@ -30,7 +31,7 @@ struct YouView: View {
                     .padding(.horizontal, 16)
                     .padding(.top, 16)
 
-                Text("Cubbly v\(CubblyConfig.appVersion)")
+                Text("Cubbly iOS v\(CubblyConfig.appVersion)")
                     .font(Theme.Fonts.caption)
                     .foregroundStyle(Theme.Colors.textMuted)
                     .padding(.top, 24)
@@ -48,6 +49,9 @@ struct YouView: View {
         let displayName = session.currentProfile?.displayName ?? "You"
         let username = session.currentProfile?.username ?? "user"
         let bannerColor = AvatarView.color(for: displayName)
+        let me = session.currentUserID
+        let liveStatus = me.map { presence.effectiveStatus(for: $0, storedStatus: status) } ?? status
+        let online = me.map { presence.isOnline($0) } ?? true
 
         return VStack(alignment: .leading, spacing: 0) {
             ZStack(alignment: .bottomLeading) {
@@ -63,7 +67,7 @@ struct YouView: View {
                     )
                     .overlay(Circle().stroke(Theme.Colors.bgPrimary, lineWidth: 6))
 
-                    StatusDot(rawStatus: status, isOnline: true, size: 18, borderColor: Theme.Colors.bgPrimary)
+                    StatusDot(rawStatus: liveStatus, isOnline: online, size: 18, borderColor: Theme.Colors.bgPrimary)
                         .offset(x: 2, y: 2)
                 }
                 .offset(x: 16, y: 48)

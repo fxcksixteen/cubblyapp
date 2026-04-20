@@ -1,10 +1,11 @@
 import SwiftUI
 
 /// Bottom tab bar — pixel-matches `MobileBottomNav.tsx` from the PWA, using
-/// the same SVG icons (mapped through SVGIcon → SF Symbol equivalents).
+/// the actual Cubbly SVG icons via SVGKit.
 struct MainTabView: View {
     enum Tab: Hashable { case home, friends, shop, you }
     @State private var selection: Tab = .home
+    @StateObject private var presence = PresenceService.shared
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -18,6 +19,7 @@ struct MainTabView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.bottom, 56)
+            .environmentObject(presence)
 
             CubblyTabBar(selection: $selection)
         }
@@ -33,7 +35,7 @@ private struct CubblyTabBar: View {
             tab(.home,    label: "Home",    icon: "messages")
             tab(.friends, label: "Friends", icon: "friends")
             tab(.shop,    label: "Shop",    icon: "shop")
-            tab(.you,     label: "You",     icon: "settings") // mapped to user/profile in v1.1
+            tab(.you,     label: "You",     icon: "settings")
         }
         .frame(height: 56)
         .background(
@@ -49,16 +51,10 @@ private struct CubblyTabBar: View {
             selection = t
         } label: {
             VStack(spacing: 2) {
-                if t == .you {
-                    Image(systemName: "person.crop.circle.fill")
-                        .font(.system(size: 22))
-                        .foregroundStyle(active ? Theme.Colors.primary : Theme.Colors.textSecondary)
-                } else {
-                    SVGIcon(name: icon, size: 20,
-                            tint: active ? Theme.Colors.primary : Theme.Colors.textSecondary)
-                }
+                SVGIcon(name: icon, size: 22,
+                        tint: active ? Theme.Colors.primary : Theme.Colors.textSecondary)
                 Text(label)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.custom("Nunito-SemiBold", size: 10))
                     .foregroundStyle(active ? Theme.Colors.primary : Theme.Colors.textSecondary)
             }
             .frame(maxWidth: .infinity)
