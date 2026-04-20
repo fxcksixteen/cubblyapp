@@ -374,14 +374,12 @@ struct FriendsView: View {
             let summary = ConversationSummary(
                 id: convID,
                 isGroup: false,
-                displayName: entry.profile.displayName,
-                avatarURL: entry.profile.avatarURL.flatMap(URL.init(string:)),
+                name: nil,
+                pictureURL: nil,
+                members: [entry.profile],
                 lastMessage: nil,
                 lastMessageAt: nil,
-                updatedAt: Date(),
-                otherUser: entry.profile,
-                groupMembers: nil,
-                groupPictureURL: nil
+                updatedAt: Date()
             )
             openConversation = summary
             if let video {
