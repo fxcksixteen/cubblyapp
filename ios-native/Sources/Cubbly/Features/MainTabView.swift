@@ -32,7 +32,7 @@ private struct CubblyTabBar: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            tab(.home,    label: "Home",    icon: "messages")
+            tab(.home,    label: "Home",    icon: "home")
             tab(.friends, label: "Friends", icon: "friends")
             tab(.shop,    label: "Shop",    icon: "shop")
             tab(.you,     label: "You",     icon: "settings")

@@ -16,8 +16,12 @@ struct LoginView: View {
                 Spacer(minLength: 60)
 
                 VStack(spacing: 8) {
-                    Text("🧸")
-                        .font(.system(size: 56))
+                    if let img = UIImage(named: "cubbly-nobg") {
+                        Image(uiImage: img)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 96, height: 96)
+                    }
                     Text("Welcome back")
                         .font(Theme.Fonts.title)
                         .foregroundStyle(Theme.Colors.textPrimary)
