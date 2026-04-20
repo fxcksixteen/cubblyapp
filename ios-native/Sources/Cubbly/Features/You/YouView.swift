@@ -55,9 +55,21 @@ struct YouView: View {
 
         return VStack(alignment: .leading, spacing: 0) {
             ZStack(alignment: .bottomLeading) {
-                Rectangle()
-                    .fill(bannerColor)
-                    .frame(height: 112)
+                ZStack {
+                    Rectangle().fill(bannerColor)
+                    if let urlStr = session.currentProfile?.bannerURL, let url = URL(string: urlStr) {
+                        AsyncImage(url: url) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image.resizable().scaledToFill()
+                            default:
+                                Rectangle().fill(bannerColor)
+                            }
+                        }
+                    }
+                }
+                .frame(height: 112)
+                .clipped()
 
                 ZStack(alignment: .bottomTrailing) {
                     AvatarView(
