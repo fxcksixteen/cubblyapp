@@ -47,7 +47,7 @@ private struct SplashView: View {
                 .frame(width: 260, height: 260)
 
             Text(line)
-                .font(.custom("Nunito", size: 16).weight(.semibold))
+                .font(.cubbly(16, .semibold))
                 .foregroundStyle(Color(red: 1, green: 248/255, blue: 238/255))
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 24)

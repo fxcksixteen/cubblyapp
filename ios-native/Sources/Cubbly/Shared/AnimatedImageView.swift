@@ -2,22 +2,26 @@ import SwiftUI
 import ImageIO
 import UIKit
 
-/// Renders animated GIFs/WebP via ImageIO. Uses aspect-fit for chat media when
-/// requested and aspect-fill for banners/avatars.
+/// Renders animated GIFs/WebP via ImageIO. Reports `intrinsicContentSize = .zero`
+/// so loading a tall GIF never expands its parent layout (You-tab banner fix).
 struct AnimatedImageView: UIViewRepresentable {
     let url: URL
     var contentMode: UIView.ContentMode = .scaleAspectFill
 
-    func makeUIView(context: Context) -> UIImageView {
-        let view = UIImageView()
+    func makeUIView(context: Context) -> NoIntrinsicImageView {
+        let view = NoIntrinsicImageView()
         view.contentMode = contentMode
         view.clipsToBounds = true
+        view.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        view.setContentHuggingPriority(.defaultLow, for: .vertical)
+        view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        view.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
         context.coordinator.lastURL = url
         load(into: view)
         return view
     }
 
-    func updateUIView(_ uiView: UIImageView, context: Context) {
+    func updateUIView(_ uiView: NoIntrinsicImageView, context: Context) {
         uiView.contentMode = contentMode
         guard context.coordinator.lastURL != url else { return }
         context.coordinator.lastURL = url
@@ -35,9 +39,7 @@ struct AnimatedImageView: UIViewRepresentable {
         URLSession.shared.dataTask(with: url) { data, _, _ in
             guard let data else { return }
             let image = Self.animatedImage(from: data) ?? UIImage(data: data)
-            DispatchQueue.main.async {
-                view.image = image
-            }
+            DispatchQueue.main.async { view.image = image }
         }.resume()
     }
 
@@ -53,27 +55,29 @@ struct AnimatedImageView: UIViewRepresentable {
             images.append(UIImage(cgImage: cg))
             totalDuration += frameDuration(at: i, source: src)
         }
-
         if totalDuration <= 0 { totalDuration = Double(count) * 0.1 }
         return UIImage.animatedImage(with: images, duration: totalDuration)
     }
 
     private static func frameDuration(at index: Int, source: CGImageSource) -> TimeInterval {
         guard let props = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any] else { return 0.1 }
-
         if let gif = props[kCGImagePropertyGIFDictionary] as? [CFString: Any] {
             let unclamped = (gif[kCGImagePropertyGIFUnclampedDelayTime] as? NSNumber)?.doubleValue ?? 0
             let clamped = (gif[kCGImagePropertyGIFDelayTime] as? NSNumber)?.doubleValue ?? 0
-            let duration = unclamped > 0 ? unclamped : clamped
-            return duration < 0.02 ? 0.1 : duration
+            let d = unclamped > 0 ? unclamped : clamped
+            return d < 0.02 ? 0.1 : d
         }
-
         if let png = props[kCGImagePropertyPNGDictionary] as? [CFString: Any],
-           let duration = (png[kCGImagePropertyAPNGUnclampedDelayTime] as? NSNumber)?.doubleValue
-            ?? (png[kCGImagePropertyAPNGDelayTime] as? NSNumber)?.doubleValue {
-            return duration < 0.02 ? 0.1 : duration
+           let d = (png[kCGImagePropertyAPNGUnclampedDelayTime] as? NSNumber)?.doubleValue
+                ?? (png[kCGImagePropertyAPNGDelayTime] as? NSNumber)?.doubleValue {
+            return d < 0.02 ? 0.1 : d
         }
-
         return 0.1
     }
+}
+
+/// UIImageView subclass that refuses to advertise an intrinsic size. SwiftUI
+/// will then size it strictly via the .frame(...) modifiers we apply.
+final class NoIntrinsicImageView: UIImageView {
+    override var intrinsicContentSize: CGSize { .zero }
 }

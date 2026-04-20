@@ -29,7 +29,7 @@ struct ChatView: View {
     @State private var lastTypingBroadcast: Date = .distantPast
     @State private var actionSheetMessage: ChatMessage?
     @State private var videoURL: IdentifiedURL?
-    @State private var isSwipingOut = false
+    @State private var lightboxURL: IdentifiedURL?
     @FocusState private var composerFocused: Bool
 
     private let repo = MessagesRepository()
@@ -55,8 +55,7 @@ struct ChatView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.Colors.bgPrimary)
-        .navigationBarBackButtonHidden(true)
-        .horizontalSwipe(right: { dismiss() })
+        .navigationBarHidden(true)
         .sheet(isPresented: $showGifPicker) {
             GiphyPickerView { url in
                 showGifPicker = false
@@ -84,6 +83,9 @@ struct ChatView: View {
         .fullScreenCover(item: $videoURL) { item in
             InAppVideoPlayer(url: item.url)
         }
+        .fullScreenCover(item: $lightboxURL) { item in
+            ImageLightbox(url: item.url) { lightboxURL = nil }
+        }
         .task {
             await loadInitial()
             await subscribe()
@@ -109,8 +111,12 @@ struct ChatView: View {
             }
 
             ZStack(alignment: .bottomTrailing) {
-                AvatarView(url: conversation.avatarURL,
-                           fallbackText: conversation.displayName, size: 32)
+                if conversation.isGroup && conversation.pictureURL == nil {
+                    GroupAvatar(members: conversation.members, size: 32)
+                } else {
+                    AvatarView(url: conversation.avatarURL,
+                               fallbackText: conversation.displayName, size: 32)
+                }
                 if let other = conversation.otherUser {
                     let live = presence.effectiveStatus(for: other.userID, storedStatus: other.status)
                     StatusDot(rawStatus: live, isOnline: presence.isOnline(other.userID),
@@ -126,7 +132,7 @@ struct ChatView: View {
                 if let other = conversation.otherUser {
                     let live = presence.effectiveStatus(for: other.userID, storedStatus: other.status)
                     Text(live.capitalized)
-                        .font(.custom("Nunito", size: 11))
+                        .font(.cubbly(11))
                         .foregroundStyle(Theme.Colors.textSecondary)
                 }
             }
@@ -177,7 +183,8 @@ struct ChatView: View {
                             grouped: grouped,
                             currentUserID: session.currentUserID,
                             onLongPress: { actionSheetMessage = m },
-                            onPlayVideo: { url in videoURL = IdentifiedURL(url: url) }
+                            onPlayVideo: { url in videoURL = IdentifiedURL(url: url) },
+                            onTapImage: { url in lightboxURL = IdentifiedURL(url: url) }
                         )
                         .id(m.id)
                         .padding(.horizontal, 10)
@@ -209,7 +216,7 @@ struct ChatView: View {
             HStack(spacing: 6) {
                 ProgressView().scaleEffect(0.6).tint(Theme.Colors.textSecondary)
                 Text(typingText)
-                    .font(.custom("Nunito", size: 12))
+                    .font(.cubbly(12))
                     .foregroundStyle(Theme.Colors.textSecondary)
                 Spacer()
             }
@@ -247,7 +254,7 @@ struct ChatView: View {
                         .foregroundStyle(Theme.Colors.textSecondary)
                 }
             }
-            .font(.custom("Nunito", size: 12))
+            .font(.cubbly(12))
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .background(Theme.Colors.bgSecondary)
@@ -581,6 +588,7 @@ private struct DiscordStyleBubble: View {
     let currentUserID: UUID?
     let onLongPress: () -> Void
     let onPlayVideo: (URL) -> Void
+    let onTapImage: (URL) -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -601,7 +609,7 @@ private struct DiscordStyleBubble: View {
                             .font(Theme.Fonts.bodyMedium)
                             .foregroundStyle(Theme.Colors.textPrimary)
                         Text(timeString(message.createdAt))
-                            .font(.custom("Nunito", size: 10))
+                            .font(.cubbly(10))
                             .foregroundStyle(Theme.Colors.textMuted)
                     }
                 }
@@ -613,7 +621,7 @@ private struct DiscordStyleBubble: View {
                             .foregroundStyle(Theme.Colors.textMuted)
                         (Text("\(r.senderName) ").bold().foregroundColor(Theme.Colors.textPrimary)
                          + Text(r.content).foregroundColor(Theme.Colors.textSecondary))
-                            .font(.custom("Nunito", size: 12))
+                            .font(.cubbly(12))
                             .lineLimit(1)
                     }
                 }
@@ -622,11 +630,11 @@ private struct DiscordStyleBubble: View {
 
                 if message.status == .sending {
                     Text("Sending…")
-                        .font(.custom("Nunito", size: 9))
+                        .font(.cubbly(9))
                         .foregroundStyle(Theme.Colors.textMuted)
                 } else if message.status == .failed {
                     Text("Failed to send")
-                        .font(.custom("Nunito", size: 9))
+                        .font(.cubbly(9))
                         .foregroundStyle(Theme.Colors.danger)
                 }
             }
@@ -654,18 +662,23 @@ private struct DiscordStyleBubble: View {
                                || lower.contains(".m4v") || lower.contains(".webm"))
 
         if let url, isGIF {
-            AnimatedImageView(url: url)
-                .frame(width: 220, height: 160)
+            AnimatedImageView(url: url, contentMode: .scaleAspectFit)
+                .frame(maxWidth: 240)
+                .frame(height: 180)
+                .background(Theme.Colors.bgSecondary)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
         } else if let url, isImage {
-            AsyncImage(url: url) { img in
-                img.resizable().scaledToFit()
-            } placeholder: {
-                Rectangle().fill(Theme.Colors.bgSecondary)
-                    .frame(width: 220, height: 160)
+            Button { onTapImage(url) } label: {
+                AsyncImage(url: url) { img in
+                    img.resizable().scaledToFit()
+                } placeholder: {
+                    Rectangle().fill(Theme.Colors.bgSecondary)
+                        .frame(width: 220, height: 160)
+                }
+                .frame(maxWidth: 260, maxHeight: 320)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
             }
-            .frame(maxWidth: 260, maxHeight: 260)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .buttonStyle(.plain)
         } else if let url, isVideo {
             Button { onPlayVideo(url) } label: {
                 ZStack {
@@ -752,7 +765,7 @@ private struct MessageActionSheet: View {
                         .font(Theme.Fonts.bodyMedium)
                         .foregroundStyle(Theme.Colors.textPrimary)
                     Text(message.content)
-                        .font(.custom("Nunito", size: 13))
+                        .font(.cubbly(13))
                         .foregroundStyle(Theme.Colors.textSecondary)
                         .lineLimit(1)
                 }

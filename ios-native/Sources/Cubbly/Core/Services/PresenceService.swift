@@ -29,18 +29,12 @@ final class PresenceService: ObservableObject {
             config.presence.key = userID.uuidString
         }
 
-        // Subscribe to presence state diffs (non-deprecated API).
-        listenTask = Task { [weak self, ch] in
-            do {
-                try await ch.subscribeWithError()
-            } catch {
-                print("[Presence] subscribe failed:", error)
-                return
-            }
-            guard let self else { return }
-
-            let syncStream = ch.presenceChange()
-            for await change in syncStream {
+        // Register the presence listener *before* subscribing — supabase-swift
+        // v2 enforces that all callbacks are wired up prior to subscribe().
+        let stream = ch.presenceChange()
+        listenTask = Task { [weak self] in
+            for await change in stream {
+                guard let self else { return }
                 var current = await MainActor.run { self.onlineUserIDs }
                 for key in change.joins.keys {
                     if let id = UUID(uuidString: key) { current.insert(id) }
@@ -53,7 +47,14 @@ final class PresenceService: ObservableObject {
             }
         }
 
-        // Track our own presence (non-throwing in current SDK).
+        // Now subscribe, then track our presence — this order silences both
+        // "track presence after subscribing" warnings.
+        do {
+            try await ch.subscribeWithError()
+        } catch {
+            print("[Presence] subscribe failed:", error)
+            return
+        }
         await ch.track(state: ["online_at": .string(ISO8601DateFormatter().string(from: Date()))])
 
         self.channel = ch
@@ -73,7 +74,6 @@ final class PresenceService: ObservableObject {
 
     // MARK: - Helpers
 
-    /// Mirrors `getEffectivePresenceStatus` from src/lib/presence.ts.
     func effectiveStatus(for userID: UUID, storedStatus: String?) -> String {
         if userID.uuidString == "00000000-0000-0000-0000-000000000001" { return "online" }
         if !onlineUserIDs.contains(userID) { return "offline" }

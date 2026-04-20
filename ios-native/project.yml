@@ -1,7 +1,4 @@
 # XcodeGen manifest — run `xcodegen generate` to (re)create Cubbly.xcodeproj.
-# This file is the source of truth; the .xcodeproj is generated and should
-# not be hand-edited.
-
 name: Cubbly
 options:
   bundleIdPrefix: app.cubbly
@@ -14,9 +11,9 @@ settings:
   base:
     SWIFT_VERSION: "5.9"
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
-    TARGETED_DEVICE_FAMILY: "1,2"  # iPhone + iPad
+    TARGETED_DEVICE_FAMILY: "1,2"
     ENABLE_USER_SCRIPT_SANDBOXING: NO
-    DEVELOPMENT_TEAM: ""  # set in Xcode UI
+    DEVELOPMENT_TEAM: ""
 
 packages:
   Supabase:
@@ -33,22 +30,25 @@ targets:
     sources:
       - path: Sources/Cubbly
     resources:
+      # Asset catalog (app icon, accent color, launch background, brand pngs).
       - path: Resources/Assets.xcassets
+      # Folder references — guarantees every file inside ships even if the
+      # user opens the .xcodeproj before re-running xcodegen.
       - path: Resources/Icons
+        type: folder
       - path: Resources/Images
-        optional: true
+        type: folder
       - path: Resources/Videos
-        optional: true
+        type: folder
       - path: Resources/Fonts
-        optional: true
+        type: folder
+      - path: Resources/LaunchScreen.storyboard
     info:
       path: Resources/Info.plist
       properties:
         CFBundleDisplayName: Cubbly
         CFBundleShortVersionString: "0.1.0"
         CFBundleVersion: "1"
-        UILaunchScreen:
-          UIColorName: LaunchBackground
         UIBackgroundModes:
           - remote-notification
         NSPhotoLibraryUsageDescription: "Cubbly needs photo access so you can share images in chats."

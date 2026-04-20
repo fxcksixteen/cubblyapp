@@ -58,8 +58,10 @@ struct YouView: View {
                     Rectangle().fill(bannerColor)
                     if let bannerURL {
                         AnimatedImageView(url: bannerURL, contentMode: .scaleAspectFill)
+                            .allowsHitTesting(false)
                     }
                 }
+                .frame(maxWidth: .infinity)
                 .frame(height: 132)
                 .clipped()
 
@@ -76,6 +78,7 @@ struct YouView: View {
                 }
                 .offset(x: 16, y: 48)
             }
+            .frame(height: 132)
             .padding(.bottom, 56)
 
             VStack(alignment: .leading, spacing: 2) {
@@ -93,7 +96,7 @@ struct YouView: View {
     private var statusPicker: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("STATUS")
-                .font(.custom("Nunito", size: 11).weight(.bold))
+                .font(.cubbly(11, .bold))
                 .foregroundStyle(Theme.Colors.textSecondary)
 
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
@@ -125,7 +128,7 @@ struct YouView: View {
     private var settingsList: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("SETTINGS")
-                .font(.custom("Nunito", size: 11).weight(.bold))
+                .font(.cubbly(11, .bold))
                 .foregroundStyle(Theme.Colors.textSecondary)
 
             VStack(spacing: 0) {
