@@ -115,14 +115,18 @@ struct ChatView: View {
             }
             Spacer()
 
-            Button {} label: {
-                SVGIcon(name: "call", size: 18, tint: Theme.Colors.textSecondary)
+            HStack(spacing: 18) {
+                Button {} label: {
+                    SVGIcon(name: "call", size: 20, tint: Theme.Colors.textSecondary)
+                }
+                Button {} label: {
+                    SVGIcon(name: "video-camera", size: 20, tint: Theme.Colors.textSecondary)
+                }
             }
-            Button {} label: {
-                SVGIcon(name: "video-camera", size: 18, tint: Theme.Colors.textSecondary)
-            }
+            .padding(.trailing, 4)
         }
-        .padding(.horizontal, 8)
+        .padding(.leading, 8)
+        .padding(.trailing, 14)
         .padding(.vertical, 6)
         .background(Theme.Colors.bgPrimary)
     }
