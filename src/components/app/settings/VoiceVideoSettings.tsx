@@ -675,7 +675,7 @@ function CameraSection({ settings, updateSettings, availableDevices, cardStyle }
 }
 
 /* ─── Video Tab (Camera + Screen Sharing Settings) ─── */
-function VideoTab({ settings, updateSettings, availableDevices, screenShareSettings, updateScreenShareSettings, cardStyle }: any) {
+function VideoTab({ settings, updateSettings, availableDevices, screenShareSettings, updateScreenShareSettings, cardStyle, captureLocked, captureLockReason }: any) {
   return (
     <div className="space-y-6">
       <CameraSection
@@ -683,6 +683,8 @@ function VideoTab({ settings, updateSettings, availableDevices, screenShareSetti
         updateSettings={updateSettings}
         availableDevices={availableDevices}
         cardStyle={cardStyle}
+        captureLocked={captureLocked}
+        captureLockReason={captureLockReason}
       />
       {/* Screen Share Resolution */}
       <div className="rounded-[24px] border p-5 space-y-4" style={cardStyle}>
