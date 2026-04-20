@@ -36,9 +36,15 @@ final class PresenceService: ObservableObject {
 
             let syncStream = ch.presenceChange()
             for await change in syncStream {
-                let state = await change.state
-                let ids: Set<UUID> = Set(state.keys.compactMap { UUID(uuidString: $0) })
-                await MainActor.run { self.onlineUserIDs = ids }
+                var current = await MainActor.run { self.onlineUserIDs }
+                for key in change.joins.keys {
+                    if let id = UUID(uuidString: key) { current.insert(id) }
+                }
+                for key in change.leaves.keys {
+                    if let id = UUID(uuidString: key) { current.remove(id) }
+                }
+                let snapshot = current
+                await MainActor.run { self.onlineUserIDs = snapshot }
             }
         }
 
