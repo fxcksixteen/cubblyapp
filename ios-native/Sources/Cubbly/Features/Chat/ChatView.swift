@@ -55,6 +55,18 @@ struct ChatView: View {
             }
             .presentationDetents([.medium, .large])
         }
+        .sheet(isPresented: $showAttachments) {
+            AttachmentsPicker { items in
+                Task { await sendAttachments(items) }
+            }
+            .presentationDetents([.large])
+        }
+        .onChange(of: showAttachments) { _, isOpen in
+            withAnimation(.easeInOut(duration: 0.2)) { attachExpanded = isOpen }
+        }
+
+            .presentationDetents([.medium, .large])
+        }
         .task {
             await loadInitial()
             await subscribe()
