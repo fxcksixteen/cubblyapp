@@ -569,13 +569,9 @@ private struct MessageBubble: View {
                 }
 
                 if isGifURL(message.content), let url = URL(string: message.content) {
-                    AsyncImage(url: url) { image in
-                        image.resizable().scaledToFit()
-                    } placeholder: {
-                        Rectangle().fill(Theme.Colors.bgSecondary).frame(height: 120)
-                    }
-                    .frame(maxWidth: 240)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    AnimatedGIFView(url: url)
+                        .frame(width: 220, height: 160)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 } else {
                     Text(message.content)
                         .font(Theme.Fonts.body)
