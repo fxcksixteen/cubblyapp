@@ -39,7 +39,8 @@ struct LoginView: View {
                     CubblyTextField(
                         placeholder: "Password",
                         text: $password,
-                        isSecure: true
+                        isSecure: true,
+                        showPasswordToggle: true
                     )
 
                     if let errorMessage {
