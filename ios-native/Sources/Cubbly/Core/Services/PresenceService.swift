@@ -30,14 +30,13 @@ final class PresenceService: ObservableObject {
         }
 
         // Subscribe to presence state diffs.
-        listenTask = Task { [weak self] in
+        listenTask = Task { [weak self, ch] in
             await ch.subscribe()
             guard let self else { return }
 
-            // Initial sync
             let syncStream = ch.presenceChange()
             for await change in syncStream {
-                let state = change.joins.merging(ch.presenceState(), uniquingKeysWith: { a, _ in a })
+                let state = await change.state
                 let ids: Set<UUID> = Set(state.keys.compactMap { UUID(uuidString: $0) })
                 await MainActor.run { self.onlineUserIDs = ids }
             }
@@ -45,7 +44,7 @@ final class PresenceService: ObservableObject {
 
         // Track our own presence
         do {
-            try await ch.track(state: ["online_at": ISO8601DateFormatter().string(from: Date())])
+            try await ch.track(state: ["online_at": .string(ISO8601DateFormatter().string(from: Date()))])
         } catch {
             print("[Presence] track failed:", error)
         }
@@ -57,7 +56,7 @@ final class PresenceService: ObservableObject {
         listenTask?.cancel()
         listenTask = nil
         if let ch = channel {
-            try? await ch.untrack()
+            await ch.untrack()
             await ch.unsubscribe()
         }
         channel = nil
