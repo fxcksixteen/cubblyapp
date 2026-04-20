@@ -29,6 +29,9 @@ const VoiceVideoSettings = ({ panelStyle, cardStyle }: Props) => {
     screenShareSettings, updateScreenShareSettings,
     availableDevices, audioLevel, refreshDevices, detectedRegion,
   } = useVoice();
+  const { activeCall } = useGroupCall();
+  const inCall = !!activeCall;
+  const captureLocked = inCall || isIOSLike;
   const [activeTab, setActiveTab] = useState<"voice" | "video">("voice");
 
   const activeRegion = settings.serverRegion === "auto"
