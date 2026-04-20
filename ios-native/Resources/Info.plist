@@ -29,5 +29,10 @@
     <true/>
     <key>UIUserInterfaceStyle</key>
     <string>Dark</string>
+    <key>UIAppFonts</key>
+    <array>
+        <string>Nunito-Variable.ttf</string>
+        <string>Nunito-Italic-Variable.ttf</string>
+    </array>
 </dict>
 </plist>

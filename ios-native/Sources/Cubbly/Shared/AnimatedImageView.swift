@@ -2,14 +2,15 @@ import SwiftUI
 import ImageIO
 import UIKit
 
-/// Lightweight animated GIF view backed by `UIImageView` + ImageIO frame
-/// extraction. Used in chat bubbles so GIPHY/Tenor URLs actually animate.
-struct AnimatedGIFView: UIViewRepresentable {
+/// Renders animated GIFs/WebP via ImageIO. Used by chat bubbles AND the You
+/// tab banner so animated avatars/banners actually move.
+struct AnimatedImageView: UIViewRepresentable {
     let url: URL
+    var contentMode: UIView.ContentMode = .scaleAspectFill
 
     func makeUIView(context: Context) -> UIImageView {
         let v = UIImageView()
-        v.contentMode = .scaleAspectFill
+        v.contentMode = contentMode
         v.clipsToBounds = true
         load(into: v)
         return v
@@ -23,12 +24,12 @@ struct AnimatedGIFView: UIViewRepresentable {
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(url: url) }
-
     final class Coordinator { var lastURL: URL; init(url: URL) { self.lastURL = url } }
 
     private func load(into view: UIImageView) {
         URLSession.shared.dataTask(with: url) { data, _, _ in
-            guard let data, let img = Self.animatedImage(from: data) else { return }
+            guard let data else { return }
+            let img = Self.animatedImage(from: data) ?? UIImage(data: data)
             DispatchQueue.main.async { view.image = img }
         }.resume()
     }
