@@ -1,9 +1,10 @@
 import SwiftUI
 
-/// Bottom tab bar — pixel-matches `MobileBottomNav.tsx`.
+/// Bottom tab bar — pixel-matches `MobileBottomNav.tsx` from the PWA, using
+/// the same SVG icons (mapped through SVGIcon → SF Symbol equivalents).
 struct MainTabView: View {
     enum Tab: Hashable { case home, friends, shop, you }
-    @State private var selection: Tab = .friends
+    @State private var selection: Tab = .home
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -16,11 +17,11 @@ struct MainTabView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.bottom, 56) // reserve space for the custom tab bar
+            .padding(.bottom, 56)
 
             CubblyTabBar(selection: $selection)
         }
-        .background(Theme.Colors.bgTertiary.ignoresSafeArea())
+        .background(Theme.Colors.bgPrimary.ignoresSafeArea())
     }
 }
 
@@ -29,10 +30,10 @@ private struct CubblyTabBar: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            tabButton(.home,    label: "Home",    systemImage: "bubble.left.and.bubble.right.fill")
-            tabButton(.friends, label: "Friends", systemImage: "person.2.fill")
-            tabButton(.shop,    label: "Shop",    systemImage: "bag.fill")
-            tabButton(.you,     label: "You",     systemImage: "person.crop.circle.fill")
+            tab(.home,    label: "Home",    icon: "messages")
+            tab(.friends, label: "Friends", icon: "friends")
+            tab(.shop,    label: "Shop",    icon: "shop")
+            tab(.you,     label: "You",     icon: "settings") // mapped to user/profile in v1.1
         }
         .frame(height: 56)
         .background(
@@ -42,25 +43,28 @@ private struct CubblyTabBar: View {
         )
     }
 
-    private func tabButton(_ tab: MainTabView.Tab, label: String, systemImage: String) -> some View {
-        let isActive = selection == tab
+    private func tab(_ t: MainTabView.Tab, label: String, icon: String) -> some View {
+        let active = selection == t
         return Button {
-            selection = tab
+            selection = t
         } label: {
             VStack(spacing: 2) {
-                ZStack {
-                    Image(systemName: systemImage)
+                if t == .you {
+                    Image(systemName: "person.crop.circle.fill")
                         .font(.system(size: 22))
-                        .foregroundStyle(isActive ? Theme.Colors.primary : Theme.Colors.textSecondary)
+                        .foregroundStyle(active ? Theme.Colors.primary : Theme.Colors.textSecondary)
+                } else {
+                    SVGIcon(name: icon, size: 20,
+                            tint: active ? Theme.Colors.primary : Theme.Colors.textSecondary)
                 }
                 Text(label)
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(isActive ? Theme.Colors.primary : Theme.Colors.textSecondary)
+                    .foregroundStyle(active ? Theme.Colors.primary : Theme.Colors.textSecondary)
             }
             .frame(maxWidth: .infinity)
-            .padding(.top, isActive ? 4 : 6)
+            .padding(.top, 6)
             .overlay(alignment: .top) {
-                if isActive {
+                if active {
                     Capsule().fill(Theme.Colors.primary).frame(width: 32, height: 2)
                 }
             }

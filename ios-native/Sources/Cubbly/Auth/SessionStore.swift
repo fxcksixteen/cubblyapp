@@ -14,6 +14,12 @@ final class SessionStore: ObservableObject {
     @Published private(set) var state: State = .loading
     @Published private(set) var currentProfile: Profile?
 
+    /// Convenience for views that need the current user's UUID.
+    var currentUserID: UUID? {
+        if case let .signedIn(userID) = state { return userID }
+        return nil
+    }
+
     private var authChangesTask: Task<Void, Never>?
 
     /// Called once at app launch from RootView.task.
