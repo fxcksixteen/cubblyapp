@@ -409,6 +409,14 @@ struct ChatView: View {
         try? await ConversationsRepository().markRead(conversationID: conversation.id)
     }
 
+    /// Stub: send each picked attachment as a separate message. For now we
+    /// just send a placeholder text — full storage upload lands in the next
+    /// iteration alongside the chat-attachments bucket.
+    private func sendAttachments(_ items: [PhotosPickerItem]) async {
+        guard !items.isEmpty else { return }
+        await sendRaw(content: "📎 Sent \(items.count) attachment\(items.count == 1 ? "" : "s")")
+    }
+
     // MARK: - Realtime (messages + typing)
 
     private func subscribe() async {
@@ -614,6 +622,10 @@ private struct MessageBubble: View {
 
     private func isGifURL(_ s: String) -> Bool {
         let lower = s.lowercased()
-        return (lower.hasPrefix("http") && (lower.contains(".gif") || lower.contains("giphy.com")))
+        guard lower.hasPrefix("http") else { return false }
+        return lower.contains(".gif")
+            || lower.contains("giphy.com")
+            || lower.contains("media.giphy")
+            || lower.contains("tenor.com")
     }
 }
