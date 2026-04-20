@@ -54,7 +54,7 @@ private struct CubblyTabBar: View {
                 SVGIcon(name: icon, size: 22,
                         tint: active ? Theme.Colors.primary : Theme.Colors.textSecondary)
                 Text(label)
-                    .font(.custom("Nunito-SemiBold", size: 10))
+                    .font(.custom("Nunito", size: 10).weight(.semibold))
                     .foregroundStyle(active ? Theme.Colors.primary : Theme.Colors.textSecondary)
             }
             .frame(maxWidth: .infinity)

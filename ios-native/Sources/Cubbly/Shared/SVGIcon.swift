@@ -15,7 +15,6 @@ struct SVGIcon: View {
                 .interpolation(.high)
                 .frame(width: size, height: size)
         } else {
-            // Fallback: SF Symbol map (only if SVG missing from bundle).
             Image(systemName: Self.fallbackSymbol(for: name))
                 .font(.system(size: size, weight: .semibold))
                 .foregroundStyle(tint)
@@ -23,14 +22,8 @@ struct SVGIcon: View {
         }
     }
 
-    // MARK: - Cache + tinting
-
     private static let cache = NSCache<NSString, UIImage>()
 
-    /// Look up an SVG inside the bundle. XcodeGen ships `Resources/Icons` as a
-    /// folder reference, so we have to try the subdirectory first AND fall
-    /// back to the flat lookup (depending on Xcode version some end up at
-    /// the root of Resources/).
     private static func resolveURL(_ name: String) -> URL? {
         if let u = Bundle.main.url(forResource: name, withExtension: "svg", subdirectory: "Icons") {
             return u
@@ -38,9 +31,6 @@ struct SVGIcon: View {
         if let u = Bundle.main.url(forResource: name, withExtension: "svg") {
             return u
         }
-        // Last-ditch: scan the resourcePath for a matching file (handles odd
-        // bundle layouts during development without affecting performance —
-        // results are cached above).
         if let resourcePath = Bundle.main.resourcePath {
             let fm = FileManager.default
             if let enumerator = fm.enumerator(atPath: resourcePath) {
@@ -64,7 +54,6 @@ struct SVGIcon: View {
         svg.size = CGSize(width: size, height: size)
         guard let raw = svg.uiImage else { return nil }
 
-        // Tint the rendered raster by treating it as an alpha mask.
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: size, height: size))
         let tinted = renderer.image { ctx in
             let rect = CGRect(origin: .zero, size: CGSize(width: size, height: size))
@@ -78,7 +67,8 @@ struct SVGIcon: View {
 
     static func fallbackSymbol(for name: String) -> String {
         switch name {
-        case "messages", "messages-3":     return "bubble.left.and.bubble.right.fill"
+        case "home":                       return "house.fill"
+        case "messages", "messages-3":   return "bubble.left.and.bubble.right.fill"
         case "friends":                    return "person.2.fill"
         case "shop":                       return "bag.fill"
         case "settings":                   return "gearshape.fill"
@@ -105,7 +95,7 @@ struct SVGIcon: View {
         case "status-invisible":           return "circle"
         case "empty-pending":              return "tray"
         case "empty-blocked":              return "nosign"
-        default:                           return "questionmark.circle"
+        default:                             return "questionmark.circle"
         }
     }
 }

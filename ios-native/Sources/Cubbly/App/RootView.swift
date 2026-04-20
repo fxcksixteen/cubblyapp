@@ -9,8 +9,6 @@ struct RootView: View {
 
     var body: some View {
         ZStack {
-            // Sampled from the loading animation so the splash blends seamlessly
-            // with the .mov's background (matches web/desktop SPLASH_BG_COLOR).
             Color(red: 150/255, green: 114/255, blue: 94/255).ignoresSafeArea()
 
             switch session.state {
@@ -49,7 +47,7 @@ private struct SplashView: View {
                 .frame(width: 260, height: 260)
 
             Text(line)
-                .font(.custom("Nunito-SemiBold", size: 16))
+                .font(.custom("Nunito", size: 16).weight(.semibold))
                 .foregroundStyle(Color(red: 1, green: 248/255, blue: 238/255))
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 24)
@@ -58,8 +56,6 @@ private struct SplashView: View {
     }
 }
 
-/// Plays a bundled video on a loop, muted, with no controls — used as the
-/// splash animation. Mirrors the web/desktop `cubbly-loading.webm`.
 private struct LoopingVideoView: UIViewRepresentable {
     let resourceName: String
     let ext: String

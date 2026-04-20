@@ -1,64 +1,88 @@
 import SwiftUI
 
-/// Smooth, continuous horizontal-swipe modifier with rubber-band feedback and
-/// velocity-aware commit (matches Discord/iMessage feel). Wrap any view and
-/// supply `left:` / `right:` callbacks. The view is offset live during the
-/// drag and snaps back unless the user crosses the threshold OR flicks fast.
+/// Axis-locked horizontal swipe with light interactive movement. It avoids
+/// fighting vertical scroll and never throws the screen far enough to expose
+/// black gaps underneath.
 struct HorizontalSwipe: ViewModifier {
     var onSwipeLeft: (() -> Void)?
     var onSwipeRight: (() -> Void)?
-    var threshold: CGFloat = 80
-    var velocityThreshold: CGFloat = 600
-    var maxPerpendicular: CGFloat = 90
+    var isActive: Binding<Bool>? = nil
+    var threshold: CGFloat = 92
+    var velocityThreshold: CGFloat = 140
+    var maxPerpendicular: CGFloat = 42
+    var maxOffset: CGFloat = 96
 
     @State private var dragX: CGFloat = 0
+    @State private var lockedAxis: Axis? = nil
 
     func body(content: Content) -> some View {
         content
             .offset(x: dragX)
-            .gesture(
-                DragGesture(minimumDistance: 12, coordinateSpace: .local)
-                    .onChanged { v in
-                        let dy = v.translation.height
-                        guard abs(dy) <= maxPerpendicular * 1.5 else { return }
-                        // Rubber-band: progressively resist past 120pt.
-                        let raw = v.translation.width
-                        if abs(raw) <= 120 {
-                            dragX = raw
-                        } else {
-                            let extra = abs(raw) - 120
-                            let damped = 120 + extra * 0.35
-                            dragX = raw < 0 ? -damped : damped
+            .highPriorityGesture(
+                DragGesture(minimumDistance: 6, coordinateSpace: .local)
+                    .onChanged { value in
+                        let dx = value.translation.width
+                        let dy = value.translation.height
+
+                        if lockedAxis == nil {
+                            if abs(dx) > 10, abs(dx) > abs(dy) * 1.2 {
+                                lockedAxis = .horizontal
+                                isActive?.wrappedValue = true
+                            } else if abs(dy) > 10, abs(dy) > abs(dx) {
+                                lockedAxis = .vertical
+                            } else {
+                                return
+                            }
                         }
+
+                        guard lockedAxis == .horizontal, abs(dy) <= maxPerpendicular else {
+                            dragX = 0
+                            isActive?.wrappedValue = false
+                            return
+                        }
+
+                        let raw = dx
+                        let limited = min(max(raw, -maxOffset), maxOffset)
+                        let overshoot = raw - limited
+                        dragX = limited + overshoot * 0.12
                     }
-                    .onEnded { v in
-                        let dx = v.translation.width
-                        let dy = v.translation.height
-                        let vx = v.predictedEndTranslation.width - v.translation.width
-                        let commit: Bool
-                        let direction: CGFloat
-                        if abs(dy) > maxPerpendicular {
-                            commit = false
-                            direction = 0
-                        } else if dx >= threshold || vx >= velocityThreshold {
-                            commit = true; direction = 1
-                        } else if dx <= -threshold || vx <= -velocityThreshold {
-                            commit = true; direction = -1
-                        } else {
-                            commit = false; direction = 0
+                    .onEnded { value in
+                        defer {
+                            lockedAxis = nil
+                            isActive?.wrappedValue = false
                         }
-                        if commit {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                dragX = direction > 0 ? 600 : -600
+
+                        guard lockedAxis == .horizontal else {
+                            dragX = 0
+                            return
+                        }
+
+                        let dx = value.translation.width
+                        let dy = value.translation.height
+                        let vx = value.predictedEndTranslation.width - value.translation.width
+
+                        let commitRight = dx >= threshold || (dx > 24 && vx >= velocityThreshold)
+                        let commitLeft = dx <= -threshold || (dx < -24 && vx <= -velocityThreshold)
+
+                        guard abs(dy) <= maxPerpendicular else {
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) { dragX = 0 }
+                            return
+                        }
+
+                        if commitRight {
+                            withAnimation(.spring(response: 0.22, dampingFraction: 0.92)) { dragX = maxOffset }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.04) {
+                                onSwipeRight?()
+                                dragX = 0
                             }
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-                                if direction > 0 { onSwipeRight?() } else { onSwipeLeft?() }
+                        } else if commitLeft {
+                            withAnimation(.spring(response: 0.22, dampingFraction: 0.92)) { dragX = -maxOffset }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.04) {
+                                onSwipeLeft?()
                                 dragX = 0
                             }
                         } else {
-                            withAnimation(.spring(response: 0.42, dampingFraction: 0.78)) {
-                                dragX = 0
-                            }
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) { dragX = 0 }
                         }
                     }
             )
@@ -66,7 +90,7 @@ struct HorizontalSwipe: ViewModifier {
 }
 
 extension View {
-    func horizontalSwipe(left: (() -> Void)? = nil, right: (() -> Void)? = nil) -> some View {
-        modifier(HorizontalSwipe(onSwipeLeft: left, onSwipeRight: right))
+    func horizontalSwipe(left: (() -> Void)? = nil, right: (() -> Void)? = nil, isActive: Binding<Bool>? = nil) -> some View {
+        modifier(HorizontalSwipe(onSwipeLeft: left, onSwipeRight: right, isActive: isActive))
     }
 }

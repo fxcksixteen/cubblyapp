@@ -29,6 +29,7 @@ struct ChatView: View {
     @State private var lastTypingBroadcast: Date = .distantPast
     @State private var actionSheetMessage: ChatMessage?
     @State private var videoURL: IdentifiedURL?
+    @State private var isSwipingOut = false
     @FocusState private var composerFocused: Bool
 
     private let repo = MessagesRepository()
