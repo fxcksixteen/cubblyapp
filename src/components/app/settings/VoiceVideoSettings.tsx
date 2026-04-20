@@ -125,6 +125,13 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
       return;
     }
 
+    if (captureLocked) {
+      // On iOS only one capture can be active. Refuse to open a second mic
+      // stream — it would silently steal the call's mic track.
+      console.warn("[MicTest] blocked:", captureLockReason);
+      return;
+    }
+
     try {
       const constraints: MediaStreamConstraints = {
         audio: {
