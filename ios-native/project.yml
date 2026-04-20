@@ -35,6 +35,8 @@ targets:
     resources:
       - path: Resources/Assets.xcassets
       - path: Resources/Icons
+      - path: Resources/Images
+        optional: true
       - path: Resources/Fonts
         optional: true
     info:
