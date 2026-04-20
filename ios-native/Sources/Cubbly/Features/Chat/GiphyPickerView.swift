@@ -147,18 +147,22 @@ struct GiphyPickerView: View {
     private func toggleFavorite(_ hit: GifItem) async {
         guard let me = session.currentUserID else { return }
         let client = SupabaseManager.shared.client
-        if let _ = favorites.firstIndex(where: { $0.gifID == hit.gifID }) {
-            try? await client.from("gif_favorites").delete()
-                .eq("user_id", value: me).eq("gif_id", value: hit.gifID).execute()
-        } else {
-            struct NewFav: Encodable {
-                let user_id: UUID; let gif_id: String
-                let gif_url: String; let gif_preview_url: String; let title: String?
+        do {
+            if favorites.contains(where: { $0.gifID == hit.gifID }) {
+                _ = try await client.from("gif_favorites").delete()
+                    .eq("user_id", value: me).eq("gif_id", value: hit.gifID).execute()
+            } else {
+                struct NewFav: Encodable {
+                    let user_id: UUID; let gif_id: String
+                    let gif_url: String; let gif_preview_url: String; let title: String?
+                }
+                _ = try await client.from("gif_favorites").insert(NewFav(
+                    user_id: me, gif_id: hit.gifID,
+                    gif_url: hit.url, gif_preview_url: hit.previewURL, title: hit.title
+                )).execute()
             }
-            try? await client.from("gif_favorites").insert(NewFav(
-                user_id: me, gif_id: hit.gifID,
-                gif_url: hit.url, gif_preview_url: hit.previewURL, title: hit.title
-            )).execute()
+        } catch {
+            print("[Giphy] toggleFavorite failed:", error)
         }
         await loadFavorites()
     }

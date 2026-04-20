@@ -13,7 +13,8 @@ struct ImageLightbox: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(1 - min(abs(dragOffset.height) / 400, 0.85))
+            Color.black
+                .opacity(1 - min(abs(dragOffset.height) / CGFloat(400), CGFloat(0.85)))
                 .ignoresSafeArea()
 
             AsyncImage(url: url) { phase in

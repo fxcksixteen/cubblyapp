@@ -1,5 +1,18 @@
 import { useState, useRef, useEffect } from "react";
 import { useVoice, SERVER_REGIONS } from "@/contexts/VoiceContext";
+import { useGroupCall } from "@/contexts/GroupCallContext";
+
+// iOS only allows ONE active mic/camera capture at a time. If the user opens
+// Voice & Video settings while in a call and we acquire a second getUserMedia
+// stream for the mic/camera test, iOS revokes the call's track and the user
+// goes silent/blind for everyone. Detect iOS-class browsers and disable the
+// live previews there — and also block them whenever there's an active call.
+const isIOSLike = (() => {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  const iPadOS = navigator.platform === "MacIntel" && (navigator as any).maxTouchPoints > 1;
+  return /iPad|iPhone|iPod/.test(ua) || iPadOS;
+})();
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
@@ -16,6 +29,9 @@ const VoiceVideoSettings = ({ panelStyle, cardStyle }: Props) => {
     screenShareSettings, updateScreenShareSettings,
     availableDevices, audioLevel, refreshDevices, detectedRegion,
   } = useVoice();
+  const { activeCall } = useGroupCall();
+  const inCall = !!activeCall;
+  const captureLocked = inCall || isIOSLike;
   const [activeTab, setActiveTab] = useState<"voice" | "video">("voice");
 
   const activeRegion = settings.serverRegion === "auto"
@@ -64,6 +80,8 @@ const VoiceVideoSettings = ({ panelStyle, cardStyle }: Props) => {
           detectedRegion={detectedRegion}
           activeRegion={activeRegion}
           cardStyle={cardStyle}
+          captureLocked={captureLocked}
+          captureLockReason={inCall ? "in-call" : isIOSLike ? "ios" : null}
         />
       ) : (
         <VideoTab
@@ -73,6 +91,8 @@ const VoiceVideoSettings = ({ panelStyle, cardStyle }: Props) => {
           screenShareSettings={screenShareSettings}
           updateScreenShareSettings={updateScreenShareSettings}
           cardStyle={cardStyle}
+          captureLocked={captureLocked}
+          captureLockReason={inCall ? "in-call" : isIOSLike ? "ios" : null}
         />
       )}
     </div>
@@ -80,7 +100,7 @@ const VoiceVideoSettings = ({ panelStyle, cardStyle }: Props) => {
 };
 
 /* ─── Voice Tab ─── */
-function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, detectedRegion, activeRegion, cardStyle }: any) {
+function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, detectedRegion, activeRegion, cardStyle, captureLocked, captureLockReason }: any) {
   const [micTesting, setMicTesting] = useState(false);
   const streamRef = useRef<MediaStream | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -102,6 +122,13 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
       analyserRef.current = null;
       setMicTesting(false);
       setTestLevel(0);
+      return;
+    }
+
+    if (captureLocked) {
+      // On iOS only one capture can be active. Refuse to open a second mic
+      // stream — it would silently steal the call's mic track.
+      console.warn("[MicTest] blocked:", captureLockReason);
       return;
     }
 
@@ -275,7 +302,15 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
             </div>
             <button
               onClick={toggleMicTest}
-              className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+              disabled={!micTesting && captureLocked}
+              title={
+                !micTesting && captureLockReason === "in-call"
+                  ? "Stop the call before testing your mic"
+                  : !micTesting && captureLockReason === "ios"
+                  ? "Mic test isn't supported in the iOS PWA"
+                  : undefined
+              }
+              className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                 micTesting
                   ? "bg-[#ed4245] text-white hover:bg-[#c03537]"
                   : "bg-[#5865f2] text-white hover:bg-[#4752c4]"
@@ -445,7 +480,7 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
 }
 
 /* ─── Camera Section (used inside Video Tab) ─── */
-function CameraSection({ settings, updateSettings, availableDevices, cardStyle }: any) {
+function CameraSection({ settings, updateSettings, availableDevices, cardStyle, captureLocked, captureLockReason }: any) {
   const [testing, setTesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -459,6 +494,14 @@ function CameraSection({ settings, updateSettings, availableDevices, cardStyle }
   };
 
   const startTest = async () => {
+    if (captureLocked) {
+      setError(
+        captureLockReason === "in-call"
+          ? "Stop the call before previewing your camera."
+          : "Camera preview isn't supported in the iOS PWA."
+      );
+      return;
+    }
     setError(null);
     try {
       const resMap: Record<string, { width: number; height: number }> = {
@@ -640,7 +683,7 @@ function CameraSection({ settings, updateSettings, availableDevices, cardStyle }
 }
 
 /* ─── Video Tab (Camera + Screen Sharing Settings) ─── */
-function VideoTab({ settings, updateSettings, availableDevices, screenShareSettings, updateScreenShareSettings, cardStyle }: any) {
+function VideoTab({ settings, updateSettings, availableDevices, screenShareSettings, updateScreenShareSettings, cardStyle, captureLocked, captureLockReason }: any) {
   return (
     <div className="space-y-6">
       <CameraSection
@@ -648,6 +691,8 @@ function VideoTab({ settings, updateSettings, availableDevices, screenShareSetti
         updateSettings={updateSettings}
         availableDevices={availableDevices}
         cardStyle={cardStyle}
+        captureLocked={captureLocked}
+        captureLockReason={captureLockReason}
       />
       {/* Screen Share Resolution */}
       <div className="rounded-[24px] border p-5 space-y-4" style={cardStyle}>
