@@ -80,6 +80,8 @@ const VoiceVideoSettings = ({ panelStyle, cardStyle }: Props) => {
           detectedRegion={detectedRegion}
           activeRegion={activeRegion}
           cardStyle={cardStyle}
+          captureLocked={captureLocked}
+          captureLockReason={inCall ? "in-call" : isIOSLike ? "ios" : null}
         />
       ) : (
         <VideoTab
@@ -89,6 +91,8 @@ const VoiceVideoSettings = ({ panelStyle, cardStyle }: Props) => {
           screenShareSettings={screenShareSettings}
           updateScreenShareSettings={updateScreenShareSettings}
           cardStyle={cardStyle}
+          captureLocked={captureLocked}
+          captureLockReason={inCall ? "in-call" : isIOSLike ? "ios" : null}
         />
       )}
     </div>
@@ -96,7 +100,7 @@ const VoiceVideoSettings = ({ panelStyle, cardStyle }: Props) => {
 };
 
 /* ─── Voice Tab ─── */
-function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, detectedRegion, activeRegion, cardStyle }: any) {
+function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, detectedRegion, activeRegion, cardStyle, captureLocked, captureLockReason }: any) {
   const [micTesting, setMicTesting] = useState(false);
   const streamRef = useRef<MediaStream | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
