@@ -1,5 +1,18 @@
 import { useState, useRef, useEffect } from "react";
 import { useVoice, SERVER_REGIONS } from "@/contexts/VoiceContext";
+import { useGroupCall } from "@/contexts/GroupCallContext";
+
+// iOS only allows ONE active mic/camera capture at a time. If the user opens
+// Voice & Video settings while in a call and we acquire a second getUserMedia
+// stream for the mic/camera test, iOS revokes the call's track and the user
+// goes silent/blind for everyone. Detect iOS-class browsers and disable the
+// live previews there — and also block them whenever there's an active call.
+const isIOSLike = (() => {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  const iPadOS = navigator.platform === "MacIntel" && (navigator as any).maxTouchPoints > 1;
+  return /iPad|iPhone|iPod/.test(ua) || iPadOS;
+})();
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
