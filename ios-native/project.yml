@@ -31,6 +31,7 @@ targets:
       - path: Sources/Cubbly
     resources:
       - path: Resources/Assets.xcassets
+      - path: Resources/Icons
       - path: Resources/Fonts
         optional: true
     info:
