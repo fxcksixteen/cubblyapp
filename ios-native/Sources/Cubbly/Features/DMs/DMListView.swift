@@ -67,7 +67,7 @@ struct DMListView: View {
     private var header: some View {
         HStack {
             Text("Messages")
-                .font(.custom("Nunito", size: 24).weight(.heavy))
+                .font(.cubbly(24, .heavy))
                 .foregroundStyle(Theme.Colors.textPrimary)
             Spacer()
             Button { showNewChat = true } label: {
@@ -221,7 +221,7 @@ private struct DMRow: View {
 
             if let date = conversation.lastMessageAt {
                 Text(RelativeTime.compact(from: date))
-                    .font(.custom("Nunito", size: 11).weight(.semibold))
+                    .font(.cubbly(11, .semibold))
                     .foregroundStyle(Theme.Colors.textMuted)
             }
         }

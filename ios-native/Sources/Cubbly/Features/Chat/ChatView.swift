@@ -216,7 +216,7 @@ struct ChatView: View {
             HStack(spacing: 6) {
                 ProgressView().scaleEffect(0.6).tint(Theme.Colors.textSecondary)
                 Text(typingText)
-                    .font(.custom("Nunito", size: 12))
+                    .font(.cubbly(12))
                     .foregroundStyle(Theme.Colors.textSecondary)
                 Spacer()
             }
@@ -254,7 +254,7 @@ struct ChatView: View {
                         .foregroundStyle(Theme.Colors.textSecondary)
                 }
             }
-            .font(.custom("Nunito", size: 12))
+            .font(.cubbly(12))
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .background(Theme.Colors.bgSecondary)
@@ -609,7 +609,7 @@ private struct DiscordStyleBubble: View {
                             .font(Theme.Fonts.bodyMedium)
                             .foregroundStyle(Theme.Colors.textPrimary)
                         Text(timeString(message.createdAt))
-                            .font(.custom("Nunito", size: 10))
+                            .font(.cubbly(10))
                             .foregroundStyle(Theme.Colors.textMuted)
                     }
                 }
@@ -621,7 +621,7 @@ private struct DiscordStyleBubble: View {
                             .foregroundStyle(Theme.Colors.textMuted)
                         (Text("\(r.senderName) ").bold().foregroundColor(Theme.Colors.textPrimary)
                          + Text(r.content).foregroundColor(Theme.Colors.textSecondary))
-                            .font(.custom("Nunito", size: 12))
+                            .font(.cubbly(12))
                             .lineLimit(1)
                     }
                 }
@@ -630,11 +630,11 @@ private struct DiscordStyleBubble: View {
 
                 if message.status == .sending {
                     Text("Sending…")
-                        .font(.custom("Nunito", size: 9))
+                        .font(.cubbly(9))
                         .foregroundStyle(Theme.Colors.textMuted)
                 } else if message.status == .failed {
                     Text("Failed to send")
-                        .font(.custom("Nunito", size: 9))
+                        .font(.cubbly(9))
                         .foregroundStyle(Theme.Colors.danger)
                 }
             }
@@ -765,7 +765,7 @@ private struct MessageActionSheet: View {
                         .font(Theme.Fonts.bodyMedium)
                         .foregroundStyle(Theme.Colors.textPrimary)
                     Text(message.content)
-                        .font(.custom("Nunito", size: 13))
+                        .font(.cubbly(13))
                         .foregroundStyle(Theme.Colors.textSecondary)
                         .lineLimit(1)
                 }
