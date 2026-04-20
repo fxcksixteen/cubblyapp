@@ -28,14 +28,16 @@ enum Theme {
         static let divider       = Color(white: 1.0).opacity(0.04)
     }
 
+    /// All Nunito weights are served from a single variable font registered
+    /// via Info.plist UIAppFonts. We use the family name "Nunito" + .weight()
+    /// so iOS picks the correct axis instance. Falls back silently to system.
     enum Fonts {
-        // Falls back to system if Nunito isn't bundled yet.
-        static let title       = Font.custom("Nunito-Bold",     size: 22).fallback(.system(size: 22, weight: .bold))
-        static let heading     = Font.custom("Nunito-SemiBold", size: 17).fallback(.system(size: 17, weight: .semibold))
-        static let body        = Font.custom("Nunito-Regular",  size: 15).fallback(.system(size: 15))
-        static let bodyMedium  = Font.custom("Nunito-SemiBold", size: 15).fallback(.system(size: 15, weight: .semibold))
-        static let bodySmall   = Font.custom("Nunito-Regular",  size: 13).fallback(.system(size: 13))
-        static let caption     = Font.custom("Nunito-SemiBold", size: 11).fallback(.system(size: 11, weight: .semibold))
+        static let title       = Font.custom("Nunito", size: 22).weight(.bold)
+        static let heading     = Font.custom("Nunito", size: 17).weight(.semibold)
+        static let body        = Font.custom("Nunito", size: 15)
+        static let bodyMedium  = Font.custom("Nunito", size: 15).weight(.semibold)
+        static let bodySmall   = Font.custom("Nunito", size: 13)
+        static let caption     = Font.custom("Nunito", size: 11).weight(.semibold)
     }
 
     enum Radius {
@@ -56,11 +58,4 @@ extension Color {
         let b = Double(hex & 0xFF) / 255.0
         self.init(.sRGB, red: r, green: g, blue: b, opacity: opacity)
     }
-}
-
-private extension Font {
-    /// Returns self — `Font.custom` already falls back to system silently if the
-    /// font name isn't registered, so this exists purely for call-site readability
-    /// and to make the intent explicit. (Keeps Theme.Fonts declarations chainable.)
-    func fallback(_ other: Font) -> Font { self }
 }
