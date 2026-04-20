@@ -29,7 +29,7 @@ struct ChatView: View {
     @State private var lastTypingBroadcast: Date = .distantPast
     @State private var actionSheetMessage: ChatMessage?
     @State private var videoURL: IdentifiedURL?
-    @State private var isSwipingOut = false
+    @State private var lightboxURL: IdentifiedURL?
     @FocusState private var composerFocused: Bool
 
     private let repo = MessagesRepository()
@@ -55,8 +55,7 @@ struct ChatView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.Colors.bgPrimary)
-        .navigationBarBackButtonHidden(true)
-        .horizontalSwipe(right: { dismiss() })
+        .navigationBarHidden(true)
         .sheet(isPresented: $showGifPicker) {
             GiphyPickerView { url in
                 showGifPicker = false
@@ -84,6 +83,9 @@ struct ChatView: View {
         .fullScreenCover(item: $videoURL) { item in
             InAppVideoPlayer(url: item.url)
         }
+        .fullScreenCover(item: $lightboxURL) { item in
+            ImageLightbox(url: item.url) { lightboxURL = nil }
+        }
         .task {
             await loadInitial()
             await subscribe()
@@ -109,8 +111,12 @@ struct ChatView: View {
             }
 
             ZStack(alignment: .bottomTrailing) {
-                AvatarView(url: conversation.avatarURL,
-                           fallbackText: conversation.displayName, size: 32)
+                if conversation.isGroup && conversation.pictureURL == nil {
+                    GroupAvatar(members: conversation.members, size: 32)
+                } else {
+                    AvatarView(url: conversation.avatarURL,
+                               fallbackText: conversation.displayName, size: 32)
+                }
                 if let other = conversation.otherUser {
                     let live = presence.effectiveStatus(for: other.userID, storedStatus: other.status)
                     StatusDot(rawStatus: live, isOnline: presence.isOnline(other.userID),
@@ -126,7 +132,7 @@ struct ChatView: View {
                 if let other = conversation.otherUser {
                     let live = presence.effectiveStatus(for: other.userID, storedStatus: other.status)
                     Text(live.capitalized)
-                        .font(.custom("Nunito", size: 11))
+                        .font(.cubbly(11))
                         .foregroundStyle(Theme.Colors.textSecondary)
                 }
             }
@@ -177,7 +183,8 @@ struct ChatView: View {
                             grouped: grouped,
                             currentUserID: session.currentUserID,
                             onLongPress: { actionSheetMessage = m },
-                            onPlayVideo: { url in videoURL = IdentifiedURL(url: url) }
+                            onPlayVideo: { url in videoURL = IdentifiedURL(url: url) },
+                            onTapImage: { url in lightboxURL = IdentifiedURL(url: url) }
                         )
                         .id(m.id)
                         .padding(.horizontal, 10)
