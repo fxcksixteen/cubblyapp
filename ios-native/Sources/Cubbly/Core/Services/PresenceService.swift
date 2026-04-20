@@ -29,9 +29,14 @@ final class PresenceService: ObservableObject {
             config.presence.key = userID.uuidString
         }
 
-        // Subscribe to presence state diffs.
+        // Subscribe to presence state diffs (non-deprecated API).
         listenTask = Task { [weak self, ch] in
-            await ch.subscribe()
+            do {
+                try await ch.subscribeWithError()
+            } catch {
+                print("[Presence] subscribe failed:", error)
+                return
+            }
             guard let self else { return }
 
             let syncStream = ch.presenceChange()
@@ -48,12 +53,8 @@ final class PresenceService: ObservableObject {
             }
         }
 
-        // Track our own presence
-        do {
-            try await ch.track(state: ["online_at": .string(ISO8601DateFormatter().string(from: Date()))])
-        } catch {
-            print("[Presence] track failed:", error)
-        }
+        // Track our own presence (non-throwing in current SDK).
+        await ch.track(state: ["online_at": .string(ISO8601DateFormatter().string(from: Date()))])
 
         self.channel = ch
     }

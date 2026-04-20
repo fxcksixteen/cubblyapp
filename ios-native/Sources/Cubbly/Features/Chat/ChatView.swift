@@ -65,9 +65,6 @@ struct ChatView: View {
         .onChange(of: showAttachments) { _, isOpen in
             withAnimation(.easeInOut(duration: 0.2)) { attachExpanded = isOpen }
         }
-
-            .presentationDetents([.medium, .large])
-        }
         .task {
             await loadInitial()
             await subscribe()
