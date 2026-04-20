@@ -1,17 +1,20 @@
 import SwiftUI
 
-/// Home tab — Discord-style DM list with a server rail on the left.
+/// Home tab — Discord-style DM list with a server rail on the left. Uses a
+/// shared ConversationsCache so navigating into a chat and back doesn't
+/// trigger a flash-of-loading; the cached list shows immediately and a
+/// silent background refresh updates last-message previews.
 struct DMListView: View {
     @EnvironmentObject private var session: SessionStore
     @EnvironmentObject private var presence: PresenceService
     @ObservedObject private var lastChat = LastChatStore.shared
+    @ObservedObject private var cache = ConversationsCache.shared
 
-    @State private var conversations: [ConversationSummary] = []
-    @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var search: String = ""
     @State private var openConversation: ConversationSummary?
     @State private var showNewChat = false
+    @State private var didInitialLoad = false
 
     var body: some View {
         NavigationStack {
@@ -36,10 +39,9 @@ struct DMListView: View {
                     .environmentObject(presence)
             }
             .horizontalSwipe(left: {
-                // Edge-swipe-left → reopen most recent chat (Discord-ish).
                 if openConversation == nil,
                    let id = lastChat.lastConversationID,
-                   let conv = conversations.first(where: { $0.id == id }) {
+                   let conv = cache.conversations.first(where: { $0.id == id }) {
                     openConversation = conv
                 }
             })
@@ -49,16 +51,24 @@ struct DMListView: View {
             .sheet(isPresented: $showNewChat) {
                 NewChatSheet { newID in
                     Task {
-                        await load()
-                        if let conv = conversations.first(where: { $0.id == newID }) {
+                        await load(silently: false)
+                        if let conv = cache.conversations.first(where: { $0.id == newID }) {
                             openConversation = conv
                         }
                     }
                 }
                 .environmentObject(session)
             }
-            .task { await load() }
-            .refreshable { await load() }
+            .task {
+                if !didInitialLoad {
+                    didInitialLoad = true
+                    await load(silently: !cache.conversations.isEmpty)
+                } else {
+                    // Silent refresh on tab return — keeps existing rows on screen.
+                    await load(silently: true)
+                }
+            }
+            .refreshable { await load(silently: false) }
         }
     }
 
@@ -67,8 +77,7 @@ struct DMListView: View {
     private var header: some View {
         HStack {
             Text("Messages")
-                .font(.custom("Nunito-Black", size: 24))
-                .fontWeight(.black)
+                .font(.custom("Nunito", size: 24).weight(.heavy))
                 .foregroundStyle(Theme.Colors.textPrimary)
             Spacer()
             Button { showNewChat = true } label: {
@@ -102,15 +111,15 @@ struct DMListView: View {
 
     @ViewBuilder
     private var content: some View {
-        if isLoading {
+        if cache.conversations.isEmpty && !didInitialLoad {
             ProgressView().tint(Theme.Colors.primary).frame(maxHeight: .infinity)
-        } else if let errorMessage {
+        } else if let errorMessage, cache.conversations.isEmpty {
             VStack(spacing: 8) {
                 Text(errorMessage)
                     .font(Theme.Fonts.bodySmall)
                     .foregroundStyle(Theme.Colors.danger)
                     .multilineTextAlignment(.center)
-                Button("Try again") { Task { await load() } }
+                Button("Try again") { Task { await load(silently: false) } }
                     .foregroundStyle(Theme.Colors.primary)
             }
             .padding()
@@ -153,29 +162,30 @@ struct DMListView: View {
     }
 
     private var filtered: [ConversationSummary] {
-        guard !search.isEmpty else { return conversations }
+        guard !search.isEmpty else { return cache.conversations }
         let q = search.lowercased()
-        return conversations.filter {
+        return cache.conversations.filter {
             $0.displayName.lowercased().contains(q) ||
             ($0.lastMessage?.lowercased().contains(q) ?? false)
         }
     }
 
-    private func load() async {
-        isLoading = true
-        defer { isLoading = false }
+    private func load(silently: Bool) async {
         guard let userID = session.currentUserID else { return }
         do {
-            conversations = try await ConversationsRepository().listSummaries(currentUserID: userID)
+            let next = try await ConversationsRepository().listSummaries(currentUserID: userID)
+            cache.conversations = next
+            cache.lastLoaded = Date()
             errorMessage = nil
         } catch is CancellationError {
-            // Pull-to-refresh fires a fresh task and cancels the previous one;
-            // a CancellationError here just means "user kept pulling" — silent.
+            // Pull-to-refresh cancellations: silent.
             errorMessage = nil
         } catch let urlError as URLError where urlError.code == .cancelled {
             errorMessage = nil
         } catch {
-            errorMessage = "Couldn't load conversations: \(error.localizedDescription)"
+            if !silently {
+                errorMessage = "Couldn't load conversations: \(error.localizedDescription)"
+            }
         }
     }
 }
@@ -222,7 +232,7 @@ private struct DMRow: View {
 
             if let date = conversation.lastMessageAt {
                 Text(RelativeTime.compact(from: date))
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.custom("Nunito", size: 11).weight(.semibold))
                     .foregroundStyle(Theme.Colors.textMuted)
             }
         }

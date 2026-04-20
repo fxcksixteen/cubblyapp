@@ -1,10 +1,13 @@
 import SwiftUI
 import PhotosUI
+import Photos
 import Supabase
 import Realtime
 
-/// Discord-style 1:1 / group chat thread. Realtime, optimistic, with reply,
-/// typing indicator, and GIPHY picker. Mirrors `src/components/app/ChatView.tsx`.
+/// Discord-iOS-style 1:1 / group chat. All messages left-aligned with avatar
+/// + display name (just like Discord's mobile app), automatic infinite scroll
+/// upward, long-press half-sheet for actions, in-app video player, link
+/// previews, and tap-to-dismiss-keyboard.
 struct ChatView: View {
     let conversation: ConversationSummary
 
@@ -20,12 +23,13 @@ struct ChatView: View {
     @State private var replyingTo: ChatMessage?
     @State private var showGifPicker = false
     @State private var showAttachments = false
-    @State private var attachExpanded = false
     @State private var typingUserNames: [String] = []
     @State private var channel: RealtimeChannelV2?
     @State private var typingChannel: RealtimeChannelV2?
     @State private var lastTypingBroadcast: Date = .distantPast
-    @State private var scrollAnchor: String?
+    @State private var actionSheetMessage: ChatMessage?
+    @State private var videoURL: IdentifiedURL?
+    @FocusState private var composerFocused: Bool
 
     private let repo = MessagesRepository()
 
@@ -34,12 +38,15 @@ struct ChatView: View {
             header
             Divider().background(Theme.Colors.divider)
 
-            if loading && messages.isEmpty {
-                ProgressView().tint(Theme.Colors.primary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                messageList
+            ZStack {
+                if loading && messages.isEmpty {
+                    ProgressView().tint(Theme.Colors.primary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    messageList
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             typingBar
             replyBar
@@ -54,16 +61,27 @@ struct ChatView: View {
                 showGifPicker = false
                 Task { await sendRaw(content: url) }
             }
+            .environmentObject(session)
             .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $showAttachments) {
-            AttachmentsPicker { items in
-                Task { await sendAttachments(items) }
+            AttachmentsPicker { urls in
+                Task { await sendAttachments(urls: urls) }
             }
-            .presentationDetents([.large])
+            .presentationDetents([.fraction(0.55), .large])
         }
-        .onChange(of: showAttachments) { _, isOpen in
-            withAnimation(.easeInOut(duration: 0.2)) { attachExpanded = isOpen }
+        .sheet(item: $actionSheetMessage) { msg in
+            MessageActionSheet(message: msg,
+                               onReply: { replyingTo = msg; actionSheetMessage = nil },
+                               onCopy:  { UIPasteboard.general.string = msg.content; actionSheetMessage = nil },
+                               onDelete: msg.senderID == session.currentUserID
+                                   ? { Task { await deleteMessage(msg) }; actionSheetMessage = nil }
+                                   : nil)
+                .presentationDetents([.fraction(0.32)])
+                .presentationDragIndicator(.visible)
+        }
+        .fullScreenCover(item: $videoURL) { item in
+            InAppVideoPlayer(url: item.url)
         }
         .task {
             await loadInitial()
@@ -107,24 +125,27 @@ struct ChatView: View {
                 if let other = conversation.otherUser {
                     let live = presence.effectiveStatus(for: other.userID, storedStatus: other.status)
                     Text(live.capitalized)
-                        .font(.system(size: 11))
+                        .font(.custom("Nunito", size: 11))
                         .foregroundStyle(Theme.Colors.textSecondary)
                 }
             }
             Spacer()
 
+            // Voice + Video buttons — properly spaced apart and away from the
+            // device edge (matches Discord iOS).
             HStack(spacing: 18) {
                 Button {} label: {
                     SVGIcon(name: "call", size: 20, tint: Theme.Colors.textSecondary)
+                        .frame(width: 36, height: 36)
                 }
                 Button {} label: {
                     SVGIcon(name: "video-camera", size: 20, tint: Theme.Colors.textSecondary)
+                        .frame(width: 36, height: 36)
                 }
             }
-            .padding(.trailing, 4)
+            .padding(.trailing, 12)
         }
         .padding(.leading, 8)
-        .padding(.trailing, 14)
         .padding(.vertical, 6)
         .background(Theme.Colors.bgPrimary)
     }
@@ -135,36 +156,40 @@ struct ChatView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 2) {
-                    if hasMore {
-                        Button { Task { await loadOlder() } } label: {
-                            if loadingOlder {
-                                ProgressView().tint(Theme.Colors.textSecondary)
-                            } else {
-                                Text("Load older messages")
-                                    .font(Theme.Fonts.bodySmall)
-                                    .foregroundStyle(Theme.Colors.textSecondary)
-                            }
-                        }
-                        .padding(.vertical, 10)
+                    if loadingOlder {
+                        ProgressView().tint(Theme.Colors.textSecondary)
+                            .padding(.vertical, 10)
                     }
+                    // Sentinel at the very top — when it appears, fetch older.
+                    Color.clear.frame(height: 1)
+                        .onAppear {
+                            if hasMore && !loadingOlder { Task { await loadOlder() } }
+                        }
+                        .id("top-sentinel")
 
                     ForEach(Array(messages.enumerated()), id: \.element.id) { idx, m in
                         let prev = idx > 0 ? messages[idx - 1] : nil
                         let grouped = prev?.senderID == m.senderID &&
                             (m.createdAt.timeIntervalSince(prev?.createdAt ?? .distantPast) < 7 * 60)
-                        MessageBubble(message: m,
-                                      grouped: grouped,
-                                      isMine: m.senderID == session.currentUserID,
-                                      onReply: { replyingTo = m })
-                            .id(m.id)
-                            .padding(.horizontal, 12)
+                        DiscordStyleBubble(
+                            message: m,
+                            grouped: grouped,
+                            currentUserID: session.currentUserID,
+                            onLongPress: { actionSheetMessage = m },
+                            onPlayVideo: { url in videoURL = IdentifiedURL(url: url) }
+                        )
+                        .id(m.id)
+                        .padding(.horizontal, 10)
                     }
                 }
                 .padding(.top, 8)
+                .padding(.bottom, 6)
             }
+            .scrollDismissesKeyboard(.interactively)
+            .simultaneousGesture(TapGesture().onEnded { composerFocused = false })
             .onChange(of: messages.count) { _, _ in
                 if let last = messages.last?.id {
-                    withAnimation(.easeOut(duration: 0.2)) {
+                    withAnimation(.easeOut(duration: 0.18)) {
                         proxy.scrollTo(last, anchor: .bottom)
                     }
                 }
@@ -183,7 +208,7 @@ struct ChatView: View {
             HStack(spacing: 6) {
                 ProgressView().scaleEffect(0.6).tint(Theme.Colors.textSecondary)
                 Text(typingText)
-                    .font(.system(size: 12))
+                    .font(.custom("Nunito", size: 12))
                     .foregroundStyle(Theme.Colors.textSecondary)
                 Spacer()
             }
@@ -221,7 +246,7 @@ struct ChatView: View {
                         .foregroundStyle(Theme.Colors.textSecondary)
                 }
             }
-            .font(.system(size: 12))
+            .font(.custom("Nunito", size: 12))
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .background(Theme.Colors.bgSecondary)
@@ -235,16 +260,13 @@ struct ChatView: View {
         return HStack(spacing: 10) {
             Button {
                 showAttachments.toggle()
+                composerFocused = false
             } label: {
                 ZStack {
-                    Circle()
-                        .fill(Theme.Colors.bgTertiary)
-                        .frame(width: 36, height: 36)
+                    Circle().fill(Theme.Colors.bgTertiary).frame(width: 36, height: 36)
                     Image(systemName: "plus")
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(Theme.Colors.textSecondary)
-                        .rotationEffect(.degrees(attachExpanded ? 45 : 0))
-                        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: attachExpanded)
                 }
             }
             .buttonStyle(.plain)
@@ -255,8 +277,8 @@ struct ChatView: View {
                     .foregroundStyle(Theme.Colors.textPrimary)
                     .textInputAutocapitalization(.sentences)
                     .lineLimit(1...5)
+                    .focused($composerFocused)
                     .onChange(of: draft) { _, _ in broadcastTyping() }
-                    .onSubmit { Task { await send() } }
 
                 Button { showGifPicker = true } label: {
                     SVGIcon(name: "gif", size: 22, tint: Theme.Colors.textSecondary)
@@ -298,7 +320,7 @@ struct ChatView: View {
             let asc = rows.reversed()
             messages = try await hydrate(Array(asc))
             hasMore = rows.count >= 50
-        } catch {
+        } catch is CancellationError {} catch {
             print("[Chat] load failed:", error)
         }
     }
@@ -313,7 +335,9 @@ struct ChatView: View {
             let hydrated = try await hydrate(Array(asc))
             messages.insert(contentsOf: hydrated, at: 0)
             hasMore = rows.count >= 50
-        } catch { print("[Chat] loadOlder failed:", error) }
+        } catch is CancellationError {} catch {
+            print("[Chat] loadOlder failed:", error)
+        }
     }
 
     private func hydrate(_ rows: [ChatMessageRow]) async throws -> [ChatMessage] {
@@ -363,7 +387,7 @@ struct ChatView: View {
             senderID: me,
             content: content,
             createdAt: Date(),
-            replyToID: replyingTo?.replyToID == nil ? UUID(uuidString: replyingTo?.id ?? "") : nil,
+            replyToID: replyingTo.flatMap { UUID(uuidString: $0.id) },
             replyTo: replyingTo.map {
                 .init(id: UUID(uuidString: $0.id) ?? UUID(),
                       senderID: $0.senderID,
@@ -403,16 +427,41 @@ struct ChatView: View {
         }
     }
 
+    private func deleteMessage(_ msg: ChatMessage) async {
+        guard let id = UUID(uuidString: msg.id) else { return }
+        do {
+            try await repo.delete(messageID: id)
+            messages.removeAll { $0.id == msg.id }
+        } catch { print("[Chat] delete failed:", error) }
+    }
+
     private func markRead() async {
         try? await ConversationsRepository().markRead(conversationID: conversation.id)
     }
 
-    /// Stub: send each picked attachment as a separate message. For now we
-    /// just send a placeholder text — full storage upload lands in the next
-    /// iteration alongside the chat-attachments bucket.
-    private func sendAttachments(_ items: [PhotosPickerItem]) async {
-        guard !items.isEmpty else { return }
-        await sendRaw(content: "📎 Sent \(items.count) attachment\(items.count == 1 ? "" : "s")")
+    /// Uploads picked photo/video URLs to the chat-attachments bucket and
+    /// sends one message per file containing the public URL — InlineMedia in
+    /// the bubble renders them.
+    private func sendAttachments(urls: [URL]) async {
+        guard !urls.isEmpty, let me = session.currentUserID else { return }
+        let client = SupabaseManager.shared.client
+        for u in urls {
+            do {
+                let data = try Data(contentsOf: u)
+                let ext = u.pathExtension.isEmpty ? "bin" : u.pathExtension.lowercased()
+                let path = "\(me.uuidString)/\(UUID().uuidString).\(ext)"
+                _ = try await client.storage
+                    .from("chat-attachments")
+                    .upload(path, data: data, options: FileOptions(upsert: false))
+                // Signed URL valid for 7 days — RLS keeps the bucket private.
+                let signed = try await client.storage
+                    .from("chat-attachments")
+                    .createSignedURL(path: path, expiresIn: 60 * 60 * 24 * 7)
+                await sendRaw(content: signed.absoluteString)
+            } catch {
+                print("[Chat] attachment upload failed:", error)
+            }
+        }
     }
 
     // MARK: - Realtime (messages + typing)
@@ -420,7 +469,6 @@ struct ChatView: View {
     private func subscribe() async {
         let client = SupabaseManager.shared.client
 
-        // Messages INSERT/DELETE
         let ch = client.channel("messages:\(conversation.id.uuidString)")
         let inserts = ch.postgresChange(
             InsertAction.self, schema: "public", table: "messages",
@@ -446,7 +494,6 @@ struct ChatView: View {
         await ch.subscribe()
         channel = ch
 
-        // Typing broadcast
         let tc = client.channel("typing:\(conversation.id.uuidString)")
         let typing = tc.broadcastStream(event: "typing")
         Task {
@@ -468,7 +515,6 @@ struct ChatView: View {
     }
 
     private func handleIncoming(_ row: ChatMessageRow) async {
-        // Replace optimistic if a duplicate matches; else append.
         if let idx = messages.firstIndex(where: {
             $0.isOptimistic && $0.content == row.content && $0.senderID == row.senderID
         }) {
@@ -516,95 +562,128 @@ struct ChatView: View {
     }
 }
 
-// MARK: - Bubble
+// MARK: - Helpers
 
-private struct MessageBubble: View {
+struct IdentifiedURL: Identifiable {
+    let url: URL
+    var id: String { url.absoluteString }
+}
+
+// MARK: - Discord-style bubble
+
+/// Discord iOS layout: every row is a left-aligned avatar + display name +
+/// content stack. Mine and theirs look identical (no right-alignment, no
+/// blue tint). Long-press triggers the half-sheet with options.
+private struct DiscordStyleBubble: View {
     let message: ChatMessage
     let grouped: Bool
-    let isMine: Bool
-    let onReply: () -> Void
+    let currentUserID: UUID?
+    let onLongPress: () -> Void
+    let onPlayVideo: (URL) -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            if !isMine {
-                if grouped {
-                    Color.clear.frame(width: 36, height: 1)
-                } else {
-                    AvatarView(url: message.senderAvatarURL.flatMap(URL.init(string:)),
-                               fallbackText: message.senderName ?? "?",
-                               size: 36)
-                        .padding(.top, 2)
-                }
+        HStack(alignment: .top, spacing: 10) {
+            // Avatar (or spacer for grouped continuations)
+            if grouped {
+                Color.clear.frame(width: 40, height: 1)
             } else {
-                Spacer(minLength: 40)
+                AvatarView(url: message.senderAvatarURL.flatMap(URL.init(string:)),
+                           fallbackText: message.senderName ?? "?",
+                           size: 40)
+                    .padding(.top, 2)
             }
 
-            VStack(alignment: isMine ? .trailing : .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 if !grouped {
                     HStack(spacing: 6) {
-                        if !isMine {
-                            Text(message.senderName ?? "Unknown")
-                                .font(Theme.Fonts.bodyMedium)
-                                .foregroundStyle(Theme.Colors.textPrimary)
-                        }
+                        Text(message.senderName ?? "Unknown")
+                            .font(Theme.Fonts.bodyMedium)
+                            .foregroundStyle(Theme.Colors.textPrimary)
                         Text(timeString(message.createdAt))
-                            .font(.system(size: 10))
+                            .font(.custom("Nunito", size: 10))
                             .foregroundStyle(Theme.Colors.textMuted)
                     }
                 }
+
                 if let r = message.replyTo {
                     HStack(spacing: 4) {
                         Image(systemName: "arrowshape.turn.up.left.fill")
                             .font(.system(size: 9))
                             .foregroundStyle(Theme.Colors.textMuted)
-                        Text("\(r.senderName) ").bold()
-                        + Text(r.content).foregroundStyle(Theme.Colors.textSecondary)
+                        (Text("\(r.senderName) ").bold().foregroundColor(Theme.Colors.textPrimary)
+                         + Text(r.content).foregroundColor(Theme.Colors.textSecondary))
+                            .font(.custom("Nunito", size: 12))
+                            .lineLimit(1)
                     }
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.Colors.textSecondary)
-                    .lineLimit(1)
                 }
 
-                if isGifURL(message.content), let url = URL(string: message.content) {
-                    AnimatedGIFView(url: url)
-                        .frame(width: 220, height: 160)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                } else {
-                    Text(message.content)
-                        .font(Theme.Fonts.body)
-                        .foregroundStyle(Theme.Colors.textPrimary)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(isMine ? Theme.Colors.primary.opacity(0.85) : Theme.Colors.bgSecondary)
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                }
+                content
 
                 if message.status == .sending {
-                    Text("Sending…").font(.system(size: 9)).foregroundStyle(Theme.Colors.textMuted)
+                    Text("Sending…")
+                        .font(.custom("Nunito", size: 9))
+                        .foregroundStyle(Theme.Colors.textMuted)
                 } else if message.status == .failed {
-                    Text("Failed to send").font(.system(size: 9)).foregroundStyle(Theme.Colors.danger)
+                    Text("Failed to send")
+                        .font(.custom("Nunito", size: 9))
+                        .foregroundStyle(Theme.Colors.danger)
                 }
             }
 
-            if isMine {
-                if grouped {
-                    Color.clear.frame(width: 36, height: 1)
-                } else {
-                    AvatarView(url: message.senderAvatarURL.flatMap(URL.init(string:)),
-                               fallbackText: message.senderName ?? "?",
-                               size: 36)
-                        .padding(.top, 2)
-                }
-            } else {
-                Spacer(minLength: 40)
-            }
+            Spacer(minLength: 0)
         }
         .padding(.top, grouped ? 1 : 6)
-        .contextMenu {
-            Button { onReply() } label: { Label("Reply", systemImage: "arrowshape.turn.up.left") }
-            Button {
-                UIPasteboard.general.string = message.content
-            } label: { Label("Copy", systemImage: "doc.on.doc") }
+        .contentShape(Rectangle())
+        .onLongPressGesture(minimumDuration: 0.32) {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            onLongPress()
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        let url = URL(string: message.content)
+        let lower = message.content.lowercased()
+        let isHTTP = lower.hasPrefix("http")
+        let isGIF = isHTTP && (lower.contains(".gif") || lower.contains("giphy.com")
+                               || lower.contains("media.giphy") || lower.contains("tenor.com"))
+        let isImage = isHTTP && (lower.contains(".png") || lower.contains(".jpg")
+                               || lower.contains(".jpeg") || lower.contains(".webp"))
+        let isVideo = isHTTP && (lower.contains(".mp4") || lower.contains(".mov")
+                               || lower.contains(".m4v") || lower.contains(".webm"))
+
+        if let url, isGIF {
+            AnimatedImageView(url: url)
+                .frame(width: 220, height: 160)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+        } else if let url, isImage {
+            AsyncImage(url: url) { img in
+                img.resizable().scaledToFit()
+            } placeholder: {
+                Rectangle().fill(Theme.Colors.bgSecondary)
+                    .frame(width: 220, height: 160)
+            }
+            .frame(maxWidth: 260, maxHeight: 260)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+        } else if let url, isVideo {
+            Button { onPlayVideo(url) } label: {
+                ZStack {
+                    Rectangle().fill(Theme.Colors.bgSecondary)
+                        .frame(width: 220, height: 160)
+                    Image(systemName: "play.circle.fill")
+                        .font(.system(size: 44))
+                        .foregroundStyle(.white.opacity(0.95))
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+            .buttonStyle(.plain)
+        } else if let url, isHTTP {
+            VStack(alignment: .leading, spacing: 6) {
+                LinkifiedText(content: message.content)
+                LinkPreviewCard(url: url)
+            }
+        } else {
+            LinkifiedText(content: message.content)
         }
     }
 
@@ -613,13 +692,111 @@ private struct MessageBubble: View {
         f.dateFormat = "h:mm a"
         return f.string(from: d)
     }
+}
 
-    private func isGifURL(_ s: String) -> Bool {
-        let lower = s.lowercased()
-        guard lower.hasPrefix("http") else { return false }
-        return lower.contains(".gif")
-            || lower.contains("giphy.com")
-            || lower.contains("media.giphy")
-            || lower.contains("tenor.com")
+/// Renders a message body where http(s) links become real tappable links.
+private struct LinkifiedText: View {
+    let content: String
+    var body: some View {
+        if let attributed = try? AttributedString(markdown: linkifyMarkdown(content)) {
+            Text(attributed)
+                .font(Theme.Fonts.body)
+                .foregroundStyle(Theme.Colors.textPrimary)
+                .tint(Theme.Colors.primary)
+                .textSelection(.enabled)
+        } else {
+            Text(content)
+                .font(Theme.Fonts.body)
+                .foregroundStyle(Theme.Colors.textPrimary)
+        }
+    }
+
+    private func linkifyMarkdown(_ s: String) -> String {
+        let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+        let nsRange = NSRange(s.startIndex..., in: s)
+        var output = s
+        var offset = 0
+        detector?.enumerateMatches(in: s, options: [], range: nsRange) { result, _, _ in
+            guard let result, let r = Range(result.range, in: s), let url = result.url else { return }
+            let original = String(s[r])
+            let replacement = "[\(original)](\(url.absoluteString))"
+            if let target = Range(NSRange(location: result.range.location + offset, length: result.range.length), in: output) {
+                output.replaceSubrange(target, with: replacement)
+                offset += replacement.count - original.count
+            }
+        }
+        return output
+    }
+}
+
+// MARK: - Long-press action sheet
+
+private struct MessageActionSheet: View {
+    let message: ChatMessage
+    let onReply: () -> Void
+    let onCopy: () -> Void
+    let onDelete: (() -> Void)?
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Capsule().fill(Color.white.opacity(0.18))
+                .frame(width: 36, height: 4)
+                .padding(.top, 8)
+
+            HStack(spacing: 14) {
+                AvatarView(url: message.senderAvatarURL.flatMap(URL.init(string:)),
+                           fallbackText: message.senderName ?? "?", size: 36)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(message.senderName ?? "Unknown")
+                        .font(Theme.Fonts.bodyMedium)
+                        .foregroundStyle(Theme.Colors.textPrimary)
+                    Text(message.content)
+                        .font(.custom("Nunito", size: 13))
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .lineLimit(1)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 14)
+            .padding(.bottom, 6)
+
+            Divider().background(Theme.Colors.divider)
+
+            VStack(spacing: 0) {
+                row(icon: "arrowshape.turn.up.left.fill", label: "Reply", action: onReply)
+                divider
+                row(icon: "doc.on.doc.fill", label: "Copy Text", action: onCopy)
+                if let onDelete {
+                    divider
+                    row(icon: "trash.fill", label: "Delete", color: Theme.Colors.danger, action: onDelete)
+                }
+            }
+            Spacer()
+        }
+        .background(Theme.Colors.bgSecondary)
+    }
+
+    private var divider: some View {
+        Rectangle().fill(Theme.Colors.divider).frame(height: 1).padding(.leading, 50)
+    }
+
+    private func row(icon: String, label: String, color: Color = Theme.Colors.textPrimary, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Image(systemName: icon)
+                    .font(.system(size: 16))
+                    .foregroundStyle(color == Theme.Colors.danger ? Theme.Colors.danger : Theme.Colors.textSecondary)
+                    .frame(width: 22)
+                Text(label)
+                    .font(Theme.Fonts.bodyMedium)
+                    .foregroundStyle(color)
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }

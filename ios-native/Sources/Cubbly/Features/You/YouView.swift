@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// "You" tab — mirrors src/pages/YouPage.tsx in the PWA: banner + avatar with
-/// status dot, status picker grid, settings rows, sign out.
+/// "You" tab — banner (with animated GIF support), avatar with status dot,
+/// status picker, settings rows, sign out.
 struct YouView: View {
     @EnvironmentObject private var session: SessionStore
     @EnvironmentObject private var presence: PresenceService
@@ -52,23 +52,30 @@ struct YouView: View {
         let me = session.currentUserID
         let liveStatus = me.map { presence.effectiveStatus(for: $0, storedStatus: status) } ?? status
         let online = me.map { presence.isOnline($0) } ?? true
+        let bannerURL = session.currentProfile?.bannerURL.flatMap(URL.init(string:))
+        let isAnimatedBanner = (session.currentProfile?.bannerURL?.lowercased().contains(".gif") ?? false)
+            || (session.currentProfile?.bannerURL?.lowercased().contains("giphy") ?? false)
 
         return VStack(alignment: .leading, spacing: 0) {
             ZStack(alignment: .bottomLeading) {
                 ZStack {
                     Rectangle().fill(bannerColor)
-                    if let urlStr = session.currentProfile?.bannerURL, let url = URL(string: urlStr) {
-                        AsyncImage(url: url) { phase in
-                            switch phase {
-                            case .success(let image):
-                                image.resizable().scaledToFill()
-                            default:
-                                Rectangle().fill(bannerColor)
+                    if let bannerURL {
+                        if isAnimatedBanner {
+                            AnimatedImageView(url: bannerURL, contentMode: .scaleAspectFill)
+                        } else {
+                            AsyncImage(url: bannerURL) { phase in
+                                switch phase {
+                                case .success(let image):
+                                    image.resizable().scaledToFill()
+                                default:
+                                    Rectangle().fill(bannerColor)
+                                }
                             }
                         }
                     }
                 }
-                .frame(height: 112)
+                .frame(height: 132)
                 .clipped()
 
                 ZStack(alignment: .bottomTrailing) {
@@ -103,7 +110,7 @@ struct YouView: View {
     private var statusPicker: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("STATUS")
-                .font(.system(size: 11, weight: .bold))
+                .font(.custom("Nunito", size: 11).weight(.bold))
                 .foregroundStyle(Theme.Colors.textSecondary)
 
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
@@ -137,7 +144,7 @@ struct YouView: View {
     private var settingsList: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("SETTINGS")
-                .font(.system(size: 11, weight: .bold))
+                .font(.custom("Nunito", size: 11).weight(.bold))
                 .foregroundStyle(Theme.Colors.textSecondary)
 
             VStack(spacing: 0) {
