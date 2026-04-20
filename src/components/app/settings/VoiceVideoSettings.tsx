@@ -302,7 +302,15 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
             </div>
             <button
               onClick={toggleMicTest}
-              className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+              disabled={!micTesting && captureLocked}
+              title={
+                !micTesting && captureLockReason === "in-call"
+                  ? "Stop the call before testing your mic"
+                  : !micTesting && captureLockReason === "ios"
+                  ? "Mic test isn't supported in the iOS PWA"
+                  : undefined
+              }
+              className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                 micTesting
                   ? "bg-[#ed4245] text-white hover:bg-[#c03537]"
                   : "bg-[#5865f2] text-white hover:bg-[#4752c4]"
