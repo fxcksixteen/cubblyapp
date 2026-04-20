@@ -27,13 +27,39 @@ struct SVGIcon: View {
 
     private static let cache = NSCache<NSString, UIImage>()
 
+    /// Look up an SVG inside the bundle. XcodeGen ships `Resources/Icons` as a
+    /// folder reference, so we have to try the subdirectory first AND fall
+    /// back to the flat lookup (depending on Xcode version some end up at
+    /// the root of Resources/).
+    private static func resolveURL(_ name: String) -> URL? {
+        if let u = Bundle.main.url(forResource: name, withExtension: "svg", subdirectory: "Icons") {
+            return u
+        }
+        if let u = Bundle.main.url(forResource: name, withExtension: "svg") {
+            return u
+        }
+        // Last-ditch: scan the resourcePath for a matching file (handles odd
+        // bundle layouts during development without affecting performance —
+        // results are cached above).
+        if let resourcePath = Bundle.main.resourcePath {
+            let fm = FileManager.default
+            if let enumerator = fm.enumerator(atPath: resourcePath) {
+                for case let path as String in enumerator
+                where path.hasSuffix("/\(name).svg") || path == "\(name).svg" {
+                    return URL(fileURLWithPath: resourcePath).appendingPathComponent(path)
+                }
+            }
+        }
+        return nil
+    }
+
     static func loadTinted(name: String, size: CGFloat, tint: UIColor) -> UIImage? {
         let scale = UIScreen.main.scale
         let pxSize = CGSize(width: size * scale, height: size * scale)
         let key = "\(name)|\(Int(pxSize.width))x\(Int(pxSize.height))|\(tint.cgColor.components?.description ?? "x")" as NSString
         if let cached = cache.object(forKey: key) { return cached }
 
-        guard let url = Bundle.main.url(forResource: name, withExtension: "svg"),
+        guard let url = resolveURL(name),
               let svg = SVGKImage(contentsOf: url) else { return nil }
         svg.size = CGSize(width: size, height: size)
         guard let raw = svg.uiImage else { return nil }

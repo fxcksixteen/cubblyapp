@@ -1,22 +1,25 @@
 import SwiftUI
 
-/// Small colored circle used as an avatar overlay, matching the PWA
-/// `StatusIndicator` component (online/idle/dnd/invisible/offline).
+/// Status indicator overlay matching the PWA `StatusIndicator` exactly:
+/// - online   → solid green dot
+/// - idle     → orange tinted moon SVG inside a bordered bubble
+/// - dnd      → red tinted "do not disturb" SVG inside a bordered bubble
+/// - invisible/offline → muted grey "invisible" SVG inside a bordered bubble
 struct StatusDot: View {
     enum Status: String { case online, idle, dnd, invisible, offline }
 
     let status: Status
-    var size: CGFloat = 12
+    var size: CGFloat = 14
     var borderColor: Color = Theme.Colors.bgPrimary
 
-    init(status: Status, size: CGFloat = 12, borderColor: Color = Theme.Colors.bgPrimary) {
+    init(status: Status, size: CGFloat = 14, borderColor: Color = Theme.Colors.bgPrimary) {
         self.status = status
         self.size = size
         self.borderColor = borderColor
     }
 
     /// Convenience for raw strings coming from the database.
-    init(rawStatus: String, isOnline: Bool, size: CGFloat = 12, borderColor: Color = Theme.Colors.bgPrimary) {
+    init(rawStatus: String, isOnline: Bool, size: CGFloat = 14, borderColor: Color = Theme.Colors.bgPrimary) {
         if !isOnline {
             self.status = .offline
         } else if rawStatus == "invisible" {
@@ -30,30 +33,35 @@ struct StatusDot: View {
 
     var body: some View {
         ZStack {
-            Circle().fill(borderColor)
+            // Outer ring (matches PWA's border-color trick on the indicator).
+            Circle()
+                .fill(borderColor)
                 .frame(width: size + 4, height: size + 4)
-            shape
-                .frame(width: size, height: size)
+            inner
         }
     }
 
     @ViewBuilder
-    private var shape: some View {
+    private var inner: some View {
         switch status {
         case .online:
-            Circle().fill(Theme.Colors.success)
+            Circle().fill(Color(hex: 0x3BA55C))
+                .frame(width: size, height: size)
         case .idle:
-            Circle().fill(Color(hex: 0xFAA61A))
+            iconBubble(name: "status-idle", tint: Color(hex: 0xFAA61A))
         case .dnd:
-            Circle().fill(Theme.Colors.danger)
-                .overlay(
-                    Capsule()
-                        .fill(Theme.Colors.bgPrimary)
-                        .frame(width: size * 0.55, height: size * 0.2)
-                )
+            iconBubble(name: "status-dnd", tint: Color(hex: 0xED4245))
         case .invisible, .offline:
-            Circle().stroke(Theme.Colors.textMuted, lineWidth: max(2, size * 0.18))
-                .background(Circle().fill(Theme.Colors.bgPrimary))
+            iconBubble(name: "status-invisible", tint: Color(hex: 0x747F8D))
+        }
+    }
+
+    /// Mirrors the PWA's bubble-with-icon layout (svg sits inside a small
+    /// circle whose background matches the surrounding border color).
+    private func iconBubble(name: String, tint: Color) -> some View {
+        ZStack {
+            Circle().fill(borderColor).frame(width: size, height: size)
+            SVGIcon(name: name, size: size * 0.92, tint: tint)
         }
     }
 }
