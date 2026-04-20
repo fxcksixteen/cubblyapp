@@ -1,25 +1,23 @@
 import SwiftUI
 import Photos
 import PhotosUI
-import AVFoundation
+import UIKit
 
-/// Discord-style attach sheet: shows the user's most-recent camera-roll items
-/// inline as a 3-column grid for instant selection, with a "More from Library"
-/// fallback that opens the full PhotosPicker.
+/// Discord-style attach sheet — UIKit-backed PhotoKit grid wrapped via
+/// `UIViewControllerRepresentable`. Uses `PHCachingImageManager` for fast
+/// thumbnails and a `PHPhotoLibraryChangeObserver` so newly granted access
+/// or new photos appear without a full re-render race.
 struct AttachmentsPicker: View {
     var onSend: ([URL]) -> Void
     @Environment(\.dismiss) private var dismiss
 
-    @State private var assets: [PHAsset] = []
-    @State private var selected: Set<String> = []
-    @State private var thumbCache: [String: UIImage] = [:]
-    @State private var authStatus: PHAuthorizationStatus = .notDetermined
+    @State private var authStatus: PHAuthorizationStatus = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+    @State private var selectedAssets: [PHAsset] = []
     @State private var morePhotosItems: [PhotosPickerItem] = []
     @State private var sending = false
 
     var body: some View {
         VStack(spacing: 0) {
-            // Sheet header
             HStack {
                 Button("Cancel") { dismiss() }
                     .foregroundStyle(Theme.Colors.textSecondary)
@@ -31,14 +29,13 @@ struct AttachmentsPicker: View {
                 Button {
                     Task { await sendSelected() }
                 } label: {
-                    if sending {
-                        ProgressView().tint(Theme.Colors.primary)
-                    } else {
-                        Text("Send (\(selected.count))")
-                            .foregroundStyle(selected.isEmpty ? Theme.Colors.textMuted : Theme.Colors.primary)
+                    if sending { ProgressView().tint(Theme.Colors.primary) }
+                    else {
+                        Text("Send (\(selectedAssets.count))")
+                            .foregroundStyle(selectedAssets.isEmpty ? Theme.Colors.textMuted : Theme.Colors.primary)
                     }
                 }
-                .disabled(selected.isEmpty || sending)
+                .disabled(selectedAssets.isEmpty || sending)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
@@ -50,11 +47,13 @@ struct AttachmentsPicker: View {
             case .denied, .restricted:
                 deniedView
             default:
-                grid
+                PhotoGridRepresentable(
+                    selectedAssets: $selectedAssets
+                )
             }
         }
         .background(Theme.Colors.bgPrimary.ignoresSafeArea())
-        .task { await requestAndLoad() }
+        .task { await requestIfNeeded() }
         .onChange(of: morePhotosItems) { _, items in
             Task { await sendFromPhotosPicker(items) }
         }
@@ -63,14 +62,12 @@ struct AttachmentsPicker: View {
     private var permissionPrompt: some View {
         VStack(spacing: 12) {
             Image(systemName: "photo.on.rectangle.angled")
-                .font(.system(size: 38))
-                .foregroundStyle(Theme.Colors.textSecondary)
+                .font(.system(size: 38)).foregroundStyle(Theme.Colors.textSecondary)
             Text("Allow Cubbly to access your photos to attach them inline.")
                 .font(Theme.Fonts.bodySmall)
                 .foregroundStyle(Theme.Colors.textSecondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 24)
-            Button("Allow Photo Access") { Task { await requestAndLoad() } }
+                .multilineTextAlignment(.center).padding(.horizontal, 24)
+            Button("Allow Photo Access") { Task { await requestIfNeeded(force: true) } }
                 .padding(.horizontal, 18).padding(.vertical, 10)
                 .background(Theme.Colors.primary)
                 .foregroundStyle(.white)
@@ -81,16 +78,14 @@ struct AttachmentsPicker: View {
 
     private var deniedView: some View {
         VStack(spacing: 12) {
-            Image(systemName: "lock.fill")
-                .font(.system(size: 32)).foregroundStyle(Theme.Colors.textSecondary)
+            Image(systemName: "lock.fill").font(.system(size: 32)).foregroundStyle(Theme.Colors.textSecondary)
             Text("Photo access was denied.")
                 .font(Theme.Fonts.bodyMedium)
                 .foregroundStyle(Theme.Colors.textPrimary)
             Text("Open Settings to grant Cubbly access to your camera roll.")
                 .font(Theme.Fonts.bodySmall)
                 .foregroundStyle(Theme.Colors.textSecondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 24)
+                .multilineTextAlignment(.center).padding(.horizontal, 24)
             PhotosPicker(selection: $morePhotosItems, maxSelectionCount: 10,
                          matching: .any(of: [.images, .videos])) {
                 Text("Pick from Library Instead")
@@ -103,104 +98,24 @@ struct AttachmentsPicker: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    @ViewBuilder
-    private var grid: some View {
-        ScrollView {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 3), spacing: 4) {
-                // Open-full-library tile first
-                PhotosPicker(selection: $morePhotosItems, maxSelectionCount: 10,
-                             matching: .any(of: [.images, .videos])) {
-                    ZStack {
-                        Rectangle().fill(Theme.Colors.bgSecondary)
-                        VStack(spacing: 4) {
-                            Image(systemName: "photo.stack")
-                                .font(.system(size: 22))
-                                .foregroundStyle(Theme.Colors.textSecondary)
-                            Text("Library")
-                                .font(.custom("Nunito", size: 10).weight(.semibold))
-                                .foregroundStyle(Theme.Colors.textSecondary)
-                        }
-                    }
-                    .aspectRatio(1, contentMode: .fill)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                }
-
-                ForEach(assets, id: \.localIdentifier) { asset in
-                    AssetThumb(asset: asset,
-                               cached: thumbCache[asset.localIdentifier],
-                               isSelected: selected.contains(asset.localIdentifier))
-                        .onTapGesture {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            if selected.contains(asset.localIdentifier) {
-                                selected.remove(asset.localIdentifier)
-                            } else {
-                                selected.insert(asset.localIdentifier)
-                            }
-                        }
-                        .task {
-                            if thumbCache[asset.localIdentifier] == nil {
-                                let img = await Self.thumbnail(for: asset)
-                                await MainActor.run { thumbCache[asset.localIdentifier] = img }
-                            }
-                        }
-                }
-            }
-            .padding(8)
-        }
-    }
-
-    // MARK: - Loading + permissions
-
     @MainActor
-    private func requestAndLoad() async {
-        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-        if status == .notDetermined {
-            let granted = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
-            authStatus = granted
+    private func requestIfNeeded(force: Bool = false) async {
+        let current = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        if current == .notDetermined || force {
+            let next = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+            authStatus = next
         } else {
-            authStatus = status
-        }
-        if authStatus == .authorized || authStatus == .limited {
-            loadAssets()
+            authStatus = current
         }
     }
-
-    private func loadAssets() {
-        let opts = PHFetchOptions()
-        opts.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-        opts.fetchLimit = 60
-        let result = PHAsset.fetchAssets(with: opts)
-        var arr: [PHAsset] = []
-        result.enumerateObjects { a, _, _ in arr.append(a) }
-        assets = arr
-    }
-
-    static func thumbnail(for asset: PHAsset, size: CGSize = CGSize(width: 280, height: 280)) async -> UIImage? {
-        await withCheckedContinuation { cont in
-            let options = PHImageRequestOptions()
-            options.isNetworkAccessAllowed = true
-            options.deliveryMode = .opportunistic
-            PHImageManager.default().requestImage(for: asset,
-                                                  targetSize: size,
-                                                  contentMode: .aspectFill,
-                                                  options: options) { img, _ in
-                cont.resume(returning: img)
-            }
-        }
-    }
-
-    // MARK: - Sending
 
     @MainActor
     private func sendSelected() async {
         sending = true
         defer { sending = false }
         var urls: [URL] = []
-        for id in selected {
-            if let asset = assets.first(where: { $0.localIdentifier == id }),
-               let url = await Self.exportToTempURL(asset: asset) {
-                urls.append(url)
-            }
+        for asset in selectedAssets {
+            if let url = await Self.exportToTempURL(asset: asset) { urls.append(url) }
         }
         guard !urls.isEmpty else { return }
         onSend(urls)
@@ -222,10 +137,7 @@ struct AttachmentsPicker: View {
                 urls.append(url)
             }
         }
-        if !urls.isEmpty {
-            onSend(urls)
-            dismiss()
-        }
+        if !urls.isEmpty { onSend(urls); dismiss() }
     }
 
     static func exportToTempURL(asset: PHAsset) async -> URL? {
@@ -261,49 +173,204 @@ struct AttachmentsPicker: View {
     }
 }
 
-private struct AssetThumb: View {
-    let asset: PHAsset
-    let cached: UIImage?
-    let isSelected: Bool
+// MARK: - UIKit grid
 
-    var body: some View {
-        ZStack(alignment: .topTrailing) {
-            if let img = cached {
-                Image(uiImage: img).resizable().scaledToFill()
-            } else {
-                Rectangle().fill(Theme.Colors.bgSecondary)
-            }
-            if asset.mediaType == .video {
-                HStack(spacing: 3) {
-                    Image(systemName: "play.fill").font(.system(size: 9, weight: .bold))
-                    Text(durationString)
-                        .font(.custom("Nunito", size: 10).weight(.semibold))
-                }
-                .foregroundStyle(.white)
-                .padding(.horizontal, 5).padding(.vertical, 2)
-                .background(Capsule().fill(.black.opacity(0.55)))
-                .padding(4)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-            }
-            if isSelected {
-                Circle().fill(Theme.Colors.primary)
-                    .frame(width: 22, height: 22)
-                    .overlay(Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)).foregroundStyle(.white))
-                    .padding(5)
-            }
+struct PhotoGridRepresentable: UIViewControllerRepresentable {
+    @Binding var selectedAssets: [PHAsset]
+
+    func makeUIViewController(context: Context) -> PhotoGridViewController {
+        let vc = PhotoGridViewController()
+        vc.onSelectionChanged = { assets in
+            DispatchQueue.main.async { selectedAssets = assets }
         }
-        .aspectRatio(1, contentMode: .fill)
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(isSelected ? Theme.Colors.primary : .clear, lineWidth: 2)
-        )
-        .contentShape(Rectangle())
+        return vc
     }
 
-    private var durationString: String {
-        let d = Int(asset.duration)
-        return String(format: "%d:%02d", d / 60, d % 60)
+    func updateUIViewController(_ uiViewController: PhotoGridViewController, context: Context) {}
+}
+
+final class PhotoGridViewController: UIViewController, UICollectionViewDataSource, UICollectionViewDelegate, PHPhotoLibraryChangeObserver {
+    var onSelectionChanged: (([PHAsset]) -> Void)?
+
+    private var collectionView: UICollectionView!
+    private var fetchResult: PHFetchResult<PHAsset>?
+    private let imageManager = PHCachingImageManager()
+    private var selectedIDs: [String] = []
+    private var selectedAssets: [PHAsset] = []
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = UIColor(Theme.Colors.bgPrimary)
+
+        let layout = UICollectionViewFlowLayout()
+        let spacing: CGFloat = 4
+        let cols: CGFloat = 3
+        let totalSpacing = spacing * (cols - 1)
+        let itemSize = (UIScreen.main.bounds.width - totalSpacing - 8) / cols
+        layout.itemSize = CGSize(width: itemSize, height: itemSize)
+        layout.minimumInteritemSpacing = spacing
+        layout.minimumLineSpacing = spacing
+        layout.sectionInset = UIEdgeInsets(top: 8, left: 4, bottom: 8, right: 4)
+
+        collectionView = UICollectionView(frame: view.bounds, collectionViewLayout: layout)
+        collectionView.backgroundColor = .clear
+        collectionView.dataSource = self
+        collectionView.delegate = self
+        collectionView.register(PhotoGridCell.self, forCellWithReuseIdentifier: "cell")
+        collectionView.allowsMultipleSelection = true
+        collectionView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(collectionView)
+        NSLayoutConstraint.activate([
+            collectionView.topAnchor.constraint(equalTo: view.topAnchor),
+            collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+
+        PHPhotoLibrary.shared().register(self)
+        loadAssets()
+    }
+
+    deinit { PHPhotoLibrary.shared().unregisterChangeObserver(self) }
+
+    private func loadAssets() {
+        let opts = PHFetchOptions()
+        opts.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        opts.fetchLimit = 200
+        fetchResult = PHAsset.fetchAssets(with: opts)
+        collectionView.reloadData()
+    }
+
+    // MARK: PHPhotoLibraryChangeObserver
+
+    func photoLibraryDidChange(_ changeInstance: PHChange) {
+        DispatchQueue.main.async { [weak self] in self?.loadAssets() }
+    }
+
+    // MARK: DataSource
+
+    func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
+        fetchResult?.count ?? 0
+    }
+
+    func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
+        let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "cell", for: indexPath) as! PhotoGridCell
+        guard let asset = fetchResult?.object(at: indexPath.item) else { return cell }
+        cell.assetID = asset.localIdentifier
+        cell.isVideo = asset.mediaType == .video
+        cell.duration = asset.duration
+        cell.isAssetSelected = selectedIDs.contains(asset.localIdentifier)
+
+        let target = CGSize(width: 240, height: 240)
+        imageManager.requestImage(for: asset, targetSize: target, contentMode: .aspectFill, options: nil) { img, _ in
+            if cell.assetID == asset.localIdentifier { cell.imageView.image = img }
+        }
+        return cell
+    }
+
+    func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+        guard let asset = fetchResult?.object(at: indexPath.item) else { return }
+        if let idx = selectedIDs.firstIndex(of: asset.localIdentifier) {
+            selectedIDs.remove(at: idx)
+            selectedAssets.remove(at: idx)
+        } else {
+            selectedIDs.append(asset.localIdentifier)
+            selectedAssets.append(asset)
+        }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        collectionView.reloadItems(at: [indexPath])
+        onSelectionChanged?(selectedAssets)
     }
 }
 
+final class PhotoGridCell: UICollectionViewCell {
+    let imageView = UIImageView()
+    private let overlay = UIView()
+    private let checkmark = UIImageView(image: UIImage(systemName: "checkmark.circle.fill"))
+    private let videoBadge = UILabel()
+
+    var assetID: String?
+    var isVideo: Bool = false { didSet { updateVideo() } }
+    var duration: TimeInterval = 0 { didSet { updateVideo() } }
+    var isAssetSelected: Bool = false { didSet { updateSelection() } }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        contentView.backgroundColor = UIColor(Theme.Colors.bgSecondary)
+        contentView.layer.cornerRadius = 6
+        contentView.clipsToBounds = true
+
+        imageView.contentMode = .scaleAspectFill
+        imageView.clipsToBounds = true
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(imageView)
+
+        overlay.backgroundColor = UIColor(Theme.Colors.primary).withAlphaComponent(0.25)
+        overlay.isHidden = true
+        overlay.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(overlay)
+
+        checkmark.tintColor = .white
+        checkmark.backgroundColor = UIColor(Theme.Colors.primary)
+        checkmark.layer.cornerRadius = 11
+        checkmark.layer.masksToBounds = true
+        checkmark.contentMode = .center
+        checkmark.isHidden = true
+        checkmark.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(checkmark)
+
+        videoBadge.font = .systemFont(ofSize: 10, weight: .bold)
+        videoBadge.textColor = .white
+        videoBadge.backgroundColor = UIColor.black.withAlphaComponent(0.55)
+        videoBadge.textAlignment = .center
+        videoBadge.layer.cornerRadius = 4
+        videoBadge.layer.masksToBounds = true
+        videoBadge.isHidden = true
+        videoBadge.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(videoBadge)
+
+        NSLayoutConstraint.activate([
+            imageView.topAnchor.constraint(equalTo: contentView.topAnchor),
+            imageView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+            imageView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            imageView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+
+            overlay.topAnchor.constraint(equalTo: contentView.topAnchor),
+            overlay.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+            overlay.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            overlay.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+
+            checkmark.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 5),
+            checkmark.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -5),
+            checkmark.widthAnchor.constraint(equalToConstant: 22),
+            checkmark.heightAnchor.constraint(equalToConstant: 22),
+
+            videoBadge.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -4),
+            videoBadge.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -4),
+            videoBadge.heightAnchor.constraint(equalToConstant: 16),
+            videoBadge.widthAnchor.constraint(greaterThanOrEqualToConstant: 32),
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        imageView.image = nil
+        isAssetSelected = false
+    }
+
+    private func updateSelection() {
+        overlay.isHidden = !isAssetSelected
+        checkmark.isHidden = !isAssetSelected
+        contentView.layer.borderWidth = isAssetSelected ? 2 : 0
+        contentView.layer.borderColor = UIColor(Theme.Colors.primary).cgColor
+    }
+
+    private func updateVideo() {
+        guard isVideo else { videoBadge.isHidden = true; return }
+        videoBadge.isHidden = false
+        let d = Int(duration)
+        videoBadge.text = String(format: " %d:%02d ", d / 60, d % 60)
+    }
+}

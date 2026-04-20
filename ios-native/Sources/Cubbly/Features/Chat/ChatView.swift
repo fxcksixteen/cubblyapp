@@ -588,6 +588,7 @@ private struct DiscordStyleBubble: View {
     let currentUserID: UUID?
     let onLongPress: () -> Void
     let onPlayVideo: (URL) -> Void
+    let onTapImage: (URL) -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -661,18 +662,23 @@ private struct DiscordStyleBubble: View {
                                || lower.contains(".m4v") || lower.contains(".webm"))
 
         if let url, isGIF {
-            AnimatedImageView(url: url)
-                .frame(width: 220, height: 160)
+            AnimatedImageView(url: url, contentMode: .scaleAspectFit)
+                .frame(maxWidth: 240)
+                .frame(height: 180)
+                .background(Theme.Colors.bgSecondary)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
         } else if let url, isImage {
-            AsyncImage(url: url) { img in
-                img.resizable().scaledToFit()
-            } placeholder: {
-                Rectangle().fill(Theme.Colors.bgSecondary)
-                    .frame(width: 220, height: 160)
+            Button { onTapImage(url) } label: {
+                AsyncImage(url: url) { img in
+                    img.resizable().scaledToFit()
+                } placeholder: {
+                    Rectangle().fill(Theme.Colors.bgSecondary)
+                        .frame(width: 220, height: 160)
+                }
+                .frame(maxWidth: 260, maxHeight: 320)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
             }
-            .frame(maxWidth: 260, maxHeight: 260)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .buttonStyle(.plain)
         } else if let url, isVideo {
             Button { onPlayVideo(url) } label: {
                 ZStack {

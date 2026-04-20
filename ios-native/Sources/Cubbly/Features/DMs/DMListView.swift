@@ -185,11 +185,15 @@ private struct DMRow: View {
     var body: some View {
         HStack(spacing: 12) {
             ZStack(alignment: .bottomTrailing) {
-                AvatarView(
-                    url: conversation.avatarURL,
-                    fallbackText: conversation.displayName,
-                    size: 48
-                )
+                if conversation.isGroup && conversation.pictureURL == nil {
+                    GroupAvatar(members: conversation.members, size: 48)
+                } else {
+                    AvatarView(
+                        url: conversation.avatarURL,
+                        fallbackText: conversation.displayName,
+                        size: 48
+                    )
+                }
                 if let other = conversation.otherUser {
                     let live = presence.effectiveStatus(for: other.userID, storedStatus: other.status)
                     StatusDot(
