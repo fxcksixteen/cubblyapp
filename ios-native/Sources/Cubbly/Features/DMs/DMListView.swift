@@ -1,34 +1,61 @@
 import SwiftUI
 
-/// Home tab — Discord-style DM list. Each row shows the OTHER user's avatar
-/// with status dot, their display name, the latest message, and a compact
-/// relative timestamp.
+/// Home tab — Discord-style DM list with a server rail on the left.
 struct DMListView: View {
     @EnvironmentObject private var session: SessionStore
+    @EnvironmentObject private var presence: PresenceService
+    @ObservedObject private var lastChat = LastChatStore.shared
+
     @State private var conversations: [ConversationSummary] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var search: String = ""
-
-    /// Set by the parent (MainTabView) when a row is tapped. We push a chat
-    /// view from here so the swipe-back gesture works inside the chat.
     @State private var openConversation: ConversationSummary?
+    @State private var showNewChat = false
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                header
+            HStack(spacing: 0) {
+                ServerRail()
+                Rectangle().fill(Theme.Colors.divider).frame(width: 1)
 
-                searchBar
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 8)
-
-                content
+                VStack(spacing: 0) {
+                    header
+                    searchBar
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 8)
+                    content
+                }
+                .frame(maxWidth: .infinity)
+                .background(Theme.Colors.bgPrimary)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Theme.Colors.bgPrimary)
             .navigationDestination(item: $openConversation) { conv in
-                ChatPlaceholderView(conversation: conv)
+                ChatView(conversation: conv)
+                    .environmentObject(session)
+                    .environmentObject(presence)
+            }
+            .horizontalSwipe(left: {
+                // Edge-swipe-left → reopen most recent chat (Discord-ish).
+                if openConversation == nil,
+                   let id = lastChat.lastConversationID,
+                   let conv = conversations.first(where: { $0.id == id }) {
+                    openConversation = conv
+                }
+            })
+            .onChange(of: openConversation?.id) { _, newID in
+                if let id = newID { lastChat.lastConversationID = id }
+            }
+            .sheet(isPresented: $showNewChat) {
+                NewChatSheet { newID in
+                    Task {
+                        await load()
+                        if let conv = conversations.first(where: { $0.id == newID }) {
+                            openConversation = conv
+                        }
+                    }
+                }
+                .environmentObject(session)
             }
             .task { await load() }
             .refreshable { await load() }
@@ -40,20 +67,20 @@ struct DMListView: View {
     private var header: some View {
         HStack {
             Text("Messages")
-                .font(Theme.Fonts.title)
+                .font(.custom("Nunito-Black", size: 24))
+                .fontWeight(.black)
                 .foregroundStyle(Theme.Colors.textPrimary)
             Spacer()
-            Button {
-                Task { await load() }
-            } label: {
+            Button { showNewChat = true } label: {
                 Image(systemName: "square.and.pencil")
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(Theme.Colors.textSecondary)
+                    .frame(width: 36, height: 36)
             }
         }
         .padding(.horizontal, 16)
         .padding(.top, 8)
-        .padding(.bottom, 10)
+        .padding(.bottom, 8)
     }
 
     private var searchBar: some View {
@@ -93,10 +120,15 @@ struct DMListView: View {
         } else {
             List {
                 ForEach(filtered) { conv in
-                    Button { openConversation = conv } label: { DMRow(conversation: conv) }
-                        .listRowBackground(Theme.Colors.bgPrimary)
-                        .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
+                    Button { openConversation = conv } label: {
+                        DMRow(conversation: conv,
+                              isHighlighted: conv.id == lastChat.lastConversationID,
+                              presence: presence)
+                    }
+                    .listRowBackground(conv.id == lastChat.lastConversationID
+                                       ? Theme.Colors.bgHover : Theme.Colors.bgPrimary)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 2, leading: 6, bottom: 2, trailing: 6))
                 }
             }
             .listStyle(.plain)
@@ -111,7 +143,7 @@ struct DMListView: View {
             Text("No conversations yet")
                 .font(Theme.Fonts.heading)
                 .foregroundStyle(Theme.Colors.textPrimary)
-            Text("Add a friend in the Friends tab and start a chat.")
+            Text("Tap the new-chat icon in the top right to start one.")
                 .font(Theme.Fonts.bodySmall)
                 .foregroundStyle(Theme.Colors.textSecondary)
                 .multilineTextAlignment(.center)
@@ -128,8 +160,6 @@ struct DMListView: View {
             ($0.lastMessage?.lowercased().contains(q) ?? false)
         }
     }
-
-    // MARK: - Loading
 
     private func load() async {
         isLoading = true
@@ -148,6 +178,8 @@ struct DMListView: View {
 
 private struct DMRow: View {
     let conversation: ConversationSummary
+    let isHighlighted: Bool
+    @ObservedObject var presence: PresenceService
 
     var body: some View {
         HStack(spacing: 12) {
@@ -158,11 +190,12 @@ private struct DMRow: View {
                     size: 48
                 )
                 if let other = conversation.otherUser {
+                    let live = presence.effectiveStatus(for: other.userID, storedStatus: other.status)
                     StatusDot(
-                        rawStatus: other.status,
-                        isOnline: true, // TODO: presence
+                        rawStatus: live,
+                        isOnline: presence.isOnline(other.userID),
                         size: 12,
-                        borderColor: Theme.Colors.bgPrimary
+                        borderColor: isHighlighted ? Theme.Colors.bgHover : Theme.Colors.bgPrimary
                     )
                     .offset(x: 2, y: 2)
                 }
@@ -187,34 +220,10 @@ private struct DMRow: View {
                     .foregroundStyle(Theme.Colors.textMuted)
             }
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 8)
+        .padding(.horizontal, 8)
+        .background(isHighlighted ? Theme.Colors.bgHover : Color.clear)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
         .contentShape(Rectangle())
-    }
-}
-
-// MARK: - Tiny chat placeholder (full chat lands in v1.1)
-
-private struct ChatPlaceholderView: View {
-    let conversation: ConversationSummary
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        VStack(spacing: 16) {
-            AvatarView(url: conversation.avatarURL, fallbackText: conversation.displayName, size: 80)
-            Text(conversation.displayName)
-                .font(Theme.Fonts.title)
-                .foregroundStyle(Theme.Colors.textPrimary)
-            Text("Chat thread coming in the next update — swipe right to go back.")
-                .font(Theme.Fonts.bodySmall)
-                .foregroundStyle(Theme.Colors.textSecondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
-            Spacer()
-        }
-        .padding(.top, 60)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.Colors.bgPrimary)
-        .navigationBarTitleDisplayMode(.inline)
-        .horizontalSwipe(right: { dismiss() })
     }
 }

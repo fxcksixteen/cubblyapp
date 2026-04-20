@@ -3,6 +3,7 @@ import SwiftUI
 /// Friends tab — mirrors the web app: Online / All / Pending / Blocked / Add.
 struct FriendsView: View {
     @EnvironmentObject private var session: SessionStore
+    @EnvironmentObject private var presence: PresenceService
 
     enum Tab: String, CaseIterable, Identifiable {
         case online, all, pending, blocked, add
@@ -228,7 +229,7 @@ struct FriendsView: View {
     private var filtered: [FriendEntry] {
         let scoped: [FriendEntry]
         switch tab {
-        case .online: scoped = entries.filter { $0.friendship.status == "accepted" } // TODO: presence
+        case .online: scoped = entries.filter { $0.friendship.status == "accepted" && presence.isOnline($0.profile.userID) }
         case .all:    scoped = entries.filter { $0.friendship.status == "accepted" }
         case .pending: scoped = entries.filter { $0.friendship.status == "pending" }
         case .blocked: scoped = entries.filter { $0.friendship.status == "blocked" }
@@ -332,8 +333,10 @@ private struct FriendRow: View {
                     fallbackText: entry.profile.displayName,
                     size: 40
                 )
-                StatusDot(rawStatus: entry.profile.status, isOnline: true, size: 11,
-                          borderColor: Theme.Colors.bgPrimary)
+                let live = PresenceService.shared.effectiveStatus(for: entry.profile.userID, storedStatus: entry.profile.status)
+                StatusDot(rawStatus: live,
+                          isOnline: PresenceService.shared.isOnline(entry.profile.userID),
+                          size: 11, borderColor: Theme.Colors.bgPrimary)
                     .offset(x: 2, y: 2)
             }
 
