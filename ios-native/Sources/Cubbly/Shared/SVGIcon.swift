@@ -25,10 +25,13 @@ struct SVGIcon: View {
     private static let cache = NSCache<NSString, UIImage>()
 
     private static func resolveURL(_ name: String) -> URL? {
-        if let u = Bundle.main.url(forResource: name, withExtension: "svg", subdirectory: "Icons") {
+        // XcodeGen ships our `Resources/Icons/*.svg` as a folder reference, so
+        // the files end up at the bundle root. Try flat first, then nested,
+        // then a recursive walk as a last-ditch fallback.
+        if let u = Bundle.main.url(forResource: name, withExtension: "svg") {
             return u
         }
-        if let u = Bundle.main.url(forResource: name, withExtension: "svg") {
+        if let u = Bundle.main.url(forResource: name, withExtension: "svg", subdirectory: "Icons") {
             return u
         }
         if let resourcePath = Bundle.main.resourcePath {
