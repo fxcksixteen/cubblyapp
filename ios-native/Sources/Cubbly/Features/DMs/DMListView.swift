@@ -1,4 +1,6 @@
 import SwiftUI
+import Supabase
+import Realtime
 
 /// Home tab — Discord-style DM list with a server rail on the left. Uses a
 /// shared ConversationsCache so navigating into a chat and back doesn't
@@ -15,6 +17,8 @@ struct DMListView: View {
     @State private var openConversation: ConversationSummary?
     @State private var showNewChat = false
     @State private var didInitialLoad = false
+    @State private var msgChannel: RealtimeChannelV2?
+    @State private var convChannel: RealtimeChannelV2?
 
     var body: some View {
         NavigationStack {
@@ -58,6 +62,15 @@ struct DMListView: View {
                     await load(silently: !cache.conversations.isEmpty)
                 } else {
                     await load(silently: true)
+                }
+                await subscribeRealtime()
+            }
+            .onDisappear {
+                Task {
+                    if let c = msgChannel { await c.unsubscribe() }
+                    if let c = convChannel { await c.unsubscribe() }
+                    msgChannel = nil
+                    convChannel = nil
                 }
             }
             .refreshable { await load(silently: false) }
