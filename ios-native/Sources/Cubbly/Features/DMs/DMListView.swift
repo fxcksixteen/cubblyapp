@@ -194,9 +194,75 @@ struct DMListView: View {
             }
         }
     }
-}
 
-private struct DMRow: View {
+    // MARK: - Realtime
+
+    /// Subscribes to message INSERTs and conversation UPDATEs across all of
+    /// the user's conversations. RLS already restricts what we receive, so we
+    /// don't need a per-conversation filter — every event we get is for a
+    /// conversation we're a participant in. On each event we patch the
+    /// affected `ConversationSummary` in-place (last message + timestamp) and
+    /// resort the list. This mirrors the web app's `useConversations` hook
+    /// and keeps the home tab live without a manual refresh.
+    private func subscribeRealtime() async {
+        guard msgChannel == nil, convChannel == nil else { return }
+        let client = SupabaseManager.shared.client
+
+        let mc = client.channel("dm-list-messages")
+        let mInserts = mc.postgresChange(
+            InsertAction.self, schema: "public", table: "messages")
+        Task {
+            for await action in mInserts {
+                guard let row = try? action.decodeRecord(
+                    as: ChatMessageRow.self, decoder: jsonDecoder()) else { continue }
+                await MainActor.run { applyIncomingMessage(row) }
+            }
+        }
+        await mc.subscribe()
+        msgChannel = mc
+
+        let cc = client.channel("dm-list-conversations")
+        let cUpdates = cc.postgresChange(
+            UpdateAction.self, schema: "public", table: "conversations")
+        Task {
+            for await _ in cUpdates {
+                // A bumped conversation usually means a new message; reload silently.
+                await load(silently: true)
+            }
+        }
+        await cc.subscribe()
+        convChannel = cc
+    }
+
+    private func applyIncomingMessage(_ row: ChatMessageRow) {
+        var list = cache.conversations
+        if let idx = list.firstIndex(where: { $0.id == row.conversationID }) {
+            let old = list[idx]
+            let updated = ConversationSummary(
+                id: old.id,
+                isGroup: old.isGroup,
+                name: old.name,
+                pictureURL: old.pictureURL,
+                members: old.members,
+                lastMessage: row.content,
+                lastMessageAt: row.createdAt,
+                updatedAt: row.createdAt
+            )
+            list.remove(at: idx)
+            list.insert(updated, at: 0)
+            cache.conversations = list
+        } else {
+            // New conversation we haven't loaded yet — refresh silently.
+            Task { await load(silently: true) }
+        }
+    }
+
+    private func jsonDecoder() -> JSONDecoder {
+        let d = JSONDecoder()
+        d.dateDecodingStrategy = .iso8601
+        return d
+    }
+}
     let conversation: ConversationSummary
     let isHighlighted: Bool
     @ObservedObject var presence: PresenceService
