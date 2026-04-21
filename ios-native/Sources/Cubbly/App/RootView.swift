@@ -53,6 +53,7 @@ private struct SplashView: View {
                 .padding(.horizontal, 24)
                 .shadow(color: .black.opacity(0.15), radius: 1, x: 0, y: 1)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -62,7 +63,7 @@ private struct LoopingVideoView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> LoopingPlayerUIView {
         let view = LoopingPlayerUIView()
-        if let url = Bundle.main.url(forResource: resourceName, withExtension: ext) {
+        if let url = BrandAsset.bundledURL(named: resourceName, ext: ext, preferredSubdirectories: [nil, "Videos"]) {
             view.configure(with: url)
         }
         return view
