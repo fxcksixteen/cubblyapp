@@ -482,6 +482,9 @@ struct ChatView: View {
         let inserts = ch.postgresChange(
             InsertAction.self, schema: "public", table: "messages",
             filter: "conversation_id=eq.\(conversation.id.uuidString)")
+        let updates = ch.postgresChange(
+            UpdateAction.self, schema: "public", table: "messages",
+            filter: "conversation_id=eq.\(conversation.id.uuidString)")
         let deletes = ch.postgresChange(
             DeleteAction.self, schema: "public", table: "messages",
             filter: "conversation_id=eq.\(conversation.id.uuidString)")
@@ -491,6 +494,17 @@ struct ChatView: View {
                 guard let row = try? action.decodeRecord(as: ChatMessageRow.self,
                                                          decoder: jsonDecoder()) else { continue }
                 await handleIncoming(row)
+            }
+        }
+        Task {
+            for await action in updates {
+                guard let row = try? action.decodeRecord(as: ChatMessageRow.self,
+                                                         decoder: jsonDecoder()) else { continue }
+                await MainActor.run {
+                    if let idx = messages.firstIndex(where: { $0.id == row.id.uuidString }) {
+                        messages[idx].content = row.content
+                    }
+                }
             }
         }
         Task {
