@@ -1,94 +1,83 @@
 
 
-# iOS native — fix resources, navigation, fonts, chat media
+# iOS Native: Realtime Chat + Asset Pipeline Fixes
 
-A focused pass to make the v2 zip actually run with all assets working, restore navigation, fix the fonts/presence/console errors, and make group avatars + chat images behave correctly. Everything ships as a fresh `cubbly-ios-v3.zip`.
+## Problems
 
-## 1. Make resources actually bundle in Xcode (root cause fix)
+1. **Chat is not live** — `MessagesRepository` only does one-shot fetches. There's no Supabase Realtime channel subscribed to `postgres_changes` on `messages`, so new/edited/deleted messages only appear after a manual refresh.
+2. **Conversation list doesn't update live** — same root cause for `ConversationsRepository` (no realtime on `conversations` / `messages` bumps).
+3. **SVG icons not rendering** — `SVGIcon` looks for files in the `Icons/` subdirectory, but `project.yml` likely flattens resources into the bundle root, so `Bundle.main.url(forResource:withExtension:subdirectory:"Icons")` returns nil and we fall back to SF Symbols.
+4. **Launch screen black/broken** — `LaunchScreen.storyboard` references image `cubbly-nobg`, but the asset catalog imageset is empty (no PNGs inside `cubbly-nobg.imageset/`), and `Info.plist` may not point at the storyboard.
+5. **Brand PNGs/logos missing** — `cubbly-logo.imageset`, `cubbly-nobg.imageset`, `cubbly-wordmark.imageset` only contain `Contents.json`, no actual PNG files. `LoginView` / `ServerRail` render blank.
+6. **.mov / animated assets** — `AnimatedImageView` handles GIFs via SDWebImage but there's no `.mov` playback path; need `AVPlayerLayer`-backed view (or confirm we don't actually ship `.mov` and the user means GIF/Lottie).
 
-The zip already contains `Resources/Images`, `Videos`, `Fonts`, `Icons`, but Xcode (when opened standalone) wasn't pulling them in. I'll fix that for good:
+## Fix Plan
 
-- Update `project.yml` so each resource folder is listed with explicit `type: folder` and `buildPhase: resources` (not just `path:`). XcodeGen will then create blue **folder references** under the Cubbly target. Folder refs survive even if the user opens the project before re-running `xcodegen`.
-- Add a top-level `Resources/Resources.xcassets` migration: move PNG branding (`cubbly-logo`, `cubbly-wordmark`, `cubbly-nobg`) into the asset catalog as image sets so they're guaranteed to ship and addressable via `Image("cubbly-logo")`. This eliminates "file in folder didn't get copied" failure modes.
-- Add an `AppIcon.appiconset` rebuilt from the new bear logo PNG you uploaded this turn (`Cubbly_Logo-3.png`) so the app icon is correct on first install.
-- Add a `LaunchScreen.storyboard` (warm bear-cocoa background `#96725E` + centered `cubbly-nobg` logo) and switch `UILaunchScreen` in Info.plist to use it. The .mov keeps playing in `SplashView` after launch.
-- Ship a `RESOURCES_VERIFY.md` with a one-line `find Resources -type f` snapshot inside the zip so it's obvious every asset is present.
+### 1. Realtime messages (`MessagesRepository` + `ChatView`)
 
-## 2. Font console spam ("Unable to update Font Descriptor's weight to 0.3 / 0.56")
+Add a `subscribeToMessages(conversationID:) -> AsyncStream<RealtimeEvent>` API that wraps `supabase.realtimeV2.channel("messages:<id>")` with `postgresChange(InsertAction.self/UpdateAction.self/DeleteAction.self, schema:"public", table:"messages", filter: "conversation_id=eq.<id>")`.
 
-iOS is rejecting weights because the variable Nunito file isn't being matched as a variable font; it's being treated as a single static face, so SwiftUI's `.weight(.semibold)` etc. fails to apply.
+In `ChatView.swift`:
+- On `.task(id: conversation.id)`: start the stream, hydrate sender profile + reply preview for each event, and merge into `@State messages` (dedupe by id, replace optimistic temp- ids).
+- On view disappear / id change: `await channel.unsubscribe()`.
+- Keep optimistic send — when realtime INSERT arrives with same content+sender, swap the temp row.
 
-- Switch from a single variable TTF to the **8 static Nunito + 8 italic** weights (Light/Regular/Medium/SemiBold/Bold/ExtraBold/Black + italics). Drop them under `Resources/Fonts/`. Update `UIAppFonts` in Info.plist to list every face.
-- Replace `Theme.Fonts` with weight-aware helpers (`Font.custom("Nunito-SemiBold", size: …)`) and add a `Font.cubbly(_ size, _ weight)` helper. Sweep every `Font.custom("Nunito", size: …).weight(…)` call site (~25 spots across DMListView, MainTabView, YouView, FriendsView, GiphyPickerView, etc.) to use the helper. This kills every "Unable to update Font Descriptor's weight" warning and gives correct weights everywhere.
+This mirrors `src/hooks/useMessages.ts` exactly.
 
-## 3. Presence channel warning ("track presence after subscribing", "add callbacks before subscribing")
+### 2. Realtime conversation list (`ConversationsRepository` + `DMListView`)
 
-`PresenceService.swift` calls `subscribeWithError()` first and only then iterates `presenceChange()` and calls `track(...)` — that's the wrong order for supabase-swift v2.
+Subscribe to `messages` INSERTs across all conversations the user participates in (single channel, no filter — RLS already restricts) and bump the affected `ConversationSummary.lastMessageAt` + reorder. Also subscribe to `conversations` UPDATE for `updated_at` changes. Drives unread dots and last-message preview live.
 
-- Restructure `start(userID:)` to: build channel → register `presenceChange()` listener task → `track(...)` → finally `subscribeWithError()`. This silences both warnings and makes presence reliable.
+### 3. SVG icon resolution (`SVGIcon.swift`)
 
-## 4. Navigation regressions (chat scroll, swipe, black flash, DM right-swipe)
+Fix `resolveURL`:
+- Try `Bundle.main.url(forResource: name, withExtension: "svg")` first (flat bundle — this is how XcodeGen ships them).
+- Then try the `Icons/` subdirectory variant.
+- Then walk `resourcePath` recursively as a last resort (already there).
 
-- Rip out `HorizontalSwipe` entirely. It's fighting both vertical scroll and SwiftUI's built-in interactive pop. Replace with the system back gesture by removing `.navigationBarBackButtonHidden(true)` on `ChatView` and instead hiding only the back-button label/title, while leaving `interactivePopGestureRecognizer` enabled. This gives Apple-native edge-swipe-to-dismiss with a real preview of the underlying screen (no black flash, no half-swipes through ghost screens).
-- Re-enable full vertical scrolling in chat (the `isSwipingOut` guard goes away).
-- DMListView no longer has any horizontal swipe attached, so the "swipe right on DM list shows black screen" bug is gone. Tapping a row still pushes into chat normally.
+Also confirm `project.yml` ships `Resources/Icons/**` with `type: folder` (preserves the subdirectory) OR as flat resources — pick one and align `SVGIcon` to it. Plan: ship as **flat files** (simpler) and update `resolveURL` to look at bundle root first.
 
-## 5. You-tab banner expanding the layout
+### 4. Brand assets — populate the imagesets
 
-The `AnimatedImageView` is sized via `.frame(height: 132)` on the parent ZStack but its underlying `UIImageView` reports its intrinsic image size, which causes layout to grow when a tall GIF loads.
+The three imagesets (`cubbly-logo`, `cubbly-nobg`, `cubbly-wordmark`) have `Contents.json` but no PNGs. Copy the PNGs from the web project's `src/assets/` (or `public/`) into:
+- `ios-native/Resources/Assets.xcassets/cubbly-logo.imageset/cubbly-logo.png` (+ `@2x`, `@3x`)
+- `ios-native/Resources/Assets.xcassets/cubbly-nobg.imageset/cubbly-nobg.png` (+ `@2x`, `@3x`)
+- `ios-native/Resources/Assets.xcassets/cubbly-wordmark.imageset/cubbly-wordmark.png` (+ `@2x`, `@3x`)
 
-- Wrap `AnimatedImageView` so its `UIImageView` returns `intrinsicContentSize = .zero`, then constrain it with `.frame(maxWidth: .infinity).frame(height: 132).clipped()` and `.allowsHitTesting(false)`. Banner will render at a fixed strip height regardless of GIF aspect.
+Update each `Contents.json` to reference the three filenames at scales 1x/2x/3x.
 
-## 6. Group chat avatar (matches desktop)
+After that, `Image("cubbly-nobg")` (used in `LaunchScreen.storyboard` and `LoginView`) renders properly and the launch screen stops being a brown rectangle with no logo.
 
-- Add `Shared/GroupAvatar.swift`: a tiled mini-mosaic (1/2/3-up) using each member's `avatarURL`, mirroring the web `GroupAvatar.tsx`.
-- `ConversationSummary.avatarURL` returns `nil` for groups when no `pictureURL` is set; update `DMRow` and `ChatView` header to render `GroupAvatar(members:)` when `conversation.isGroup && pictureURL == nil`, otherwise the regular `AvatarView`.
+### 5. Launch screen wiring (`Info.plist` + `project.yml`)
 
-## 7. Chat images: tap to fullscreen + correct GIF aspect
+- Ensure `Info.plist` has `UILaunchStoryboardName = LaunchScreen` (no `.storyboard` suffix).
+- Ensure `project.yml` includes `Resources/LaunchScreen.storyboard` as a resource and sets `INFOPLIST_KEY_UILaunchStoryboardName` if using build-setting–style plist generation.
 
-- Add `Shared/ImageLightbox.swift` (full-screen cover with pinch-to-zoom + swipe-down to dismiss, matches the web `ImageLightbox.tsx`).
-- In `DiscordStyleBubble.content`:
-  - Image branch becomes a `Button { lightbox = url } label: { AsyncImage … .scaledToFit() }` and presents the lightbox via `.fullScreenCover`.
-  - GIF branch: change from a fixed `220x160` frame to `.frame(maxWidth: 260)` with `.aspectRatio(contentMode: .fit)` and `AnimatedImageView(url: url, contentMode: .scaleAspectFit)`. No more "way too zoomed in".
-  - Video branch already uses fullscreen — keep, just style the play overlay.
+### 6. .mov / animated content
 
-## 8. Attachments half-sheet glitch after granting full photo access
+Add `VideoPlayerView.swift` (thin `UIViewRepresentable` over `AVPlayerLayer` with looping + muted autoplay) and route any `.mov` URL through it inside `AttachmentItem` / message rendering. If the user actually meant Lottie (`.json`), confirm before adding the dep — but the safe baseline is AVKit-based playback for `.mov`/`.mp4`.
 
-- Recreate `AttachmentsPicker` as a UIKit-backed PhotoKit grid (`PHCachingImageManager` + `UICollectionView`) wrapped via `UIViewControllerRepresentable`. Pure SwiftUI `LazyVGrid` over `PHAsset` is the source of the glitch (it re-fetches thumbnails on every state change and races with `PHPhotoLibrary` change observers).
-- Add a `PHPhotoLibraryChangeObserver` so newly granted access immediately repopulates the grid instead of staying blank.
+### 7. Repackage
 
-## 9. Friends list and previously broken bot/aria/♡ rows
+Regenerate `Cubbly.xcodeproj` via `xcodegen`, zip as **`cubbly-ios-v6.zip`** excluding `.build`, `DerivedData`, `.xcodeproj` state, and `.DS_Store`.
 
-- Already restored in the database last turn. Sanity check in `FriendsRepository`: ensure rows where `requester_id = me OR addressee_id = me AND status = 'accepted'` are returned and de-duplicated by the *other* user's id. Add a unit-style print-on-empty so future regressions are visible.
+## Files Touched
 
-## 10. Ship
+- `ios-native/Sources/Cubbly/Core/Repositories/MessagesRepository.swift` — add realtime subscribe API
+- `ios-native/Sources/Cubbly/Core/Repositories/ConversationsRepository.swift` — add realtime subscribe API
+- `ios-native/Sources/Cubbly/Features/Chat/ChatView.swift` — consume stream, merge optimistic
+- `ios-native/Sources/Cubbly/Features/DMs/DMListView.swift` — consume stream, reorder list
+- `ios-native/Sources/Cubbly/Shared/SVGIcon.swift` — fix bundle resolution order
+- `ios-native/Sources/Cubbly/Shared/VideoPlayerView.swift` — **new**, AVPlayer wrapper
+- `ios-native/Sources/Cubbly/Features/Chat/AttachmentsPicker.swift` (or wherever attachments render) — route `.mov` to `VideoPlayerView`
+- `ios-native/Resources/Assets.xcassets/cubbly-logo.imageset/` — add PNGs + update `Contents.json`
+- `ios-native/Resources/Assets.xcassets/cubbly-nobg.imageset/` — add PNGs + update `Contents.json`
+- `ios-native/Resources/Assets.xcassets/cubbly-wordmark.imageset/` — add PNGs + update `Contents.json`
+- `ios-native/Resources/Info.plist` — confirm `UILaunchStoryboardName`
+- `ios-native/project.yml` — confirm Resources globs include Icons + LaunchScreen
+- Repackage → `/mnt/documents/cubbly-ios-v6.zip`
 
-- Re-run `xcodegen generate` inside the zipped project (so the .xcodeproj inside the zip is in sync with the new `project.yml`).
-- Bundle the resources, regenerated `Cubbly.xcodeproj`, and a `README_FIRST.txt` describing: open `.xcodeproj`, set signing team, run.
-- Output `cubbly-ios-v3.zip` to `/mnt/documents/`.
+## Required from you (one ask)
 
-## Files touched
-
-```
-ios-native/project.yml
-ios-native/Resources/Info.plist
-ios-native/Resources/Assets.xcassets/AppIcon.appiconset/{Contents.json, cubbly-icon-1024.png}
-ios-native/Resources/Assets.xcassets/{cubbly-logo, cubbly-wordmark, cubbly-nobg}.imageset/*
-ios-native/Resources/LaunchScreen.storyboard       (new)
-ios-native/Resources/Fonts/Nunito-{Light,Regular,Medium,SemiBold,Bold,ExtraBold,Black}{,-Italic}.ttf
-ios-native/Sources/Cubbly/Core/Theme/Theme.swift   (font helper rewrite)
-ios-native/Sources/Cubbly/Core/Services/PresenceService.swift  (subscribe order)
-ios-native/Sources/Cubbly/Shared/HorizontalSwipe.swift          (delete)
-ios-native/Sources/Cubbly/Shared/GroupAvatar.swift              (new)
-ios-native/Sources/Cubbly/Shared/ImageLightbox.swift            (new)
-ios-native/Sources/Cubbly/Shared/AnimatedImageView.swift        (intrinsic size fix)
-ios-native/Sources/Cubbly/Features/Chat/ChatView.swift          (system back, image lightbox, GIF aspect, group avatar in header)
-ios-native/Sources/Cubbly/Features/Chat/AttachmentsPicker.swift (UIKit rewrite)
-ios-native/Sources/Cubbly/Features/DMs/DMListView.swift         (group avatar in row)
-ios-native/Sources/Cubbly/Features/You/YouView.swift            (banner sizing)
-ios-native/Sources/Cubbly/Features/MainTabView.swift            (font sweep)
-ios-native/Sources/Cubbly/Features/{Friends, Shop, DMs}/*       (font sweep only)
-```
-
-Approve and I'll ship `cubbly-ios-v3.zip` with everything wired correctly so opening the .xcodeproj works without manual import.
+The brand PNGs aren't in `ios-native/`. I need to source them — confirm I should pull from the web project's existing assets (`src/assets/` or `public/`) and reuse the same files for the imagesets. If you have higher-res `@2x`/`@3x` versions you'd prefer, drop them in chat; otherwise I'll generate `@2x`/`@3x` by upscaling the highest-res source available in the repo.
 
