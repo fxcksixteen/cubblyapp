@@ -263,6 +263,8 @@ struct DMListView: View {
         return d
     }
 }
+
+private struct DMRow: View {
     let conversation: ConversationSummary
     let isHighlighted: Bool
     @ObservedObject var presence: PresenceService
