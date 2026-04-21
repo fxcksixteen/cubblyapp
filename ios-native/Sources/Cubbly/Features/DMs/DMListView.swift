@@ -61,6 +61,12 @@ struct DMListView: View {
                 }
             }
             .refreshable { await load(silently: false) }
+            .horizontalSwipe(left: {
+                if let id = lastChat.lastConversationID,
+                   let conv = cache.conversations.first(where: { $0.id == id }) {
+                    openConversation = conv
+                }
+            })
         }
     }
 

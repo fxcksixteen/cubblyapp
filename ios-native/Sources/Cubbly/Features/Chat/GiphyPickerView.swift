@@ -173,10 +173,12 @@ private struct GifThumb: View {
     let isFavorited: Bool
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            AsyncImage(url: URL(string: item.previewURL)) { img in
-                img.resizable().scaledToFill()
-            } placeholder: {
-                Rectangle().fill(Theme.Colors.bgSecondary)
+            Group {
+                if let url = URL(string: item.previewURL) {
+                    AnimatedImageView(url: url, contentMode: .scaleAspectFill)
+                } else {
+                    Rectangle().fill(Theme.Colors.bgSecondary)
+                }
             }
             .frame(height: 120)
             .clipped()

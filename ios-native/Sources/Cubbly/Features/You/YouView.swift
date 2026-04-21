@@ -79,7 +79,7 @@ struct YouView: View {
                 .offset(x: 16, y: 48)
             }
             .frame(height: 132)
-            .padding(.bottom, 56)
+            .padding(.bottom, 60)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(displayName)

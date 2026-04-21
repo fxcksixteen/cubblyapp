@@ -8,7 +8,7 @@ struct MainTabView: View {
     @StateObject private var presence = PresenceService.shared
 
     var body: some View {
-        ZStack(alignment: .bottom) {
+        VStack(spacing: 0) {
             Group {
                 switch selection {
                 case .home:    DMListView()
@@ -18,12 +18,11 @@ struct MainTabView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.bottom, 56)
             .environmentObject(presence)
 
             CubblyTabBar(selection: $selection)
         }
-        .background(Theme.Colors.bgPrimary.ignoresSafeArea())
+        .background(Theme.Colors.bgPrimary)
     }
 }
 
@@ -41,7 +40,6 @@ private struct CubblyTabBar: View {
         .background(
             Theme.Colors.bgSecondary
                 .overlay(Rectangle().fill(Theme.Colors.border).frame(height: 1), alignment: .top)
-                .ignoresSafeArea(edges: .bottom)
         )
     }
 
