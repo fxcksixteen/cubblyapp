@@ -388,11 +388,21 @@ ipcMain.handle("auto-launch-set", (_evt, value) => {
 });
 
 // ----- Process scanner (for activity detection) -----
+// Cache the result aggressively. The renderer polls every 60s in the best
+// case, but if it bugs out and asks more often, we'd block the main thread
+// running `tasklist` (~100-300ms each) which causes audio underruns and ping
+// spikes during voice calls / screen sharing. So: never run this more than
+// once per ~25s no matter what the renderer does.
+let __procListCache = { ts: 0, names: [] };
+const PROC_LIST_TTL_MS = 25_000;
 function listRunningProcesses() {
   return new Promise((resolve) => {
+    if (Date.now() - __procListCache.ts < PROC_LIST_TTL_MS) {
+      return resolve(__procListCache.names);
+    }
     if (process.platform === "win32") {
       exec('tasklist /fo csv /nh', { maxBuffer: 4 * 1024 * 1024 }, (err, stdout) => {
-        if (err) return resolve([]);
+        if (err) return resolve(__procListCache.names);
         const names = new Set();
         stdout.split(/\r?\n/).forEach(line => {
           const match = line.match(/^"([^"]+)"/);
@@ -401,11 +411,13 @@ function listRunningProcesses() {
             if (name) names.add(name);
           }
         });
-        resolve(Array.from(names));
+        const arr = Array.from(names);
+        __procListCache = { ts: Date.now(), names: arr };
+        resolve(arr);
       });
     } else if (process.platform === "darwin" || process.platform === "linux") {
       exec("ps -A -o comm=", { maxBuffer: 4 * 1024 * 1024 }, (err, stdout) => {
-        if (err) return resolve([]);
+        if (err) return resolve(__procListCache.names);
         const names = new Set();
         stdout.split(/\r?\n/).forEach(line => {
           const trimmed = line.trim();
@@ -413,7 +425,9 @@ function listRunningProcesses() {
           const base = trimmed.split("/").pop().toLowerCase();
           if (base) names.add(base);
         });
-        resolve(Array.from(names));
+        const arr = Array.from(names);
+        __procListCache = { ts: Date.now(), names: arr };
+        resolve(arr);
       });
     } else {
       resolve([]);
