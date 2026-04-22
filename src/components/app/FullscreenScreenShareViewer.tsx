@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { X, Maximize2, Minimize2, Volume2, VolumeX, PictureInPicture2 } from "lucide-react";
+import { X, Maximize2, Minimize2, Volume2, VolumeX, PictureInPicture2, Pause } from "lucide-react";
 import cubblyLogo from "@/assets/cubbly-logo.png";
 import type { PeerGainApi } from "@/lib/peerGain";
+import UserVolumeMenu from "./UserVolumeMenu";
 
 interface Props {
   stream: MediaStream;
@@ -47,6 +48,11 @@ const FullscreenScreenShareViewer = ({ stream, sharerName, type = "screen", isLo
   const [fitMode, setFitMode] = useState<"contain" | "cover">("contain");
   const [chromeVisible, setChromeVisible] = useState(true);
   const idleTimerRef = useRef<number | null>(null);
+  // Right-click → inline volume menu (same component as the avatar right-click).
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+  // Local preview pause-when-unfocused. Only affects what WE see — the
+  // outbound MediaStream tracks keep flowing to peers untouched.
+  const [previewPaused, setPreviewPaused] = useState(false);
 
   // Wire stream + autoplay. When using the per-peer gain pipeline, keep the
   // <video> element muted forever — audio plays through the GainNode → the
@@ -105,6 +111,39 @@ const FullscreenScreenShareViewer = ({ stream, sharerName, type = "screen", isLo
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = prev; };
   }, []);
+
+  // Pause the LOCAL preview <video> when the window loses focus, to save
+  // GPU/CPU on the streamer's machine. CRITICAL: this only pauses the
+  // <video> element's playback — the underlying MediaStream tracks (which
+  // is what peers actually receive over WebRTC) are completely untouched.
+  // Only applies to the LOCAL viewer; remote streams always play.
+  useEffect(() => {
+    if (!isLocal) return;
+    const onBlur = () => setPreviewPaused(true);
+    const onFocus = () => setPreviewPaused(false);
+    const onVis = () => {
+      if (document.visibilityState === "hidden") setPreviewPaused(true);
+      else if (document.hasFocus()) setPreviewPaused(false);
+    };
+    // Initial state — if we open the viewer while already unfocused, pause.
+    if (typeof document !== "undefined" && !document.hasFocus()) setPreviewPaused(true);
+    window.addEventListener("blur", onBlur);
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.removeEventListener("blur", onBlur);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [isLocal]);
+
+  // Apply pause/play to the <video> element (preview only).
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v || !isLocal) return;
+    if (previewPaused) { try { v.pause(); } catch {} }
+    else { v.play().catch(() => {}); }
+  }, [previewPaused, isLocal]);
 
   const handleVolumeChange = (next: number) => {
     setVolume(next);
@@ -167,9 +206,30 @@ const FullscreenScreenShareViewer = ({ stream, sharerName, type = "screen", isLo
           transform: "scale(1)",
           transformOrigin: "center",
           animation: "cubbly-fs-zoom 220ms ease-out",
+          opacity: previewPaused ? 0.25 : 1,
+          transition: "opacity 200ms ease",
         }}
-        onContextMenu={(e) => e.preventDefault()}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (usePeerGain) setCtxMenu({ x: e.clientX, y: e.clientY });
+        }}
       />
+
+      {isLocal && previewPaused && (
+        <div
+          className="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none"
+          style={{ background: "rgba(0,0,0,0.55)" }}
+        >
+          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white/15 backdrop-blur-sm">
+            <Pause className="h-6 w-6 text-white" />
+          </div>
+          <p className="text-sm font-semibold text-white/90">Preview paused</p>
+          <p className="text-[11px] text-white/60 max-w-xs text-center px-4">
+            Saving resources while Cubbly isn't focused. Your screen is still being shared — viewers see it normally.
+          </p>
+        </div>
+      )}
 
       <div
         className="absolute top-0 inset-x-0 flex items-center justify-between gap-3 px-4 py-3 transition-opacity duration-200"
@@ -196,9 +256,16 @@ const FullscreenScreenShareViewer = ({ stream, sharerName, type = "screen", isLo
 
         <div className="flex items-center gap-2 shrink-0">
           {!isLocal && (
-            <div className="flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5">
+            <div
+              className="flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5"
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+              onPointerUp={(e) => e.stopPropagation()}
+              onTouchStart={(e) => e.stopPropagation()}
+            >
               <button
-                onClick={handleMuteToggle}
+                onClick={(e) => { e.stopPropagation(); handleMuteToggle(); }}
                 className="text-white hover:text-white/80"
                 aria-label={muted ? "Unmute" : "Mute"}
               >
@@ -211,6 +278,9 @@ const FullscreenScreenShareViewer = ({ stream, sharerName, type = "screen", isLo
                 step={sliderStep}
                 value={muted ? 0 : volume}
                 onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
+                onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
                 className="h-1 w-24 accent-[#3ba55c]"
               />
               {usePeerGain && (
@@ -263,6 +333,17 @@ const FullscreenScreenShareViewer = ({ stream, sharerName, type = "screen", isLo
           to   { transform: scale(1);    opacity: 1; }
         }
       `}</style>
+
+      {ctxMenu && usePeerGain && (
+        <UserVolumeMenu
+          userId={audioPeerId!}
+          displayName={sharerName}
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          volumeApi={volumeApi!}
+          onClose={() => setCtxMenu(null)}
+        />
+      )}
     </div>
   );
 };
