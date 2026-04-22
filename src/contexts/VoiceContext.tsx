@@ -285,6 +285,16 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     return () => { (window as any).__cubblyInCall = false; };
   }, [activeCall]);
 
+  // Same idea for screensharing — when this is true, ActivityContext stops
+  // running `tasklist` polls entirely so the heavy IPC doesn't compete with
+  // per-window WASAPI PCM forwarding (which is what causes ping spikes when
+  // sharing a game specifically — games trip the activity detector and the
+  // PowerShell calls block the main thread). Mirrors `__cubblyInCall`.
+  useEffect(() => {
+    (window as any).__cubblyScreenSharing = !!isScreenSharing;
+    return () => { (window as any).__cubblyScreenSharing = false; };
+  }, [isScreenSharing]);
+
   /**
    * Instant peer mute/deafen/video state, broadcast over the signaling
    * channel so the UI updates with zero latency. The DB-backed
