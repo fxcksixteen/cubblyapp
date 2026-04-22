@@ -22,7 +22,7 @@ struct MainTabView: View {
 
             CubblyTabBar(selection: $selection)
         }
-        .background(Theme.Colors.bgPrimary)
+        .background(Theme.Colors.bgPrimary.ignoresSafeArea())
     }
 }
 
