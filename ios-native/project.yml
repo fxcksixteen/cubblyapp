@@ -62,6 +62,10 @@ targets:
         NSCameraUsageDescription: "Cubbly needs camera access so you can take photos to share in chats."
         NSMicrophoneUsageDescription: "Cubbly needs the microphone for voice calls."
         ITSAppUsesNonExemptEncryption: false
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+          UIImageName: cubbly-nobg
+          UIImageRespectsSafeAreaInsets: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.cubbly.ios
