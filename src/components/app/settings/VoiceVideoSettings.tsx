@@ -43,6 +43,15 @@ const VoiceVideoSettings = ({ panelStyle, cardStyle }: Props) => {
   const captureLocked = inCall || isIOSLike;
   const [activeTab, setActiveTab] = useState<"voice" | "video">("voice");
 
+  // Belt-and-suspenders: VoiceContext should always provide these arrays, but
+  // if the context ever defaults to undefined (e.g. during a render before
+  // enumeration completes on iOS PWA), `.filter` would crash the panel.
+  const safeDevices = {
+    inputs: availableDevices?.inputs ?? [],
+    outputs: availableDevices?.outputs ?? [],
+    cameras: availableDevices?.cameras ?? [],
+  };
+
   const activeRegion = settings.serverRegion === "auto"
     ? SERVER_REGIONS.find(r => r.id === detectedRegion) || SERVER_REGIONS[0]
     : SERVER_REGIONS.find(r => r.id === settings.serverRegion) || SERVER_REGIONS[0];
@@ -84,7 +93,7 @@ const VoiceVideoSettings = ({ panelStyle, cardStyle }: Props) => {
         <VoiceTab
           settings={settings}
           updateSettings={updateSettings}
-          availableDevices={availableDevices}
+          availableDevices={safeDevices}
           audioLevel={audioLevel}
           detectedRegion={detectedRegion}
           activeRegion={activeRegion}
@@ -96,7 +105,7 @@ const VoiceVideoSettings = ({ panelStyle, cardStyle }: Props) => {
         <VideoTab
           settings={settings}
           updateSettings={updateSettings}
-          availableDevices={availableDevices}
+          availableDevices={safeDevices}
           screenShareSettings={screenShareSettings}
           updateScreenShareSettings={updateScreenShareSettings}
           cardStyle={cardStyle}
