@@ -57,6 +57,17 @@ final class PresenceService: ObservableObject {
         }
         await ch.track(state: ["online_at": .string(ISO8601DateFormatter().string(from: Date()))])
 
+        // CRITICAL: hydrate initial state. presenceChange() only fires for
+        // *future* joins/leaves — without this, users already online when we
+        // connect never appear, so all friends look "offline" until they
+        // refresh. Mirrors the web app's initial sync.
+        let initialState = ch.presenceState()
+        var initial: Set<UUID> = []
+        for key in initialState.keys {
+            if let id = UUID(uuidString: key) { initial.insert(id) }
+        }
+        self.onlineUserIDs = initial
+
         self.channel = ch
     }
 
