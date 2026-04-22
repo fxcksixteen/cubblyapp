@@ -112,6 +112,39 @@ const FullscreenScreenShareViewer = ({ stream, sharerName, type = "screen", isLo
     return () => { document.body.style.overflow = prev; };
   }, []);
 
+  // Pause the LOCAL preview <video> when the window loses focus, to save
+  // GPU/CPU on the streamer's machine. CRITICAL: this only pauses the
+  // <video> element's playback — the underlying MediaStream tracks (which
+  // is what peers actually receive over WebRTC) are completely untouched.
+  // Only applies to the LOCAL viewer; remote streams always play.
+  useEffect(() => {
+    if (!isLocal) return;
+    const onBlur = () => setPreviewPaused(true);
+    const onFocus = () => setPreviewPaused(false);
+    const onVis = () => {
+      if (document.visibilityState === "hidden") setPreviewPaused(true);
+      else if (document.hasFocus()) setPreviewPaused(false);
+    };
+    // Initial state — if we open the viewer while already unfocused, pause.
+    if (typeof document !== "undefined" && !document.hasFocus()) setPreviewPaused(true);
+    window.addEventListener("blur", onBlur);
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.removeEventListener("blur", onBlur);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [isLocal]);
+
+  // Apply pause/play to the <video> element (preview only).
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v || !isLocal) return;
+    if (previewPaused) { try { v.pause(); } catch {} }
+    else { v.play().catch(() => {}); }
+  }, [previewPaused, isLocal]);
+
   const handleVolumeChange = (next: number) => {
     setVolume(next);
     if (usePeerGain) {
