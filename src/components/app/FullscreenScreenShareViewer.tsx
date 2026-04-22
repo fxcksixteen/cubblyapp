@@ -206,9 +206,30 @@ const FullscreenScreenShareViewer = ({ stream, sharerName, type = "screen", isLo
           transform: "scale(1)",
           transformOrigin: "center",
           animation: "cubbly-fs-zoom 220ms ease-out",
+          opacity: previewPaused ? 0.25 : 1,
+          transition: "opacity 200ms ease",
         }}
-        onContextMenu={(e) => e.preventDefault()}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (usePeerGain) setCtxMenu({ x: e.clientX, y: e.clientY });
+        }}
       />
+
+      {isLocal && previewPaused && (
+        <div
+          className="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none"
+          style={{ background: "rgba(0,0,0,0.55)" }}
+        >
+          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white/15 backdrop-blur-sm">
+            <Pause className="h-6 w-6 text-white" />
+          </div>
+          <p className="text-sm font-semibold text-white/90">Preview paused</p>
+          <p className="text-[11px] text-white/60 max-w-xs text-center px-4">
+            Saving resources while Cubbly isn't focused. Your screen is still being shared — viewers see it normally.
+          </p>
+        </div>
+      )}
 
       <div
         className="absolute top-0 inset-x-0 flex items-center justify-between gap-3 px-4 py-3 transition-opacity duration-200"
