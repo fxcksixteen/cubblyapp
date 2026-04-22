@@ -23,11 +23,6 @@ struct MainTabView: View {
             CubblyTabBar(selection: $selection)
         }
         .background(Theme.Colors.bgPrimary.ignoresSafeArea())
-        .task {
-            if let uid = SupabaseManager.shared.currentUserID {
-                await presence.start(userID: uid)
-            }
-        }
     }
 }
 
