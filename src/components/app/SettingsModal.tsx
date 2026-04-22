@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useIsMobile } from "@/hooks/use-mobile";
 import VoiceVideoSettings from "./settings/VoiceVideoSettings";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import ActivityPrivacySettings from "./settings/ActivityPrivacySettings";
 import GamingModeSettings from "./settings/GamingModeSettings";
 import NotificationSettings from "./settings/NotificationSettings";
@@ -500,7 +501,14 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
         return <NotificationSettings cardStyle={cardStyle as any} />;
 
       case "voice-video":
-        return <VoiceVideoSettings panelStyle={panelStyle as any} cardStyle={cardStyle as any} />;
+        // Wrap in an error boundary so a crash here (notably on iOS PWA where
+        // some MediaDevices APIs are missing/throw) doesn't take down the
+        // whole settings modal / app — falls back to a friendly retry card.
+        return (
+          <ErrorBoundary>
+            <VoiceVideoSettings panelStyle={panelStyle as any} cardStyle={cardStyle as any} />
+          </ErrorBoundary>
+        );
 
       case "activity-privacy":
         return <ActivityPrivacySettings cardStyle={cardStyle as any} />;

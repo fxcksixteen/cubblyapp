@@ -7,11 +7,20 @@ import { useGroupCall } from "@/contexts/GroupCallContext";
 // stream for the mic/camera test, iOS revokes the call's track and the user
 // goes silent/blind for everyone. Detect iOS-class browsers and disable the
 // live previews there — and also block them whenever there's an active call.
+// Wrapped defensively because some embedded iOS PWA contexts shape `navigator`
+// without `platform` / `maxTouchPoints`, which previously threw at module
+// load and crashed the entire panel.
 const isIOSLike = (() => {
-  if (typeof navigator === "undefined") return false;
-  const ua = navigator.userAgent || "";
-  const iPadOS = navigator.platform === "MacIntel" && (navigator as any).maxTouchPoints > 1;
-  return /iPad|iPhone|iPod/.test(ua) || iPadOS;
+  try {
+    if (typeof navigator === "undefined") return false;
+    const ua = navigator.userAgent || "";
+    const platform = (navigator as any).platform || "";
+    const maxTouch = (navigator as any).maxTouchPoints || 0;
+    const iPadOS = platform === "MacIntel" && maxTouch > 1;
+    return /iPad|iPhone|iPod/.test(ua) || iPadOS;
+  } catch {
+    return false;
+  }
 })();
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
@@ -33,6 +42,15 @@ const VoiceVideoSettings = ({ panelStyle, cardStyle }: Props) => {
   const inCall = !!activeCall;
   const captureLocked = inCall || isIOSLike;
   const [activeTab, setActiveTab] = useState<"voice" | "video">("voice");
+
+  // Belt-and-suspenders: VoiceContext should always provide these arrays, but
+  // if the context ever defaults to undefined (e.g. during a render before
+  // enumeration completes on iOS PWA), `.filter` would crash the panel.
+  const safeDevices = {
+    inputs: availableDevices?.inputs ?? [],
+    outputs: availableDevices?.outputs ?? [],
+    cameras: availableDevices?.cameras ?? [],
+  };
 
   const activeRegion = settings.serverRegion === "auto"
     ? SERVER_REGIONS.find(r => r.id === detectedRegion) || SERVER_REGIONS[0]
@@ -75,7 +93,7 @@ const VoiceVideoSettings = ({ panelStyle, cardStyle }: Props) => {
         <VoiceTab
           settings={settings}
           updateSettings={updateSettings}
-          availableDevices={availableDevices}
+          availableDevices={safeDevices}
           audioLevel={audioLevel}
           detectedRegion={detectedRegion}
           activeRegion={activeRegion}
@@ -87,7 +105,7 @@ const VoiceVideoSettings = ({ panelStyle, cardStyle }: Props) => {
         <VideoTab
           settings={settings}
           updateSettings={updateSettings}
-          availableDevices={availableDevices}
+          availableDevices={safeDevices}
           screenShareSettings={screenShareSettings}
           updateScreenShareSettings={updateScreenShareSettings}
           cardStyle={cardStyle}

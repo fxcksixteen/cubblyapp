@@ -41,13 +41,18 @@ const ActivityContext = createContext<ActivityContextType>({
 
 export const useActivity = () => useContext(ActivityContext);
 
-const POLL_INTERVAL_MS = 30_000;
-// When suppressing (gaming mode active) OR in a call, slow the heavy
-// `tasklist` poll way down so it doesn't compete with WebRTC for CPU.
-const POLL_INTERVAL_SUPPRESSED_MS = 90_000;
-// When our window isn't focused (a game or other app has focus), poll EVEN
-// less often. Detecting activity isn't urgent — the user is clearly busy.
-const POLL_INTERVAL_UNFOCUSED_MS = 120_000;
+// Base cadence — 60s is plenty. Activity is a "nice to have", not real-time.
+const POLL_INTERVAL_MS = 60_000;
+// While gaming-mode is suppressing OR an active call is up, slow WAY down so
+// the heavy `tasklist` scan / PowerShell calls don't fight WebRTC for CPU/wifi.
+const POLL_INTERVAL_SUPPRESSED_MS = 180_000;
+// When our window isn't focused (a game has focus), poll even less often.
+const POLL_INTERVAL_UNFOCUSED_MS = 240_000;
+// While screensharing, pause polling entirely — every spawn of `tasklist` /
+// PowerShell briefly blocks the same Node main thread that's forwarding
+// per-window WASAPI PCM frames over IPC, causing audio underruns and the
+// ping spikes the user sees while sharing a game.
+const POLL_INTERVAL_SCREENSHARE_MS = 600_000;
 const isElectron = typeof window !== "undefined" && (window as any).electronAPI?.isElectron;
 
 export const ActivityProvider = ({ children }: { children: ReactNode }) => {
@@ -181,11 +186,15 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
     // Use slow polling when gaming-mode suppression OR an active call is happening,
     // to avoid the heavy `tasklist` scan competing with WebRTC for CPU/wifi.
     const getInterval = () => {
+      const screenSharing = (window as any).__cubblyScreenSharing === true;
       const suppressing = (window as any).__cubblySuppress === true;
       const inCall = (window as any).__cubblyInCall === true;
       // `document.hasFocus()` is false whenever a game (or any other app) has
       // foreground focus — the perfect signal that we should back off hard.
       const unfocused = typeof document !== "undefined" && !document.hasFocus();
+      // Highest priority: while we're sending real-time PCM/video to peers,
+      // never spawn `tasklist` / PowerShell — they block the IPC main thread.
+      if (screenSharing) return POLL_INTERVAL_SCREENSHARE_MS;
       if (unfocused) return POLL_INTERVAL_UNFOCUSED_MS;
       return suppressing || inCall ? POLL_INTERVAL_SUPPRESSED_MS : POLL_INTERVAL_MS;
     };
