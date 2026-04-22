@@ -23,9 +23,24 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.22";
+export const CURRENT_VERSION = "0.2.23";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.2.23",
+    title: "Smoother screenshare + iOS settings stability",
+    date: "2026-04-22",
+    hero: bearImage,
+    newFeatures: [
+      "Right-click directly on a friend's screen-share in fullscreen to open the same volume menu (0–200%, mute-for-you, reset) you get from their avatar.",
+      "When you're streaming and switch to your game, Cubbly now automatically pauses YOUR local preview to free up GPU/CPU. Your viewers still see the stream perfectly — only your own preview is paused. Focus Cubbly again to resume.",
+    ],
+    bugFixes: [
+      "Fixed the fullscreen screen-share volume slider kicking you out of fullscreen on drag — slider events now stay where they belong.",
+      "Fixed the iOS PWA hard-crashing to the snag screen when opening Voice & Video settings.",
+      "Reduced ping spikes during a game screen-share by backing off the activity-poller while sharing — no impact on per-window audio capture.",
+    ],
+  },
   {
     version: "0.2.22",
     title: "Calls connect reliably + iOS splash restored",
