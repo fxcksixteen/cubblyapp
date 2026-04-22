@@ -48,6 +48,11 @@ const FullscreenScreenShareViewer = ({ stream, sharerName, type = "screen", isLo
   const [fitMode, setFitMode] = useState<"contain" | "cover">("contain");
   const [chromeVisible, setChromeVisible] = useState(true);
   const idleTimerRef = useRef<number | null>(null);
+  // Right-click → inline volume menu (same component as the avatar right-click).
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+  // Local preview pause-when-unfocused. Only affects what WE see — the
+  // outbound MediaStream tracks keep flowing to peers untouched.
+  const [previewPaused, setPreviewPaused] = useState(false);
 
   // Wire stream + autoplay. When using the per-peer gain pipeline, keep the
   // <video> element muted forever — audio plays through the GainNode → the
