@@ -333,6 +333,17 @@ const FullscreenScreenShareViewer = ({ stream, sharerName, type = "screen", isLo
           to   { transform: scale(1);    opacity: 1; }
         }
       `}</style>
+
+      {ctxMenu && usePeerGain && (
+        <UserVolumeMenu
+          userId={audioPeerId!}
+          displayName={sharerName}
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          volumeApi={volumeApi!}
+          onClose={() => setCtxMenu(null)}
+        />
+      )}
     </div>
   );
 };
