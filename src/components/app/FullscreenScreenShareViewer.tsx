@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { X, Maximize2, Minimize2, Volume2, VolumeX, PictureInPicture2 } from "lucide-react";
+import { X, Maximize2, Minimize2, Volume2, VolumeX, PictureInPicture2, Pause } from "lucide-react";
 import cubblyLogo from "@/assets/cubbly-logo.png";
 import type { PeerGainApi } from "@/lib/peerGain";
+import UserVolumeMenu from "./UserVolumeMenu";
 
 interface Props {
   stream: MediaStream;
