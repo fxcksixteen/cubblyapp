@@ -256,9 +256,16 @@ const FullscreenScreenShareViewer = ({ stream, sharerName, type = "screen", isLo
 
         <div className="flex items-center gap-2 shrink-0">
           {!isLocal && (
-            <div className="flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5">
+            <div
+              className="flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5"
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+              onPointerUp={(e) => e.stopPropagation()}
+              onTouchStart={(e) => e.stopPropagation()}
+            >
               <button
-                onClick={handleMuteToggle}
+                onClick={(e) => { e.stopPropagation(); handleMuteToggle(); }}
                 className="text-white hover:text-white/80"
                 aria-label={muted ? "Unmute" : "Mute"}
               >
@@ -271,6 +278,9 @@ const FullscreenScreenShareViewer = ({ stream, sharerName, type = "screen", isLo
                 step={sliderStep}
                 value={muted ? 0 : volume}
                 onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
+                onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
                 className="h-1 w-24 accent-[#3ba55c]"
               />
               {usePeerGain && (
