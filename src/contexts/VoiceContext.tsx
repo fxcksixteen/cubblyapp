@@ -1088,15 +1088,18 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               // Use a dedicated hidden <audio> element so we don't fight the
               // <video> element's autoplay/render path.
               let el = document.querySelector<HTMLAudioElement>(`audio[data-cubbly-peer="${peerUserId}"][data-cubbly-kind="screen"]`);
+              const isNew = !el;
               if (!el) {
                 el = document.createElement("audio");
-                el.autoplay = true;
-                (el as any).playsInline = true;
                 (el as any).__cubblyRemote = true;
                 document.body.appendChild(el);
               }
               el.srcObject = remoteScreen;
-              el.play().catch(() => {});
+              if (isNew) {
+                armRemoteAudio(el, { volume: settings.outputVolume / 100 });
+              } else {
+                el.play().catch(() => {});
+              }
               attachPeerGain(peerUserId, remoteScreen, el, "screen");
             }
           };
