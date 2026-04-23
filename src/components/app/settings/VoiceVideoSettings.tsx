@@ -287,7 +287,7 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
               Default
             </SelectItem>
             {availableDevices.inputs
-              .filter((d: MediaDeviceInfo) => d.deviceId !== "default" && d.deviceId !== "communications")
+              .filter((d: MediaDeviceInfo) => d.deviceId && d.deviceId !== "default" && d.deviceId !== "communications")
               .map((d: MediaDeviceInfo) => (
               <SelectItem
                 key={d.deviceId}
@@ -375,7 +375,7 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
               Default
             </SelectItem>
             {availableDevices.outputs
-              .filter((d: MediaDeviceInfo) => d.deviceId !== "default" && d.deviceId !== "communications")
+              .filter((d: MediaDeviceInfo) => d.deviceId && d.deviceId !== "default" && d.deviceId !== "communications")
               .map((d: MediaDeviceInfo) => (
               <SelectItem
                 key={d.deviceId}
