@@ -607,20 +607,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       setRemoteStream(remote);
       const audioEl = document.createElement("audio");
       audioEl.srcObject = remote;
-      audioEl.autoplay = true;
-      // iOS requires playsinline + non-muted on freshly-created media elements,
-      // otherwise the system silently refuses to play the remote audio.
-      audioEl.setAttribute("playsinline", "true");
-      (audioEl as any).playsInline = true;
-      audioEl.muted = false;
-      audioEl.volume = settings.outputVolume / 100;
-      outputGainRef.current = { gain: { value: settings.outputVolume / 100 } } as any;
       (audioEl as any).__cubblyRemote = true;
-      if (settings.outputDeviceId !== "default" && (audioEl as any).setSinkId) {
-        (audioEl as any).setSinkId(settings.outputDeviceId).catch(console.error);
-      }
-      audioEl.play().catch(console.error);
+      outputGainRef.current = { gain: { value: settings.outputVolume / 100 } } as any;
       document.body.appendChild(audioEl);
+      // iOS PWA-safe arming: sets playsinline/autoplay/volume + retries
+      // play() on the next user gesture if the browser blocks autoplay.
+      armRemoteAudio(audioEl, {
+        volume: settings.outputVolume / 100,
+        sinkId: settings.outputDeviceId,
+      });
 
       // Route through per-peer GainNode so the user can scale this peer's
       // playback 0–200% via the right-click menu (Discord-style). Read from
