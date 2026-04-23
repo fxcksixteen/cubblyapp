@@ -1220,13 +1220,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         setRemoteStream(remote);
         const audioEl = document.createElement("audio");
         audioEl.srcObject = remote;
-        audioEl.autoplay = true;
-        audioEl.volume = settings.outputVolume / 100;
         (audioEl as any).__cubblyRemote = true;
-        if (settings.outputDeviceId !== "default" && (audioEl as any).setSinkId) {
-          (audioEl as any).setSinkId(settings.outputDeviceId).catch(console.error);
-        }
-        audioEl.play().then(() => console.log("[Voice][Loopback] ✅ Audio element playing")).catch(e => console.error("[Voice][Loopback] ❌ Audio play failed:", e));
+        document.body.appendChild(audioEl);
+        armRemoteAudio(audioEl, { volume: settings.outputVolume / 100, sinkId: settings.outputDeviceId });
         document.body.appendChild(audioEl);
 
         // Remote audio level monitor
