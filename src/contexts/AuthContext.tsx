@@ -142,6 +142,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       .subscribe(async (status) => {
         if (status === "SUBSCRIBED") {
           await channel.track({ user_id: user.id, online_at: new Date().toISOString() });
+          // Hydrate immediately — presence "sync" sometimes fires only on the
+          // NEXT join/leave, which leaves the friends list looking offline
+          // until someone toggles their status. Pull the current snapshot.
+          syncPresence();
         }
       });
 
