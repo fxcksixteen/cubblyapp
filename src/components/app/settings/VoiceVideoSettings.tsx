@@ -237,7 +237,7 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
             Server Region
           </p>
         </div>
-        <Select value={settings.serverRegion} onValueChange={(v) => updateSettings({ serverRegion: v })}>
+        <Select value={settings.serverRegion || "auto"} onValueChange={(v) => updateSettings({ serverRegion: v })}>
           <SelectTrigger
             className="w-full rounded-xl border text-sm"
             style={{ backgroundColor: "var(--app-input)", borderColor: "var(--app-border)", color: "var(--app-text-primary)" }}
@@ -272,7 +272,7 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
         <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: "var(--app-text-secondary)" }}>
           Input Device
         </p>
-        <Select value={settings.inputDeviceId} onValueChange={(v) => updateSettings({ inputDeviceId: v })}>
+        <Select value={settings.inputDeviceId || "default"} onValueChange={(v) => updateSettings({ inputDeviceId: v })}>
           <SelectTrigger
             className="w-full rounded-xl border text-sm"
             style={{ backgroundColor: "var(--app-input)", borderColor: "var(--app-border)", color: "var(--app-text-primary)" }}
@@ -360,7 +360,7 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
         <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: "var(--app-text-secondary)" }}>
           Output Device
         </p>
-        <Select value={settings.outputDeviceId} onValueChange={(v) => updateSettings({ outputDeviceId: v })}>
+        <Select value={settings.outputDeviceId || "default"} onValueChange={(v) => updateSettings({ outputDeviceId: v })}>
           <SelectTrigger
             className="w-full rounded-xl border text-sm"
             style={{ backgroundColor: "var(--app-input)", borderColor: "var(--app-border)", color: "var(--app-text-primary)" }}
@@ -571,7 +571,7 @@ function CameraSection({ settings, updateSettings, availableDevices, cardStyle, 
       </div>
 
       {/* Camera device picker */}
-      <Select value={settings.videoDeviceId} onValueChange={(v) => updateSettings({ videoDeviceId: v })}>
+      <Select value={settings.videoDeviceId || "default"} onValueChange={(v) => updateSettings({ videoDeviceId: v })}>
         <SelectTrigger
           className="w-full rounded-xl border text-sm"
           style={{ backgroundColor: "var(--app-input)", borderColor: "var(--app-border)", color: "var(--app-text-primary)" }}
