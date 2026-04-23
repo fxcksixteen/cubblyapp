@@ -23,20 +23,9 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.25";
+export const CURRENT_VERSION = "0.2.24";
 
 export const CHANGELOG: ChangelogEntry[] = [
-  {
-    version: "0.2.25",
-    title: "iOS PWA can hear you again",
-    date: "2026-04-23",
-    hero: bearImage,
-    newFeatures: [],
-    bugFixes: [
-      "Fixed iOS PWA users hearing complete silence on incoming calls (no voice, no screen-share audio, nothing). iOS Safari was silently refusing to start playback on remote audio elements once the call's accept-tap gesture window had closed during signaling. We now arm every remote audio element with playsinline + autoplay up-front and automatically retry playback on the user's next tap if iOS blocks it — so the call audibly comes alive the moment they touch the screen.",
-      "Hardened both 1-on-1 and group call audio paths against the same iOS autoplay race for screen-share audio.",
-    ],
-  },
   {
     version: "0.2.24",
     title: "No more ghost login tab + status indicators back",
@@ -47,6 +36,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Fixed Cubbly opening TWO windows on startup (one logged in, one stuck on the login screen). Only one Cubbly window can run at a time now — relaunching just focuses the existing one, Discord-style.",
       "Fixed friend status indicators (online / idle / DND / invisible) sometimes never appearing until someone toggled their status. The presence list now hydrates the instant Cubbly connects.",
       "Fixed the iOS PWA hard-crashing the whole app the moment you opened Voice & Video settings ('A <Select.Item /> must have a value prop that is not an empty string'). Empty-deviceId entries from the browser are now filtered out before the dropdown renders.",
+      "Fixed iOS PWA users hearing complete silence on incoming calls (no voice, no screen-share audio, nothing). iOS Safari was silently refusing to start playback on remote audio elements once the call's accept-tap gesture window had closed during signaling. Every remote audio element is now armed with playsinline + autoplay up-front and automatically retries playback on the user's next tap if iOS blocks it — so call audio comes alive the moment they touch the screen. Hardened for both 1-on-1 and group call screen-share audio too.",
     ],
   },
   {
