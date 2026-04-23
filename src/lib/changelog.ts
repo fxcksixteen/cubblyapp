@@ -23,9 +23,21 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.23";
+export const CURRENT_VERSION = "0.2.24";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.2.24",
+    title: "No more ghost login tab + status indicators back",
+    date: "2026-04-23",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Fixed Cubbly opening TWO windows on startup (one logged in, one stuck on the login screen). Only one Cubbly window can run at a time now — relaunching just focuses the existing one, Discord-style.",
+      "Fixed friend status indicators (online / idle / DND / invisible) sometimes never appearing until someone toggled their status. The presence list now hydrates the instant Cubbly connects.",
+      "Fixed the iOS PWA hard-crashing the whole app the moment you opened Voice & Video settings ('A <Select.Item /> must have a value prop that is not an empty string'). Empty-deviceId entries from the browser are now filtered out before the dropdown renders.",
+    ],
+  },
   {
     version: "0.2.23",
     title: "Smoother screenshare + iOS settings stability",
