@@ -248,7 +248,7 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
             className="rounded-xl border shadow-xl"
             style={{ backgroundColor: "var(--app-bg-secondary)", borderColor: "var(--app-border)" }}
           >
-            {SERVER_REGIONS.map((r: any) => (
+            {SERVER_REGIONS.filter((r: any) => r && r.id).map((r: any) => (
               <SelectItem
                 key={r.id}
                 value={r.id}
