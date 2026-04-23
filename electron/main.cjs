@@ -39,6 +39,29 @@ try {
 
 app.name = "Cubbly";
 
+// CRITICAL: single-instance lock. Without this, Windows auto-launch + a user
+// double-clicking the icon (or the OS firing a second launch event during
+// startup) opens TWO separate Electron windows. The second one boots the
+// renderer before Supabase has restored its session from disk, so it lands
+// on /login while the first one shows the friends list — that's the
+// "two tabs on launch, one logged in, one not" bug. Acquiring the lock
+// makes any subsequent launch focus the existing window instead of spawning
+// a new one.
+const __gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!__gotSingleInstanceLock) {
+  app.quit();
+  process.exit(0);
+}
+app.on("second-instance", () => {
+  try {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  } catch (_) { /* noop */ }
+});
+
 // AppUserModelID — required on Windows so toast notifications attribute to Cubbly
 // (and don't show as "electron.app.Cubbly"). Must be set BEFORE any window or notification.
 // MUST match the `appId` in package.json -> "build" -> "appId", otherwise
