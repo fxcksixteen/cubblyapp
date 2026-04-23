@@ -321,14 +321,20 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
           ? `audio[data-group-peer="${peerId}"][data-cubbly-kind="screen"]`
           : `audio[data-group-peer="${peerId}"]:not([data-cubbly-kind="screen"])`;
         let audioEl = document.querySelector<HTMLAudioElement>(selector);
+        const isNew = !audioEl;
         if (!audioEl) {
           audioEl = document.createElement("audio");
           audioEl.dataset.groupPeer = peerId;
-          audioEl.autoplay = true;
           document.body.appendChild(audioEl);
         }
         audioEl.srcObject = stream;
-        audioEl.play().catch(() => {});
+        if (isNew) {
+          // iOS PWA: arm with playsinline + autoplay + gesture-retry so the
+          // recipient actually hears anything when they accept on iPhone.
+          armRemoteAudio(audioEl);
+        } else {
+          audioEl.play().catch(() => {});
+        }
 
         // Route every audible track for this peer through the per-peer
         // GainNode (Discord-style 0–200% slider + local mute).
