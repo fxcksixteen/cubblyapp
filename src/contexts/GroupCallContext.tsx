@@ -27,6 +27,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { playSound, playLooping, stopLooping } from "@/lib/sounds";
 import { startNativeWindowAudioStream } from "@/lib/nativeWindowAudio";
 import { usePeerGains } from "@/lib/peerGain";
+import { armRemoteAudio } from "@/lib/iosAudioUnlock";
 
 export interface GroupPeer {
   userId: string;
