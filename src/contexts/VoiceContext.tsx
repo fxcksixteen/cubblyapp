@@ -1730,11 +1730,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           } else if (event.track.kind === "audio") {
             const audioEl = document.createElement("audio");
             audioEl.srcObject = event.streams[0];
-            audioEl.autoplay = true;
-            audioEl.volume = settings.outputVolume / 100;
             (audioEl as any).__cubblyRemote = true;
-            audioEl.play().catch(e => console.error("[Voice][Loopback] ❌ Screenshare audio play failed:", e));
             document.body.appendChild(audioEl);
+            armRemoteAudio(audioEl, { volume: settings.outputVolume / 100 });
           }
         };
 
