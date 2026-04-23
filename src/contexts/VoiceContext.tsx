@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { playSound, playLooping, stopLooping } from "@/lib/sounds";
 import { startNativeWindowAudioStream } from "@/lib/nativeWindowAudio";
 import { usePeerGains } from "@/lib/peerGain";
+import { armRemoteAudio } from "@/lib/iosAudioUnlock";
 
 type ParticipantStatePatch = {
   is_muted?: boolean;
@@ -606,20 +607,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       setRemoteStream(remote);
       const audioEl = document.createElement("audio");
       audioEl.srcObject = remote;
-      audioEl.autoplay = true;
-      // iOS requires playsinline + non-muted on freshly-created media elements,
-      // otherwise the system silently refuses to play the remote audio.
-      audioEl.setAttribute("playsinline", "true");
-      (audioEl as any).playsInline = true;
-      audioEl.muted = false;
-      audioEl.volume = settings.outputVolume / 100;
-      outputGainRef.current = { gain: { value: settings.outputVolume / 100 } } as any;
       (audioEl as any).__cubblyRemote = true;
-      if (settings.outputDeviceId !== "default" && (audioEl as any).setSinkId) {
-        (audioEl as any).setSinkId(settings.outputDeviceId).catch(console.error);
-      }
-      audioEl.play().catch(console.error);
+      outputGainRef.current = { gain: { value: settings.outputVolume / 100 } } as any;
       document.body.appendChild(audioEl);
+      // iOS PWA-safe arming: sets playsinline/autoplay/volume + retries
+      // play() on the next user gesture if the browser blocks autoplay.
+      armRemoteAudio(audioEl, {
+        volume: settings.outputVolume / 100,
+        sinkId: settings.outputDeviceId,
+      });
 
       // Route through per-peer GainNode so the user can scale this peer's
       // playback 0–200% via the right-click menu (Discord-style). Read from
@@ -1092,15 +1088,18 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               // Use a dedicated hidden <audio> element so we don't fight the
               // <video> element's autoplay/render path.
               let el = document.querySelector<HTMLAudioElement>(`audio[data-cubbly-peer="${peerUserId}"][data-cubbly-kind="screen"]`);
+              const isNew = !el;
               if (!el) {
                 el = document.createElement("audio");
-                el.autoplay = true;
-                (el as any).playsInline = true;
                 (el as any).__cubblyRemote = true;
                 document.body.appendChild(el);
               }
               el.srcObject = remoteScreen;
-              el.play().catch(() => {});
+              if (isNew) {
+                armRemoteAudio(el, { volume: settings.outputVolume / 100 });
+              } else {
+                el.play().catch(() => {});
+              }
               attachPeerGain(peerUserId, remoteScreen, el, "screen");
             }
           };
@@ -1221,13 +1220,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         setRemoteStream(remote);
         const audioEl = document.createElement("audio");
         audioEl.srcObject = remote;
-        audioEl.autoplay = true;
-        audioEl.volume = settings.outputVolume / 100;
         (audioEl as any).__cubblyRemote = true;
-        if (settings.outputDeviceId !== "default" && (audioEl as any).setSinkId) {
-          (audioEl as any).setSinkId(settings.outputDeviceId).catch(console.error);
-        }
-        audioEl.play().then(() => console.log("[Voice][Loopback] ✅ Audio element playing")).catch(e => console.error("[Voice][Loopback] ❌ Audio play failed:", e));
+        document.body.appendChild(audioEl);
+        armRemoteAudio(audioEl, { volume: settings.outputVolume / 100, sinkId: settings.outputDeviceId });
         document.body.appendChild(audioEl);
 
         // Remote audio level monitor
@@ -1735,11 +1730,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           } else if (event.track.kind === "audio") {
             const audioEl = document.createElement("audio");
             audioEl.srcObject = event.streams[0];
-            audioEl.autoplay = true;
-            audioEl.volume = settings.outputVolume / 100;
             (audioEl as any).__cubblyRemote = true;
-            audioEl.play().catch(e => console.error("[Voice][Loopback] ❌ Screenshare audio play failed:", e));
             document.body.appendChild(audioEl);
+            armRemoteAudio(audioEl, { volume: settings.outputVolume / 100 });
           }
         };
 

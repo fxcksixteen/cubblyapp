@@ -23,9 +23,20 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.24";
+export const CURRENT_VERSION = "0.2.25";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.2.25",
+    title: "iOS PWA can hear you again",
+    date: "2026-04-23",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Fixed iOS PWA users hearing complete silence on incoming calls (no voice, no screen-share audio, nothing). iOS Safari was silently refusing to start playback on remote audio elements once the call's accept-tap gesture window had closed during signaling. We now arm every remote audio element with playsinline + autoplay up-front and automatically retry playback on the user's next tap if iOS blocks it — so the call audibly comes alive the moment they touch the screen.",
+      "Hardened both 1-on-1 and group call audio paths against the same iOS autoplay race for screen-share audio.",
+    ],
+  },
   {
     version: "0.2.24",
     title: "No more ghost login tab + status indicators back",
