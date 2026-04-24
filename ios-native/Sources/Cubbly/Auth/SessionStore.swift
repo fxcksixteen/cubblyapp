@@ -49,9 +49,13 @@ final class SessionStore: ObservableObject {
                 await refreshProfile(userID: session.user.id)
                 await PresenceService.shared.start(userID: session.user.id)
                 // Flush any APNs token that arrived before sign-in completed,
-                // and prompt for notification permission on first sign-in.
+                // ask for permission on first launch, AND re-register every
+                // launch if already authorized so APNs always hands us a token.
                 APNsRegistrar.shared.flushIfNeeded()
-                Task { _ = await NotificationService.shared.requestPermission() }
+                Task {
+                    await NotificationService.shared.registerForRemoteIfAuthorized()
+                    _ = await NotificationService.shared.requestPermission()
+                }
             } else {
                 state = .signedOut
                 await PresenceService.shared.stop()
