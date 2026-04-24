@@ -39,6 +39,10 @@ struct ChatMessage: Identifiable, Hashable {
 struct MessageAttachment: Hashable {
     let name: String?
     let url: URL?
+    /// Stable storage object path inside the private `chat-attachments` bucket
+    /// (e.g. `<userId>/<filename>`). The web app stores this and signs a fresh
+    /// URL on render — we mirror that behavior so old messages keep working.
+    let path: String?
     let mimeType: String?
     let size: Int?
     let width: Int?
@@ -47,6 +51,9 @@ struct MessageAttachment: Hashable {
     var fileExtension: String {
         if let n = name, let dot = n.lastIndex(of: ".") {
             return String(n[n.index(after: dot)...]).lowercased()
+        }
+        if let p = path, let dot = p.lastIndex(of: ".") {
+            return String(p[p.index(after: dot)...]).lowercased()
         }
         return url?.pathExtension.lowercased() ?? ""
     }
