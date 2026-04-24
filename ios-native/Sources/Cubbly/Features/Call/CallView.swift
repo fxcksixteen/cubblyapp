@@ -1,4 +1,5 @@
 import SwiftUI
+import WebRTC
 
 /// Full-screen call overlay shown when CallStore is active. v0.1.0 layout:
 ///   - Big avatar / peer name / call status / elapsed timer
@@ -59,7 +60,7 @@ struct CallView: View {
         .padding(.top, 12)
     }
 
-    private func screenSharePreview(track: WebRTC.RTCVideoTrack) -> some View {
+    private func screenSharePreview(track: RTCVideoTrack) -> some View {
         Button { showFullScreenShare = true } label: {
             ZStack(alignment: .topTrailing) {
                 WebRTCVideoView(track: track)
@@ -163,7 +164,7 @@ struct CallView: View {
 
 /// Pure full-screen viewer for an incoming screenshare (tap-to-dismiss).
 struct FullScreenScreenShareView: View {
-    let track: WebRTC.RTCVideoTrack?
+    let track: RTCVideoTrack?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
