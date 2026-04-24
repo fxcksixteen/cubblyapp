@@ -215,6 +215,7 @@ final class CallStore: ObservableObject {
                 .execute()
         }
         resetAudioSession()
+        CallKitService.shared.endActiveCallIfNeeded()
         state = .idle
         conversationId = nil
         peerId = nil
@@ -228,6 +229,7 @@ final class CallStore: ObservableObject {
         peerIsMuted = false
         isMuted = false
         isDeafened = false
+        isMinimized = false
         pendingRemoteIce.removeAll()
         pendingScreenIce.removeAll()
     }
