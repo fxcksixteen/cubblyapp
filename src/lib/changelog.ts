@@ -208,10 +208,10 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Right-click 'User Volume' slider, 'Mute (you only)', and the fullscreen viewer's slider now move REAL playback in 1-on-1 and group calls — pipeline resumes on the first interaction instead of staying silently suspended",
     ],
     bugFixes: [
-      "CRITICAL: Per-window/tab audio capture is now actually active inside the packaged Electron app — was silently falling back to 'video only' for everyone before",
-      "CRITICAL: Remote camera tile in 1-on-1 calls now appears for the OTHER user the moment frames arrive — no longer waits on a lagging signaling flag",
+      "CRITICAL: Per-window/tab audio capture is now actually active inside the packaged desktop app — was silently falling back to 'video only' for everyone before",
+      "CRITICAL: Remote camera tile in 1-on-1 calls now appears for the OTHER user the moment frames arrive",
       "CRITICAL: Group call peer-camera tiles render whenever a video stream is present — fixes 'they turned camera on, I never saw it'",
-      "Per-peer audio pipeline no longer leaves the source element silently muted while the controls show full volume — falls back to direct element playback as a safety net",
+      "Voice volume controls no longer get stuck silent when playback hasn't fully woken up — there's a fallback now so you always hear the call.",
     ],
   },
   {
