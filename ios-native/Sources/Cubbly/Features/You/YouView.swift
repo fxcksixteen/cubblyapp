@@ -5,9 +5,15 @@ import SwiftUI
 struct YouView: View {
     @EnvironmentObject private var session: SessionStore
     @EnvironmentObject private var presence: PresenceService
-    @State private var status: String = "online"
     @State private var showingSignOutConfirm = false
     @State private var showingNotificationSettings = false
+
+    /// Read directly from the session profile so we never get stuck on a
+    /// stale snapshot when the view re-appears. Falls back to "online" until
+    /// the profile loads.
+    private var status: String {
+        session.currentProfile?.status ?? "online"
+    }
 
     private let statusOptions: [(id: String, label: String)] = [
         ("online", "Online"),
