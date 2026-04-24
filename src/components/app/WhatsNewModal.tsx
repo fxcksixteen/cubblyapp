@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { CHANGELOG, CURRENT_VERSION, getChangelogEntry } from "@/lib/changelog";
 import { useAuth } from "@/contexts/AuthContext";
@@ -73,7 +74,11 @@ const WhatsNewModal = ({ forceVersion, onClose }: WhatsNewModalProps) => {
 
   if (!mounted) return null;
 
-  return (
+  // Portal to <body> so we escape any transformed/overflow ancestors
+  // (e.g. the SettingsModal panel uses transform: scale, which would
+  // otherwise cause this fixed-positioned overlay to be clipped to the
+  // settings frame instead of filling the viewport).
+  return createPortal(
     <div
       className="fixed inset-0 z-[210] flex items-center justify-center p-4 transition-all duration-250 ease-out"
       style={{
@@ -177,7 +182,8 @@ const WhatsNewModal = ({ forceVersion, onClose }: WhatsNewModalProps) => {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 };
 

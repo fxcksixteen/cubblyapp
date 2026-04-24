@@ -23,9 +23,24 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.24";
+export const CURRENT_VERSION = "0.2.25";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.2.25",
+    title: "Status, unread bars & screenshare controls fixed",
+    date: "2026-04-24",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Friend status indicators (online / idle / DND / invisible) now reliably show up across web and desktop — no more 'everyone looks offline' moments.",
+      "The blue 'New Messages' bar and red 'NEW' divider now stick around when you open a chat instead of vanishing instantly. They clear once you scroll to the bottom, hit Mark as Read, or send a reply.",
+      "The fullscreen screen-share controls (volume slider, fullscreen exit, etc.) are now anchored INSIDE the stream frame instead of floating in the corners of your screen — they're actually clickable now even when the stream is letterboxed.",
+      "Right-clicking a friend's screen-share now opens stream-only controls (volume + mute that stream for you), separate from their voice. The fullscreen volume slider also now controls the stream itself, not their mic.",
+      "When viewing the 'Update Logs' from Settings, clicking a past patch now opens the full update log popup properly instead of being clipped at the top and bottom by the settings window.",
+      "iOS PWA: another round of fixes for Voice & Video settings crashing the app, and for incoming calls being completely silent.",
+    ],
+  },
   {
     version: "0.2.24",
     title: "No more ghost login tab + status indicators back",
@@ -34,9 +49,9 @@ export const CHANGELOG: ChangelogEntry[] = [
     newFeatures: [],
     bugFixes: [
       "Fixed Cubbly opening TWO windows on startup (one logged in, one stuck on the login screen). Only one Cubbly window can run at a time now — relaunching just focuses the existing one, Discord-style.",
-      "Fixed friend status indicators (online / idle / DND / invisible) sometimes never appearing until someone toggled their status. The presence list now hydrates the instant Cubbly connects.",
-      "Fixed the iOS PWA hard-crashing the whole app the moment you opened Voice & Video settings ('A <Select.Item /> must have a value prop that is not an empty string'). Empty-deviceId entries from the browser are now filtered out before the dropdown renders.",
-      "Fixed iOS PWA users hearing complete silence on incoming calls (no voice, no screen-share audio, nothing). iOS Safari was silently refusing to start playback on remote audio elements once the call's accept-tap gesture window had closed during signaling. Every remote audio element is now armed with playsinline + autoplay up-front and automatically retries playback on the user's next tap if iOS blocks it — so call audio comes alive the moment they touch the screen. Hardened for both 1-on-1 and group call screen-share audio too.",
+      "Fixed friend status indicators (online / idle / DND / invisible) sometimes never appearing until someone toggled their status.",
+      "Fixed the iOS PWA hard-crashing the whole app the moment you opened Voice & Video settings.",
+      "Fixed iOS PWA users hearing complete silence on incoming calls (no voice, no screen-share audio, nothing). Call audio now comes alive the moment they touch the screen.",
     ],
   },
   {
@@ -193,10 +208,10 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Right-click 'User Volume' slider, 'Mute (you only)', and the fullscreen viewer's slider now move REAL playback in 1-on-1 and group calls — pipeline resumes on the first interaction instead of staying silently suspended",
     ],
     bugFixes: [
-      "CRITICAL: Per-window/tab audio capture is now actually active inside the packaged Electron app — was silently falling back to 'video only' for everyone before",
-      "CRITICAL: Remote camera tile in 1-on-1 calls now appears for the OTHER user the moment frames arrive — no longer waits on a lagging signaling flag",
+      "CRITICAL: Per-window/tab audio capture is now actually active inside the packaged desktop app — was silently falling back to 'video only' for everyone before",
+      "CRITICAL: Remote camera tile in 1-on-1 calls now appears for the OTHER user the moment frames arrive",
       "CRITICAL: Group call peer-camera tiles render whenever a video stream is present — fixes 'they turned camera on, I never saw it'",
-      "Per-peer audio pipeline no longer leaves the source element silently muted while the controls show full volume — falls back to direct element playback as a safety net",
+      "Voice volume controls no longer get stuck silent when playback hasn't fully woken up — there's a fallback now so you always hear the call.",
     ],
   },
   {
@@ -227,10 +242,10 @@ export const CHANGELOG: ChangelogEntry[] = [
     bugFixes: [
       "CRITICAL: Fixed remote camera tiles disappearing or never appearing in group calls when someone turned their camera on mid-call",
       "Group call window/tab share-audio no longer leaks your full system mix to everyone — only the chosen app's audio is sent",
-      "Unified the 1-on-1 and group audio capture paths into one shared module so they can't drift apart again",
-      "Per-user volume / local mute were silently doing NOTHING in group calls — now wired up and persisted forever in localStorage",
-      "Per-user volume in 1-on-1 only affected the peer's mic, not their screen-share audio — both now respond to the same control",
-      "Fullscreen viewer's volume slider was changing the wrong audio element — now drives the actual playback pipeline",
+      "Unified the 1-on-1 and group call audio so they always behave the same.",
+      "Per-user volume / 'mute (you only)' were silently doing NOTHING in group calls — now wired up and remembered between calls.",
+      "Per-user volume in 1-on-1 only affected the peer's mic, not their screen-share audio — both now respond to the same control.",
+      "Fullscreen viewer's volume slider was changing the wrong thing — now actually controls what you hear.",
     ],
   },
   {
@@ -259,7 +274,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "The screen-share button in the bottom-corner voice card now opens the proper Cubbly screen-share picker (entire screen / window / specific app) instead of just sharing your full screen by default",
       "Mobile Settings is now a proper Discord-style two-pane sheet — categories list → detail view with a sticky back arrow and a visible close (X) button so you never get stuck",
       "Mobile DMs now open on a single tap (no more 'X appears first then tap again') — replaced the hover-X with a persistent ⋮ menu on touch devices",
-      "Active ICE candidate pair (host / srflx / relay) and round-trip-time are now logged on every connect so we can verify whether calls are actually going through the Frankfurt TURN relay",
+      "Better behind-the-scenes diagnostics on call connect so we can spot routing issues faster.",
     ],
     bugFixes: [
       "CRITICAL: Sharing a single window or browser tab no longer leaks your entire system audio to the call — Windows can't isolate audio per app, so window/tab shares are now silent and only Entire Screen shares carry audio",
@@ -277,7 +292,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     hero: bearImage,
     newFeatures: [],
     bugFixes: [
-      "Fixed the desktop app crashing into the 'Cubbly hit a snag' error screen on launch right after auto-updating to v0.2.5 (activity poller was assigning a property to a primitive number — illegal in strict mode)",
+      "Fixed the desktop app crashing into the 'Cubbly hit a snag' error screen on launch right after auto-updating to v0.2.5.",
     ],
   },
   {
@@ -290,9 +305,9 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Screen-share quality settings actually do something now — picking 1080p/60fps stays sharp on the viewer's side instead of compressing to a pixelated mess",
       "Desktop notifications now flash the Cubbly icon in the Windows taskbar (Discord-style) when the app isn't focused",
       "New 'Launch Cubbly on system startup' toggle in Settings → Advanced (on by default, can now be turned off)",
-      "Lower-latency calls everywhere — added a Frankfurt TURN relay so users in MENA, Africa and Europe get noticeably lower ping",
-      "Faster connection setup — calls connect quicker thanks to ICE candidate pre-pooling and tuned WebRTC config",
-      "Snappier voice — reduced inbound audio jitter buffer so conversations feel less delayed",
+      "Lower-latency calls everywhere — added a new relay so users in MENA, Africa and Europe get noticeably lower ping",
+      "Faster connection setup — calls connect quicker than before",
+      "Snappier voice — less audio delay so conversations feel more natural",
       "Cubbly is now MUCH lighter while you're in a game — the desktop app drops its CPU priority below your game so it stops fighting Marvel Rivals (and friends) for cycles",
       "Animations and rendering now cap to 30fps when Cubbly isn't focused, so you won't feel it eating GPU while you're playing",
       "Activity detection (the thing that scans for your running game) now polls way less often when a game has focus, eliminating the periodic stutter",
@@ -358,7 +373,6 @@ export const CHANGELOG: ChangelogEntry[] = [
     bugFixes: [
       "Fixed the settings footer version so it now follows the real current release",
       "Fixed the updater flow by shipping the app itself as v0.2.3 instead of still reporting v0.2.1",
-      "Fixed the Update Logs ref warning in SettingsModal by forwarding the settings panel ref correctly",
     ],
   },
   {
@@ -383,7 +397,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: "2026-04-17",
     hero: bearImage,
     newFeatures: [
-      "Group voice calls — start a call in any group DM and ring every member at once with a full N-peer audio mesh",
+      "Group voice calls — start a call in any group DM and ring every member at once",
       "Group video calls — toggle your camera mid-call and see every member's video tile in a live grid",
       "Group screen sharing — share your screen to the whole group, with a big-format viewer for whoever's presenting",
       "iOS & Android push notifications — Cubbly is now a full PWA, add it to your home screen and get real OS notifications even when the app is closed",
@@ -399,7 +413,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Fixed Steam, Discord and other software still showing as 'Playing' instead of 'Using' in some places",
       "Fixed missing voice/video buttons in the group chat header",
       "Smoother fallback when no curated icon exists — colored letter tiles instead of broken images",
-      "Per-peer audio level monitoring no longer leaks AudioContext on call end",
+      "Per-peer audio level monitoring no longer leaks resources on call end",
       "Group call participants list now refreshes correctly when someone joins or leaves mid-call",
       "Web app no longer crashes after a hard refresh on the chat view",
       "Mobile notification prompt now actually wires up to Web Push instead of only browser-tab notifications",
