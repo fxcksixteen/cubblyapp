@@ -397,7 +397,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: "2026-04-17",
     hero: bearImage,
     newFeatures: [
-      "Group voice calls — start a call in any group DM and ring every member at once with a full N-peer audio mesh",
+      "Group voice calls — start a call in any group DM and ring every member at once",
       "Group video calls — toggle your camera mid-call and see every member's video tile in a live grid",
       "Group screen sharing — share your screen to the whole group, with a big-format viewer for whoever's presenting",
       "iOS & Android push notifications — Cubbly is now a full PWA, add it to your home screen and get real OS notifications even when the app is closed",
