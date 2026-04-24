@@ -61,7 +61,15 @@ final class PresenceService: ObservableObject {
             print("[Presence] subscribe failed:", error)
             return
         }
-        await ch.track(state: ["online_at": .string(ISO8601DateFormatter().string(from: Date()))])
+        // Track our presence with the same payload shape as web
+        // (`{ user_id, online_at }`). The presence KEY (set above on the
+        // channel config) is what supabase uses to identify members, but
+        // matching the payload exactly avoids any future server-side
+        // filter quirks and keeps debugging easy from web devtools.
+        await ch.track(state: [
+            "user_id": .string(presenceKey),
+            "online_at": .string(ISO8601DateFormatter().string(from: Date()))
+        ])
 
         // Initial presence state is delivered automatically by supabase-swift v2:
         // on subscribe, the server sends a `presence_state` event which is

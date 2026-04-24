@@ -10,6 +10,7 @@ import WebRTC
 ///     screenshare / video / call-end), matching the desktop & web apps.
 struct CallView: View {
     @ObservedObject var store: CallStore = .shared
+    @ObservedObject private var settings: CallSettings = .shared
     @State private var elapsed: TimeInterval = 0
     @State private var elapsedTimer: Timer?
     @State private var showFullScreenShare = false
@@ -65,7 +66,7 @@ struct CallView: View {
     // MARK: - Sections
 
     private var topBar: some View {
-        HStack {
+        HStack(spacing: 8) {
             Text(store.state == .connected ? "Voice Connected" : (store.state == .calling ? "Calling…" : "Connecting…"))
                 .font(.cubbly(11, .bold))
                 .foregroundStyle(store.state == .connected ? Color.green : Color.orange)
@@ -76,8 +77,25 @@ struct CallView: View {
                     .font(.cubbly(13, .semibold))
                     .foregroundStyle(Theme.Colors.textSecondary)
                     .monospacedDigit()
-                    .padding(.trailing, 8)
+                    .padding(.trailing, 4)
             }
+            // Speaker toggle — drives AVAudioSession route via CallSettings.
+            // Critical on iPhone where the default earpiece route makes
+            // remote audio sound super quiet held away from the ear.
+            Button {
+                settings.speakerOutput.toggle()
+            } label: {
+                Image(systemName: settings.speakerOutput
+                      ? "speaker.wave.3.fill" : "speaker.slash.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 36, height: 36)
+                    .background(Circle().fill(settings.speakerOutput
+                        ? Color.white.opacity(0.22)
+                        : Color.white.opacity(0.08)))
+            }
+            .accessibilityLabel(settings.speakerOutput ? "Speaker on" : "Speaker off")
+
             // Down-arrow → minimize. Mirrors the swipe-down gesture above.
             Button {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {

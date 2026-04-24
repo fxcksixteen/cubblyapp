@@ -111,11 +111,16 @@ struct ChatView: View {
             // we don't show a banner for messages that arrive while the user
             // is reading them.
             NotificationService.shared.activeConversationID = conversation.id
+            // Hide the global custom tab bar while we're on a chat thread —
+            // matches Discord/Telegram and stops it from eating vertical
+            // space + competing with the message composer.
+            ChromeStore.shared.tabBarHidden = true
         }
         .onDisappear {
             if NotificationService.shared.activeConversationID == conversation.id {
                 NotificationService.shared.activeConversationID = nil
             }
+            ChromeStore.shared.tabBarHidden = false
             Task {
                 if let ch = channel { await ch.unsubscribe() }
                 if let tc = typingChannel { await tc.unsubscribe() }
@@ -246,6 +251,19 @@ struct ChatView: View {
                     }
                 }
             }
+            .onChange(of: composerFocused) { _, focused in
+                // When the keyboard rises, snap to the latest message so the
+                // user never loses their place behind the keyboard.
+                if focused, let last = messages.last?.id {
+                    // Slight delay so the layout has finished resizing for
+                    // the keyboard before we scroll.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            proxy.scrollTo(last, anchor: .bottom)
+                        }
+                    }
+                }
+            }
             .onAppear {
                 if let last = messages.last?.id { proxy.scrollTo(last, anchor: .bottom) }
             }
@@ -270,8 +288,26 @@ struct ChatView: View {
 
     private func joinCall(eventId: UUID, callerId: UUID) {
         guard let other = conversation.otherUser else { return }
+        let store = CallStore.shared
+        // Case 1: this is the call that's currently ringing US — accept it
+        // through the normal incoming flow so we hook into the existing
+        // call_event instead of creating a duplicate one.
+        if let inc = store.incoming, inc.conversationId == conversation.id {
+            Task { await store.acceptIncoming() }
+            return
+        }
+        // Case 2: we're already in this exact call (tapped "Join" while
+        // minimized) — just restore the full-screen UI.
+        if store.state != .idle && store.conversationId == conversation.id {
+            store.restore()
+            return
+        }
+        // Case 3: cold join — same conversation but ring expired or we
+        // missed it. Start a fresh call (the peer's side will see this
+        // as a new ring; that's the best we can do without a presence
+        // index of "active rooms").
         Task {
-            await CallStore.shared.startCall(
+            await store.startCall(
                 conversationId: conversation.id,
                 peerId: other.userID,
                 peerName: other.displayName,
@@ -566,7 +602,12 @@ struct ChatView: View {
                 let data = try Data(contentsOf: u)
                 let ext = u.pathExtension.isEmpty ? "bin" : u.pathExtension.lowercased()
                 let name = u.lastPathComponent
-                let path = "\(me.uuidString)/\(UUID().uuidString).\(ext)"
+                // CRITICAL: chat-attachments RLS requires the FIRST folder
+                // segment to be the conversation_id (not the user_id) — the
+                // policy is `is_conversation_participant(folder[1], auth.uid())`.
+                // Uploading under <user_id>/... silently fails RLS, which is
+                // why "send image" appeared to do nothing in v0.1.0.
+                let path = "\(conversation.id.uuidString)/\(me.uuidString)-\(UUID().uuidString).\(ext)"
                 _ = try await client.storage
                     .from("chat-attachments")
                     .upload(path, data: data, options: FileOptions(upsert: false))
@@ -588,7 +629,10 @@ struct ChatView: View {
             }
         }
 
-        guard !attachments.isEmpty else { return }
+        guard !attachments.isEmpty else {
+            print("[Chat] no attachments uploaded — aborting send")
+            return
+        }
         let payload = MessageAttachmentsParser.serialize(attachments)
         await sendRaw(content: payload)
     }
