@@ -95,8 +95,15 @@ struct ChatView: View {
             await loadInitial()
             await subscribe()
             await markRead()
+            // Tell the notification service this conversation is now active so
+            // we don't show a banner for messages that arrive while the user
+            // is reading them.
+            NotificationService.shared.activeConversationID = conversation.id
         }
         .onDisappear {
+            if NotificationService.shared.activeConversationID == conversation.id {
+                NotificationService.shared.activeConversationID = nil
+            }
             Task {
                 if let ch = channel { await ch.unsubscribe() }
                 if let tc = typingChannel { await tc.unsubscribe() }

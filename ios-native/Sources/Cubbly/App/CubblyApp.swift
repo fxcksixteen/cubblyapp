@@ -4,9 +4,15 @@ import CoreText
 @main
 struct CubblyApp: App {
     @StateObject private var session = SessionStore()
+    // Bridges UIKit APNs callbacks → APNsRegistrar.
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     init() {
         Self.registerBundledFonts()
+        // Warm up the sound + notification services on launch so their
+        // permission state is ready before the first message arrives.
+        _ = SoundService.shared
+        _ = NotificationService.shared
     }
 
     var body: some Scene {

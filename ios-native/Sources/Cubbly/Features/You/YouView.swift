@@ -7,6 +7,7 @@ struct YouView: View {
     @EnvironmentObject private var presence: PresenceService
     @State private var status: String = "online"
     @State private var showingSignOutConfirm = false
+    @State private var showingNotificationSettings = false
 
     private let statusOptions: [(id: String, label: String)] = [
         ("online", "Online"),
@@ -41,6 +42,9 @@ struct YouView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.Colors.bgPrimary.ignoresSafeArea())
         .onAppear { status = session.currentProfile?.status ?? "online" }
+        .sheet(isPresented: $showingNotificationSettings) {
+            NotificationsSettingsView()
+        }
     }
 
     private var bannerAndAvatar: some View {
@@ -136,7 +140,9 @@ struct YouView: View {
                 .foregroundStyle(Theme.Colors.textSecondary)
 
             VStack(spacing: 0) {
-                row(icon: "bell.fill", label: "Notifications")
+                row(icon: "bell.fill", label: "Notifications") {
+                    showingNotificationSettings = true
+                }
                 divider
                 row(icon: "headphones", label: "Voice & Video")
                 divider
@@ -157,8 +163,8 @@ struct YouView: View {
         Rectangle().fill(Theme.Colors.border).frame(height: 1).padding(.leading, 50)
     }
 
-    private func row(icon: String, label: String) -> some View {
-        Button {} label: {
+    private func row(icon: String, label: String, action: (() -> Void)? = nil) -> some View {
+        Button { action?() } label: {
             HStack(spacing: 14) {
                 Image(systemName: icon)
                     .font(.system(size: 16))

@@ -14,6 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
+      apns_subscriptions: {
+        Row: {
+          app_version: string | null
+          bundle_id: string
+          created_at: string
+          device_name: string | null
+          device_token: string
+          environment: string
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          app_version?: string | null
+          bundle_id?: string
+          created_at?: string
+          device_name?: string | null
+          device_token: string
+          environment?: string
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          app_version?: string | null
+          bundle_id?: string
+          created_at?: string
+          device_name?: string | null
+          device_token?: string
+          environment?: string
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       call_events: {
         Row: {
           caller_id: string

@@ -48,6 +48,10 @@ final class SessionStore: ObservableObject {
                 state = .signedIn(userID: session.user.id)
                 await refreshProfile(userID: session.user.id)
                 await PresenceService.shared.start(userID: session.user.id)
+                // Flush any APNs token that arrived before sign-in completed,
+                // and prompt for notification permission on first sign-in.
+                APNsRegistrar.shared.flushIfNeeded()
+                Task { _ = await NotificationService.shared.requestPermission() }
             } else {
                 state = .signedOut
                 await PresenceService.shared.stop()
