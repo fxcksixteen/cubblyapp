@@ -55,14 +55,35 @@ struct SVGIcon: View {
         guard let url = resolveURL(name),
               let svg = SVGKImage(contentsOf: url) else { return nil }
         svg.size = CGSize(width: size, height: size)
+        // Force the SVG layer to a transparent backdrop. Without this, SVGKit
+        // sometimes hands back a UIImage with opaque alpha across the whole
+        // bounding box, which makes the `.destinationIn` blend leak the tint
+        // color into the full rectangle — the "square halo" around round
+        // status dots.
+        svg.caLayerTree.backgroundColor = UIColor.clear.cgColor
         guard let raw = svg.uiImage else { return nil }
 
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: size, height: size))
+        // Non-opaque renderer format so the tinted output preserves alpha
+        // outside the SVG path.
+        let format = UIGraphicsImageRendererFormat.default()
+        format.opaque = false
+        format.scale = scale
+        let renderer = UIGraphicsImageRenderer(
+            size: CGSize(width: size, height: size),
+            format: format
+        )
         let tinted = renderer.image { ctx in
             let rect = CGRect(origin: .zero, size: CGSize(width: size, height: size))
-            tint.setFill()
-            ctx.fill(rect)
-            raw.draw(in: rect, blendMode: .destinationIn, alpha: 1.0)
+            let cg = ctx.cgContext
+            // Draw the raw SVG first — this establishes the alpha mask for
+            // the glyph. Then fill the same rect with the tint color using
+            // `.sourceIn`, which only paints where the destination already
+            // has alpha. The final image has alpha=0 everywhere outside the
+            // actual path, so no square outline can show through.
+            raw.draw(in: rect)
+            cg.setBlendMode(.sourceIn)
+            cg.setFillColor(tint.cgColor)
+            cg.fill(rect)
         }
         cache.setObject(tinted, forKey: key)
         return tinted

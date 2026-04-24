@@ -56,7 +56,11 @@ struct ChatView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.Colors.bgPrimary)
         .navigationBarHidden(true)
-        .horizontalSwipe(right: { dismiss() })
+        .horizontalSwipe(
+            right: { dismiss() },
+            leftPreview: { Color.clear },
+            rightPreview: { DMSidebarPreview() }
+        )
         .sheet(isPresented: $showGifPicker) {
             GiphyPickerView { url in
                 showGifPicker = false
@@ -449,15 +453,20 @@ struct ChatView: View {
     }
 
     /// Uploads picked photo/video URLs to the chat-attachments bucket and
-    /// sends one message per file containing the public URL — InlineMedia in
-    /// the bubble renders them.
+    /// sends a single message using the PWA's `[attachments]\n[...]` format.
+    /// Sending in this shape means web and iOS clients both render the files
+    /// inline — previously we pushed bare URLs, which other platforms didn't
+    /// recognize as attachments.
     private func sendAttachments(urls: [URL]) async {
         guard !urls.isEmpty, let me = session.currentUserID else { return }
         let client = SupabaseManager.shared.client
+        var attachments: [MessageAttachment] = []
+
         for u in urls {
             do {
                 let data = try Data(contentsOf: u)
                 let ext = u.pathExtension.isEmpty ? "bin" : u.pathExtension.lowercased()
+                let name = u.lastPathComponent
                 let path = "\(me.uuidString)/\(UUID().uuidString).\(ext)"
                 _ = try await client.storage
                     .from("chat-attachments")
@@ -466,10 +475,37 @@ struct ChatView: View {
                 let signed = try await client.storage
                     .from("chat-attachments")
                     .createSignedURL(path: path, expiresIn: 60 * 60 * 24 * 7)
-                await sendRaw(content: signed.absoluteString)
+                attachments.append(MessageAttachment(
+                    name: name,
+                    url: signed,
+                    mimeType: Self.mimeType(forExtension: ext),
+                    size: data.count,
+                    width: nil,
+                    height: nil
+                ))
             } catch {
                 print("[Chat] attachment upload failed:", error)
             }
+        }
+
+        guard !attachments.isEmpty else { return }
+        let payload = MessageAttachmentsParser.serialize(attachments)
+        await sendRaw(content: payload)
+    }
+
+    private static func mimeType(forExtension ext: String) -> String? {
+        switch ext.lowercased() {
+        case "png":          return "image/png"
+        case "jpg", "jpeg":  return "image/jpeg"
+        case "gif":          return "image/gif"
+        case "webp":         return "image/webp"
+        case "heic":         return "image/heic"
+        case "heif":         return "image/heif"
+        case "mp4":          return "video/mp4"
+        case "mov":          return "video/quicktime"
+        case "m4v":          return "video/x-m4v"
+        case "webm":         return "video/webm"
+        default:             return nil
         }
     }
 
@@ -514,7 +550,8 @@ struct ChatView: View {
                 }
             }
         }
-        await ch.subscribe()
+        do { try await ch.subscribeWithError() }
+        catch { print("[Chat] messages channel subscribe failed:", error) }
         channel = ch
 
         let tc = client.channel("typing:\(conversation.id.uuidString)")
@@ -533,7 +570,8 @@ struct ChatView: View {
                 }
             }
         }
-        await tc.subscribe()
+        do { try await tc.subscribeWithError() }
+        catch { print("[Chat] typing channel subscribe failed:", error) }
         typingChannel = tc
     }
 
@@ -666,6 +704,82 @@ private struct DiscordStyleBubble: View {
 
     @ViewBuilder
     private var content: some View {
+        // Messages sent from the PWA use `[attachments]\n[{...}]` to encode
+        // one or more files in the content column. Parse + render those
+        // inline before falling back to plain-text / single-URL handling.
+        if let parsed = MessageAttachmentsParser.parse(message.content) {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(Array(parsed.attachments.enumerated()), id: \.offset) { _, att in
+                    attachmentView(att)
+                }
+                if !parsed.text.isEmpty {
+                    LinkifiedText(content: parsed.text)
+                }
+            }
+        } else {
+            plainContent
+        }
+    }
+
+    @ViewBuilder
+    private func attachmentView(_ att: MessageAttachment) -> some View {
+        if let url = att.url {
+            if att.isGIF {
+                AnimatedImageView(url: url, contentMode: .scaleAspectFit)
+                    .frame(maxWidth: 240)
+                    .frame(height: 180)
+                    .background(Theme.Colors.bgSecondary)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            } else if att.isImage {
+                Button { onTapImage(url) } label: {
+                    AsyncImage(url: url) { img in
+                        img.resizable().scaledToFit()
+                    } placeholder: {
+                        Rectangle().fill(Theme.Colors.bgSecondary)
+                            .frame(width: 220, height: 160)
+                    }
+                    .frame(maxWidth: 260, maxHeight: 320)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
+            } else if att.isVideo {
+                Button { onPlayVideo(url) } label: {
+                    ZStack {
+                        Rectangle().fill(Theme.Colors.bgSecondary)
+                            .frame(width: 220, height: 160)
+                        Image(systemName: "play.circle.fill")
+                            .font(.system(size: 44))
+                            .foregroundStyle(.white.opacity(0.95))
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
+            } else {
+                // Non-media attachment — render as a tappable file chip.
+                Link(destination: url) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "doc.fill")
+                            .foregroundStyle(Theme.Colors.textSecondary)
+                        Text(att.name ?? url.lastPathComponent)
+                            .font(Theme.Fonts.bodyMedium)
+                            .foregroundStyle(Theme.Colors.textPrimary)
+                            .lineLimit(1)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(Theme.Colors.bgSecondary)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+            }
+        } else {
+            Text(att.name ?? "Attachment")
+                .font(.cubbly(12))
+                .foregroundStyle(Theme.Colors.textMuted)
+        }
+    }
+
+    @ViewBuilder
+    private var plainContent: some View {
         let url = URL(string: message.content)
         let lower = message.content.lowercased()
         let isHTTP = lower.hasPrefix("http")
@@ -827,5 +941,80 @@ private struct MessageActionSheet: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Chat thread peek preview
+
+/// Non-interactive visual stand-in for the current chat thread — shown as the
+/// side-peek destination while the user drags the DM sidebar left. Pulls the
+/// last opened conversation from the shared caches so the peek matches the
+/// conversation the user is actually about to navigate back into.
+struct ChatThreadPreview: View {
+    @ObservedObject private var cache = ConversationsCache.shared
+    @ObservedObject private var lastChat = LastChatStore.shared
+    @ObservedObject private var presence = PresenceService.shared
+
+    var body: some View {
+        let conv: ConversationSummary? = {
+            guard let id = lastChat.lastConversationID else { return nil }
+            return cache.conversations.first(where: { $0.id == id })
+        }()
+
+        VStack(spacing: 0) {
+            if let conv {
+                HStack(spacing: 10) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(Theme.Colors.textPrimary)
+                        .frame(width: 36, height: 36)
+
+                    ZStack(alignment: .bottomTrailing) {
+                        if conv.isGroup && conv.pictureURL == nil {
+                            GroupAvatar(members: conv.members, size: 32)
+                        } else {
+                            AvatarView(url: conv.avatarURL,
+                                       fallbackText: conv.displayName, size: 32)
+                        }
+                        if let other = conv.otherUser {
+                            let live = presence.effectiveStatus(for: other.userID, storedStatus: other.status)
+                            StatusDot(rawStatus: live,
+                                      isOnline: presence.isOnline(other.userID),
+                                      size: 10, borderColor: Theme.Colors.bgPrimary)
+                                .offset(x: 2, y: 2)
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(conv.displayName)
+                            .font(Theme.Fonts.bodyMedium)
+                            .foregroundStyle(Theme.Colors.textPrimary)
+                        if let other = conv.otherUser {
+                            let live = presence.effectiveStatus(for: other.userID, storedStatus: other.status)
+                            Text(live.capitalized)
+                                .font(.cubbly(11))
+                                .foregroundStyle(Theme.Colors.textSecondary)
+                        }
+                    }
+                    Spacer()
+
+                    HStack(spacing: 18) {
+                        SVGIcon(name: "call", size: 20, tint: Theme.Colors.textSecondary)
+                            .frame(width: 36, height: 36)
+                        SVGIcon(name: "video-camera", size: 20, tint: Theme.Colors.textSecondary)
+                            .frame(width: 36, height: 36)
+                    }
+                    .padding(.trailing, 12)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+
+                Rectangle().fill(Theme.Colors.divider).frame(height: 1)
+            }
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.Colors.bgPrimary)
+        .allowsHitTesting(false)
     }
 }

@@ -38,8 +38,13 @@ private struct CubblyTabBar: View {
         }
         .frame(height: 56)
         .background(
+            // Extend the bar background through the bottom safe area so it
+            // visually docks to the phone's frame. The HStack itself still
+            // sits above the home indicator thanks to the enclosing VStack's
+            // safe-area handling, so only the paint bleeds down.
             Theme.Colors.bgSecondary
                 .overlay(Rectangle().fill(Theme.Colors.border).frame(height: 1), alignment: .top)
+                .ignoresSafeArea(edges: .bottom)
         )
     }
 

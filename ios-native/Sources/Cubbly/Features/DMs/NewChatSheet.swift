@@ -128,10 +128,39 @@ struct NewChatSheet: View {
     }
 
     private func createDM(other: UUID) async {
+        guard let me = session.currentUserID else { return }
+        let repo = ConversationsRepository()
         do {
-            let id = try await ConversationsRepository().openOrCreateDM(with: other)
-            onCreated(id); dismiss()
-        } catch { print("[NewChat] DM failed:", error) }
+            // Make sure a 1:1 DM exists (creates one if this is our first
+            // interaction). We deliberately ignore the returned ID: on some
+            // deployments the `create_dm_conversation` RPC returns any
+            // conversation that happens to include both users, which can
+            // resolve to a *group chat* the two are in together. That's why
+            // picking a friend used to drop the user into the shared group
+            // instead of the DM — cubblybot worked only because there's no
+            // group to confuse it with.
+            _ = try await repo.openOrCreateDM(with: other)
+
+            // Re-resolve by scanning our own conversations for the non-group
+            // thread whose sole other participant is this friend.
+            let summaries = try await repo.listSummaries(currentUserID: me)
+            let dmID = summaries.first {
+                !$0.isGroup &&
+                $0.members.count == 1 &&
+                $0.members.first?.userID == other
+            }?.id
+
+            if let dmID {
+                onCreated(dmID)
+            } else {
+                // Extremely unlikely — fall back to whatever the RPC said.
+                let rpcID = try await repo.openOrCreateDM(with: other)
+                onCreated(rpcID)
+            }
+            dismiss()
+        } catch {
+            print("[NewChat] DM failed:", error)
+        }
     }
 
     private func createGroup() async {

@@ -74,12 +74,16 @@ struct DMListView: View {
                 }
             }
             .refreshable { await load(silently: false) }
-            .horizontalSwipe(left: {
-                if let id = lastChat.lastConversationID,
-                   let conv = cache.conversations.first(where: { $0.id == id }) {
-                    openConversation = conv
-                }
-            })
+            .horizontalSwipe(
+                left: {
+                    if let id = lastChat.lastConversationID,
+                       let conv = cache.conversations.first(where: { $0.id == id }) {
+                        openConversation = conv
+                    }
+                },
+                leftPreview: { ChatThreadPreview() },
+                rightPreview: { Color.clear }
+            )
         }
     }
 
@@ -218,7 +222,8 @@ struct DMListView: View {
                 await MainActor.run { applyIncomingMessage(row) }
             }
         }
-        await mc.subscribe()
+        do { try await mc.subscribeWithError() }
+        catch { print("[DMList] messages channel subscribe failed:", error) }
         msgChannel = mc
 
         let cc = client.channel("dm-list-conversations")
@@ -230,7 +235,8 @@ struct DMListView: View {
                 await load(silently: true)
             }
         }
-        await cc.subscribe()
+        do { try await cc.subscribeWithError() }
+        catch { print("[DMList] conversations channel subscribe failed:", error) }
         convChannel = cc
     }
 
@@ -298,7 +304,7 @@ private struct DMRow: View {
                     .font(Theme.Fonts.bodyMedium)
                     .foregroundStyle(Theme.Colors.textPrimary)
                     .lineLimit(1)
-                Text(conversation.lastMessage ?? "Say hi 👋")
+                Text(Self.previewText(for: conversation.lastMessage))
                     .font(Theme.Fonts.bodySmall)
                     .foregroundStyle(Theme.Colors.textSecondary)
                     .lineLimit(1)
@@ -317,5 +323,81 @@ private struct DMRow: View {
         .background(isHighlighted ? Theme.Colors.bgHover : Color.clear)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .contentShape(Rectangle())
+    }
+
+    /// Replace raw `[attachments]…` JSON with a friendly one-liner so the DM
+    /// row doesn't leak a big JSON blob.
+    static func previewText(for raw: String?) -> String {
+        guard let raw, !raw.isEmpty else { return "Say hi 👋" }
+        if let pretty = MessageAttachmentsParser.preview(for: raw) { return pretty }
+        return raw
+    }
+}
+
+// MARK: - Sidebar peek preview
+
+/// Non-interactive visual stand-in for `DMListView`'s content, used as the
+/// side-peek destination when the user drags a chat thread out of view. Pulls
+/// from the shared `ConversationsCache` so it always matches what the real
+/// home tab would render — no network, no subscriptions, no taps.
+struct DMSidebarPreview: View {
+    @ObservedObject private var cache = ConversationsCache.shared
+    @ObservedObject private var lastChat = LastChatStore.shared
+    @ObservedObject private var presence = PresenceService.shared
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ServerRail()
+            Rectangle().fill(Theme.Colors.divider).frame(width: 1)
+
+            VStack(spacing: 0) {
+                HStack {
+                    Text("Messages")
+                        .font(.cubbly(24, .heavy))
+                        .foregroundStyle(Theme.Colors.textPrimary)
+                    Spacer()
+                    Image(systemName: "square.and.pencil")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .frame(width: 36, height: 36)
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 8)
+
+                HStack(spacing: 8) {
+                    SVGIcon(name: "search", size: 14, tint: Theme.Colors.textMuted)
+                    Text("Search")
+                        .font(Theme.Fonts.bodySmall)
+                        .foregroundStyle(Theme.Colors.textMuted)
+                    Spacer()
+                }
+                .padding(.vertical, 8)
+                .padding(.horizontal, 12)
+                .background(Theme.Colors.bgTertiary)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
+
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(cache.conversations) { conv in
+                            DMRow(
+                                conversation: conv,
+                                isHighlighted: conv.id == lastChat.lastConversationID,
+                                presence: presence
+                            )
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 2)
+                        }
+                    }
+                }
+                .scrollDisabled(true)
+            }
+            .frame(maxWidth: .infinity)
+            .background(Theme.Colors.bgPrimary)
+        }
+        .background(Theme.Colors.bgPrimary)
+        .allowsHitTesting(false)
     }
 }

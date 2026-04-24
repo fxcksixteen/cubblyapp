@@ -368,9 +368,25 @@ struct FriendsView: View {
 
     /// Opens (or creates) the DM with this friend. If `video` is non-nil, posts
     /// a notification once the chat appears so it can auto-start the call.
+    /// We deliberately don't trust the ID returned by `create_dm_conversation`
+    /// — see the explanation in `NewChatSheet.createDM`. Instead we ensure a
+    /// DM exists, then resolve the correct conversation ID locally.
     private func openDM(with entry: FriendEntry, video: Bool?) async {
+        guard let me = session.currentUserID else { return }
+        let repo = ConversationsRepository()
         do {
-            let convID = try await ConversationsRepository().openOrCreateDM(with: entry.profile.userID)
+            let rpcID = try await repo.openOrCreateDM(with: entry.profile.userID)
+
+            let summaries = try await repo.listSummaries(currentUserID: me)
+            let resolvedID: UUID? = summaries.first {
+                !$0.isGroup &&
+                $0.members.count == 1 &&
+                $0.members.first?.userID == entry.profile.userID
+            }?.id
+            // Fall back to whatever the RPC gave us only if we somehow
+            // couldn't find the DM locally (shouldn't happen in practice).
+            let convID = resolvedID ?? rpcID
+
             let summary = ConversationSummary(
                 id: convID,
                 isGroup: false,
@@ -390,7 +406,6 @@ struct FriendsView: View {
                 )
             }
         } catch {
-            // Surface as an inline message on the friends tab.
             errorMessage = "Couldn't open DM: \(error.localizedDescription)"
         }
     }
@@ -457,7 +472,17 @@ private struct FriendRow: View {
         case .blocked:
             return "Blocked"
         default:
-            return entry.profile.status.capitalized
+            // Subtitle should reflect whether the friend is *actually*
+            // reachable right now, not whatever status string is stored on
+            // their profile. If they aren't in the presence channel we show
+            // "Offline" regardless of what they last picked ("Idle", "DND",
+            // etc.). When they come back online, their chosen status takes
+            // over again.
+            let userID = entry.profile.userID
+            let presence = PresenceService.shared
+            guard presence.isOnline(userID) else { return "Offline" }
+            let live = presence.effectiveStatus(for: userID, storedStatus: entry.profile.status)
+            return live.capitalized
         }
     }
 

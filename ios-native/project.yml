@@ -16,7 +16,6 @@ settings:
     DEVELOPMENT_TEAM: ""
 
 fileGroups:
-  - Resources
   - Package.swift
   - README.md
   - README_FIRST.md
@@ -36,19 +35,23 @@ targets:
     platform: iOS
     sources:
       - path: Sources/Cubbly
-    resources:
       # Asset catalog (app icon, accent color, launch background, brand pngs).
       - path: Resources/Assets.xcassets
       # Folder references — guarantees every file inside ships even if the
-      # user opens the .xcodeproj before re-running xcodegen.
+      # user opens the .xcodeproj before re-running xcodegen. XcodeGen places
+      # `type: folder` entries into the Resources build phase automatically.
       - path: Resources/Icons
         type: folder
+        buildPhase: resources
       - path: Resources/Images
         type: folder
+        buildPhase: resources
       - path: Resources/Videos
         type: folder
+        buildPhase: resources
       - path: Resources/Fonts
         type: folder
+        buildPhase: resources
       - path: Resources/LaunchScreen.storyboard
     info:
       path: Resources/Info.plist
@@ -66,6 +69,24 @@ targets:
           UIColorName: LaunchBackground
           UIImageName: cubbly-nobg
           UIImageRespectsSafeAreaInsets: false
+        # Register bundled Nunito TTFs. Paths are relative to the bundle root —
+        # since `Resources/Fonts` is shipped as a folder reference, the TTFs
+        # end up under `Fonts/…` inside the .app.
+        UIAppFonts:
+          - Fonts/Nunito-Black.ttf
+          - Fonts/Nunito-BlackItalic.ttf
+          - Fonts/Nunito-Bold.ttf
+          - Fonts/Nunito-BoldItalic.ttf
+          - Fonts/Nunito-ExtraBold.ttf
+          - Fonts/Nunito-ExtraBoldItalic.ttf
+          - Fonts/Nunito-Light.ttf
+          - Fonts/Nunito-LightItalic.ttf
+          - Fonts/Nunito-Medium.ttf
+          - Fonts/Nunito-MediumItalic.ttf
+          - Fonts/Nunito-Regular.ttf
+          - Fonts/Nunito-RegularItalic.ttf
+          - Fonts/Nunito-SemiBold.ttf
+          - Fonts/Nunito-SemiBoldItalic.ttf
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.cubbly.ios
