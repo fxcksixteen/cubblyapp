@@ -460,9 +460,6 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
           sharerName={fullscreenView.name}
           type={fullscreenView.type}
           isLocal={fullscreenView.isLocal}
-          // Only screen-share carries audio; remote-cam tiles + local previews don't.
-          audioPeerId={fullscreenView.type === "screen" && !fullscreenView.isLocal ? recipientUserId : undefined}
-          volumeApi={volumeApi}
           onClose={() => setFullscreenView(null)}
         />
       )}

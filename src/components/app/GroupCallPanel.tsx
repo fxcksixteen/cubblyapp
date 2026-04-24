@@ -357,8 +357,6 @@ const GroupCallPanel = ({ conversationId }: Props) => {
           sharerName={fullscreenView.name}
           type={fullscreenView.type}
           isLocal={fullscreenView.isLocal}
-          audioPeerId={fullscreenView.type === "screen" && !fullscreenView.isLocal ? fullscreenView.peerId : undefined}
-          volumeApi={volumeApi}
           onClose={() => setFullscreenView(null)}
         />
       )}
