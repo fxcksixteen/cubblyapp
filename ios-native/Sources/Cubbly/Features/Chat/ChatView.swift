@@ -111,11 +111,16 @@ struct ChatView: View {
             // we don't show a banner for messages that arrive while the user
             // is reading them.
             NotificationService.shared.activeConversationID = conversation.id
+            // Hide the global custom tab bar while we're on a chat thread —
+            // matches Discord/Telegram and stops it from eating vertical
+            // space + competing with the message composer.
+            ChromeStore.shared.tabBarHidden = true
         }
         .onDisappear {
             if NotificationService.shared.activeConversationID == conversation.id {
                 NotificationService.shared.activeConversationID = nil
             }
+            ChromeStore.shared.tabBarHidden = false
             Task {
                 if let ch = channel { await ch.unsubscribe() }
                 if let tc = typingChannel { await tc.unsubscribe() }
