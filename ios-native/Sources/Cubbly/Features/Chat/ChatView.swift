@@ -94,6 +94,15 @@ struct ChatView: View {
         .fullScreenCover(item: $lightboxURL) { item in
             ImageLightbox(url: item.url) { lightboxURL = nil }
         }
+        .sheet(item: Binding(
+            get: { profilePopupUserID.map { IdentifiedUUID(id: $0) } },
+            set: { profilePopupUserID = $0?.id }
+        )) { wrapper in
+            ProfilePopupView(userID: wrapper.id)
+                .environmentObject(presence)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
         .task {
             await loadInitial()
             await subscribe()
@@ -110,6 +119,7 @@ struct ChatView: View {
             Task {
                 if let ch = channel { await ch.unsubscribe() }
                 if let tc = typingChannel { await tc.unsubscribe() }
+                if let cc = callEventsChannel { await cc.unsubscribe() }
             }
         }
     }
