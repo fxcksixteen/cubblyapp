@@ -275,6 +275,11 @@ final class CallStore: ObservableObject {
 
     func reapplyAudioSession() { configureAudioSession() }
 
+    // MARK: - Minimize / Restore
+
+    func minimize() { isMinimized = true }
+    func restore()  { isMinimized = false }
+
     // MARK: - Signaling event handler
 
     private func handleSignaling(_ e: CallSignaling.Event) {
