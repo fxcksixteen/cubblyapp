@@ -712,6 +712,49 @@ struct IdentifiedURL: Identifiable {
     var id: String { url.absoluteString }
 }
 
+struct IdentifiedUUID: Identifiable {
+    let id: UUID
+}
+
+/// One row from `public.call_events`.
+struct CallEventRow: Codable, Identifiable, Hashable {
+    let id: UUID
+    let conversationId: UUID
+    let callerId: UUID
+    let state: String
+    let startedAt: Date
+    let endedAt: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case id, state
+        case conversationId = "conversation_id"
+        case callerId = "caller_id"
+        case startedAt = "started_at"
+        case endedAt = "ended_at"
+    }
+}
+
+/// Either a regular chat message or a call event, ordered by createdAt for
+/// the unified chat timeline.
+enum TimelineItem: Identifiable {
+    case message(ChatMessage)
+    case callEvent(CallEventRow)
+
+    var id: String {
+        switch self {
+        case .message(let m): return "msg-\(m.id)"
+        case .callEvent(let e): return "call-\(e.id.uuidString)"
+        }
+    }
+
+    var timestamp: Date {
+        switch self {
+        case .message(let m): return m.createdAt
+        case .callEvent(let e): return e.startedAt
+        }
+    }
+}
+
 // MARK: - Discord-style bubble
 
 /// Discord iOS layout: every row is a left-aligned avatar + display name +
@@ -724,6 +767,7 @@ private struct DiscordStyleBubble: View {
     let onLongPress: () -> Void
     let onPlayVideo: (URL) -> Void
     let onTapImage: (URL) -> Void
+    let onTapAvatar: () -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -731,10 +775,13 @@ private struct DiscordStyleBubble: View {
             if grouped {
                 Color.clear.frame(width: 40, height: 1)
             } else {
-                AvatarView(url: message.senderAvatarURL.flatMap(URL.init(string:)),
-                           fallbackText: message.senderName ?? "?",
-                           size: 40)
-                    .padding(.top, 2)
+                Button(action: onTapAvatar) {
+                    AvatarView(url: message.senderAvatarURL.flatMap(URL.init(string:)),
+                               fallbackText: message.senderName ?? "?",
+                               size: 40)
+                        .padding(.top, 2)
+                }
+                .buttonStyle(.plain)
             }
 
             VStack(alignment: .leading, spacing: 3) {
