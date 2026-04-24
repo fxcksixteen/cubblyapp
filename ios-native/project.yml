@@ -28,6 +28,12 @@ packages:
   SVGKit:
     url: https://github.com/SVGKit/SVGKit
     from: "3.0.0"
+  # Same WebRTC engine that Chromium / Discord / Google Meet ship.
+  # Pre-built XCFramework distributed by stasel — fully signed, supports
+  # iOS 13+, voice + video, audio-unit AEC, hardware H.264.
+  WebRTC:
+    url: https://github.com/stasel/WebRTC
+    from: "125.0.0"
 
 targets:
   Cubbly:
@@ -64,6 +70,8 @@ targets:
         CFBundleVersion: "1"
         UIBackgroundModes:
           - remote-notification
+          - audio
+          - voip
         NSPhotoLibraryUsageDescription: "Cubbly needs photo access so you can share images in chats."
         NSCameraUsageDescription: "Cubbly needs camera access so you can take photos to share in chats."
         NSMicrophoneUsageDescription: "Cubbly needs the microphone for voice calls."
@@ -112,6 +120,8 @@ targets:
         product: Supabase
       - package: SVGKit
         product: SVGKit
+      - package: WebRTC
+        product: WebRTC
 
   CubblyTests:
     type: bundle.unit-test
