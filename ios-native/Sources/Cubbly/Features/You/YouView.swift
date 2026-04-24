@@ -7,6 +7,7 @@ struct YouView: View {
     @EnvironmentObject private var presence: PresenceService
     @State private var showingSignOutConfirm = false
     @State private var showingNotificationSettings = false
+    @State private var showingVoiceVideoSettings = false
 
     /// Read directly from the session profile so we never get stuck on a
     /// stale snapshot when the view re-appears. Falls back to "online" until
@@ -50,6 +51,9 @@ struct YouView: View {
         .task { await session.reloadProfile() }
         .sheet(isPresented: $showingNotificationSettings) {
             NotificationsSettingsView()
+        }
+        .sheet(isPresented: $showingVoiceVideoSettings) {
+            VoiceVideoSettingsView()
         }
     }
 
@@ -150,7 +154,9 @@ struct YouView: View {
                     showingNotificationSettings = true
                 }
                 divider
-                row(icon: "headphones", label: "Voice & Video")
+                row(icon: "headphones", label: "Voice & Video") {
+                    showingVoiceVideoSettings = true
+                }
                 divider
                 row(icon: "gamecontroller.fill", label: "Activity Privacy")
                 divider
