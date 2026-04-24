@@ -182,6 +182,44 @@ final class CallStore: ObservableObject {
         }
     }
 
+    // MARK: - CubblyBot test call (local loopback)
+
+    /// Drives a fake call to CubblyBot. We never touch realtime signaling —
+    /// the entire call is two `RTCPeerConnection`s in this process exchanging
+    /// SDP/ICE locally and piping the mic back to the caller. Lets the user
+    /// validate "is my mic actually working and is the call audio path live"
+    /// without a second human.
+    private func startBotEchoCall(conversationId: UUID, peerName: String, peerAvatarUrl: String?) async {
+        self.conversationId = conversationId
+        self.peerId = BotEchoCall.botUserId
+        self.peerName = peerName
+        self.peerAvatarUrl = peerAvatarUrl
+        self.state = .calling
+        self.startedAt = nil
+        self.isMinimized = false
+        SoundService.shared.playLooping(.outgoingRing)
+        CallKitService.shared.startOutgoing(handleName: peerName)
+        configureAudioSession()
+
+        let echo = BotEchoCall()
+        botEcho = echo
+        do {
+            try await echo.start()
+            // Brief "ringing" beat so the UI shows the calling animation,
+            // then auto-connect — matches a snappy callee accept.
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            SoundService.shared.stopLooping(.outgoingRing)
+            SoundService.shared.play(.message)
+            state = .connected
+            startedAt = Date()
+            CallKitService.shared.reportConnected()
+            print("[Call] CubblyBot echo call connected — speak to hear yourself.")
+        } catch {
+            print("[Call] BotEcho start failed:", error)
+            await endCall()
+        }
+    }
+
     // MARK: - Incoming call
 
     func acceptIncoming() async {
