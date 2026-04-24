@@ -203,20 +203,35 @@ struct ChatView: View {
                         }
                         .id("top-sentinel")
 
-                    ForEach(Array(messages.enumerated()), id: \.element.id) { idx, m in
-                        let prev = idx > 0 ? messages[idx - 1] : nil
-                        let grouped = prev?.senderID == m.senderID &&
-                            (m.createdAt.timeIntervalSince(prev?.createdAt ?? .distantPast) < 7 * 60)
-                        DiscordStyleBubble(
-                            message: m,
-                            grouped: grouped,
-                            currentUserID: session.currentUserID,
-                            onLongPress: { actionSheetMessage = m },
-                            onPlayVideo: { url in videoURL = IdentifiedURL(url: url) },
-                            onTapImage: { url in lightboxURL = IdentifiedURL(url: url) }
-                        )
-                        .id(m.id)
-                        .padding(.horizontal, 10)
+                    let items = timelineItems
+                    ForEach(Array(items.enumerated()), id: \.element.id) { idx, item in
+                        switch item {
+                        case .message(let m):
+                            let prevMsg = previousMessage(in: items, before: idx)
+                            let grouped = prevMsg?.senderID == m.senderID &&
+                                (m.createdAt.timeIntervalSince(prevMsg?.createdAt ?? .distantPast) < 7 * 60)
+                            DiscordStyleBubble(
+                                message: m,
+                                grouped: grouped,
+                                currentUserID: session.currentUserID,
+                                onLongPress: { actionSheetMessage = m },
+                                onPlayVideo: { url in videoURL = IdentifiedURL(url: url) },
+                                onTapImage: { url in lightboxURL = IdentifiedURL(url: url) },
+                                onTapAvatar: { profilePopupUserID = m.senderID }
+                            )
+                            .id(m.id)
+                            .padding(.horizontal, 10)
+                        case .callEvent(let e):
+                            CallEventPill(
+                                conversationId: conversation.id,
+                                event: .init(id: e.id, state: e.state,
+                                             startedAt: e.startedAt, endedAt: e.endedAt),
+                                onJoin: { joinCall(eventId: e.id, callerId: e.callerId) }
+                            )
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .id("call-\(e.id.uuidString)")
+                        }
                     }
                 }
                 .padding(.top, 8)
@@ -234,6 +249,34 @@ struct ChatView: View {
             .onAppear {
                 if let last = messages.last?.id { proxy.scrollTo(last, anchor: .bottom) }
             }
+        }
+    }
+
+    // Mixed timeline of messages + call events, sorted by created time.
+    private var timelineItems: [TimelineItem] {
+        var items: [TimelineItem] = messages.map { .message($0) }
+        items.append(contentsOf: callEvents.map { .callEvent($0) })
+        items.sort { $0.timestamp < $1.timestamp }
+        return items
+    }
+
+    private func previousMessage(in items: [TimelineItem], before idx: Int) -> ChatMessage? {
+        guard idx > 0 else { return nil }
+        for i in stride(from: idx - 1, through: 0, by: -1) {
+            if case .message(let m) = items[i] { return m }
+        }
+        return nil
+    }
+
+    private func joinCall(eventId: UUID, callerId: UUID) {
+        guard let other = conversation.otherUser else { return }
+        Task {
+            await CallStore.shared.startCall(
+                conversationId: conversation.id,
+                peerId: other.userID,
+                peerName: other.displayName,
+                peerAvatarUrl: other.avatarURL?.absoluteString
+            )
         }
     }
 
