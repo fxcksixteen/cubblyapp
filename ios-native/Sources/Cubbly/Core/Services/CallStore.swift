@@ -56,6 +56,10 @@ final class CallStore: ObservableObject {
     private var voiceClient: WebRTCClient?
     private var screenClient: WebRTCClient?
     private var signaling: CallSignaling?
+    /// Non-nil while in a CubblyBot test call. Two in-process WebRTC peers
+    /// loop your mic back to you, proving the entire stack works without
+    /// needing another human on the other end.
+    private var botEcho: BotEchoCall?
     private var iceServers: [RTCIceServer] = [
         RTCIceServer(urlStrings: ["stun:stun.l.google.com:19302"])
     ]
@@ -107,6 +111,15 @@ final class CallStore: ObservableObject {
 
     func startCall(conversationId: UUID, peerId: UUID, peerName: String, peerAvatarUrl: String?) async {
         guard state == .idle, let signaling = signaling else { return }
+
+        // CubblyBot is a synthetic peer — there's no real device on the other
+        // end to negotiate with. Run a self-contained loopback so the user
+        // can verify their mic + audio output + WebRTC stack are all live.
+        if peerId == BotEchoCall.botUserId {
+            await startBotEchoCall(conversationId: conversationId, peerName: peerName, peerAvatarUrl: peerAvatarUrl)
+            return
+        }
+
         self.conversationId = conversationId
         self.peerId = peerId
         self.peerName = peerName
@@ -169,6 +182,44 @@ final class CallStore: ObservableObject {
         }
     }
 
+    // MARK: - CubblyBot test call (local loopback)
+
+    /// Drives a fake call to CubblyBot. We never touch realtime signaling —
+    /// the entire call is two `RTCPeerConnection`s in this process exchanging
+    /// SDP/ICE locally and piping the mic back to the caller. Lets the user
+    /// validate "is my mic actually working and is the call audio path live"
+    /// without a second human.
+    private func startBotEchoCall(conversationId: UUID, peerName: String, peerAvatarUrl: String?) async {
+        self.conversationId = conversationId
+        self.peerId = BotEchoCall.botUserId
+        self.peerName = peerName
+        self.peerAvatarUrl = peerAvatarUrl
+        self.state = .calling
+        self.startedAt = nil
+        self.isMinimized = false
+        SoundService.shared.playLooping(.outgoingRing)
+        CallKitService.shared.startOutgoing(handleName: peerName)
+        configureAudioSession()
+
+        let echo = BotEchoCall()
+        botEcho = echo
+        do {
+            try await echo.start()
+            // Brief "ringing" beat so the UI shows the calling animation,
+            // then auto-connect — matches a snappy callee accept.
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            SoundService.shared.stopLooping(.outgoingRing)
+            SoundService.shared.play(.message)
+            state = .connected
+            startedAt = Date()
+            CallKitService.shared.reportConnected()
+            print("[Call] CubblyBot echo call connected — speak to hear yourself.")
+        } catch {
+            print("[Call] BotEcho start failed:", error)
+            await endCall()
+        }
+    }
+
     // MARK: - Incoming call
 
     func acceptIncoming() async {
@@ -206,6 +257,7 @@ final class CallStore: ObservableObject {
         SoundService.shared.play(.leaveCall)
         voiceClient?.close(); voiceClient = nil
         screenClient?.close(); screenClient = nil
+        botEcho?.stop(); botEcho = nil
         await signaling?.leaveCallChannel()
         if let evt = currentCallEventId {
             try? await SupabaseManager.shared.client
