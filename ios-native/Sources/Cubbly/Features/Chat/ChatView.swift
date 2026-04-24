@@ -577,6 +577,7 @@ struct ChatView: View {
                 attachments.append(MessageAttachment(
                     name: name,
                     url: signed,
+                    path: path,
                     mimeType: Self.mimeType(forExtension: ext),
                     size: data.count,
                     width: nil,
