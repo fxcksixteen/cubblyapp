@@ -211,10 +211,32 @@ interface VoiceContextType {
 const VoiceContext = createContext<VoiceContextType>({} as VoiceContextType);
 export const useVoice = () => useContext(VoiceContext);
 
+/**
+ * Sanitize a possibly-empty / null device id from old localStorage. Radix
+ * Select crashes the entire panel ("A <Select.Item /> must have a value
+ * prop that is not an empty string") if any controlled value is "" — so we
+ * coerce empty/missing ids back to "default" before they reach the select.
+ */
+function safeDeviceId(v: unknown): string {
+  return typeof v === "string" && v.trim().length > 0 ? v : "default";
+}
+function safeRegion(v: unknown): string {
+  return typeof v === "string" && v.trim().length > 0 ? v : "auto";
+}
+
 function loadSettings(): VoiceSettings {
   try {
     const raw = localStorage.getItem("cubbly-voice-settings");
-    if (raw) return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      const merged = { ...DEFAULT_SETTINGS, ...parsed } as VoiceSettings;
+      // Hard-sanitize anything that ends up driving a <Select> value.
+      merged.inputDeviceId = safeDeviceId(merged.inputDeviceId);
+      merged.outputDeviceId = safeDeviceId(merged.outputDeviceId);
+      merged.videoDeviceId = safeDeviceId(merged.videoDeviceId);
+      merged.serverRegion = safeRegion(merged.serverRegion);
+      return merged;
+    }
   } catch {}
   return { ...DEFAULT_SETTINGS };
 }

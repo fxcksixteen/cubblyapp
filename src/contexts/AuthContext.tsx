@@ -121,11 +121,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
 
-    // Unique suffix per mount — prevents "cannot add presence callbacks
-    // after subscribe()" crashes under StrictMode/HMR (same root cause that
-    // was blocking call joins).
-    const uniqueSuffix = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const channel = supabase.channel(`online-presence:${uniqueSuffix}`, {
+    // CRITICAL: this MUST be a single shared channel name across all users
+    // and tabs (matches the iOS-native `global:online` room). Using a unique
+    // per-tab suffix puts every client into its own isolated room, so nobody
+    // ever sees anyone else as online — that was the root cause of all the
+    // "status indicators don't work anymore" reports.
+    const channel = supabase.channel(`global:online`, {
       config: { presence: { key: user.id } },
     });
 

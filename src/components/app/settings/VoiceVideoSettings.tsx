@@ -46,11 +46,20 @@ const VoiceVideoSettings = ({ panelStyle, cardStyle }: Props) => {
   // Belt-and-suspenders: VoiceContext should always provide these arrays, but
   // if the context ever defaults to undefined (e.g. during a render before
   // enumeration completes on iOS PWA), `.filter` would crash the panel.
+  // Also drop ANY entry whose deviceId is missing/blank — Radix Select hard-
+  // crashes the whole panel ("A <Select.Item /> must have a value prop that
+  // is not an empty string") on iOS PWA when Safari returns blank ids.
+  const cleanList = (arr: MediaDeviceInfo[] | undefined) =>
+    (arr || []).filter((d) => typeof d?.deviceId === "string" && d.deviceId.trim().length > 0 && d.deviceId !== "default" && d.deviceId !== "communications");
   const safeDevices = {
-    inputs: availableDevices?.inputs ?? [],
-    outputs: availableDevices?.outputs ?? [],
-    cameras: availableDevices?.cameras ?? [],
+    inputs: cleanList(availableDevices?.inputs),
+    outputs: cleanList(availableDevices?.outputs),
+    cameras: cleanList(availableDevices?.cameras),
   };
+  // Guarantee the controlled <Select> value is non-empty even if some other
+  // code path managed to write "" into settings.
+  const safeValue = (v: unknown, fallback = "default") =>
+    typeof v === "string" && v.trim().length > 0 ? v : fallback;
 
   const activeRegion = settings.serverRegion === "auto"
     ? SERVER_REGIONS.find(r => r.id === detectedRegion) || SERVER_REGIONS[0]
@@ -100,6 +109,7 @@ const VoiceVideoSettings = ({ panelStyle, cardStyle }: Props) => {
           cardStyle={cardStyle}
           captureLocked={captureLocked}
           captureLockReason={inCall ? "in-call" : isIOSLike ? "ios" : null}
+          safeValue={safeValue}
         />
       ) : (
         <VideoTab
@@ -111,6 +121,7 @@ const VoiceVideoSettings = ({ panelStyle, cardStyle }: Props) => {
           cardStyle={cardStyle}
           captureLocked={captureLocked}
           captureLockReason={inCall ? "in-call" : isIOSLike ? "ios" : null}
+          safeValue={safeValue}
         />
       )}
     </div>
@@ -118,7 +129,7 @@ const VoiceVideoSettings = ({ panelStyle, cardStyle }: Props) => {
 };
 
 /* ─── Voice Tab ─── */
-function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, detectedRegion, activeRegion, cardStyle, captureLocked, captureLockReason }: any) {
+function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, detectedRegion, activeRegion, cardStyle, captureLocked, captureLockReason, safeValue }: any) {
   const [micTesting, setMicTesting] = useState(false);
   const streamRef = useRef<MediaStream | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -237,7 +248,7 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
             Server Region
           </p>
         </div>
-        <Select value={settings.serverRegion || "auto"} onValueChange={(v) => updateSettings({ serverRegion: v })}>
+        <Select value={safeValue ? safeValue(settings.serverRegion, "auto") : (settings.serverRegion || "auto")} onValueChange={(v) => updateSettings({ serverRegion: v })}>
           <SelectTrigger
             className="w-full rounded-xl border text-sm"
             style={{ backgroundColor: "var(--app-input)", borderColor: "var(--app-border)", color: "var(--app-text-primary)" }}
@@ -272,7 +283,7 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
         <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: "var(--app-text-secondary)" }}>
           Input Device
         </p>
-        <Select value={settings.inputDeviceId || "default"} onValueChange={(v) => updateSettings({ inputDeviceId: v })}>
+        <Select value={safeValue ? safeValue(settings.inputDeviceId, "default") : (settings.inputDeviceId || "default")} onValueChange={(v) => updateSettings({ inputDeviceId: v })}>
           <SelectTrigger
             className="w-full rounded-xl border text-sm"
             style={{ backgroundColor: "var(--app-input)", borderColor: "var(--app-border)", color: "var(--app-text-primary)" }}
@@ -360,7 +371,7 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
         <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: "var(--app-text-secondary)" }}>
           Output Device
         </p>
-        <Select value={settings.outputDeviceId || "default"} onValueChange={(v) => updateSettings({ outputDeviceId: v })}>
+        <Select value={safeValue ? safeValue(settings.outputDeviceId, "default") : (settings.outputDeviceId || "default")} onValueChange={(v) => updateSettings({ outputDeviceId: v })}>
           <SelectTrigger
             className="w-full rounded-xl border text-sm"
             style={{ backgroundColor: "var(--app-input)", borderColor: "var(--app-border)", color: "var(--app-text-primary)" }}
@@ -498,7 +509,7 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
 }
 
 /* ─── Camera Section (used inside Video Tab) ─── */
-function CameraSection({ settings, updateSettings, availableDevices, cardStyle, captureLocked, captureLockReason }: any) {
+function CameraSection({ settings, updateSettings, availableDevices, cardStyle, captureLocked, captureLockReason, safeValue }: any) {
   const [testing, setTesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -571,7 +582,7 @@ function CameraSection({ settings, updateSettings, availableDevices, cardStyle, 
       </div>
 
       {/* Camera device picker */}
-      <Select value={settings.videoDeviceId || "default"} onValueChange={(v) => updateSettings({ videoDeviceId: v })}>
+      <Select value={safeValue ? safeValue(settings.videoDeviceId, "default") : (settings.videoDeviceId || "default")} onValueChange={(v) => updateSettings({ videoDeviceId: v })}>
         <SelectTrigger
           className="w-full rounded-xl border text-sm"
           style={{ backgroundColor: "var(--app-input)", borderColor: "var(--app-border)", color: "var(--app-text-primary)" }}
@@ -701,7 +712,7 @@ function CameraSection({ settings, updateSettings, availableDevices, cardStyle, 
 }
 
 /* ─── Video Tab (Camera + Screen Sharing Settings) ─── */
-function VideoTab({ settings, updateSettings, availableDevices, screenShareSettings, updateScreenShareSettings, cardStyle, captureLocked, captureLockReason }: any) {
+function VideoTab({ settings, updateSettings, availableDevices, screenShareSettings, updateScreenShareSettings, cardStyle, captureLocked, captureLockReason, safeValue }: any) {
   return (
     <div className="space-y-6">
       <CameraSection
@@ -711,6 +722,7 @@ function VideoTab({ settings, updateSettings, availableDevices, screenShareSetti
         cardStyle={cardStyle}
         captureLocked={captureLocked}
         captureLockReason={captureLockReason}
+        safeValue={safeValue}
       />
       {/* Screen Share Resolution */}
       <div className="rounded-[24px] border p-5 space-y-4" style={cardStyle}>

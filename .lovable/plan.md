@@ -1,83 +1,90 @@
+# Fix Plan for v0.2.24 Stability Regressions
 
+## What will be fixed
 
-# iOS Native: Realtime Chat + Asset Pipeline Fixes
+1. **Presence / status indicators everywhere**
+   - Replace the web/desktop presence channel setup with a single shared global presence room.
+   - Keep initial snapshot hydration so already-online users appear immediately.
+   - Verify all status consumers still use the effective-status helper correctly.
 
-## Problems
+2. **Chat unread indicators inside chat pages**
+   - Stop marking conversations read immediately on chat open.
+   - Preserve unread state until the user actually reaches the bottom, clicks **Mark as Read**, or sends a reply/message.
+   - Reconnect the top blue bar and red `NEW` divider to the real unread snapshot taken on entry.
 
-1. **Chat is not live** — `MessagesRepository` only does one-shot fetches. There's no Supabase Realtime channel subscribed to `postgres_changes` on `messages`, so new/edited/deleted messages only appear after a manual refresh.
-2. **Conversation list doesn't update live** — same root cause for `ConversationsRepository` (no realtime on `conversations` / `messages` bumps).
-3. **SVG icons not rendering** — `SVGIcon` looks for files in the `Icons/` subdirectory, but `project.yml` likely flattens resources into the bundle root, so `Bundle.main.url(forResource:withExtension:subdirectory:"Icons")` returns nil and we fall back to SF Symbols.
-4. **Launch screen black/broken** — `LaunchScreen.storyboard` references image `cubbly-nobg`, but the asset catalog imageset is empty (no PNGs inside `cubbly-nobg.imageset/`), and `Info.plist` may not point at the storyboard.
-5. **Brand PNGs/logos missing** — `cubbly-logo.imageset`, `cubbly-nobg.imageset`, `cubbly-wordmark.imageset` only contain `Contents.json`, no actual PNG files. `LoginView` / `ServerRail` render blank.
-6. **.mov / animated assets** — `AnimatedImageView` handles GIFs via SDWebImage but there's no `.mov` playback path; need `AVPlayerLayer`-backed view (or confirm we don't actually ship `.mov` and the user means GIF/Lottie).
+3. **Screenshare fullscreen controls**
+   - Move the custom fullscreen chrome so it anchors to the rendered stream frame, not the app viewport edges.
+   - Make the controls reliably clickable.
+   - Split **stream audio controls** from **user audio controls**:
+     - avatar/right-click stays user-level
+     - right-clicking the shared stream opens stream-level controls
+     - fullscreen stream slider controls the stream audio itself, not the person’s entire call audio
+   - Wire the 1-on-1 fullscreen viewer to receive the remote stream owner ID/context too, so it behaves the same as group calls.
 
-## Fix Plan
+4. **iOS PWA Voice & Video settings crash**
+   - Harden all device select values against stale/empty values from old local storage and Safari device enumeration.
+   - Sanitize loaded voice settings so empty strings are converted to safe defaults before the panel renders.
+   - Keep the existing iOS capture-lock behavior, but make the panel render safely even when device data is incomplete.
 
-### 1. Realtime messages (`MessagesRepository` + `ChatView`)
+5. **iOS PWA call audio still silent**
+   - Add an iOS-safe remote audio fallback so call audio does not depend on the desktop-style Web Audio gain path.
+   - Keep the current autoplay/gesture re-arm logic, but prevent iOS from ending up with a muted hidden element while the gain graph is ineffective.
+   - Apply the same fallback to both 1-on-1 and group calls.
 
-Add a `subscribeToMessages(conversationID:) -> AsyncStream<RealtimeEvent>` API that wraps `supabase.realtimeV2.channel("messages:<id>")` with `postgresChange(InsertAction.self/UpdateAction.self/DeleteAction.self, schema:"public", table:"messages", filter: "conversation_id=eq.<id>")`.
+## Root causes found
 
-In `ChatView.swift`:
-- On `.task(id: conversation.id)`: start the stream, hydrate sender profile + reply preview for each event, and merge into `@State messages` (dedupe by id, replace optimistic temp- ids).
-- On view disappear / id change: `await channel.unsubscribe()`.
-- Keep optimistic send — when realtime INSERT arrives with same content+sender, swap the temp row.
+- **Presence is broken because the web app is joining unique per-tab presence channel names** (`online-presence:<random>`) instead of one shared room. That isolates each client, so everyone looks offline.
+- **Unread indicators are broken because chats are being marked read as soon as they open** in `useUnreadCounts`, before `ChatView` can capture the unread-on-entry snapshot. That zeroes out both the blue bar and red divider.
+- **Fullscreen stream controls are still user-level controls** because the viewer is wired to the shared per-user gain API. The stream right-click also opens `UserVolumeMenu`, not a stream menu.
+- **The iOS settings crash is likely from stale invalid select state**, not just current device filtering. The render path needs value sanitization before Radix Select mounts.
+- **The iOS silent-call bug likely persists because the current remote-audio path still relies on the peer gain graph**. On iOS PWA, that can leave the hidden audio element muted while the graph is not reliably producing audible output.
 
-This mirrors `src/hooks/useMessages.ts` exactly.
+## Implementation steps
 
-### 2. Realtime conversation list (`ConversationsRepository` + `DMListView`)
+1. **Presence fix**
+   - Update `src/contexts/AuthContext.tsx` to join a stable shared channel (matching the native app’s `global:online` behavior).
+   - Keep `.on(...)` before `.subscribe()`.
+   - Track the user after subscribe and hydrate from `presenceState()` immediately.
+   - Make cleanup deterministic so StrictMode/HMR doesn’t duplicate subscriptions.
 
-Subscribe to `messages` INSERTs across all conversations the user participates in (single channel, no filter — RLS already restricts) and bump the affected `ConversationSummary.lastMessageAt` + reorder. Also subscribe to `conversations` UPDATE for `updated_at` changes. Drives unread dots and last-message preview live.
+2. **Unread indicator fix**
+   - Remove the auto-mark-read-on-open effect in `src/hooks/useUnreadCounts.ts`.
+   - Let `ChatView.tsx` remain the owner of read dismissal timing.
+   - If needed, expose a shared `markConversationRead` helper so sidebar badges and chat indicators stay in sync from one code path.
 
-### 3. SVG icon resolution (`SVGIcon.swift`)
+3. **Stream-specific audio controls**
+   - Extend the audio-control layer so it can address `mic` and `screen` separately.
+   - Add a dedicated stream menu component for remote screenshares.
+   - Update `FullscreenScreenShareViewer.tsx`, `VoiceCallOverlay.tsx`, and `GroupCallPanel.tsx` so stream right-click and slider target the stream track.
+   - Reposition overlay chrome inside the actual stream frame container.
 
-Fix `resolveURL`:
-- Try `Bundle.main.url(forResource: name, withExtension: "svg")` first (flat bundle — this is how XcodeGen ships them).
-- Then try the `Icons/` subdirectory variant.
-- Then walk `resourcePath` recursively as a last resort (already there).
+4. **iOS PWA settings hardening**
+   - Sanitize loaded values in `VoiceContext` when reading local settings.
+   - Add device-option normalization in `VoiceVideoSettings.tsx` for inputs, outputs, and cameras.
+   - Guard every `Select` root with a guaranteed valid value.
 
-Also confirm `project.yml` ships `Resources/Icons/**` with `type: folder` (preserves the subdirectory) OR as flat resources — pick one and align `SVGIcon` to it. Plan: ship as **flat files** (simpler) and update `resolveURL` to look at bundle root first.
+5. **iOS PWA call-audio recovery**
+   - Add an iOS branch in the peer audio pipeline so remote audio can stay element-driven instead of graph-driven when needed.
+   - Keep desktop/web behavior unchanged.
+   - Apply the same safeguard to screen-share audio elements.
+   - Re-check deafen/output-volume interactions so they don’t remute remote audio on iOS.
 
-### 4. Brand assets — populate the imagesets
+6. **Version handling**
+   - Keep this inside **v0.2.24**. No version bump.
 
-The three imagesets (`cubbly-logo`, `cubbly-nobg`, `cubbly-wordmark`) have `Contents.json` but no PNGs. Copy the PNGs from the web project's `src/assets/` (or `public/`) into:
-- `ios-native/Resources/Assets.xcassets/cubbly-logo.imageset/cubbly-logo.png` (+ `@2x`, `@3x`)
-- `ios-native/Resources/Assets.xcassets/cubbly-nobg.imageset/cubbly-nobg.png` (+ `@2x`, `@3x`)
-- `ios-native/Resources/Assets.xcassets/cubbly-wordmark.imageset/cubbly-wordmark.png` (+ `@2x`, `@3x`)
+## Technical details
 
-Update each `Contents.json` to reference the three filenames at scales 1x/2x/3x.
+Files likely involved:
+- `src/contexts/AuthContext.tsx`
+- `src/hooks/useUnreadCounts.ts`
+- `src/components/app/ChatView.tsx`
+- `src/lib/peerGain.ts`
+- `src/components/app/FullscreenScreenShareViewer.tsx`
+- `src/components/app/UserVolumeMenu.tsx` or a new stream-specific companion menu
+- `src/components/app/VoiceCallOverlay.tsx`
+- `src/components/app/GroupCallPanel.tsx`
+- `src/contexts/VoiceContext.tsx`
+- `src/contexts/GroupCallContext.tsx`
+- `src/components/app/settings/VoiceVideoSettings.tsx`
 
-After that, `Image("cubbly-nobg")` (used in `LaunchScreen.storyboard` and `LoginView`) renders properly and the launch screen stops being a brown rectangle with no logo.
-
-### 5. Launch screen wiring (`Info.plist` + `project.yml`)
-
-- Ensure `Info.plist` has `UILaunchStoryboardName = LaunchScreen` (no `.storyboard` suffix).
-- Ensure `project.yml` includes `Resources/LaunchScreen.storyboard` as a resource and sets `INFOPLIST_KEY_UILaunchStoryboardName` if using build-setting–style plist generation.
-
-### 6. .mov / animated content
-
-Add `VideoPlayerView.swift` (thin `UIViewRepresentable` over `AVPlayerLayer` with looping + muted autoplay) and route any `.mov` URL through it inside `AttachmentItem` / message rendering. If the user actually meant Lottie (`.json`), confirm before adding the dep — but the safe baseline is AVKit-based playback for `.mov`/`.mp4`.
-
-### 7. Repackage
-
-Regenerate `Cubbly.xcodeproj` via `xcodegen`, zip as **`cubbly-ios-v6.zip`** excluding `.build`, `DerivedData`, `.xcodeproj` state, and `.DS_Store`.
-
-## Files Touched
-
-- `ios-native/Sources/Cubbly/Core/Repositories/MessagesRepository.swift` — add realtime subscribe API
-- `ios-native/Sources/Cubbly/Core/Repositories/ConversationsRepository.swift` — add realtime subscribe API
-- `ios-native/Sources/Cubbly/Features/Chat/ChatView.swift` — consume stream, merge optimistic
-- `ios-native/Sources/Cubbly/Features/DMs/DMListView.swift` — consume stream, reorder list
-- `ios-native/Sources/Cubbly/Shared/SVGIcon.swift` — fix bundle resolution order
-- `ios-native/Sources/Cubbly/Shared/VideoPlayerView.swift` — **new**, AVPlayer wrapper
-- `ios-native/Sources/Cubbly/Features/Chat/AttachmentsPicker.swift` (or wherever attachments render) — route `.mov` to `VideoPlayerView`
-- `ios-native/Resources/Assets.xcassets/cubbly-logo.imageset/` — add PNGs + update `Contents.json`
-- `ios-native/Resources/Assets.xcassets/cubbly-nobg.imageset/` — add PNGs + update `Contents.json`
-- `ios-native/Resources/Assets.xcassets/cubbly-wordmark.imageset/` — add PNGs + update `Contents.json`
-- `ios-native/Resources/Info.plist` — confirm `UILaunchStoryboardName`
-- `ios-native/project.yml` — confirm Resources globs include Icons + LaunchScreen
-- Repackage → `/mnt/documents/cubbly-ios-v6.zip`
-
-## Required from you (one ask)
-
-The brand PNGs aren't in `ios-native/`. I need to source them — confirm I should pull from the web project's existing assets (`src/assets/` or `public/`) and reuse the same files for the imagesets. If you have higher-res `@2x`/`@3x` versions you'd prefer, drop them in chat; otherwise I'll generate `@2x`/`@3x` by upscaling the highest-res source available in the repo.
-
+If you approve this, I’ll implement these fixes directly and keep the patch on **0.2.24**.

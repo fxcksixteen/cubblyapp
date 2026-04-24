@@ -243,23 +243,26 @@ export function useUnreadCounts(activeConversationId: string | null) {
     };
   }, [user, fetchUnread]);
 
-  // When the user opens a conversation, mark it read
+  // NOTE: we deliberately DO NOT auto-mark a conversation read just because
+  // it became active. ChatView is the source of truth for read-dismissal —
+  // it captures the unread snapshot on entry and only marks read when the
+  // user actually scrolls to the bottom, clicks "Mark as Read", or sends a
+  // message. Marking read here was wiping the snapshot before ChatView could
+  // read it, which is why both the blue "New Messages" bar and the red NEW
+  // divider stopped appearing. The sidebar badge still clears via the
+  // realtime UPDATE subscription on `conversation_participants` above when
+  // ChatView (or anyone else) calls `mark_conversation_read`.
   useEffect(() => {
-    if (!user || !activeConversationId) return;
-    let cancelled = false;
-    (async () => {
-      await supabase.rpc("mark_conversation_read", { _conversation_id: activeConversationId });
-      if (cancelled) return;
-      lastReadByConvRef.current.set(activeConversationId, new Date().toISOString());
-      setUnreadByConv((prev) => {
-        if (!prev.has(activeConversationId)) return prev;
-        const next = new Map(prev);
-        next.delete(activeConversationId);
-        return next;
-      });
-    })();
-    return () => { cancelled = true; };
-  }, [user, activeConversationId]);
+    if (!activeConversationId) return;
+    // Locally hide the sidebar badge for the active conversation as soon as
+    // the user opens it — feels instant — but DO NOT touch last_read_at yet.
+    setUnreadByConv((prev) => {
+      if (!prev.has(activeConversationId)) return prev;
+      const next = new Map(prev);
+      next.delete(activeConversationId);
+      return next;
+    });
+  }, [activeConversationId]);
 
   const totalUnread = Array.from(unreadByConv.values()).reduce((sum, u) => sum + u.count, 0);
 

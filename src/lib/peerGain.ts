@@ -18,6 +18,25 @@ import { useRef, useCallback } from "react";
 const USER_VOL_KEY = "cubbly-user-volumes";
 const USER_MUTE_KEY = "cubbly-user-muted";
 
+/**
+ * iOS Safari / iOS PWA: routing a live WebRTC MediaStream through
+ * `createMediaStreamSource()` reliably plays SILENCE — it's a well-known
+ * WebKit bug. We must keep the element-driven path (HTMLAudioElement plays
+ * the stream directly, gain is faked via element.volume 0..1).
+ *
+ * Without this guard the iOS PWA recipient hears NOTHING in any call.
+ */
+const IS_IOS = (() => {
+  try {
+    if (typeof navigator === "undefined") return false;
+    const ua = navigator.userAgent || "";
+    const platform = (navigator as any).platform || "";
+    const maxTouch = (navigator as any).maxTouchPoints || 0;
+    const iPadOS = platform === "MacIntel" && maxTouch > 1;
+    return /iPad|iPhone|iPod/.test(ua) || iPadOS;
+  } catch { return false; }
+})();
+
 const loadUserVolumes = (): Record<string, number> => {
   try { return JSON.parse(localStorage.getItem(USER_VOL_KEY) || "{}") || {}; } catch { return {}; }
 };
@@ -159,6 +178,39 @@ export function usePeerGains(): PeerGainApi {
   ) => {
     if (!userId || !stream) return;
     if (!stream.getAudioTracks().length) return;
+
+    // ── iOS PWA path: do NOT use the Web Audio gain graph at all. ──
+    // On iOS Safari / PWA, piping a live WebRTC MediaStream through
+    // `createMediaStreamSource()` reliably plays SILENCE (long-standing
+    // WebKit bug). The HTMLAudioElement, however, plays the same
+    // MediaStream perfectly when left to drive itself. We register the
+    // element so volume/mute changes still apply, but we never touch
+    // AudioContext.
+    if (IS_IOS) {
+      try {
+        let entry = peerEntriesRef.current.get(userId);
+        if (!entry) {
+          // Minimal entry — gain/ctx unused on iOS, but the type is shared.
+          const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+          const gain = ctx.createGain();
+          entry = { ctx, gain, sources: new Map(), media: new Map() };
+          peerEntriesRef.current.set(userId, entry);
+        }
+        entry.media.set(streamKind, { el: mediaEl, routedThroughGraph: false });
+        mediaEl.setAttribute("data-cubbly-peer", userId);
+        mediaEl.setAttribute("data-cubbly-kind", streamKind);
+        // Element-driven loudness — make sure it's audible.
+        const muted = !!userMutesRef.current[userId];
+        const vol = userVolumesRef.current[userId];
+        const v = typeof vol === "number" && isFinite(vol) ? Math.max(0, Math.min(1, vol)) : 1;
+        try { mediaEl.muted = muted; mediaEl.volume = v; } catch {}
+      } catch (e) {
+        console.warn("[PeerGain][iOS] attach fallback failed:", e);
+        try { mediaEl.muted = !!userMutesRef.current[userId]; } catch {}
+      }
+      return;
+    }
+
     try {
       let entry = peerEntriesRef.current.get(userId);
       if (!entry || entry.ctx.state === "closed") {
