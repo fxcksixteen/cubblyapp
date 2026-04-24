@@ -290,6 +290,9 @@ final class CallStore: ObservableObject {
                 callEventId: evtId
             )
             SoundService.shared.playLooping(.incomingCall)
+            // Hand the ring to CallKit too so iOS shows the system call UI
+            // (and the green status-bar pill once accepted).
+            CallKitService.shared.reportIncoming(handleName: name ?? "Someone") { _ in }
 
         case .offer(_, let sdp, _):
             Task { await handleVoiceOffer(sdp: sdp) }
