@@ -11,6 +11,15 @@ struct MainTabView: View {
     var body: some View {
         ZStack {
             VStack(spacing: 0) {
+                // Minimized-call pill sits ABOVE the active tab content so
+                // tapping it (or anywhere within) doesn't interfere with
+                // chat scrolling, and it visually anchors the call to the
+                // top of the app.
+                if callStore.state != .idle && callStore.isMinimized {
+                    MinimizedCallPill()
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+
                 Group {
                     switch selection {
                     case .home:    DMListView()
@@ -26,8 +35,8 @@ struct MainTabView: View {
             }
             .background(Theme.Colors.bgPrimary.ignoresSafeArea())
 
-            // Active call overlay (voice connected / calling)
-            if callStore.state != .idle {
+            // Active call overlay (only when NOT minimized)
+            if callStore.state != .idle && !callStore.isMinimized {
                 CallView()
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                     .zIndex(10)
@@ -41,6 +50,7 @@ struct MainTabView: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: callStore.state)
+        .animation(.easeInOut(duration: 0.2), value: callStore.isMinimized)
         .animation(.easeInOut(duration: 0.2), value: callStore.incoming?.id)
     }
 }
