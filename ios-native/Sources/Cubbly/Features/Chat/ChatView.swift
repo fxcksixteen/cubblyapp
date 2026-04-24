@@ -153,14 +153,18 @@ struct ChatView: View {
             // Voice + Video buttons — properly spaced apart and away from the
             // device edge (matches Discord iOS).
             HStack(spacing: 18) {
-                Button {} label: {
+                Button {
+                    startVoiceCall()
+                } label: {
                     SVGIcon(name: "call", size: 20, tint: Theme.Colors.textSecondary)
                         .frame(width: 36, height: 36)
                 }
+                .disabled(conversation.isGroup) // v0.1.0: 1:1 only
                 Button {} label: {
-                    SVGIcon(name: "video-camera", size: 20, tint: Theme.Colors.textSecondary)
+                    SVGIcon(name: "video-camera", size: 20, tint: Theme.Colors.textSecondary.opacity(0.4))
                         .frame(width: 36, height: 36)
                 }
+                .disabled(true) // v0.1.0: outgoing video not supported
             }
             .padding(.trailing, 12)
         }
