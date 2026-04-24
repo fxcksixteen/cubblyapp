@@ -82,4 +82,20 @@ final class SessionStore: ObservableObject {
     func signOut() async {
         try? await SupabaseManager.shared.client.auth.signOut()
     }
+
+    /// Optimistically updates the cached profile's status so views (the You
+    /// tab, status dot in headers, etc.) reflect the change immediately
+    /// without waiting for a profile re-fetch.
+    func setLocalStatus(_ status: String) {
+        if var profile = currentProfile {
+            profile.status = status
+            currentProfile = profile
+        }
+    }
+
+    /// Force a fresh profile reload from the backend.
+    func reloadProfile() async {
+        guard let userID = currentUserID else { return }
+        await refreshProfile(userID: userID)
+    }
 }
