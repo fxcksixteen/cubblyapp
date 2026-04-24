@@ -334,6 +334,21 @@ struct ChatView: View {
         .overlay(Rectangle().fill(Theme.Colors.divider).frame(height: 1), alignment: .top)
     }
 
+    // MARK: - Voice call
+
+    private func startVoiceCall() {
+        guard let other = conversation.otherUser else { return }
+        let avatar = other.avatarURL
+        Task {
+            await CallStore.shared.startCall(
+                conversationId: conversation.id,
+                peerId: other.userID,
+                peerName: other.displayName,
+                peerAvatarUrl: avatar
+            )
+        }
+    }
+
     // MARK: - Loading / sending
 
     private func loadInitial() async {
