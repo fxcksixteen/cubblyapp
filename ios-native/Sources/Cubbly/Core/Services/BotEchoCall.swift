@@ -116,13 +116,13 @@ final class BotEchoCall {
 
     private func republishOnBot(_ track: RTCAudioTrack) {
         guard let bot = botPC else { return }
-        // Add the same audio track back as a sendonly stream so it travels
-        // back to the caller PC. WebRTC will renegotiate; for simplicity we
-        // skip the renegotiation roundtrip and instead toggle the existing
-        // audio transceiver to sendrecv with our newly-captured track.
+        // Add the same audio track back as a sendrecv stream so it travels
+        // back to the caller PC. Renegotiation isn't needed because the
+        // caller's transceiver was created sendrecv (it already advertises
+        // recvability for the same m-line).
         for transceiver in bot.transceivers where transceiver.mediaType == .audio {
-            try? transceiver.setDirection(.sendRecv)
-            _ = transceiver.sender.track  // ensure sender exists
+            var err: NSError?
+            transceiver.setDirection(.sendRecv, error: &err)
             transceiver.sender.track = track
             return
         }
