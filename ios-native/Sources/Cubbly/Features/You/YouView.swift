@@ -5,9 +5,15 @@ import SwiftUI
 struct YouView: View {
     @EnvironmentObject private var session: SessionStore
     @EnvironmentObject private var presence: PresenceService
-    @State private var status: String = "online"
     @State private var showingSignOutConfirm = false
     @State private var showingNotificationSettings = false
+
+    /// Read directly from the session profile so we never get stuck on a
+    /// stale snapshot when the view re-appears. Falls back to "online" until
+    /// the profile loads.
+    private var status: String {
+        session.currentProfile?.status ?? "online"
+    }
 
     private let statusOptions: [(id: String, label: String)] = [
         ("online", "Online"),
@@ -41,7 +47,7 @@ struct YouView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.Colors.bgPrimary.ignoresSafeArea())
-        .onAppear { status = session.currentProfile?.status ?? "online" }
+        .task { await session.reloadProfile() }
         .sheet(isPresented: $showingNotificationSettings) {
             NotificationsSettingsView()
         }
@@ -212,15 +218,22 @@ struct YouView: View {
 
     private func updateStatus(_ next: String) async {
         guard let userID = session.currentUserID else { return }
-        status = next
+        // Optimistically update the shared session profile so this view —
+        // and every other view that reads `currentProfile?.status` — reflects
+        // the change instantly. Re-entering the You tab no longer snaps back.
+        session.setLocalStatus(next)
         do {
             try await SupabaseManager.shared.client
                 .from("profiles")
                 .update(["status": next])
                 .eq("user_id", value: userID)
                 .execute()
+            // Re-fetch to pick up server-side `updated_at` and stay in sync.
+            await session.reloadProfile()
         } catch {
             print("[YouView] failed to update status:", error)
+            // Roll back on failure by reloading the truth from the server.
+            await session.reloadProfile()
         }
     }
 }

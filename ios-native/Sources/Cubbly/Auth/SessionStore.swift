@@ -49,9 +49,13 @@ final class SessionStore: ObservableObject {
                 await refreshProfile(userID: session.user.id)
                 await PresenceService.shared.start(userID: session.user.id)
                 // Flush any APNs token that arrived before sign-in completed,
-                // and prompt for notification permission on first sign-in.
+                // ask for permission on first launch, AND re-register every
+                // launch if already authorized so APNs always hands us a token.
                 APNsRegistrar.shared.flushIfNeeded()
-                Task { _ = await NotificationService.shared.requestPermission() }
+                Task {
+                    await NotificationService.shared.registerForRemoteIfAuthorized()
+                    _ = await NotificationService.shared.requestPermission()
+                }
             } else {
                 state = .signedOut
                 await PresenceService.shared.stop()
@@ -77,5 +81,21 @@ final class SessionStore: ObservableObject {
 
     func signOut() async {
         try? await SupabaseManager.shared.client.auth.signOut()
+    }
+
+    /// Optimistically updates the cached profile's status so views (the You
+    /// tab, status dot in headers, etc.) reflect the change immediately
+    /// without waiting for a profile re-fetch.
+    func setLocalStatus(_ status: String) {
+        if var profile = currentProfile {
+            profile.status = status
+            currentProfile = profile
+        }
+    }
+
+    /// Force a fresh profile reload from the backend.
+    func reloadProfile() async {
+        guard let userID = currentUserID else { return }
+        await refreshProfile(userID: userID)
     }
 }
