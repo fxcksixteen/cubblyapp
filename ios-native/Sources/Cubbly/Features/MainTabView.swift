@@ -7,6 +7,7 @@ struct MainTabView: View {
     @State private var selection: Tab = .home
     @StateObject private var presence = PresenceService.shared
     @ObservedObject private var callStore = CallStore.shared
+    @ObservedObject private var chrome = ChromeStore.shared
 
     var body: some View {
         ZStack {
@@ -31,7 +32,11 @@ struct MainTabView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .environmentObject(presence)
 
-                CubblyTabBar(selection: $selection)
+                // Hide the custom tab bar entirely on chat threads —
+                // ChatView toggles `chrome.tabBarHidden` in onAppear/onDisappear.
+                if !chrome.tabBarHidden {
+                    CubblyTabBar(selection: $selection)
+                }
             }
             .background(Theme.Colors.bgPrimary.ignoresSafeArea())
 
