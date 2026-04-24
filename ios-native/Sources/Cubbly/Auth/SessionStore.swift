@@ -20,6 +20,12 @@ final class SessionStore: ObservableObject {
         return nil
     }
 
+    /// Weak singleton so non-View code (CallStore, signaling) can read the
+    /// current profile/display name without dependency injection plumbing.
+    private(set) static weak var shared: SessionStore?
+
+    init() { Self.shared = self }
+
     private var authChangesTask: Task<Void, Never>?
 
     /// Called once at app launch from RootView.task.
@@ -48,6 +54,8 @@ final class SessionStore: ObservableObject {
                 state = .signedIn(userID: session.user.id)
                 await refreshProfile(userID: session.user.id)
                 await PresenceService.shared.start(userID: session.user.id)
+                // Bootstrap call signaling now that we have a user id.
+                await CallStore.shared.attach(client: SupabaseManager.shared.client, userId: session.user.id)
                 // Flush any APNs token that arrived before sign-in completed,
                 // ask for permission on first launch, AND re-register every
                 // launch if already authorized so APNs always hands us a token.
