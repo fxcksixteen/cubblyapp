@@ -129,7 +129,7 @@ const VoiceVideoSettings = ({ panelStyle, cardStyle }: Props) => {
 };
 
 /* ─── Voice Tab ─── */
-function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, detectedRegion, activeRegion, cardStyle, captureLocked, captureLockReason }: any) {
+function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, detectedRegion, activeRegion, cardStyle, captureLocked, captureLockReason, safeValue }: any) {
   const [micTesting, setMicTesting] = useState(false);
   const streamRef = useRef<MediaStream | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
