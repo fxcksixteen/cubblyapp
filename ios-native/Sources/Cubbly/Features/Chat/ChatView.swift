@@ -275,7 +275,7 @@ struct ChatView: View {
                 conversationId: conversation.id,
                 peerId: other.userID,
                 peerName: other.displayName,
-                peerAvatarUrl: other.avatarURL?.absoluteString
+                peerAvatarUrl: other.avatarURL
             )
         }
     }
