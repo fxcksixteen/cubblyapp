@@ -242,10 +242,10 @@ export const CHANGELOG: ChangelogEntry[] = [
     bugFixes: [
       "CRITICAL: Fixed remote camera tiles disappearing or never appearing in group calls when someone turned their camera on mid-call",
       "Group call window/tab share-audio no longer leaks your full system mix to everyone — only the chosen app's audio is sent",
-      "Unified the 1-on-1 and group audio capture paths into one shared module so they can't drift apart again",
-      "Per-user volume / local mute were silently doing NOTHING in group calls — now wired up and persisted forever in localStorage",
-      "Per-user volume in 1-on-1 only affected the peer's mic, not their screen-share audio — both now respond to the same control",
-      "Fullscreen viewer's volume slider was changing the wrong audio element — now drives the actual playback pipeline",
+      "Unified the 1-on-1 and group call audio so they always behave the same.",
+      "Per-user volume / 'mute (you only)' were silently doing NOTHING in group calls — now wired up and remembered between calls.",
+      "Per-user volume in 1-on-1 only affected the peer's mic, not their screen-share audio — both now respond to the same control.",
+      "Fullscreen viewer's volume slider was changing the wrong thing — now actually controls what you hear.",
     ],
   },
   {
