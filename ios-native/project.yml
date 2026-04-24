@@ -101,8 +101,12 @@ targets:
         # entitlements file (Cubbly.entitlements) AND the matching capability
         # added to the App ID in your Apple Developer account.
         CODE_SIGN_ENTITLEMENTS: Cubbly.entitlements
-    entitlements:
-      path: Cubbly.entitlements
+    # NOTE: do NOT add an `entitlements:` block here. XcodeGen would then
+    # regenerate Cubbly.entitlements during project generation, and Xcode
+    # detects the file changing mid-build and aborts with:
+    #   "Entitlements file ... was modified during the build, which is not
+    #    supported."
+    # We ship the entitlements file by hand so it stays stable.
     dependencies:
       - package: Supabase
         product: Supabase
