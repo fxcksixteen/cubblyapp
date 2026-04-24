@@ -111,6 +111,15 @@ final class CallStore: ObservableObject {
 
     func startCall(conversationId: UUID, peerId: UUID, peerName: String, peerAvatarUrl: String?) async {
         guard state == .idle, let signaling = signaling else { return }
+
+        // CubblyBot is a synthetic peer — there's no real device on the other
+        // end to negotiate with. Run a self-contained loopback so the user
+        // can verify their mic + audio output + WebRTC stack are all live.
+        if peerId == BotEchoCall.botUserId {
+            await startBotEchoCall(conversationId: conversationId, peerName: peerName, peerAvatarUrl: peerAvatarUrl)
+            return
+        }
+
         self.conversationId = conversationId
         self.peerId = peerId
         self.peerName = peerName
