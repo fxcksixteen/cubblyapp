@@ -57,16 +57,13 @@ final class PresenceService: ObservableObject {
         }
         await ch.track(state: ["online_at": .string(ISO8601DateFormatter().string(from: Date()))])
 
-        // CRITICAL: hydrate initial state. presenceChange() only fires for
-        // *future* joins/leaves — without this, users already online when we
-        // connect never appear, so all friends look "offline" until they
-        // refresh. Mirrors the web app's initial sync.
-        let initialState = ch.presenceState()
-        var initial: Set<UUID> = []
-        for key in initialState.keys {
-            if let id = UUID(uuidString: key) { initial.insert(id) }
-        }
-        self.onlineUserIDs = initial
+        // Initial presence state is delivered automatically by supabase-swift v2:
+        // on subscribe, the server sends a `presence_state` event which is
+        // surfaced through `presenceChange()` as a joins-only PresenceAction
+        // (see RealtimeChannelV2.swift, case .presenceState). So the existing
+        // listener above hydrates already-online users on connect — mirroring
+        // the web app's initial sync without a separate presenceState() call
+        // (that API only exists on the deprecated v1 RealtimeChannel).
 
         self.channel = ch
     }

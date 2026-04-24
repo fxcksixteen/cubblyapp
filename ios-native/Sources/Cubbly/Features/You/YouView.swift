@@ -47,10 +47,11 @@ struct YouView: View {
         let displayName = session.currentProfile?.displayName ?? "You"
         let username = session.currentProfile?.username ?? "user"
         let bannerColor = AvatarView.color(for: displayName)
-        let me = session.currentUserID
-        let liveStatus = me.map { presence.effectiveStatus(for: $0, storedStatus: status) } ?? status
-        let online = me.map { presence.isOnline($0) } ?? true
         let bannerURL = session.currentProfile?.bannerURL.flatMap(URL.init(string:))
+        // For the user's own avatar we always want to show the literal status
+        // they picked — including "invisible". `effectiveStatus` masks
+        // invisible → online (that's the right thing for other people's
+        // views), so on this screen we bypass it and use the raw value.
 
         return VStack(alignment: .leading, spacing: 0) {
             ZStack(alignment: .bottomLeading) {
@@ -73,7 +74,7 @@ struct YouView: View {
                     )
                     .overlay(Circle().stroke(Theme.Colors.bgPrimary, lineWidth: 6))
 
-                    StatusDot(rawStatus: liveStatus, isOnline: online, size: 18, borderColor: Theme.Colors.bgPrimary)
+                    StatusDot(ownStatus: status, size: 18, borderColor: Theme.Colors.bgPrimary)
                         .offset(x: 2, y: 2)
                 }
                 .offset(x: 16, y: 48)
@@ -103,7 +104,10 @@ struct YouView: View {
                 ForEach(statusOptions, id: \.id) { opt in
                     Button { Task { await updateStatus(opt.id) } } label: {
                         HStack(spacing: 8) {
-                            StatusDot(rawStatus: opt.id, isOnline: true, size: 10,
+                            // Preview dots show exactly what each option
+                            // looks like — use `ownStatus` so "invisible"
+                            // keeps its grey icon here too.
+                            StatusDot(ownStatus: opt.id, size: 10,
                                       borderColor: status == opt.id ? Theme.Colors.bgTertiary : Theme.Colors.bgSecondary)
                             Text(opt.label)
                                 .font(Theme.Fonts.bodySmall)
