@@ -25,8 +25,12 @@ final class PresenceService: ObservableObject {
         trackedUserID = userID
 
         let client = SupabaseManager.shared.client
+        // CRITICAL: web app uses `user.id` which is a lowercase UUID. Swift's
+        // UUID().uuidString is UPPERCASE, which would put us in a separate
+        // presence keyspace and we'd never see web/desktop users as online.
+        let presenceKey = userID.uuidString.lowercased()
         let ch = client.channel("global:online") { config in
-            config.presence.key = userID.uuidString
+            config.presence.key = presenceKey
         }
 
         // Register the presence listener *before* subscribing — supabase-swift
@@ -36,6 +40,8 @@ final class PresenceService: ObservableObject {
             for await change in stream {
                 guard let self else { return }
                 var current = await MainActor.run { self.onlineUserIDs }
+                // Presence keys from web are lowercase UUID strings; Swift's
+                // UUID(uuidString:) is case-insensitive but we normalize anyway.
                 for key in change.joins.keys {
                     if let id = UUID(uuidString: key) { current.insert(id) }
                 }
