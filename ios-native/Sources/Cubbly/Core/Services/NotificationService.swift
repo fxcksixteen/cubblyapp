@@ -25,6 +25,21 @@ final class NotificationService: NSObject, ObservableObject {
         Task { await refreshPermission() }
     }
 
+    /// If the user has already granted permission previously, make sure we
+    /// (re-)register for remote notifications so APNs hands us a device token.
+    /// This must run on every cold launch — without it, devices that
+    /// authorized notifications in a previous session never re-register and
+    /// the `apns_subscriptions` row is never written.
+    func registerForRemoteIfAuthorized() async {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        let granted = settings.authorizationStatus == .authorized
+                   || settings.authorizationStatus == .provisional
+        permissionGranted = granted
+        if granted {
+            await MainActor.run { UIApplication.shared.registerForRemoteNotifications() }
+        }
+    }
+
     // MARK: - Permission
 
     /// Asks the OS for notification permission if not yet decided. Safe to call
@@ -35,8 +50,11 @@ final class NotificationService: NSObject, ObservableObject {
         do {
             let granted = try await center.requestAuthorization(options: [.alert, .badge, .sound])
             permissionGranted = granted
+            // Register for remote notifications regardless — if the user
+            // previously granted permission and we're being called again,
+            // requestAuthorization returns true immediately without prompting.
+            // We always want APNs to hand us a token on every launch.
             if granted {
-                // Register for remote notifications on the main queue.
                 await MainActor.run { UIApplication.shared.registerForRemoteNotifications() }
             }
             return granted
