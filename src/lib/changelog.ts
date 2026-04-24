@@ -373,7 +373,6 @@ export const CHANGELOG: ChangelogEntry[] = [
     bugFixes: [
       "Fixed the settings footer version so it now follows the real current release",
       "Fixed the updater flow by shipping the app itself as v0.2.3 instead of still reporting v0.2.1",
-      "Fixed the Update Logs ref warning in SettingsModal by forwarding the settings panel ref correctly",
     ],
   },
   {
