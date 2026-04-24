@@ -415,8 +415,25 @@ struct ChatView: View {
             let asc = rows.reversed()
             messages = try await hydrate(Array(asc))
             hasMore = rows.count >= 50
+            await loadCallEvents()
         } catch is CancellationError {} catch {
             print("[Chat] load failed:", error)
+        }
+    }
+
+    private func loadCallEvents() async {
+        do {
+            let rows: [CallEventRow] = try await SupabaseManager.shared.client
+                .from("call_events")
+                .select()
+                .eq("conversation_id", value: conversation.id.uuidString)
+                .order("started_at", ascending: true)
+                .limit(100)
+                .execute()
+                .value
+            callEvents = rows
+        } catch {
+            print("[Chat] loadCallEvents failed:", error)
         }
     }
 
