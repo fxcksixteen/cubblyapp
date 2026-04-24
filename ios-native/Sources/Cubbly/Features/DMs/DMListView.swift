@@ -257,6 +257,30 @@ struct DMListView: View {
             list.remove(at: idx)
             list.insert(updated, at: 0)
             cache.conversations = list
+
+            // Sound + local banner for messages from someone else, when the
+            // user isn't already reading that thread.
+            let isMe = row.senderID == session.currentUserID
+            let isActive = NotificationService.shared.activeConversationID == row.conversationID
+            if !isMe && !isActive {
+                if NotificationPreferences.shared.messageSoundEnabled {
+                    SoundService.shared.play(.message)
+                }
+                let senderProfile = old.members.first(where: { $0.userID == row.senderID })
+                let title: String
+                if old.isGroup {
+                    let who = senderProfile?.displayName ?? "Someone"
+                    title = "\(who) • \(old.displayName)"
+                } else {
+                    title = senderProfile?.displayName ?? old.displayName
+                }
+                NotificationService.shared.notifyIncomingMessage(
+                    conversationID: row.conversationID,
+                    title: title,
+                    body: row.content,
+                    threadID: "dm:\(row.conversationID.uuidString)"
+                )
+            }
         } else {
             // New conversation we haven't loaded yet — refresh silently.
             Task { await load(silently: true) }
