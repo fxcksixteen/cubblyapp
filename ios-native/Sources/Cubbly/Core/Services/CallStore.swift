@@ -113,7 +113,9 @@ final class CallStore: ObservableObject {
         self.peerAvatarUrl = peerAvatarUrl
         self.state = .calling
         self.startedAt = nil
+        self.isMinimized = false
         SoundService.shared.playLooping(.outgoingRing)
+        CallKitService.shared.startOutgoing(handleName: peerName)
 
         await signaling.joinCallChannel(conversationId: conversationId)
 
@@ -178,6 +180,7 @@ final class CallStore: ObservableObject {
         self.currentCallEventId = inc.callEventId
         self.state = .connected
         self.startedAt = Date()
+        self.isMinimized = false
         self.incoming = nil
         SoundService.shared.stopLooping(.incomingCall)
         SoundService.shared.play(.message)
