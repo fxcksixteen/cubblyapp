@@ -413,7 +413,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Fixed Steam, Discord and other software still showing as 'Playing' instead of 'Using' in some places",
       "Fixed missing voice/video buttons in the group chat header",
       "Smoother fallback when no curated icon exists — colored letter tiles instead of broken images",
-      "Per-peer audio level monitoring no longer leaks AudioContext on call end",
+      "Per-peer audio level monitoring no longer leaks resources on call end",
       "Group call participants list now refreshes correctly when someone joins or leaves mid-call",
       "Web app no longer crashes after a hard refresh on the chat view",
       "Mobile notification prompt now actually wires up to Web Push instead of only browser-tab notifications",
