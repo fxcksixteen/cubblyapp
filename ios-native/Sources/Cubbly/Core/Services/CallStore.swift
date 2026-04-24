@@ -110,7 +110,7 @@ final class CallStore: ObservableObject {
         self.peerAvatarUrl = peerAvatarUrl
         self.state = .calling
         self.startedAt = nil
-        SoundService.shared.play(.callStart)
+        SoundService.shared.playLooping(.outgoingRing)
 
         await signaling.joinCallChannel(conversationId: conversationId)
 
@@ -154,7 +154,7 @@ final class CallStore: ObservableObject {
                     targetUserId: peerId,
                     conversationId: conversationId,
                     callEventId: evtId,
-                    callerName: SessionStore.shared?.currentProfile?.display_name,
+                    callerName: SessionStore.shared?.currentProfile?.displayName,
                     callerAvatarUrl: peerAvatarUrl
                 )
                 _ = me
@@ -177,15 +177,15 @@ final class CallStore: ObservableObject {
         self.state = .connected
         self.startedAt = Date()
         self.incoming = nil
-        SoundService.shared.stopRingtone()
-        SoundService.shared.play(.callJoin)
+        SoundService.shared.stopLooping(.incomingCall)
+        SoundService.shared.play(.message)
         configureAudioSession()
         await signaling.joinCallChannel(conversationId: inc.conversationId)
         // Voice client will be created when we receive the offer (web sends offer right after ring).
     }
 
     func declineIncoming() {
-        SoundService.shared.stopRingtone()
+        SoundService.shared.stopLooping(.incomingCall)
         incoming = nil
     }
 
@@ -196,8 +196,9 @@ final class CallStore: ObservableObject {
         if let signaling = signaling, conv != nil {
             await signaling.broadcast(event: "hangup", payload: [:])
         }
-        SoundService.shared.stopRingtone()
-        SoundService.shared.play(.callEnd)
+        SoundService.shared.stopLooping(.incomingCall)
+        SoundService.shared.stopLooping(.outgoingRing)
+        SoundService.shared.play(.leaveCall)
         voiceClient?.close(); voiceClient = nil
         screenClient?.close(); screenClient = nil
         await signaling?.leaveCallChannel()
@@ -281,7 +282,7 @@ final class CallStore: ObservableObject {
                 callerAvatarUrl: avatar,
                 callEventId: evtId
             )
-            SoundService.shared.startRingtone()
+            SoundService.shared.playLooping(.incomingCall)
 
         case .offer(_, let sdp, _):
             Task { await handleVoiceOffer(sdp: sdp) }
@@ -375,7 +376,7 @@ final class CallStore: ObservableObject {
                 if kind == "video", let videoTrack = track as? RTCVideoTrack {
                     self?.remoteScreenTrack = videoTrack
                     self?.peerIsScreenSharing = true
-                    SoundService.shared.play(.screenShareStart)
+                    SoundService.shared.play(.message)
                 }
             }
         }
