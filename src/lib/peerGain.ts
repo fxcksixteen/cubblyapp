@@ -18,6 +18,25 @@ import { useRef, useCallback } from "react";
 const USER_VOL_KEY = "cubbly-user-volumes";
 const USER_MUTE_KEY = "cubbly-user-muted";
 
+/**
+ * iOS Safari / iOS PWA: routing a live WebRTC MediaStream through
+ * `createMediaStreamSource()` reliably plays SILENCE — it's a well-known
+ * WebKit bug. We must keep the element-driven path (HTMLAudioElement plays
+ * the stream directly, gain is faked via element.volume 0..1).
+ *
+ * Without this guard the iOS PWA recipient hears NOTHING in any call.
+ */
+const IS_IOS = (() => {
+  try {
+    if (typeof navigator === "undefined") return false;
+    const ua = navigator.userAgent || "";
+    const platform = (navigator as any).platform || "";
+    const maxTouch = (navigator as any).maxTouchPoints || 0;
+    const iPadOS = platform === "MacIntel" && maxTouch > 1;
+    return /iPad|iPhone|iPod/.test(ua) || iPadOS;
+  } catch { return false; }
+})();
+
 const loadUserVolumes = (): Record<string, number> => {
   try { return JSON.parse(localStorage.getItem(USER_VOL_KEY) || "{}") || {}; } catch { return {}; }
 };
