@@ -26,6 +26,9 @@ final class CallStore: ObservableObject {
     @Published private(set) var startedAt: Date?
     @Published var isMuted: Bool = false
     @Published var isDeafened: Bool = false
+    /// When true, the full-screen CallView is hidden; only the pill at the
+    /// top of MainTabView remains. The call itself keeps running.
+    @Published var isMinimized: Bool = false
 
     /// Incoming call sheet metadata (separate from `state` so we can show
     /// a ring even while another call may briefly still be ending).
