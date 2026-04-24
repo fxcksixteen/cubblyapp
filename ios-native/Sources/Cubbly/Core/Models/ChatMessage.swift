@@ -39,6 +39,10 @@ struct ChatMessage: Identifiable, Hashable {
 struct MessageAttachment: Hashable {
     let name: String?
     let url: URL?
+    /// Stable storage object path inside the private `chat-attachments` bucket
+    /// (e.g. `<userId>/<filename>`). The web app stores this and signs a fresh
+    /// URL on render — we mirror that behavior so old messages keep working.
+    let path: String?
     let mimeType: String?
     let size: Int?
     let width: Int?
@@ -47,6 +51,9 @@ struct MessageAttachment: Hashable {
     var fileExtension: String {
         if let n = name, let dot = n.lastIndex(of: ".") {
             return String(n[n.index(after: dot)...]).lowercased()
+        }
+        if let p = path, let dot = p.lastIndex(of: ".") {
+            return String(p[p.index(after: dot)...]).lowercased()
         }
         return url?.pathExtension.lowercased() ?? ""
     }
@@ -68,18 +75,32 @@ struct MessageAttachment: Hashable {
 }
 
 enum MessageAttachmentsParser {
-    /// If `content` starts with the `[attachments]` marker used by the PWA,
-    /// returns the decoded attachments plus any trailing caption text. Returns
-    /// `nil` for plain-text messages so callers can fall through to the normal
-    /// renderer.
+    /// Web/desktop format: `[attachments]<JSON>[/attachments]` (with optional
+    /// caption text before/after). Older iOS builds also produced
+    /// `[attachments]\n<JSON>` without a closing tag — both are accepted.
     static func parse(_ content: String) -> (attachments: [MessageAttachment], text: String)? {
-        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
-        let marker = "[attachments]"
-        guard trimmed.lowercased().hasPrefix(marker) else { return nil }
-        let afterMarker = String(trimmed.dropFirst(marker.count))
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let lower = content.lowercased()
+        guard let openRange = lower.range(of: "[attachments]") else { return nil }
 
-        guard let (jsonString, remainder) = extractJSONArray(from: afterMarker) else {
+        // Caption text that appears BEFORE the attachments block.
+        let leading = String(content[..<openRange.lowerBound])
+        let afterOpen = String(content[openRange.upperBound...])
+
+        // Find an optional `[/attachments]` close tag — everything between the
+        // open tag and either the close tag (if present) or end-of-string is
+        // the JSON payload + remainder.
+        let payloadAndAfter: String
+        let trailingAfterClose: String
+        if let closeRange = afterOpen.lowercased().range(of: "[/attachments]") {
+            payloadAndAfter = String(afterOpen[..<closeRange.lowerBound])
+            trailingAfterClose = String(afterOpen[closeRange.upperBound...])
+        } else {
+            payloadAndAfter = afterOpen
+            trailingAfterClose = ""
+        }
+
+        let scanInput = payloadAndAfter.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let (jsonString, remainder) = extractJSONArray(from: scanInput) else {
             return nil
         }
         guard let data = jsonString.data(using: .utf8),
@@ -91,7 +112,16 @@ enum MessageAttachmentsParser {
             return decode(dict)
         }
         guard !attachments.isEmpty else { return nil }
-        return (attachments, remainder.trimmingCharacters(in: .whitespacesAndNewlines))
+
+        let combinedText = [
+            leading.trimmingCharacters(in: .whitespacesAndNewlines),
+            remainder.trimmingCharacters(in: .whitespacesAndNewlines),
+            trailingAfterClose.trimmingCharacters(in: .whitespacesAndNewlines),
+        ]
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+
+        return (attachments, combinedText)
     }
 
     /// Short preview string for DM rows, e.g. "Photo", "2 Photos", "Video".
@@ -113,12 +143,14 @@ enum MessageAttachmentsParser {
         return total == 1 ? "Attachment\(caption)" : "\(total) Attachments\(caption)"
     }
 
-    /// Re-serializes attachments into the canonical `[attachments]\n[…]` format
-    /// so the iOS app sends the same shape the PWA renders inline.
+    /// Re-serializes attachments into the canonical `[attachments]<JSON>[/attachments]`
+    /// format used by the web/desktop app, so files sent from iOS render the
+    /// same everywhere.
     static func serialize(_ attachments: [MessageAttachment], caption: String = "") -> String {
         let array: [[String: Any]] = attachments.map { a in
             var dict: [String: Any] = [:]
             if let n = a.name { dict["name"] = n }
+            if let p = a.path { dict["path"] = p }
             if let u = a.url { dict["url"] = u.absoluteString }
             if let m = a.mimeType { dict["type"] = m }
             if let s = a.size { dict["size"] = s }
@@ -128,16 +160,16 @@ enum MessageAttachmentsParser {
         }
         let data = (try? JSONSerialization.data(withJSONObject: array)) ?? Data("[]".utf8)
         let json = String(data: data, encoding: .utf8) ?? "[]"
+        let body = "[attachments]\(json)[/attachments]"
         let trailing = caption.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trailing.isEmpty
-            ? "[attachments]\n\(json)"
-            : "[attachments]\n\(json)\n\(trailing)"
+        return trailing.isEmpty ? body : "\(body)\n\(trailing)"
     }
 
     // MARK: Private helpers
 
     private static func decode(_ dict: [String: Any]) -> MessageAttachment? {
         let name = (dict["name"] ?? dict["filename"] ?? dict["fileName"]) as? String
+        let path = (dict["path"] ?? dict["storagePath"] ?? dict["storage_path"]) as? String
         let urlString = (dict["url"] ?? dict["signedUrl"] ?? dict["signed_url"]
                          ?? dict["publicUrl"] ?? dict["public_url"] ?? dict["href"]) as? String
         let url = urlString.flatMap { URL(string: $0) }
@@ -147,9 +179,9 @@ enum MessageAttachmentsParser {
         let width = (dict["width"] as? Int) ?? (dict["width"] as? Double).map(Int.init)
         let height = (dict["height"] as? Int) ?? (dict["height"] as? Double).map(Int.init)
 
-        // An attachment without a URL and without a name has nothing to show.
-        guard url != nil || name != nil else { return nil }
-        return MessageAttachment(name: name, url: url, mimeType: mime,
+        // Need at least one of: path (private bucket), url, or name.
+        guard path != nil || url != nil || name != nil else { return nil }
+        return MessageAttachment(name: name, url: url, path: path, mimeType: mime,
                                  size: size, width: width, height: height)
     }
 

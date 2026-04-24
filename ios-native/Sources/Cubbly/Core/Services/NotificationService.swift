@@ -111,13 +111,28 @@ final class NotificationService: NSObject, ObservableObject {
 }
 
 extension NotificationService: UNUserNotificationCenterDelegate {
-    /// Show banners even when the app is in the foreground (matches desktop UX).
+    /// Show banners even when the app is in the foreground (matches desktop UX),
+    /// EXCEPT when the notification is for the conversation the user is already
+    /// reading — in that case we suppress the system banner entirely. The chat
+    /// view shows the message inline and the DM list shows an unread pill on
+    /// the sidebar avatar, just like the desktop/web apps.
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        completionHandler([.banner, .list])
+        let info = notification.request.content.userInfo
+        let convIDString = info["conversation_id"] as? String
+        Task { @MainActor in
+            let appActive = UIApplication.shared.applicationState == .active
+            let activeID = NotificationService.shared.activeConversationID?.uuidString.lowercased()
+            let isSameConv = convIDString.map { $0.lowercased() == activeID } ?? false
+            if appActive && isSameConv {
+                completionHandler([])
+            } else {
+                completionHandler([.banner, .list, .sound])
+            }
+        }
     }
 
     /// User tapped a notification — TODO: wire up deep-linking to the chat.
