@@ -722,6 +722,7 @@ function VideoTab({ settings, updateSettings, availableDevices, screenShareSetti
         cardStyle={cardStyle}
         captureLocked={captureLocked}
         captureLockReason={captureLockReason}
+        safeValue={safeValue}
       />
       {/* Screen Share Resolution */}
       <div className="rounded-[24px] border p-5 space-y-4" style={cardStyle}>
