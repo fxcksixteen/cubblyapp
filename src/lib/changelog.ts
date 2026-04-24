@@ -274,7 +274,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "The screen-share button in the bottom-corner voice card now opens the proper Cubbly screen-share picker (entire screen / window / specific app) instead of just sharing your full screen by default",
       "Mobile Settings is now a proper Discord-style two-pane sheet — categories list → detail view with a sticky back arrow and a visible close (X) button so you never get stuck",
       "Mobile DMs now open on a single tap (no more 'X appears first then tap again') — replaced the hover-X with a persistent ⋮ menu on touch devices",
-      "Active ICE candidate pair (host / srflx / relay) and round-trip-time are now logged on every connect so we can verify whether calls are actually going through the Frankfurt TURN relay",
+      "Better behind-the-scenes diagnostics on call connect so we can spot routing issues faster.",
     ],
     bugFixes: [
       "CRITICAL: Sharing a single window or browser tab no longer leaks your entire system audio to the call — Windows can't isolate audio per app, so window/tab shares are now silent and only Entire Screen shares carry audio",
