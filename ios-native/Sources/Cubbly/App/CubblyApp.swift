@@ -13,6 +13,7 @@ struct CubblyApp: App {
         // permission state is ready before the first message arrives.
         _ = SoundService.shared
         _ = NotificationService.shared
+        _ = CallKitService.shared
     }
 
     var body: some Scene {
