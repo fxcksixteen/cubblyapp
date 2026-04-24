@@ -6,23 +6,42 @@ struct MainTabView: View {
     enum Tab: Hashable { case home, friends, shop, you }
     @State private var selection: Tab = .home
     @StateObject private var presence = PresenceService.shared
+    @ObservedObject private var callStore = CallStore.shared
 
     var body: some View {
-        VStack(spacing: 0) {
-            Group {
-                switch selection {
-                case .home:    DMListView()
-                case .friends: FriendsView()
-                case .shop:    ShopView()
-                case .you:     YouView()
+        ZStack {
+            VStack(spacing: 0) {
+                Group {
+                    switch selection {
+                    case .home:    DMListView()
+                    case .friends: FriendsView()
+                    case .shop:    ShopView()
+                    case .you:     YouView()
+                    }
                 }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .environmentObject(presence)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .environmentObject(presence)
 
-            CubblyTabBar(selection: $selection)
+                CubblyTabBar(selection: $selection)
+            }
+            .background(Theme.Colors.bgPrimary.ignoresSafeArea())
+
+            // Active call overlay (voice connected / calling)
+            if callStore.state != .idle {
+                CallView()
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .zIndex(10)
+            }
+
+            // Incoming-call ring sheet
+            if callStore.incoming != nil {
+                IncomingCallSheet()
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .zIndex(20)
+            }
         }
-        .background(Theme.Colors.bgPrimary.ignoresSafeArea())
+        .animation(.easeInOut(duration: 0.2), value: callStore.state)
+        .animation(.easeInOut(duration: 0.2), value: callStore.incoming?.id)
     }
 }
 
