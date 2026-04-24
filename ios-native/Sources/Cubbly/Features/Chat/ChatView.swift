@@ -16,6 +16,7 @@ struct ChatView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var messages: [ChatMessage] = []
+    @State private var callEvents: [CallEventRow] = []
     @State private var loading = true
     @State private var hasMore = false
     @State private var loadingOlder = false
@@ -26,10 +27,12 @@ struct ChatView: View {
     @State private var typingUserNames: [String] = []
     @State private var channel: RealtimeChannelV2?
     @State private var typingChannel: RealtimeChannelV2?
+    @State private var callEventsChannel: RealtimeChannelV2?
     @State private var lastTypingBroadcast: Date = .distantPast
     @State private var actionSheetMessage: ChatMessage?
     @State private var videoURL: IdentifiedURL?
     @State private var lightboxURL: IdentifiedURL?
+    @State private var profilePopupUserID: UUID?
     @FocusState private var composerFocused: Bool
 
     private let repo = MessagesRepository()
@@ -91,6 +94,15 @@ struct ChatView: View {
         .fullScreenCover(item: $lightboxURL) { item in
             ImageLightbox(url: item.url) { lightboxURL = nil }
         }
+        .sheet(item: Binding(
+            get: { profilePopupUserID.map { IdentifiedUUID(id: $0) } },
+            set: { profilePopupUserID = $0?.id }
+        )) { wrapper in
+            ProfilePopupView(userID: wrapper.id)
+                .environmentObject(presence)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
         .task {
             await loadInitial()
             await subscribe()
@@ -107,6 +119,7 @@ struct ChatView: View {
             Task {
                 if let ch = channel { await ch.unsubscribe() }
                 if let tc = typingChannel { await tc.unsubscribe() }
+                if let cc = callEventsChannel { await cc.unsubscribe() }
             }
         }
     }
@@ -190,20 +203,35 @@ struct ChatView: View {
                         }
                         .id("top-sentinel")
 
-                    ForEach(Array(messages.enumerated()), id: \.element.id) { idx, m in
-                        let prev = idx > 0 ? messages[idx - 1] : nil
-                        let grouped = prev?.senderID == m.senderID &&
-                            (m.createdAt.timeIntervalSince(prev?.createdAt ?? .distantPast) < 7 * 60)
-                        DiscordStyleBubble(
-                            message: m,
-                            grouped: grouped,
-                            currentUserID: session.currentUserID,
-                            onLongPress: { actionSheetMessage = m },
-                            onPlayVideo: { url in videoURL = IdentifiedURL(url: url) },
-                            onTapImage: { url in lightboxURL = IdentifiedURL(url: url) }
-                        )
-                        .id(m.id)
-                        .padding(.horizontal, 10)
+                    let items = timelineItems
+                    ForEach(Array(items.enumerated()), id: \.element.id) { idx, item in
+                        switch item {
+                        case .message(let m):
+                            let prevMsg = previousMessage(in: items, before: idx)
+                            let grouped = prevMsg?.senderID == m.senderID &&
+                                (m.createdAt.timeIntervalSince(prevMsg?.createdAt ?? .distantPast) < 7 * 60)
+                            DiscordStyleBubble(
+                                message: m,
+                                grouped: grouped,
+                                currentUserID: session.currentUserID,
+                                onLongPress: { actionSheetMessage = m },
+                                onPlayVideo: { url in videoURL = IdentifiedURL(url: url) },
+                                onTapImage: { url in lightboxURL = IdentifiedURL(url: url) },
+                                onTapAvatar: { profilePopupUserID = m.senderID }
+                            )
+                            .id(m.id)
+                            .padding(.horizontal, 10)
+                        case .callEvent(let e):
+                            CallEventPill(
+                                conversationId: conversation.id,
+                                event: .init(id: e.id, state: e.state,
+                                             startedAt: e.startedAt, endedAt: e.endedAt),
+                                onJoin: { joinCall(eventId: e.id, callerId: e.callerId) }
+                            )
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .id("call-\(e.id.uuidString)")
+                        }
                     }
                 }
                 .padding(.top, 8)
@@ -221,6 +249,34 @@ struct ChatView: View {
             .onAppear {
                 if let last = messages.last?.id { proxy.scrollTo(last, anchor: .bottom) }
             }
+        }
+    }
+
+    // Mixed timeline of messages + call events, sorted by created time.
+    private var timelineItems: [TimelineItem] {
+        var items: [TimelineItem] = messages.map { .message($0) }
+        items.append(contentsOf: callEvents.map { .callEvent($0) })
+        items.sort { $0.timestamp < $1.timestamp }
+        return items
+    }
+
+    private func previousMessage(in items: [TimelineItem], before idx: Int) -> ChatMessage? {
+        guard idx > 0 else { return nil }
+        for i in stride(from: idx - 1, through: 0, by: -1) {
+            if case .message(let m) = items[i] { return m }
+        }
+        return nil
+    }
+
+    private func joinCall(eventId: UUID, callerId: UUID) {
+        guard let other = conversation.otherUser else { return }
+        Task {
+            await CallStore.shared.startCall(
+                conversationId: conversation.id,
+                peerId: other.userID,
+                peerName: other.displayName,
+                peerAvatarUrl: other.avatarURL
+            )
         }
     }
 
@@ -359,8 +415,25 @@ struct ChatView: View {
             let asc = rows.reversed()
             messages = try await hydrate(Array(asc))
             hasMore = rows.count >= 50
+            await loadCallEvents()
         } catch is CancellationError {} catch {
             print("[Chat] load failed:", error)
+        }
+    }
+
+    private func loadCallEvents() async {
+        do {
+            let rows: [CallEventRow] = try await SupabaseManager.shared.client
+                .from("call_events")
+                .select()
+                .eq("conversation_id", value: conversation.id.uuidString)
+                .order("started_at", ascending: true)
+                .limit(100)
+                .execute()
+                .value
+            callEvents = rows
+        } catch {
+            print("[Chat] loadCallEvents failed:", error)
         }
     }
 
@@ -599,6 +672,43 @@ struct ChatView: View {
         do { try await tc.subscribeWithError() }
         catch { print("[Chat] typing channel subscribe failed:", error) }
         typingChannel = tc
+
+        // Subscribe to call_events for this conversation so the in-thread
+        // pill appears the moment a call starts and updates when it ends.
+        let cc = client.channel("call_events:\(conversation.id.uuidString)")
+        let callInserts = cc.postgresChange(
+            InsertAction.self, schema: "public", table: "call_events",
+            filter: "conversation_id=eq.\(conversation.id.uuidString)")
+        let callUpdates = cc.postgresChange(
+            UpdateAction.self, schema: "public", table: "call_events",
+            filter: "conversation_id=eq.\(conversation.id.uuidString)")
+        Task {
+            for await action in callInserts {
+                guard let row = try? action.decodeRecord(as: CallEventRow.self,
+                                                         decoder: jsonDecoder()) else { continue }
+                await MainActor.run {
+                    if !callEvents.contains(where: { $0.id == row.id }) {
+                        callEvents.append(row)
+                    }
+                }
+            }
+        }
+        Task {
+            for await action in callUpdates {
+                guard let row = try? action.decodeRecord(as: CallEventRow.self,
+                                                         decoder: jsonDecoder()) else { continue }
+                await MainActor.run {
+                    if let idx = callEvents.firstIndex(where: { $0.id == row.id }) {
+                        callEvents[idx] = row
+                    } else {
+                        callEvents.append(row)
+                    }
+                }
+            }
+        }
+        do { try await cc.subscribeWithError() }
+        catch { print("[Chat] call_events channel subscribe failed:", error) }
+        callEventsChannel = cc
     }
 
     private func handleIncoming(_ row: ChatMessageRow) async {
@@ -656,6 +766,49 @@ struct IdentifiedURL: Identifiable {
     var id: String { url.absoluteString }
 }
 
+struct IdentifiedUUID: Identifiable {
+    let id: UUID
+}
+
+/// One row from `public.call_events`.
+struct CallEventRow: Codable, Identifiable, Hashable {
+    let id: UUID
+    let conversationId: UUID
+    let callerId: UUID
+    let state: String
+    let startedAt: Date
+    let endedAt: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case id, state
+        case conversationId = "conversation_id"
+        case callerId = "caller_id"
+        case startedAt = "started_at"
+        case endedAt = "ended_at"
+    }
+}
+
+/// Either a regular chat message or a call event, ordered by createdAt for
+/// the unified chat timeline.
+enum TimelineItem: Identifiable {
+    case message(ChatMessage)
+    case callEvent(CallEventRow)
+
+    var id: String {
+        switch self {
+        case .message(let m): return "msg-\(m.id)"
+        case .callEvent(let e): return "call-\(e.id.uuidString)"
+        }
+    }
+
+    var timestamp: Date {
+        switch self {
+        case .message(let m): return m.createdAt
+        case .callEvent(let e): return e.startedAt
+        }
+    }
+}
+
 // MARK: - Discord-style bubble
 
 /// Discord iOS layout: every row is a left-aligned avatar + display name +
@@ -668,6 +821,7 @@ private struct DiscordStyleBubble: View {
     let onLongPress: () -> Void
     let onPlayVideo: (URL) -> Void
     let onTapImage: (URL) -> Void
+    let onTapAvatar: () -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -675,10 +829,13 @@ private struct DiscordStyleBubble: View {
             if grouped {
                 Color.clear.frame(width: 40, height: 1)
             } else {
-                AvatarView(url: message.senderAvatarURL.flatMap(URL.init(string:)),
-                           fallbackText: message.senderName ?? "?",
-                           size: 40)
-                    .padding(.top, 2)
+                Button(action: onTapAvatar) {
+                    AvatarView(url: message.senderAvatarURL.flatMap(URL.init(string:)),
+                               fallbackText: message.senderName ?? "?",
+                               size: 40)
+                        .padding(.top, 2)
+                }
+                .buttonStyle(.plain)
             }
 
             VStack(alignment: .leading, spacing: 3) {

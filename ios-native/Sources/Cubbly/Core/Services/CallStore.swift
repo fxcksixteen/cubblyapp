@@ -26,6 +26,9 @@ final class CallStore: ObservableObject {
     @Published private(set) var startedAt: Date?
     @Published var isMuted: Bool = false
     @Published var isDeafened: Bool = false
+    /// When true, the full-screen CallView is hidden; only the pill at the
+    /// top of MainTabView remains. The call itself keeps running.
+    @Published var isMinimized: Bool = false
 
     /// Incoming call sheet metadata (separate from `state` so we can show
     /// a ring even while another call may briefly still be ending).
@@ -110,7 +113,9 @@ final class CallStore: ObservableObject {
         self.peerAvatarUrl = peerAvatarUrl
         self.state = .calling
         self.startedAt = nil
+        self.isMinimized = false
         SoundService.shared.playLooping(.outgoingRing)
+        CallKitService.shared.startOutgoing(handleName: peerName)
 
         await signaling.joinCallChannel(conversationId: conversationId)
 
@@ -175,6 +180,7 @@ final class CallStore: ObservableObject {
         self.currentCallEventId = inc.callEventId
         self.state = .connected
         self.startedAt = Date()
+        self.isMinimized = false
         self.incoming = nil
         SoundService.shared.stopLooping(.incomingCall)
         SoundService.shared.play(.message)
@@ -209,6 +215,7 @@ final class CallStore: ObservableObject {
                 .execute()
         }
         resetAudioSession()
+        CallKitService.shared.endActiveCallIfNeeded()
         state = .idle
         conversationId = nil
         peerId = nil
@@ -222,6 +229,7 @@ final class CallStore: ObservableObject {
         peerIsMuted = false
         isMuted = false
         isDeafened = false
+        isMinimized = false
         pendingRemoteIce.removeAll()
         pendingScreenIce.removeAll()
     }
@@ -267,6 +275,11 @@ final class CallStore: ObservableObject {
 
     func reapplyAudioSession() { configureAudioSession() }
 
+    // MARK: - Minimize / Restore
+
+    func minimize() { isMinimized = true }
+    func restore()  { isMinimized = false }
+
     // MARK: - Signaling event handler
 
     private func handleSignaling(_ e: CallSignaling.Event) {
@@ -282,6 +295,9 @@ final class CallStore: ObservableObject {
                 callEventId: evtId
             )
             SoundService.shared.playLooping(.incomingCall)
+            // Hand the ring to CallKit too so iOS shows the system call UI
+            // (and the green status-bar pill once accepted).
+            CallKitService.shared.reportIncoming(handleName: name ?? "Someone") { _ in }
 
         case .offer(_, let sdp, _):
             Task { await handleVoiceOffer(sdp: sdp) }
@@ -362,6 +378,8 @@ final class CallStore: ObservableObject {
             pendingRemoteIce.removeAll()
             state = .connected
             startedAt = Date()
+            // Tell CallKit we're connected so the green pill appears.
+            CallKitService.shared.reportConnected()
         } catch {
             print("[Call] setRemoteDescription(answer) failed:", error)
         }

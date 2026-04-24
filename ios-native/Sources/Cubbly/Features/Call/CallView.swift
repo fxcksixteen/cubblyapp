@@ -3,13 +3,17 @@ import WebRTC
 
 /// Full-screen call overlay shown when CallStore is active. v0.1.0 layout:
 ///   - Big avatar / peer name / call status / elapsed timer
+///   - Down arrow (top-right) + swipe-down to minimize the screen so the
+///     user can keep browsing the app while the call continues
 ///   - Tap-to-fullscreen incoming screenshare (when present)
-///   - Bottom action row: Mute / Deafen / Video (disabled) / Share (disabled) / End
+///   - Bottom action row uses our custom Cubbly SVG icons (mic / headphone /
+///     screenshare / video / call-end), matching the desktop & web apps.
 struct CallView: View {
     @ObservedObject var store: CallStore = .shared
     @State private var elapsed: TimeInterval = 0
     @State private var elapsedTimer: Timer?
     @State private var showFullScreenShare = false
+    @State private var dragOffsetY: CGFloat = 0
 
     var body: some View {
         ZStack {
@@ -32,6 +36,24 @@ struct CallView: View {
                     .padding(.bottom, 24)
             }
         }
+        .offset(y: max(0, dragOffsetY))
+        .gesture(
+            DragGesture()
+                .onChanged { v in
+                    // Only allow downward drags
+                    dragOffsetY = max(0, v.translation.height)
+                }
+                .onEnded { v in
+                    if v.translation.height > 120 {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            store.minimize()
+                            dragOffsetY = 0
+                        }
+                    } else {
+                        withAnimation(.spring(response: 0.3)) { dragOffsetY = 0 }
+                    }
+                }
+        )
         .fullScreenCover(isPresented: $showFullScreenShare) {
             FullScreenScreenShareView(track: store.remoteScreenTrack)
         }
@@ -54,7 +76,21 @@ struct CallView: View {
                     .font(.cubbly(13, .semibold))
                     .foregroundStyle(Theme.Colors.textSecondary)
                     .monospacedDigit()
+                    .padding(.trailing, 8)
             }
+            // Down-arrow → minimize. Mirrors the swipe-down gesture above.
+            Button {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                    store.minimize()
+                }
+            } label: {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 36, height: 36)
+                    .background(Circle().fill(Color.white.opacity(0.08)))
+            }
+            .accessibilityLabel("Minimize call")
         }
         .padding(.horizontal, 16)
         .padding(.top, 12)
@@ -97,12 +133,16 @@ struct CallView: View {
                 .foregroundStyle(.white)
             HStack(spacing: 8) {
                 if store.peerIsMuted {
-                    Label("Muted", systemImage: "mic.slash.fill").font(.cubbly(11, .semibold))
-                        .foregroundStyle(.red)
+                    HStack(spacing: 4) {
+                        SVGIcon(name: "microphone-mute", size: 12, tint: .red)
+                        Text("Muted").font(.cubbly(11, .semibold)).foregroundStyle(.red)
+                    }
                 }
                 if store.peerIsScreenSharing {
-                    Label("Sharing screen", systemImage: "rectangle.on.rectangle").font(.cubbly(11, .semibold))
-                        .foregroundStyle(.green)
+                    HStack(spacing: 4) {
+                        SVGIcon(name: "screenshare", size: 12, tint: .green)
+                        Text("Sharing screen").font(.cubbly(11, .semibold)).foregroundStyle(.green)
+                    }
                 }
             }
         }
@@ -110,31 +150,40 @@ struct CallView: View {
 
     private var controls: some View {
         HStack(spacing: 14) {
-            roundButton(icon: store.isMuted ? "mic.slash.fill" : "mic.fill",
-                        active: store.isMuted, color: .red) { store.toggleMute() }
+            roundSVGButton(
+                icon: store.isMuted ? "microphone-mute" : "microphone",
+                active: store.isMuted, color: .red
+            ) { store.toggleMute() }
 
-            roundButton(icon: store.isDeafened ? "ear.trianglebadge.exclamationmark" : "ear",
-                        active: store.isDeafened, color: .red) { store.toggleDeafen() }
+            roundSVGButton(
+                icon: store.isDeafened ? "headphone-deafen" : "headphone",
+                active: store.isDeafened, color: .red
+            ) { store.toggleDeafen() }
 
-            roundButton(icon: "video.slash.fill", active: false, color: .gray, disabled: true) {}
-            roundButton(icon: "rectangle.on.rectangle.slash", active: false, color: .gray, disabled: true) {}
+            roundSVGButton(icon: "video-camera", active: false, color: .gray, disabled: true) {}
+            roundSVGButton(icon: "screenshare", active: false, color: .gray, disabled: true) {}
 
-            roundButton(icon: "phone.down.fill", active: true, color: Color(red: 0.93, green: 0.26, blue: 0.27)) {
+            roundSVGButton(icon: "call-end", active: true,
+                           color: Color(red: 0.93, green: 0.26, blue: 0.27)) {
                 Task { await store.endCall() }
             }
         }
         .padding(.horizontal, 16)
     }
 
-    private func roundButton(icon: String, active: Bool, color: Color, disabled: Bool = false, action: @escaping () -> Void) -> some View {
+    private func roundSVGButton(icon: String,
+                                active: Bool,
+                                color: Color,
+                                disabled: Bool = false,
+                                action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(disabled ? Color.gray.opacity(0.5) : .white)
-                .frame(width: 56, height: 56)
-                .background(
-                    Circle().fill(active ? color : Color.white.opacity(0.08))
-                )
+            ZStack {
+                Circle()
+                    .fill(active ? color : Color.white.opacity(0.08))
+                    .frame(width: 56, height: 56)
+                SVGIcon(name: icon, size: 24,
+                        tint: disabled ? Color.gray.opacity(0.5) : .white)
+            }
         }
         .disabled(disabled)
     }
@@ -190,5 +239,80 @@ struct FullScreenScreenShareView: View {
                 Spacer()
             }
         }
+    }
+}
+
+/// Slim pill shown above the bottom tab bar when the call is minimized.
+/// Tap to expand the full CallView again. Mirrors the desktop "minimized
+/// call indicator" UX.
+struct MinimizedCallPill: View {
+    @ObservedObject var store: CallStore = .shared
+    @State private var elapsed: TimeInterval = 0
+    @State private var timer: Timer?
+
+    var body: some View {
+        Button {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                store.restore()
+            }
+        } label: {
+            HStack(spacing: 10) {
+                ZStack {
+                    Circle()
+                        .fill(store.state == .connected ? Color.green : Color.orange)
+                        .frame(width: 10, height: 10)
+                    Circle()
+                        .strokeBorder(Color.white.opacity(0.4), lineWidth: 2)
+                        .frame(width: 18, height: 18)
+                        .scaleEffect(1.0 + 0.4 * sin(elapsed * 2))
+                        .animation(.easeInOut(duration: 1).repeatForever(autoreverses: true), value: elapsed)
+                }
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(store.state == .connected ? "In call with \(store.peerName)"
+                                                   : "Calling \(store.peerName)…")
+                        .font(.cubbly(13, .semibold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    if store.state == .connected {
+                        Text(formatElapsed(elapsed))
+                            .font(.cubbly(10, .regular))
+                            .foregroundStyle(.white.opacity(0.85))
+                            .monospacedDigit()
+                    }
+                }
+                Spacer()
+                Image(systemName: "chevron.up")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(store.state == .connected
+                          ? Color(red: 0.23, green: 0.65, blue: 0.36)
+                          : Color(red: 0.98, green: 0.65, blue: 0.10))
+            )
+            .shadow(color: .black.opacity(0.3), radius: 10, y: 4)
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 12)
+        .padding(.top, 6)
+        .onAppear { startTimer() }
+        .onDisappear { timer?.invalidate(); timer = nil }
+    }
+
+    private func startTimer() {
+        timer?.invalidate()
+        guard let started = store.startedAt else { return }
+        elapsed = Date().timeIntervalSince(started)
+        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
+            Task { @MainActor in elapsed = Date().timeIntervalSince(started) }
+        }
+    }
+
+    private func formatElapsed(_ t: TimeInterval) -> String {
+        let s = Int(t)
+        return String(format: "%02d:%02d", s / 60, s % 60)
     }
 }
