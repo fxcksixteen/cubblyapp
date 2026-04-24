@@ -46,11 +46,20 @@ const VoiceVideoSettings = ({ panelStyle, cardStyle }: Props) => {
   // Belt-and-suspenders: VoiceContext should always provide these arrays, but
   // if the context ever defaults to undefined (e.g. during a render before
   // enumeration completes on iOS PWA), `.filter` would crash the panel.
+  // Also drop ANY entry whose deviceId is missing/blank — Radix Select hard-
+  // crashes the whole panel ("A <Select.Item /> must have a value prop that
+  // is not an empty string") on iOS PWA when Safari returns blank ids.
+  const cleanList = (arr: MediaDeviceInfo[] | undefined) =>
+    (arr || []).filter((d) => typeof d?.deviceId === "string" && d.deviceId.trim().length > 0 && d.deviceId !== "default" && d.deviceId !== "communications");
   const safeDevices = {
-    inputs: availableDevices?.inputs ?? [],
-    outputs: availableDevices?.outputs ?? [],
-    cameras: availableDevices?.cameras ?? [],
+    inputs: cleanList(availableDevices?.inputs),
+    outputs: cleanList(availableDevices?.outputs),
+    cameras: cleanList(availableDevices?.cameras),
   };
+  // Guarantee the controlled <Select> value is non-empty even if some other
+  // code path managed to write "" into settings.
+  const safeValue = (v: unknown, fallback = "default") =>
+    typeof v === "string" && v.trim().length > 0 ? v : fallback;
 
   const activeRegion = settings.serverRegion === "auto"
     ? SERVER_REGIONS.find(r => r.id === detectedRegion) || SERVER_REGIONS[0]
