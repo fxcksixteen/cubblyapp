@@ -182,7 +182,8 @@ const WhatsNewModal = ({ forceVersion, onClose }: WhatsNewModalProps) => {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 };
 
