@@ -80,6 +80,14 @@ targets:
           UIColorName: LaunchBackground
           UIImageName: cubbly-nobg
           UIImageRespectsSafeAreaInsets: false
+        UIRequiresFullScreen: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        "UISupportedInterfaceOrientations~ipad":
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
         # Register bundled Nunito TTFs. Paths are relative to the bundle root —
         # since `Resources/Fonts` is shipped as a folder reference, the TTFs
         # end up under `Fonts/…` inside the .app.
