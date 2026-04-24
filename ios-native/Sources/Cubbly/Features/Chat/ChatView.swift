@@ -672,6 +672,43 @@ struct ChatView: View {
         do { try await tc.subscribeWithError() }
         catch { print("[Chat] typing channel subscribe failed:", error) }
         typingChannel = tc
+
+        // Subscribe to call_events for this conversation so the in-thread
+        // pill appears the moment a call starts and updates when it ends.
+        let cc = client.channel("call_events:\(conversation.id.uuidString)")
+        let callInserts = cc.postgresChange(
+            InsertAction.self, schema: "public", table: "call_events",
+            filter: "conversation_id=eq.\(conversation.id.uuidString)")
+        let callUpdates = cc.postgresChange(
+            UpdateAction.self, schema: "public", table: "call_events",
+            filter: "conversation_id=eq.\(conversation.id.uuidString)")
+        Task {
+            for await action in callInserts {
+                guard let row = try? action.decodeRecord(as: CallEventRow.self,
+                                                         decoder: jsonDecoder()) else { continue }
+                await MainActor.run {
+                    if !callEvents.contains(where: { $0.id == row.id }) {
+                        callEvents.append(row)
+                    }
+                }
+            }
+        }
+        Task {
+            for await action in callUpdates {
+                guard let row = try? action.decodeRecord(as: CallEventRow.self,
+                                                         decoder: jsonDecoder()) else { continue }
+                await MainActor.run {
+                    if let idx = callEvents.firstIndex(where: { $0.id == row.id }) {
+                        callEvents[idx] = row
+                    } else {
+                        callEvents.append(row)
+                    }
+                }
+            }
+        }
+        do { try await cc.subscribeWithError() }
+        catch { print("[Chat] call_events channel subscribe failed:", error) }
+        callEventsChannel = cc
     }
 
     private func handleIncoming(_ row: ChatMessageRow) async {
