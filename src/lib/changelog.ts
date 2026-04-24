@@ -292,7 +292,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     hero: bearImage,
     newFeatures: [],
     bugFixes: [
-      "Fixed the desktop app crashing into the 'Cubbly hit a snag' error screen on launch right after auto-updating to v0.2.5 (activity poller was assigning a property to a primitive number — illegal in strict mode)",
+      "Fixed the desktop app crashing into the 'Cubbly hit a snag' error screen on launch right after auto-updating to v0.2.5.",
     ],
   },
   {
