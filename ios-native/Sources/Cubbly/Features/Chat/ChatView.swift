@@ -566,7 +566,12 @@ struct ChatView: View {
                 let data = try Data(contentsOf: u)
                 let ext = u.pathExtension.isEmpty ? "bin" : u.pathExtension.lowercased()
                 let name = u.lastPathComponent
-                let path = "\(me.uuidString)/\(UUID().uuidString).\(ext)"
+                // CRITICAL: chat-attachments RLS requires the FIRST folder
+                // segment to be the conversation_id (not the user_id) — the
+                // policy is `is_conversation_participant(folder[1], auth.uid())`.
+                // Uploading under <user_id>/... silently fails RLS, which is
+                // why "send image" appeared to do nothing in v0.1.0.
+                let path = "\(conversation.id.uuidString)/\(me.uuidString)-\(UUID().uuidString).\(ext)"
                 _ = try await client.storage
                     .from("chat-attachments")
                     .upload(path, data: data, options: FileOptions(upsert: false))
@@ -588,7 +593,10 @@ struct ChatView: View {
             }
         }
 
-        guard !attachments.isEmpty else { return }
+        guard !attachments.isEmpty else {
+            print("[Chat] no attachments uploaded — aborting send")
+            return
+        }
         let payload = MessageAttachmentsParser.serialize(attachments)
         await sendRaw(content: payload)
     }
