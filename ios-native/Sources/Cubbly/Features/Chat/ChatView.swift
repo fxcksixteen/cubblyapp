@@ -907,59 +907,14 @@ private struct DiscordStyleBubble: View {
 
     @ViewBuilder
     private func attachmentView(_ att: MessageAttachment) -> some View {
-        if let url = att.url {
-            if att.isGIF {
-                AnimatedImageView(url: url, contentMode: .scaleAspectFit)
-                    .frame(maxWidth: 240)
-                    .frame(height: 180)
-                    .background(Theme.Colors.bgSecondary)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-            } else if att.isImage {
-                Button { onTapImage(url) } label: {
-                    AsyncImage(url: url) { img in
-                        img.resizable().scaledToFit()
-                    } placeholder: {
-                        Rectangle().fill(Theme.Colors.bgSecondary)
-                            .frame(width: 220, height: 160)
-                    }
-                    .frame(maxWidth: 260, maxHeight: 320)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                }
-                .buttonStyle(.plain)
-            } else if att.isVideo {
-                Button { onPlayVideo(url) } label: {
-                    ZStack {
-                        Rectangle().fill(Theme.Colors.bgSecondary)
-                            .frame(width: 220, height: 160)
-                        Image(systemName: "play.circle.fill")
-                            .font(.system(size: 44))
-                            .foregroundStyle(.white.opacity(0.95))
-                    }
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                }
-                .buttonStyle(.plain)
-            } else {
-                // Non-media attachment — render as a tappable file chip.
-                Link(destination: url) {
-                    HStack(spacing: 10) {
-                        Image(systemName: "doc.fill")
-                            .foregroundStyle(Theme.Colors.textSecondary)
-                        Text(att.name ?? url.lastPathComponent)
-                            .font(Theme.Fonts.bodyMedium)
-                            .foregroundStyle(Theme.Colors.textPrimary)
-                            .lineLimit(1)
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .background(Theme.Colors.bgSecondary)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                }
-            }
-        } else {
-            Text(att.name ?? "Attachment")
-                .font(.cubbly(12))
-                .foregroundStyle(Theme.Colors.textMuted)
-        }
+        // Web messages only persist a stable storage `path` — we need to sign
+        // a fresh URL on every render (matches `AttachmentItem.tsx`). Older
+        // messages may carry just a (possibly-expired) signed `url`.
+        SignedAttachmentView(
+            attachment: att,
+            onTapImage: onTapImage,
+            onPlayVideo: onPlayVideo
+        )
     }
 
     @ViewBuilder
