@@ -117,18 +117,19 @@ final class CallStore: ObservableObject {
         // Insert a call_events row so the chat thread shows an ongoing pill.
         do {
             struct InsertResp: Decodable { let id: UUID }
-            let row = try await SupabaseManager.shared.client
+            let myUserId = (try? await SupabaseManager.shared.client.auth.user().id.uuidString) ?? ""
+            let resp: InsertResp = try await SupabaseManager.shared.client
                 .from("call_events")
                 .insert([
                     "conversation_id": conversationId.uuidString,
-                    "caller_id": (try? await SupabaseManager.shared.client.auth.user().id.uuidString) ?? "",
+                    "caller_id": myUserId,
                     "state": "ongoing"
                 ])
                 .select("id")
                 .single()
                 .execute()
-                .value as InsertResp
-            currentCallEventId = row.id
+                .value
+            currentCallEventId = resp.id
         } catch {
             print("[Call] failed to insert call_event:", error)
         }
@@ -148,8 +149,7 @@ final class CallStore: ObservableObject {
                 "callerAvatarUrl": peerAvatarUrl.map { .string($0) } ?? .null
             ])
             // Ring the peer's global channel so they get the incoming-call sheet.
-            if let me = try? await SupabaseManager.shared.client.auth.user(),
-               let evtId = currentCallEventId {
+            if let evtId = currentCallEventId {
                 await signaling.ringUser(
                     targetUserId: peerId,
                     conversationId: conversationId,
@@ -157,7 +157,6 @@ final class CallStore: ObservableObject {
                     callerName: SessionStore.shared?.currentProfile?.displayName,
                     callerAvatarUrl: peerAvatarUrl
                 )
-                _ = me
             }
         } catch {
             print("[Call] createOffer failed:", error)
