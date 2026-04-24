@@ -73,7 +73,18 @@ final class CallKitService: NSObject {
         update.supportsGrouping = false
         update.supportsUngrouping = false
         update.supportsDTMF = false
-        provider.reportNewIncomingCall(with: id, update: update, completion: completion)
+        provider.reportNewIncomingCall(with: id, update: update) { error in
+            if let error = error {
+                // Most common reasons: app is in DND for CallKit, another
+                // active CallKit session, or the OS rejected the report
+                // because we tried to ring without a PushKit/VoIP wake-up
+                // when the app was suspended. Logging surfaces it in Console.
+                print("[CallKit] reportNewIncomingCall failed:", error.localizedDescription)
+            } else {
+                print("[CallKit] system incoming-call UI presented for", handleName)
+            }
+            completion(error)
+        }
     }
 
     /// End the CallKit-tracked call (clears the green pill).
