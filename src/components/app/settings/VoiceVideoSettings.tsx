@@ -109,6 +109,7 @@ const VoiceVideoSettings = ({ panelStyle, cardStyle }: Props) => {
           cardStyle={cardStyle}
           captureLocked={captureLocked}
           captureLockReason={inCall ? "in-call" : isIOSLike ? "ios" : null}
+          safeValue={safeValue}
         />
       ) : (
         <VideoTab
@@ -120,6 +121,7 @@ const VoiceVideoSettings = ({ panelStyle, cardStyle }: Props) => {
           cardStyle={cardStyle}
           captureLocked={captureLocked}
           captureLockReason={inCall ? "in-call" : isIOSLike ? "ios" : null}
+          safeValue={safeValue}
         />
       )}
     </div>
