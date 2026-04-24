@@ -251,6 +251,19 @@ struct ChatView: View {
                     }
                 }
             }
+            .onChange(of: composerFocused) { _, focused in
+                // When the keyboard rises, snap to the latest message so the
+                // user never loses their place behind the keyboard.
+                if focused, let last = messages.last?.id {
+                    // Slight delay so the layout has finished resizing for
+                    // the keyboard before we scroll.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            proxy.scrollTo(last, anchor: .bottom)
+                        }
+                    }
+                }
+            }
             .onAppear {
                 if let last = messages.last?.id { proxy.scrollTo(last, anchor: .bottom) }
             }
