@@ -373,6 +373,8 @@ final class CallStore: ObservableObject {
             pendingRemoteIce.removeAll()
             state = .connected
             startedAt = Date()
+            // Tell CallKit we're connected so the green pill appears.
+            CallKitService.shared.reportConnected()
         } catch {
             print("[Call] setRemoteDescription(answer) failed:", error)
         }
