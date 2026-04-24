@@ -23,9 +23,24 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.24";
+export const CURRENT_VERSION = "0.2.25";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.2.25",
+    title: "Status, unread bars & screenshare controls fixed",
+    date: "2026-04-24",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Friend status indicators (online / idle / DND / invisible) now reliably show up across web and desktop — no more 'everyone looks offline' moments.",
+      "The blue 'New Messages' bar and red 'NEW' divider now stick around when you open a chat instead of vanishing instantly. They clear once you scroll to the bottom, hit Mark as Read, or send a reply.",
+      "The fullscreen screen-share controls (volume slider, fullscreen exit, etc.) are now anchored INSIDE the stream frame instead of floating in the corners of your screen — they're actually clickable now even when the stream is letterboxed.",
+      "Right-clicking a friend's screen-share now opens stream-only controls (volume + mute that stream for you), separate from their voice. The fullscreen volume slider also now controls the stream itself, not their mic.",
+      "When viewing the 'Update Logs' from Settings, clicking a past patch now opens the full update log popup properly instead of being clipped at the top and bottom by the settings window.",
+      "iOS PWA: another round of fixes for Voice & Video settings crashing the app, and for incoming calls being completely silent.",
+    ],
+  },
   {
     version: "0.2.24",
     title: "No more ghost login tab + status indicators back",
@@ -34,9 +49,9 @@ export const CHANGELOG: ChangelogEntry[] = [
     newFeatures: [],
     bugFixes: [
       "Fixed Cubbly opening TWO windows on startup (one logged in, one stuck on the login screen). Only one Cubbly window can run at a time now — relaunching just focuses the existing one, Discord-style.",
-      "Fixed friend status indicators (online / idle / DND / invisible) sometimes never appearing until someone toggled their status. The presence list now hydrates the instant Cubbly connects.",
-      "Fixed the iOS PWA hard-crashing the whole app the moment you opened Voice & Video settings ('A <Select.Item /> must have a value prop that is not an empty string'). Empty-deviceId entries from the browser are now filtered out before the dropdown renders.",
-      "Fixed iOS PWA users hearing complete silence on incoming calls (no voice, no screen-share audio, nothing). iOS Safari was silently refusing to start playback on remote audio elements once the call's accept-tap gesture window had closed during signaling. Every remote audio element is now armed with playsinline + autoplay up-front and automatically retries playback on the user's next tap if iOS blocks it — so call audio comes alive the moment they touch the screen. Hardened for both 1-on-1 and group call screen-share audio too.",
+      "Fixed friend status indicators (online / idle / DND / invisible) sometimes never appearing until someone toggled their status.",
+      "Fixed the iOS PWA hard-crashing the whole app the moment you opened Voice & Video settings.",
+      "Fixed iOS PWA users hearing complete silence on incoming calls (no voice, no screen-share audio, nothing). Call audio now comes alive the moment they touch the screen.",
     ],
   },
   {
