@@ -270,8 +270,26 @@ struct ChatView: View {
 
     private func joinCall(eventId: UUID, callerId: UUID) {
         guard let other = conversation.otherUser else { return }
+        let store = CallStore.shared
+        // Case 1: this is the call that's currently ringing US — accept it
+        // through the normal incoming flow so we hook into the existing
+        // call_event instead of creating a duplicate one.
+        if let inc = store.incoming, inc.conversationId == conversation.id {
+            Task { await store.acceptIncoming() }
+            return
+        }
+        // Case 2: we're already in this exact call (tapped "Join" while
+        // minimized) — just restore the full-screen UI.
+        if store.state != .idle && store.conversationId == conversation.id {
+            store.restore()
+            return
+        }
+        // Case 3: cold join — same conversation but ring expired or we
+        // missed it. Start a fresh call (the peer's side will see this
+        // as a new ring; that's the best we can do without a presence
+        // index of "active rooms").
         Task {
-            await CallStore.shared.startCall(
+            await store.startCall(
                 conversationId: conversation.id,
                 peerId: other.userID,
                 peerName: other.displayName,
