@@ -16,6 +16,7 @@ struct ChatView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var messages: [ChatMessage] = []
+    @State private var callEvents: [CallEventRow] = []
     @State private var loading = true
     @State private var hasMore = false
     @State private var loadingOlder = false
@@ -26,10 +27,12 @@ struct ChatView: View {
     @State private var typingUserNames: [String] = []
     @State private var channel: RealtimeChannelV2?
     @State private var typingChannel: RealtimeChannelV2?
+    @State private var callEventsChannel: RealtimeChannelV2?
     @State private var lastTypingBroadcast: Date = .distantPast
     @State private var actionSheetMessage: ChatMessage?
     @State private var videoURL: IdentifiedURL?
     @State private var lightboxURL: IdentifiedURL?
+    @State private var profilePopupUserID: UUID?
     @FocusState private var composerFocused: Bool
 
     private let repo = MessagesRepository()
