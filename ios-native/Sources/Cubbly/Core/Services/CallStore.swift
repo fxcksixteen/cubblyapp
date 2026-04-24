@@ -219,6 +219,7 @@ final class CallStore: ObservableObject {
         SoundService.shared.play(.leaveCall)
         voiceClient?.close(); voiceClient = nil
         screenClient?.close(); screenClient = nil
+        botEcho?.stop(); botEcho = nil
         await signaling?.leaveCallChannel()
         if let evt = currentCallEventId {
             try? await SupabaseManager.shared.client
