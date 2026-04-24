@@ -13,7 +13,7 @@ struct IncomingCallSheet: View {
                     .textCase(.uppercase)
                     .foregroundStyle(Theme.Colors.textSecondary)
 
-                AvatarView(url: inc.callerAvatarUrl, name: inc.callerName, size: 120)
+                AvatarView(url: inc.callerAvatarUrl.flatMap(URL.init), fallbackText: inc.callerName, size: 120)
                     .overlay(Circle().strokeBorder(Theme.Colors.primary, lineWidth: 4))
 
                 Text(inc.callerName)

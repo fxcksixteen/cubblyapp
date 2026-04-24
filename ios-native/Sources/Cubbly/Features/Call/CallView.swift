@@ -86,7 +86,7 @@ struct CallView: View {
 
     private var participantStack: some View {
         VStack(spacing: 18) {
-            AvatarView(url: store.peerAvatarUrl, name: store.peerName, size: 120)
+            AvatarView(url: store.peerAvatarUrl.flatMap(URL.init), fallbackText: store.peerName, size: 120)
                 .overlay(
                     Circle()
                         .strokeBorder(store.peerIsMuted ? Color.red : Color.green.opacity(0.6), lineWidth: 4)
