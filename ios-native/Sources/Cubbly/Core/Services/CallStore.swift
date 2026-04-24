@@ -56,6 +56,10 @@ final class CallStore: ObservableObject {
     private var voiceClient: WebRTCClient?
     private var screenClient: WebRTCClient?
     private var signaling: CallSignaling?
+    /// Non-nil while in a CubblyBot test call. Two in-process WebRTC peers
+    /// loop your mic back to you, proving the entire stack works without
+    /// needing another human on the other end.
+    private var botEcho: BotEchoCall?
     private var iceServers: [RTCIceServer] = [
         RTCIceServer(urlStrings: ["stun:stun.l.google.com:19302"])
     ]
