@@ -228,7 +228,7 @@ final class CallStore: ObservableObject {
             live = try await client.from("call_participants")
                 .select("user_id")
                 .eq("call_event_id", value: evt.id.uuidString)
-                .is("left_at", value: "null")
+                .filter("left_at", operator: "is", value: "null")
                 .execute()
                 .value
         } catch {
@@ -238,7 +238,7 @@ final class CallStore: ObservableObject {
         if !otherActive {
             // Stale event — close it so the next attempt starts clean,
             // then signal failure so caller starts a fresh call.
-            try? await client.from("call_events")
+            _ = try? await client.from("call_events")
                 .update(["state": "ended", "ended_at": ISO8601DateFormatter().string(from: Date())])
                 .eq("id", value: evt.id.uuidString)
                 .execute()
