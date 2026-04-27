@@ -374,7 +374,7 @@ final class CallStore: ObservableObject {
                     .update(["left_at": endedAt])
                     .eq("call_event_id", value: evt.uuidString)
                     .eq("user_id", value: myId.uuidString)
-                    .is("left_at", value: "null")
+                    .filter("left_at", operator: "is", value: "null")
                     .execute()
             }
             try? await SupabaseManager.shared.client
