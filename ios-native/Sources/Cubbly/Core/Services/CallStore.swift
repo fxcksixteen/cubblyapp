@@ -511,6 +511,36 @@ final class CallStore: ObservableObject {
 
         case .peerVideo(_, let v):
             peerIsVideoOn = v
+
+        case .readyForOffer:
+            // A peer joined via "Join" pill while we were already in this
+            // call — send them a fresh offer (no re-ring). They'll answer.
+            Task { await sendFreshOfferForJoiner() }
+        }
+    }
+
+    /// Build a new offer and broadcast it on the per-call channel. Used when
+    /// a peer joins the existing call_event via `ready-for-offer`.
+    private func sendFreshOfferForJoiner() async {
+        guard let signaling = signaling else { return }
+        // If we already have a voice client (we were the original caller),
+        // renegotiate over it. Otherwise build a new one.
+        let voice: WebRTCClient
+        if let existing = voiceClient {
+            voice = existing
+        } else {
+            let v = WebRTCClient(iceServers: iceServers, includeMicTrack: true)
+            wireVoiceCallbacks(v)
+            voiceClient = v
+            voice = v
+        }
+        do {
+            let offer = try await voice.createOffer()
+            await signaling.broadcast(type: "offer", payload: [
+                "sdp": .object(["type": .string("offer"), "sdp": .string(offer.sdp)])
+            ])
+        } catch {
+            print("[Call] sendFreshOfferForJoiner failed:", error)
         }
     }
 
