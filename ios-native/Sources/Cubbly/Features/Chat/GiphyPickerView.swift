@@ -65,14 +65,17 @@ struct GiphyPickerView: View {
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 6),
                                     GridItem(.flexible(), spacing: 6)], spacing: 6) {
                     ForEach(displayed) { hit in
-                        GifThumb(item: hit, isFavorited: favorites.contains(where: { $0.gifID == hit.gifID }))
-                            .onTapGesture {
+                        GifThumb(
+                            item: hit,
+                            isFavorited: favorites.contains(where: { $0.gifID == hit.gifID }),
+                            onTap: {
                                 onPick(hit.url)
                                 dismiss()
-                            }
-                            .onLongPressGesture {
+                            },
+                            onToggleFavorite: {
                                 Task { await toggleFavorite(hit) }
                             }
+                        )
                     }
                 }
                 .padding(.horizontal, 10)
@@ -171,6 +174,9 @@ struct GiphyPickerView: View {
 private struct GifThumb: View {
     let item: GifItem
     let isFavorited: Bool
+    let onTap: () -> Void
+    let onToggleFavorite: () -> Void
+
     var body: some View {
         ZStack(alignment: .topTrailing) {
             Group {
@@ -181,15 +187,22 @@ private struct GifThumb: View {
                 }
             }
             .frame(height: 120)
+            .frame(maxWidth: .infinity)
             .clipped()
             .clipShape(RoundedRectangle(cornerRadius: 8))
+            .contentShape(RoundedRectangle(cornerRadius: 8))
+            .onTapGesture { onTap() }
 
-            if isFavorited {
-                Image(systemName: "star.fill")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(.yellow)
-                    .padding(5)
+            // Explicit star button — clear, tappable, no double-tap mystery.
+            Button(action: onToggleFavorite) {
+                Image(systemName: isFavorited ? "star.fill" : "star")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(isFavorited ? .yellow : .white)
+                    .padding(6)
+                    .background(Circle().fill(Color.black.opacity(0.45)))
             }
+            .buttonStyle(.plain)
+            .padding(5)
         }
     }
 }
