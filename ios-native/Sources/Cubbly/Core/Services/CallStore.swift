@@ -223,7 +223,7 @@ final class CallStore: ObservableObject {
 
         // 2. Confirm a non-self peer is still live (left_at IS NULL).
         struct PartRow: Decodable { let user_id: UUID }
-        let live: [PartRow]
+        var live: [PartRow] = []
         do {
             live = try await client.from("call_participants")
                 .select("user_id")
@@ -231,7 +231,9 @@ final class CallStore: ObservableObject {
                 .is("left_at", value: nil)
                 .execute()
                 .value
-        } catch { live = [] }
+        } catch {
+            print("[Call] tryJoinExisting participants check failed:", error)
+        }
         let otherActive = live.contains { $0.user_id != myId }
         if !otherActive {
             // Stale event — close it so the next attempt starts clean,
