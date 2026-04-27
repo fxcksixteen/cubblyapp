@@ -88,7 +88,23 @@ final class SessionStore: ObservableObject {
     }
 
     func signOut() async {
-        try? await SupabaseManager.shared.client.auth.signOut()
+        // Tear down anything that holds onto the user's session before we
+        // clear auth, so the UI can route to Login immediately and we don't
+        // leave realtime sockets / a live call dangling.
+        await CallStore.shared.endCall()
+        await PresenceService.shared.stop()
+        currentProfile = nil
+
+        // Force the UI to flip to .signedOut RIGHT NOW. The auth-change
+        // stream will fire shortly after and confirm — but if the network
+        // is flaky, the local-scope sign-out below still kills the session.
+        state = .signedOut
+
+        // `.local` scope clears the session on this device even if the
+        // server call can't reach Supabase (offline, etc.). Without this,
+        // a slow network leaves the user "signed in" until the request
+        // times out, which is the bug the user was hitting.
+        try? await SupabaseManager.shared.client.auth.signOut(scope: .local)
     }
 
     /// Optimistically updates the cached profile's status so views (the You
