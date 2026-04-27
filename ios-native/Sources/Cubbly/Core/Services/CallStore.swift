@@ -228,7 +228,7 @@ final class CallStore: ObservableObject {
             live = try await client.from("call_participants")
                 .select("user_id")
                 .eq("call_event_id", value: evt.id.uuidString)
-                .is("left_at", value: nil)
+                .is("left_at", value: "null")
                 .execute()
                 .value
         } catch {
@@ -374,7 +374,7 @@ final class CallStore: ObservableObject {
                     .update(["left_at": endedAt])
                     .eq("call_event_id", value: evt.uuidString)
                     .eq("user_id", value: myId.uuidString)
-                    .is("left_at", value: nil)
+                    .is("left_at", value: "null")
                     .execute()
             }
             try? await SupabaseManager.shared.client
