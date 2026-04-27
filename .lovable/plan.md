@@ -1,90 +1,64 @@
-# Fix Plan for v0.2.24 Stability Regressions
+## v0.1.2 iOS — Calls, GIFs, Mic Test, Sign Out
 
-## What will be fixed
+### The real reason calls don't work between iOS and Web
 
-1. **Presence / status indicators everywhere**
-   - Replace the web/desktop presence channel setup with a single shared global presence room.
-   - Keep initial snapshot hydration so already-online users appear immediately.
-   - Verify all status consumers still use the effective-status helper correctly.
+The web app broadcasts every WebRTC signal under a **single Realtime event called `voice-signal`** and tells them apart by `payload.type` (`"offer"`, `"answer"`, `"ice-candidate"`, `"hangup"`, `"ready-for-offer"`, etc.).
 
-2. **Chat unread indicators inside chat pages**
-   - Stop marking conversations read immediately on chat open.
-   - Preserve unread state until the user actually reaches the bottom, clicks **Mark as Read**, or sends a reply/message.
-   - Reconnect the top blue bar and red `NEW` divider to the real unread snapshot taken on entry.
+The iOS app currently broadcasts and listens under **separate event names** (`offer`, `answer`, `ice-candidate`, `hangup`, `peer-mute`, …). So nothing iOS sends ever reaches web, and nothing web sends ever reaches iOS — every cross-platform call sits forever in "calling…" until it times out, which is exactly what you're seeing. Even iOS↔iOS works only by accident, never iOS↔web.
 
-3. **Screenshare fullscreen controls**
-   - Move the custom fullscreen chrome so it anchors to the rendered stream frame, not the app viewport edges.
-   - Make the controls reliably clickable.
-   - Split **stream audio controls** from **user audio controls**:
-     - avatar/right-click stays user-level
-     - right-clicking the shared stream opens stream-level controls
-     - fullscreen stream slider controls the stream audio itself, not the person’s entire call audio
-   - Wire the 1-on-1 fullscreen viewer to receive the remote stream owner ID/context too, so it behaves the same as group calls.
+This single mismatch is why calls "still don't work" and why the systems are "not in sync." Pills appear because `call_events` rows are inserted via Postgres (separate path), but the actual realtime audio negotiation never connects.
 
-4. **iOS PWA Voice & Video settings crash**
-   - Harden all device select values against stale/empty values from old local storage and Safari device enumeration.
-   - Sanitize loaded voice settings so empty strings are converted to safe defaults before the panel renders.
-   - Keep the existing iOS capture-lock behavior, but make the panel render safely even when device data is incomplete.
+### What v0.1.2 will fix
 
-5. **iOS PWA call audio still silent**
-   - Add an iOS-safe remote audio fallback so call audio does not depend on the desktop-style Web Audio gain path.
-   - Keep the current autoplay/gesture re-arm logic, but prevent iOS from ending up with a muted hidden element while the gain graph is ineffective.
-   - Apply the same fallback to both 1-on-1 and group calls.
+**1. Cross-platform call signaling (the big one)**
+- Rewrite `CallSignaling.swift` to send and receive everything on the single `voice-signal` event, with `type` inside the payload — matching web exactly.
+- Add support for the `ready-for-offer` message web uses when joining an existing call. This is what makes "Join" work without ringing again.
 
-## Root causes found
+**2. "Join" pill no longer creates duplicate calls**
+Rewrite the join flow in `CallStore` and `ChatView.joinCall` to mirror web's `startCall` logic precisely:
+1. Look up the most recent `ongoing` `call_event` for this conversation.
+2. Check `call_participants` for any **other** user with `left_at IS NULL`.
+3. If yes → reuse that `call_event_id`, insert our own `call_participants` row, send `ready-for-offer` over the existing `voice-call:{conversationId}` channel — peer responds with an offer, we answer. **No new call_event row, no new ring.**
+4. If no other live participant → mark the stale event ended and start fresh.
+- Also: if a ring for this conversation is already on screen, "Join" auto-accepts that ring instead of starting anything new.
 
-- **Presence is broken because the web app is joining unique per-tab presence channel names** (`online-presence:<random>`) instead of one shared room. That isolates each client, so everyone looks offline.
-- **Unread indicators are broken because chats are being marked read as soon as they open** in `useUnreadCounts`, before `ChatView` can capture the unread-on-entry snapshot. That zeroes out both the blue bar and red divider.
-- **Fullscreen stream controls are still user-level controls** because the viewer is wired to the shared per-user gain API. The stream right-click also opens `UserVolumeMenu`, not a stream menu.
-- **The iOS settings crash is likely from stale invalid select state**, not just current device filtering. The render path needs value sanitization before Radix Select mounts.
-- **The iOS silent-call bug likely persists because the current remote-audio path still relies on the peer gain graph**. On iOS PWA, that can leave the hidden audio element muted while the graph is not reliably producing audible output.
+**3. CallKit / call_event lifecycle parity**
+- iOS will now insert/upsert a row into `call_participants` when joining (web does this; iOS was skipping it, which is why web never saw iOS as "present" and vice versa).
+- iOS will set `left_at = now()` on its `call_participants` row on hangup, so the next person clicking "Join" correctly sees there's nobody left and starts fresh.
 
-## Implementation steps
+**4. GIF picker — single tap sends**
+In `GiphyPickerView`:
+- Single tap → `onPick(url)` + dismiss (already wired, but the parent handler in `ChatView` was looking for an attachment-style payload). Fix the `ChatView` `onPick` closure to send the GIF URL as a normal message immediately.
+- Long-press → toggle favorite (keep current behavior; matches web).
+- Remove the double-tap-favorites behavior since it's confusing.
 
-1. **Presence fix**
-   - Update `src/contexts/AuthContext.tsx` to join a stable shared channel (matching the native app’s `global:online` behavior).
-   - Keep `.on(...)` before `.subscribe()`.
-   - Track the user after subscribe and hydrate from `presenceState()` immediately.
-   - Make cleanup deterministic so StrictMode/HMR doesn’t duplicate subscriptions.
+**5. Mic test in Voice & Video settings (Discord-style)**
+Add a "Mic Test" section to `VoiceVideoSettingsView`:
+- "Test Mic" button starts capturing from `AVAudioEngine` for ~10s.
+- A live input-level meter (animated bar) shows mic activity in real time.
+- A second button plays back the recording so you can hear yourself, just like Discord's "Let's Check" test.
+- Releases the audio session cleanly when the sheet closes or the test ends.
 
-2. **Unread indicator fix**
-   - Remove the auto-mark-read-on-open effect in `src/hooks/useUnreadCounts.ts`.
-   - Let `ChatView.tsx` remain the owner of read dismissal timing.
-   - If needed, expose a shared `markConversationRead` helper so sidebar badges and chat indicators stay in sync from one code path.
+**6. Sign Out actually signs out**
+The button itself works, but `SessionStore.signOut()` only calls `auth.signOut()` and never tears down realtime channels or the call store, so on some sessions the UI snaps back to signed-in. Fix:
+- End any active call, unsubscribe presence + signaling, clear `currentProfile`, then call `auth.signOut(scope: .local)` so the session is killed even if the network is flaky.
+- Force `state = .signedOut` immediately so RootView routes to Login without waiting for the auth-change stream.
 
-3. **Stream-specific audio controls**
-   - Extend the audio-control layer so it can address `mic` and `screen` separately.
-   - Add a dedicated stream menu component for remote screenshares.
-   - Update `FullscreenScreenShareViewer.tsx`, `VoiceCallOverlay.tsx`, and `GroupCallPanel.tsx` so stream right-click and slider target the stream track.
-   - Reposition overlay chrome inside the actual stream frame container.
+**7. Version bump**
+- `project.yml`: `CFBundleShortVersionString` → `0.1.2`, `CFBundleVersion` → `3`
+- `Info.plist`: same
+- `CubblyConfig.appVersion` → `"0.1.2"` (this is what the "You" tab footer reads)
 
-4. **iOS PWA settings hardening**
-   - Sanitize loaded values in `VoiceContext` when reading local settings.
-   - Add device-option normalization in `VoiceVideoSettings.tsx` for inputs, outputs, and cameras.
-   - Guard every `Select` root with a guaranteed valid value.
+### Files I'll change
+- `ios-native/Sources/Cubbly/Core/Services/CallSignaling.swift` — single `voice-signal` event protocol, add `ready-for-offer`
+- `ios-native/Sources/Cubbly/Core/Services/CallStore.swift` — join-existing flow, `call_participants` upsert/leave
+- `ios-native/Sources/Cubbly/Features/Chat/ChatView.swift` — `joinCall` checks live participants; GIF onPick sends as message
+- `ios-native/Sources/Cubbly/Features/Chat/GiphyPickerView.swift` — single tap sends; long-press favorites
+- `ios-native/Sources/Cubbly/Features/Settings/VoiceVideoSettingsView.swift` — Mic Test section
+- `ios-native/Sources/Cubbly/Core/Services/MicTestEngine.swift` — **new**, AVAudioEngine recorder/meter/playback
+- `ios-native/Sources/Cubbly/Auth/SessionStore.swift` — robust sign out
+- `ios-native/Sources/Cubbly/App/CubblyConfig.swift` — version → 0.1.2
+- `ios-native/project.yml` + `ios-native/Resources/Info.plist` — version 0.1.2 / build 3
 
-5. **iOS PWA call-audio recovery**
-   - Add an iOS branch in the peer audio pipeline so remote audio can stay element-driven instead of graph-driven when needed.
-   - Keep desktop/web behavior unchanged.
-   - Apply the same safeguard to screen-share audio elements.
-   - Re-check deafen/output-volume interactions so they don’t remute remote audio on iOS.
-
-6. **Version handling**
-   - Keep this inside **v0.2.24**. No version bump.
-
-## Technical details
-
-Files likely involved:
-- `src/contexts/AuthContext.tsx`
-- `src/hooks/useUnreadCounts.ts`
-- `src/components/app/ChatView.tsx`
-- `src/lib/peerGain.ts`
-- `src/components/app/FullscreenScreenShareViewer.tsx`
-- `src/components/app/UserVolumeMenu.tsx` or a new stream-specific companion menu
-- `src/components/app/VoiceCallOverlay.tsx`
-- `src/components/app/GroupCallPanel.tsx`
-- `src/contexts/VoiceContext.tsx`
-- `src/contexts/GroupCallContext.tsx`
-- `src/components/app/settings/VoiceVideoSettings.tsx`
-
-If you approve this, I’ll implement these fixes directly and keep the patch on **0.2.24**.
+### After I'm done
+I'll re-zip the project as `cubbly-ios-v0.1.2.zip` and give you the exact Xcode steps to push it to TestFlight (replace files → in Xcode confirm `ChromeStore.swift` and the new `MicTestEngine.swift` are added to the Cubbly target → Product → Archive → Distribute → upload). Same flow as before — your existing internal testers get it automatically once it finishes processing.
