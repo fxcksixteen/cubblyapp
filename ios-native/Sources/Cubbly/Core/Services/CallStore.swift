@@ -205,18 +205,20 @@ final class CallStore: ObservableObject {
 
         // 1. Find the most recent ongoing call_event for this conversation.
         struct EvtRow: Decodable { let id: UUID; let started_at: Date }
-        let existing: EvtRow?
+        var existing: EvtRow? = nil
         do {
-            existing = try await client.from("call_events")
+            let rows: [EvtRow] = try await client.from("call_events")
                 .select("id,started_at")
                 .eq("conversation_id", value: convId.uuidString)
                 .eq("state", value: "ongoing")
                 .order("started_at", ascending: false)
                 .limit(1)
                 .execute()
-                .value as [EvtRow]?
-                |> { $0?.first }
-        } catch { existing = nil }
+                .value
+            existing = rows.first
+        } catch {
+            print("[Call] tryJoinExisting lookup failed:", error)
+        }
         guard let evt = existing else { return false }
 
         // 2. Confirm a non-self peer is still live (left_at IS NULL).
