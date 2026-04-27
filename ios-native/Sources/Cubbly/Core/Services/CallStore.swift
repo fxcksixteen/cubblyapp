@@ -338,6 +338,9 @@ final class CallStore: ObservableObject {
         SoundService.shared.play(.message)
         configureAudioSession()
         await signaling.joinCallChannel(conversationId: inc.conversationId)
+        if let evt = inc.callEventId {
+            await ensureOwnParticipantRow(callEventId: evt)
+        }
         // Voice client will be created when we receive the offer (web sends offer right after ring).
     }
 
@@ -351,7 +354,7 @@ final class CallStore: ObservableObject {
     func endCall() async {
         let conv = conversationId
         if let signaling = signaling, conv != nil {
-            await signaling.broadcast(event: "hangup", payload: [:])
+            await signaling.broadcast(type: "hangup")
         }
         SoundService.shared.stopLooping(.incomingCall)
         SoundService.shared.stopLooping(.outgoingRing)
@@ -361,9 +364,22 @@ final class CallStore: ObservableObject {
         botEcho?.stop(); botEcho = nil
         await signaling?.leaveCallChannel()
         if let evt = currentCallEventId {
+            let endedAt = ISO8601DateFormatter().string(from: Date())
+            // Mark our own participant row as left so the next "Join" attempt
+            // correctly sees there's no live peer and starts a fresh call
+            // instead of joining a ghost.
+            if let myId = try? await SupabaseManager.shared.client.auth.user().id {
+                _ = try? await SupabaseManager.shared.client
+                    .from("call_participants")
+                    .update(["left_at": endedAt])
+                    .eq("call_event_id", value: evt.uuidString)
+                    .eq("user_id", value: myId.uuidString)
+                    .is("left_at", value: nil)
+                    .execute()
+            }
             try? await SupabaseManager.shared.client
                 .from("call_events")
-                .update(["state": "ended", "ended_at": ISO8601DateFormatter().string(from: Date())])
+                .update(["state": "ended", "ended_at": endedAt])
                 .eq("id", value: evt.uuidString)
                 .execute()
         }
