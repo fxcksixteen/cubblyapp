@@ -6,6 +6,7 @@ import SwiftUI
 /// to the live call where possible.
 struct VoiceVideoSettingsView: View {
     @ObservedObject var settings = CallSettings.shared
+    @StateObject private var micTest = MicTestEngine()
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -34,6 +35,8 @@ struct VoiceVideoSettingsView: View {
                                   value: Binding(get: { settings.inputVolume }, set: { settings.inputVolume = $0 }),
                                   range: 0...200,
                                   format: { "\(Int($0))%" })
+
+                        micTestSection
                     }
 
                     section(title: "VOICE PROCESSING") {
@@ -78,7 +81,74 @@ struct VoiceVideoSettingsView: View {
                     Button("Done") { dismiss() }.foregroundStyle(Theme.Colors.primary)
                 }
             }
+            .onDisappear { micTest.stopAll() }
         }
+    }
+
+    /// Discord-style "Let's Check" mic test: record up to 10s, watch a live
+    /// level meter, then play it back.
+    @ViewBuilder
+    private var micTestSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("MIC TEST")
+                .font(.cubbly(11, .bold))
+                .foregroundStyle(Theme.Colors.textSecondary)
+                .padding(.top, 8)
+
+            Text("Hear what you sound like before you call. Records for up to 10 seconds, then plays it back.")
+                .font(.cubbly(12, .regular))
+                .foregroundStyle(Theme.Colors.textSecondary)
+
+            // Level meter (always visible; lights up while recording)
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Theme.Colors.bgTertiary)
+                    Capsule()
+                        .fill(LinearGradient(colors: [.green, .yellow, .red],
+                                             startPoint: .leading, endPoint: .trailing))
+                        .frame(width: geo.size.width * CGFloat(micTest.level))
+                        .animation(.linear(duration: 0.08), value: micTest.level)
+                }
+            }
+            .frame(height: 10)
+
+            HStack(spacing: 10) {
+                switch micTest.phase {
+                case .idle:
+                    micButton(label: "Test Mic", icon: "mic.fill", tint: Theme.Colors.primary) {
+                        micTest.startRecording()
+                    }
+                case .recording:
+                    micButton(label: "Stop (\(Int(10 - micTest.elapsed))s)", icon: "stop.fill", tint: .red) {
+                        micTest.stopRecording()
+                    }
+                case .recorded:
+                    micButton(label: "Play", icon: "play.fill", tint: .green) {
+                        micTest.playRecording()
+                    }
+                    micButton(label: "Re-record", icon: "arrow.clockwise", tint: Theme.Colors.primary) {
+                        micTest.startRecording()
+                    }
+                case .playing:
+                    micButton(label: "Stop", icon: "stop.fill", tint: .red) {
+                        micTest.stopPlayback()
+                    }
+                }
+            }
+        }
+    }
+
+    private func micButton(label: String, icon: String, tint: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: icon).font(.system(size: 13, weight: .bold))
+                Text(label).font(.cubbly(13, .semibold))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 14).padding(.vertical, 10)
+            .background(Capsule().fill(tint))
+        }
+        .buttonStyle(.plain)
     }
 
     private func section<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {

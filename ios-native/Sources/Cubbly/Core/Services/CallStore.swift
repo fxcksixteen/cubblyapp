@@ -162,10 +162,15 @@ final class CallStore: ObservableObject {
 
         do {
             let offer = try await voice.createOffer()
-            await signaling.broadcast(event: "offer", payload: [
+            await signaling.broadcast(type: "offer", payload: [
                 "sdp": .object(["type": .string("offer"), "sdp": .string(offer.sdp)]),
                 "callerAvatarUrl": peerAvatarUrl.map { .string($0) } ?? .null
             ])
+            // Insert our own call_participants row so the other side knows
+            // we're live (mirrors web's ensureOwnParticipantRow).
+            if let evtId = currentCallEventId {
+                await ensureOwnParticipantRow(callEventId: evtId)
+            }
             // Ring the peer's global channel so they get the incoming-call sheet.
             if let evtId = currentCallEventId {
                 await signaling.ringUser(
@@ -179,6 +184,102 @@ final class CallStore: ObservableObject {
         } catch {
             print("[Call] createOffer failed:", error)
             await endCall()
+        }
+    }
+
+    // MARK: - Join an already-ongoing call (no new ring, no duplicate event)
+
+    /// Mirrors web's "join existing" path: looks up the most recent ongoing
+    /// `call_event` for this conversation, confirms there's a non-self peer
+    /// with `left_at IS NULL`, then joins THAT call_event by sending
+    /// `ready-for-offer` over the existing voice channel. The peer responds
+    /// with a fresh offer; no new ring fires, no second call_event row is
+    /// created. This is what makes "Join" actually meet the other person.
+    /// - Returns: true if we joined an existing live call, false if there
+    ///   wasn't one (caller should fall back to startCall).
+    func tryJoinExisting(conversationId convId: UUID, peerId: UUID, peerName: String, peerAvatarUrl: String?) async -> Bool {
+        guard state == .idle, let signaling = signaling else { return false }
+        let client = SupabaseManager.shared.client
+        let myId: UUID
+        do { myId = try await client.auth.user().id } catch { return false }
+
+        // 1. Find the most recent ongoing call_event for this conversation.
+        struct EvtRow: Decodable { let id: UUID; let started_at: Date }
+        var existing: EvtRow? = nil
+        do {
+            let rows: [EvtRow] = try await client.from("call_events")
+                .select("id,started_at")
+                .eq("conversation_id", value: convId.uuidString)
+                .eq("state", value: "ongoing")
+                .order("started_at", ascending: false)
+                .limit(1)
+                .execute()
+                .value
+            existing = rows.first
+        } catch {
+            print("[Call] tryJoinExisting lookup failed:", error)
+        }
+        guard let evt = existing else { return false }
+
+        // 2. Confirm a non-self peer is still live (left_at IS NULL).
+        struct PartRow: Decodable { let user_id: UUID }
+        var live: [PartRow] = []
+        do {
+            live = try await client.from("call_participants")
+                .select("user_id")
+                .eq("call_event_id", value: evt.id.uuidString)
+                .is("left_at", value: "null")
+                .execute()
+                .value
+        } catch {
+            print("[Call] tryJoinExisting participants check failed:", error)
+        }
+        let otherActive = live.contains { $0.user_id != myId }
+        if !otherActive {
+            // Stale event — close it so the next attempt starts clean,
+            // then signal failure so caller starts a fresh call.
+            try? await client.from("call_events")
+                .update(["state": "ended", "ended_at": ISO8601DateFormatter().string(from: Date())])
+                .eq("id", value: evt.id.uuidString)
+                .execute()
+            return false
+        }
+
+        // 3. Join that exact call_event without creating a new one or ringing.
+        self.conversationId = convId
+        self.peerId = peerId
+        self.peerName = peerName
+        self.peerAvatarUrl = peerAvatarUrl
+        self.currentCallEventId = evt.id
+        self.state = .calling
+        self.isMinimized = false
+        configureAudioSession()
+        CallKitService.shared.startOutgoing(handleName: peerName)
+        await signaling.joinCallChannel(conversationId: convId)
+        await ensureOwnParticipantRow(callEventId: evt.id)
+
+        // Ask the live peer for a fresh offer. They'll respond with `offer`,
+        // we'll answer in handleVoiceOffer. No ring, no duplicate event.
+        await signaling.broadcast(type: "ready-for-offer")
+        print("[Call] 🔁 Joining existing ongoing call_event:", evt.id.uuidString)
+        return true
+    }
+
+    /// Insert (or upsert) our row in call_participants for a given call_event.
+    private func ensureOwnParticipantRow(callEventId: UUID) async {
+        let client = SupabaseManager.shared.client
+        guard let myId = try? await client.auth.user().id else { return }
+        struct Row: Encodable {
+            let call_event_id: String
+            let user_id: String
+        }
+        do {
+            _ = try await client.from("call_participants")
+                .insert(Row(call_event_id: callEventId.uuidString, user_id: myId.uuidString))
+                .execute()
+        } catch {
+            // Probably already a row from an earlier attempt — that's fine.
+            print("[Call] ensureOwnParticipantRow:", error)
         }
     }
 
@@ -237,6 +338,9 @@ final class CallStore: ObservableObject {
         SoundService.shared.play(.message)
         configureAudioSession()
         await signaling.joinCallChannel(conversationId: inc.conversationId)
+        if let evt = inc.callEventId {
+            await ensureOwnParticipantRow(callEventId: evt)
+        }
         // Voice client will be created when we receive the offer (web sends offer right after ring).
     }
 
@@ -250,7 +354,7 @@ final class CallStore: ObservableObject {
     func endCall() async {
         let conv = conversationId
         if let signaling = signaling, conv != nil {
-            await signaling.broadcast(event: "hangup", payload: [:])
+            await signaling.broadcast(type: "hangup")
         }
         SoundService.shared.stopLooping(.incomingCall)
         SoundService.shared.stopLooping(.outgoingRing)
@@ -260,9 +364,22 @@ final class CallStore: ObservableObject {
         botEcho?.stop(); botEcho = nil
         await signaling?.leaveCallChannel()
         if let evt = currentCallEventId {
+            let endedAt = ISO8601DateFormatter().string(from: Date())
+            // Mark our own participant row as left so the next "Join" attempt
+            // correctly sees there's no live peer and starts a fresh call
+            // instead of joining a ghost.
+            if let myId = try? await SupabaseManager.shared.client.auth.user().id {
+                _ = try? await SupabaseManager.shared.client
+                    .from("call_participants")
+                    .update(["left_at": endedAt])
+                    .eq("call_event_id", value: evt.uuidString)
+                    .eq("user_id", value: myId.uuidString)
+                    .is("left_at", value: "null")
+                    .execute()
+            }
             try? await SupabaseManager.shared.client
                 .from("call_events")
-                .update(["state": "ended", "ended_at": ISO8601DateFormatter().string(from: Date())])
+                .update(["state": "ended", "ended_at": endedAt])
                 .eq("id", value: evt.uuidString)
                 .execute()
         }
@@ -291,7 +408,7 @@ final class CallStore: ObservableObject {
     func toggleMute() {
         isMuted.toggle()
         voiceClient?.setMicEnabled(!isMuted)
-        Task { await signaling?.broadcast(event: "peer-mute", payload: [
+        Task { await signaling?.broadcast(type: "peer-mute", payload: [
             "isMuted": .bool(isMuted), "isDeafened": .bool(isDeafened)
         ]) }
     }
@@ -309,7 +426,7 @@ final class CallStore: ObservableObject {
                 track.isEnabled = !isDeafened
             }
         }
-        Task { await signaling?.broadcast(event: "peer-mute", payload: [
+        Task { await signaling?.broadcast(type: "peer-mute", payload: [
             "isMuted": .bool(isMuted), "isDeafened": .bool(isDeafened)
         ]) }
     }
@@ -394,6 +511,36 @@ final class CallStore: ObservableObject {
 
         case .peerVideo(_, let v):
             peerIsVideoOn = v
+
+        case .readyForOffer:
+            // A peer joined via "Join" pill while we were already in this
+            // call — send them a fresh offer (no re-ring). They'll answer.
+            Task { await sendFreshOfferForJoiner() }
+        }
+    }
+
+    /// Build a new offer and broadcast it on the per-call channel. Used when
+    /// a peer joins the existing call_event via `ready-for-offer`.
+    private func sendFreshOfferForJoiner() async {
+        guard let signaling = signaling else { return }
+        // If we already have a voice client (we were the original caller),
+        // renegotiate over it. Otherwise build a new one.
+        let voice: WebRTCClient
+        if let existing = voiceClient {
+            voice = existing
+        } else {
+            let v = WebRTCClient(iceServers: iceServers, includeMicTrack: true)
+            wireVoiceCallbacks(v)
+            voiceClient = v
+            voice = v
+        }
+        do {
+            let offer = try await voice.createOffer()
+            await signaling.broadcast(type: "offer", payload: [
+                "sdp": .object(["type": .string("offer"), "sdp": .string(offer.sdp)])
+            ])
+        } catch {
+            print("[Call] sendFreshOfferForJoiner failed:", error)
         }
     }
 
@@ -414,7 +561,7 @@ final class CallStore: ObservableObject {
             for c in pendingRemoteIce { voice.addIceCandidate(c) }
             pendingRemoteIce.removeAll()
             let answer = try await voice.createAnswer()
-            await signaling?.broadcast(event: "answer", payload: [
+            await signaling?.broadcast(type: "answer", payload: [
                 "sdp": .object(["type": .string("answer"), "sdp": .string(answer.sdp)])
             ])
         } catch {
@@ -451,7 +598,7 @@ final class CallStore: ObservableObject {
         }
         scr.onIceCandidate = { [weak self] cand in
             Task { @MainActor in
-                await self?.signaling?.broadcast(event: "screen-ice-candidate", payload: [
+                await self?.signaling?.broadcast(type: "screen-ice-candidate", payload: [
                     "candidate": .object([
                         "candidate": .string(cand.sdp),
                         "sdpMid": cand.sdpMid.map { .string($0) } ?? .null,
@@ -466,7 +613,7 @@ final class CallStore: ObservableObject {
             for c in pendingScreenIce { scr.addIceCandidate(c) }
             pendingScreenIce.removeAll()
             let ans = try await scr.createAnswer()
-            await signaling?.broadcast(event: "screen-answer", payload: [
+            await signaling?.broadcast(type: "screen-answer", payload: [
                 "sdp": .object(["type": .string("answer"), "sdp": .string(ans.sdp)])
             ])
         } catch {
@@ -479,7 +626,7 @@ final class CallStore: ObservableObject {
     private func wireVoiceCallbacks(_ c: WebRTCClient) {
         c.onIceCandidate = { [weak self] cand in
             Task { @MainActor in
-                await self?.signaling?.broadcast(event: "ice-candidate", payload: [
+                await self?.signaling?.broadcast(type: "ice-candidate", payload: [
                     "candidate": .object([
                         "candidate": .string(cand.sdp),
                         "sdpMid": cand.sdpMid.map { .string($0) } ?? .null,
