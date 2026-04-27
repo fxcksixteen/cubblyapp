@@ -2,17 +2,20 @@ import Foundation
 import Supabase
 import Realtime
 
-/// Mirror of the web `VoiceContext.tsx` realtime signaling protocol.
+/// Realtime signaling — wire-compatible with the web `VoiceContext.tsx`.
 ///
 ///   - **Ring channel:** `voice-global:{userId}` — receives `incoming-call`
 ///     broadcasts ({ conversationId, callEventId, userId, callerName?, callerAvatarUrl? }).
-///   - **Per-call channel:** `voice-call:{conversationId}` — broadcasts
-///     `offer`, `answer`, `ice-candidate`, `screen-offer`, `screen-answer`,
-///     `screen-ice-candidate`, `screen-stop`, `hangup`, `peer-mute`, `peer-video`.
 ///
-/// Keeping the JSON shape identical to web is what guarantees a Cubbly iOS
-/// user can call (and be called by) a Cubbly web/desktop user without any
-/// translation layer.
+///   - **Per-call channel:** `voice-call:{conversationId}` — every signaling
+///     message is broadcast on a SINGLE event called `voice-signal`. The
+///     payload's `type` field tells us what it is: `offer`, `answer`,
+///     `ice-candidate`, `screen-offer`, `screen-answer`, `screen-ice-candidate`,
+///     `screen-stop`, `hangup`, `peer-mute`, `peer-video`, `ready-for-offer`.
+///
+/// **This is critical for cross-platform calling:** before v0.1.2, iOS used
+/// separate event names per type, which meant nothing iOS sent ever reached
+/// web (and vice versa). Web only listens on `voice-signal`. Now we match.
 @MainActor
 final class CallSignaling {
     enum Event {
@@ -27,6 +30,9 @@ final class CallSignaling {
         case hangup(senderId: UUID)
         case peerMute(senderId: UUID, isMuted: Bool, isDeafened: Bool)
         case peerVideo(senderId: UUID, isVideoOn: Bool)
+        /// Sent by a peer who's joining an already-ongoing call. The other
+        /// side should respond with a fresh `offer` instead of re-ringing.
+        case readyForOffer(senderId: UUID)
     }
 
     private let client: SupabaseClient
@@ -70,21 +76,17 @@ final class CallSignaling {
         onEvent?(.incomingCall(conversationId: conversationId, callerId: callerId, callerName: name, callerAvatarUrl: avatar, callEventId: callEvtId))
     }
 
-    // MARK: - Per-call channel
+    // MARK: - Per-call channel (single `voice-signal` event, web-compatible)
 
     func joinCallChannel(conversationId: UUID) async {
         await leaveCallChannel()
         let channel = client.realtimeV2.channel("voice-call:\(conversationId.uuidString)")
         currentConversationId = conversationId
 
-        for evtName in ["offer", "answer", "ice-candidate",
-                        "screen-offer", "screen-answer", "screen-ice-candidate", "screen-stop",
-                        "hangup", "peer-mute", "peer-video"] {
-            let stream = channel.broadcastStream(event: evtName)
-            Task { [weak self] in
-                for await message in stream {
-                    await MainActor.run { self?.handleCallEvent(name: evtName, payload: message) }
-                }
+        let stream = channel.broadcastStream(event: "voice-signal")
+        Task { [weak self] in
+            for await message in stream {
+                await MainActor.run { self?.handleVoiceSignal(payload: message) }
             }
         }
         await channel.subscribe()
@@ -97,13 +99,14 @@ final class CallSignaling {
         currentConversationId = nil
     }
 
-    private func handleCallEvent(name: String, payload: [String: AnyJSON]) {
-        guard let senderStr = payload["senderId"]?.stringValue,
+    private func handleVoiceSignal(payload: [String: AnyJSON]) {
+        guard let type = payload["type"]?.stringValue,
+              let senderStr = payload["senderId"]?.stringValue,
               let senderId = UUID(uuidString: senderStr),
               senderId != userId
         else { return }
 
-        switch name {
+        switch type {
         case "offer":
             if let sdpDict = payload["sdp"]?.objectValue, let sdp = sdpDict["sdp"]?.stringValue {
                 onEvent?(.offer(senderId: senderId, sdp: sdp, callerAvatarUrl: payload["callerAvatarUrl"]?.stringValue))
@@ -139,19 +142,23 @@ final class CallSignaling {
         case "peer-video":
             let v = payload["isVideoOn"]?.boolValue ?? false
             onEvent?(.peerVideo(senderId: senderId, isVideoOn: v))
+        case "ready-for-offer":
+            onEvent?(.readyForOffer(senderId: senderId))
         default: break
         }
     }
 
-    // MARK: - Outgoing broadcasts
+    // MARK: - Outgoing
 
-    /// Send a payload over the per-call channel. Mirrors web: `{ type, ..., senderId }`.
-    func broadcast(event: String, payload: [String: AnyJSON]) async {
+    /// Broadcasts a payload on the per-call channel under the single
+    /// `voice-signal` event (web-compatible). Always stamps `type` and
+    /// `senderId`.
+    func broadcast(type: String, payload: [String: AnyJSON] = [:]) async {
         guard let channel = callChannel else { return }
         var p = payload
         p["senderId"] = .string(userId.uuidString)
-        p["type"] = .string(event)
-        try? await channel.broadcast(event: event, message: p)
+        p["type"] = .string(type)
+        try? await channel.broadcast(event: "voice-signal", message: p)
     }
 
     /// Ring a remote user via their global channel.
