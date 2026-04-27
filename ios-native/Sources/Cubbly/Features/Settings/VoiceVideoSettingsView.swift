@@ -6,6 +6,7 @@ import SwiftUI
 /// to the live call where possible.
 struct VoiceVideoSettingsView: View {
     @ObservedObject var settings = CallSettings.shared
+    @StateObject private var micTest = MicTestEngine()
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -34,6 +35,8 @@ struct VoiceVideoSettingsView: View {
                                   value: Binding(get: { settings.inputVolume }, set: { settings.inputVolume = $0 }),
                                   range: 0...200,
                                   format: { "\(Int($0))%" })
+
+                        micTestSection
                     }
 
                     section(title: "VOICE PROCESSING") {
