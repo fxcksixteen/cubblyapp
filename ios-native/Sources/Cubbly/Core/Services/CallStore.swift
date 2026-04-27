@@ -408,7 +408,7 @@ final class CallStore: ObservableObject {
     func toggleMute() {
         isMuted.toggle()
         voiceClient?.setMicEnabled(!isMuted)
-        Task { await signaling?.broadcast(event: "peer-mute", payload: [
+        Task { await signaling?.broadcast(type: "peer-mute", payload: [
             "isMuted": .bool(isMuted), "isDeafened": .bool(isDeafened)
         ]) }
     }
@@ -426,7 +426,7 @@ final class CallStore: ObservableObject {
                 track.isEnabled = !isDeafened
             }
         }
-        Task { await signaling?.broadcast(event: "peer-mute", payload: [
+        Task { await signaling?.broadcast(type: "peer-mute", payload: [
             "isMuted": .bool(isMuted), "isDeafened": .bool(isDeafened)
         ]) }
     }
@@ -531,7 +531,7 @@ final class CallStore: ObservableObject {
             for c in pendingRemoteIce { voice.addIceCandidate(c) }
             pendingRemoteIce.removeAll()
             let answer = try await voice.createAnswer()
-            await signaling?.broadcast(event: "answer", payload: [
+            await signaling?.broadcast(type: "answer", payload: [
                 "sdp": .object(["type": .string("answer"), "sdp": .string(answer.sdp)])
             ])
         } catch {
@@ -568,7 +568,7 @@ final class CallStore: ObservableObject {
         }
         scr.onIceCandidate = { [weak self] cand in
             Task { @MainActor in
-                await self?.signaling?.broadcast(event: "screen-ice-candidate", payload: [
+                await self?.signaling?.broadcast(type: "screen-ice-candidate", payload: [
                     "candidate": .object([
                         "candidate": .string(cand.sdp),
                         "sdpMid": cand.sdpMid.map { .string($0) } ?? .null,
@@ -583,7 +583,7 @@ final class CallStore: ObservableObject {
             for c in pendingScreenIce { scr.addIceCandidate(c) }
             pendingScreenIce.removeAll()
             let ans = try await scr.createAnswer()
-            await signaling?.broadcast(event: "screen-answer", payload: [
+            await signaling?.broadcast(type: "screen-answer", payload: [
                 "sdp": .object(["type": .string("answer"), "sdp": .string(ans.sdp)])
             ])
         } catch {
@@ -596,7 +596,7 @@ final class CallStore: ObservableObject {
     private func wireVoiceCallbacks(_ c: WebRTCClient) {
         c.onIceCandidate = { [weak self] cand in
             Task { @MainActor in
-                await self?.signaling?.broadcast(event: "ice-candidate", payload: [
+                await self?.signaling?.broadcast(type: "ice-candidate", payload: [
                     "candidate": .object([
                         "candidate": .string(cand.sdp),
                         "sdpMid": cand.sdpMid.map { .string($0) } ?? .null,
