@@ -302,17 +302,24 @@ struct ChatView: View {
             store.restore()
             return
         }
-        // Case 3: cold join — same conversation but ring expired or we
-        // missed it. Start a fresh call (the peer's side will see this
-        // as a new ring; that's the best we can do without a presence
-        // index of "active rooms").
+        // Case 3: try to join the existing ongoing call_event (no new ring,
+        // no duplicate event). If no live peer is present, fall back to a
+        // fresh outgoing call.
         Task {
-            await store.startCall(
+            let joined = await store.tryJoinExisting(
                 conversationId: conversation.id,
                 peerId: other.userID,
                 peerName: other.displayName,
                 peerAvatarUrl: other.avatarURL
             )
+            if !joined {
+                await store.startCall(
+                    conversationId: conversation.id,
+                    peerId: other.userID,
+                    peerName: other.displayName,
+                    peerAvatarUrl: other.avatarURL
+                )
+            }
         }
     }
 
