@@ -745,6 +745,7 @@ struct ChatView: View {
                     if !callEvents.contains(where: { $0.id == row.id }) {
                         callEvents.append(row)
                     }
+                    callEvents = normalizedCallEvents(callEvents)
                 }
             }
         }
@@ -758,6 +759,7 @@ struct ChatView: View {
                     } else {
                         callEvents.append(row)
                     }
+                    callEvents = normalizedCallEvents(callEvents)
                 }
             }
         }
