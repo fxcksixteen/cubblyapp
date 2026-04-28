@@ -470,11 +470,14 @@ struct ChatView: View {
                 .from("call_events")
                 .select()
                 .eq("conversation_id", value: conversation.id.uuidString)
-                .order("started_at", ascending: true)
+                // Pull the newest rows first so the current ongoing call is
+                // never dropped once a DM has a long call history, then sort
+                // locally for the timeline render.
+                .order("started_at", ascending: false)
                 .limit(100)
                 .execute()
                 .value
-            callEvents = rows
+            callEvents = normalizedCallEvents(rows)
         } catch {
             print("[Chat] loadCallEvents failed:", error)
         }
