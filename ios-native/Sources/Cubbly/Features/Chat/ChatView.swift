@@ -470,11 +470,14 @@ struct ChatView: View {
                 .from("call_events")
                 .select()
                 .eq("conversation_id", value: conversation.id.uuidString)
-                .order("started_at", ascending: true)
+                // Pull the newest rows first so the current ongoing call is
+                // never dropped once a DM has a long call history, then sort
+                // locally for the timeline render.
+                .order("started_at", ascending: false)
                 .limit(100)
                 .execute()
                 .value
-            callEvents = rows
+            callEvents = normalizedCallEvents(rows)
         } catch {
             print("[Chat] loadCallEvents failed:", error)
         }
@@ -742,6 +745,7 @@ struct ChatView: View {
                     if !callEvents.contains(where: { $0.id == row.id }) {
                         callEvents.append(row)
                     }
+                    callEvents = normalizedCallEvents(callEvents)
                 }
             }
         }
@@ -755,6 +759,7 @@ struct ChatView: View {
                     } else {
                         callEvents.append(row)
                     }
+                    callEvents = normalizedCallEvents(callEvents)
                 }
             }
         }
@@ -809,6 +814,24 @@ struct ChatView: View {
         d.dateDecodingStrategy = .iso8601
         return d
     }
+
+    /// Keep the chat timeline stable and enforce Cubbly's invariant: only the
+    /// newest ongoing call in a conversation can render as joinable. Older
+    /// ghost/duplicate ongoing rows are visually closed instead of hiding the
+    /// real current call behind history pagination.
+    private func normalizedCallEvents(_ rows: [CallEventRow]) -> [CallEventRow] {
+        let newestOngoingId = rows
+            .filter { $0.state == "ongoing" }
+            .max(by: { $0.startedAt < $1.startedAt })?
+            .id
+        return rows.map { row in
+            if row.state == "ongoing", row.id != newestOngoingId {
+                return row.endedCopy()
+            }
+            return row
+        }
+        .sorted { $0.startedAt < $1.startedAt }
+    }
 }
 
 // MARK: - Helpers
@@ -837,6 +860,11 @@ struct CallEventRow: Codable, Identifiable, Hashable {
         case callerId = "caller_id"
         case startedAt = "started_at"
         case endedAt = "ended_at"
+    }
+
+    func endedCopy() -> CallEventRow {
+        CallEventRow(id: id, conversationId: conversationId, callerId: callerId,
+                     state: "ended", startedAt: startedAt, endedAt: endedAt ?? Date())
     }
 }
 
