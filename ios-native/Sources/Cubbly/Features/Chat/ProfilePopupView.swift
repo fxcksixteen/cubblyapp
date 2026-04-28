@@ -32,25 +32,27 @@ struct ProfilePopupView: View {
             // Banner
             ZStack(alignment: .bottomLeading) {
                 if let banner = p.bannerURL.flatMap(URL.init) {
-                    AsyncImage(url: banner) { img in
-                        img.resizable().scaledToFill()
-                    } placeholder: {
-                        Rectangle().fill(Theme.Colors.bgSecondary)
+                    if Self.isAnimated(url: banner) {
+                        AnimatedImageView(url: banner, contentMode: .scaleAspectFill)
+                            .frame(height: 120)
+                            .clipped()
+                    } else {
+                        AsyncImage(url: banner) { img in
+                            img.resizable().scaledToFill()
+                        } placeholder: {
+                            Rectangle().fill(Theme.Colors.bgSecondary)
+                        }
+                        .frame(height: 120)
+                        .clipped()
                     }
-                    .frame(height: 120)
-                    .clipped()
                 } else {
                     Rectangle()
                         .fill(AvatarView.color(for: p.username))
                         .frame(height: 120)
                 }
-                AvatarView(
-                    url: p.avatarURL.flatMap(URL.init),
-                    fallbackText: p.displayName,
-                    size: 88
-                )
-                .overlay(Circle().stroke(Theme.Colors.bgTertiary, lineWidth: 6))
-                .offset(x: 16, y: 44)
+                profileAvatar(p)
+                    .overlay(Circle().stroke(Theme.Colors.bgTertiary, lineWidth: 6))
+                    .offset(x: 16, y: 44)
             }
 
             VStack(alignment: .leading, spacing: 12) {
