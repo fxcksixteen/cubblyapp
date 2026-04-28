@@ -1951,6 +1951,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
     localStreamRef.current?.getTracks().forEach(t => t.stop());
     localStreamRef.current = null;
+    originalMicTrackRef.current = null;
     setLocalStream(null);
     setRemoteStream(null);
     setActiveCall(null);
