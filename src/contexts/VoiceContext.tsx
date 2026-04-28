@@ -2108,15 +2108,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       let nextMuted: boolean;
       if (newDeafened) {
         preMuteStateRef.current = prev.isMuted;
-        if (localStreamRef.current) {
-          localStreamRef.current.getAudioTracks().forEach(track => { track.enabled = false; });
-        }
+        void applyLocalMicMute(true);
         nextMuted = true;
       } else {
         const restoreMuted = preMuteStateRef.current;
-        if (localStreamRef.current) {
-          localStreamRef.current.getAudioTracks().forEach(track => { track.enabled = !restoreMuted; });
-        }
+        void applyLocalMicMute(restoreMuted);
         nextMuted = restoreMuted;
       }
 
