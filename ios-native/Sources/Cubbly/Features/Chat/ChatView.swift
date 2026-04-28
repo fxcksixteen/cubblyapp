@@ -473,6 +473,7 @@ struct ChatView: View {
             messages = try await hydrate(Array(asc))
             hasMore = rows.count >= 50
             await loadCallEvents()
+            await reactions.load(messageIds: messages.compactMap { UUID(uuidString: $0.id) })
         } catch is CancellationError {} catch {
             print("[Chat] load failed:", error)
         }
