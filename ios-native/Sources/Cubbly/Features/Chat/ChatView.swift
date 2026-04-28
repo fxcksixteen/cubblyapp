@@ -1099,6 +1099,16 @@ private struct DiscordStyleBubble: View {
         f.dateFormat = "h:mm a"
         return f.string(from: d)
     }
+
+    /// Strips out the `[attachments]...[/attachments]` block and returns a
+    /// short text preview so reply pills don't show raw JSON.
+    private func replyPreview(_ raw: String) -> String {
+        if let parsed = MessageAttachmentsParser.parse(raw) {
+            if !parsed.text.isEmpty { return parsed.text }
+            return "📎 Attachment"
+        }
+        return raw
+    }
 }
 
 /// Renders a message body where http(s) links become real tappable links.
