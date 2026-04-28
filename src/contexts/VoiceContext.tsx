@@ -349,7 +349,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   // table powers both 1-on-1 and group calls. The hook also routes mic AND
   // screen-share audio for the same peer through ONE GainNode → the slider
   // in `UserVolumeMenu` controls everything you hear from that user.
-  const { getUserVolume, setUserVolume, isUserMuted, setUserMuted, attachPeerGain, clearAllPeerGains } = usePeerGains();
+  const { getUserVolume, setUserVolume, isUserMuted, setUserMuted, setPeerForcedMute, attachPeerGain, clearAllPeerGains } = usePeerGains();
 
   const animFrameRef = useRef<number>(0);
   const remoteAnimFrameRef = useRef<number>(0);
