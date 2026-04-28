@@ -1,64 +1,83 @@
-## v0.1.2 iOS — Calls, GIFs, Mic Test, Sign Out
 
-### The real reason calls don't work between iOS and Web
+# v0.2.26 — Web/Desktop Voice + Call Lifecycle Hardening
 
-The web app broadcasts every WebRTC signal under a **single Realtime event called `voice-signal`** and tells them apart by `payload.type` (`"offer"`, `"answer"`, `"ice-candidate"`, `"hangup"`, `"ready-for-offer"`, etc.).
+## 1. Bump version
+`src/lib/changelog.ts` → add `0.2.26` entry. Update any `APP_VERSION` constant referenced by the Settings → About row. Confirm Electron `package.json` version is bumped if it's read in-app.
 
-The iOS app currently broadcasts and listens under **separate event names** (`offer`, `answer`, `ice-candidate`, `hangup`, `peer-mute`, …). So nothing iOS sends ever reaches web, and nothing web sends ever reaches iOS — every cross-platform call sits forever in "calling…" until it times out, which is exactly what you're seeing. Even iOS↔iOS works only by accident, never iOS↔web.
+## 2. Live Mic Test reflection (web/desktop)
+File: `src/components/app/settings/VoiceVideoSettings.tsx` — `VoiceTab.toggleMicTest` / effects.
 
-This single mismatch is why calls "still don't work" and why the systems are "not in sync." Pills appear because `call_events` rows are inserted via Postgres (separate path), but the actual realtime audio negotiation never connects.
+Today the mic-test stream is acquired ONCE; only `echoCancellation` / `noiseSuppression` / `autoGainControl` are re-applied via `applyConstraints` while testing. We will extend this so EVERY relevant control updates live without stopping/restarting the test:
 
-### What v0.1.2 will fix
+- **Input device change** → if `settings.inputDeviceId` changes mid-test, gracefully tear down the old `MediaStream` (audio track only) and `getUserMedia` a new one with the same constraint surface, then reconnect it to the existing `AudioContext` source/analyser and to the playback `<audio>` element. No flicker — keep the audio element and AudioContext alive.
+- **Output device change** → call `audioEl.setSinkId(settings.outputDeviceId)` in a `useEffect` that watches `settings.outputDeviceId`.
+- **Input volume slider** → insert a `GainNode` between the `MediaStreamSource` and the analyser/playback path; set `gainNode.gain.value = settings.inputVolume / 100`. Update in an effect that watches `inputVolume`. The level meter then reflects the gained signal exactly like a real call.
+- **Sensitivity threshold** (`autoSensitivity` off + `sensitivityThreshold`) → draw a vertical marker on the level bar at the threshold % AND visually grey-out level segments below it so the user can see in real time whether their voice is "passing the gate". Update on every slider tick.
+- **Echo cancel / noise suppression / AGC** → already live; keep.
 
-**1. Cross-platform call signaling (the big one)**
-- Rewrite `CallSignaling.swift` to send and receive everything on the single `voice-signal` event, with `type` inside the payload — matching web exactly.
-- Add support for the `ready-for-offer` message web uses when joining an existing call. This is what makes "Join" work without ringing again.
+Audio playback keeps using the existing hidden `<audio>` element so users hear themselves; gating the playback through the `GainNode` means they hear the sensitivity/volume changes immediately.
 
-**2. "Join" pill no longer creates duplicate calls**
-Rewrite the join flow in `CallStore` and `ChatView.joinCall` to mirror web's `startCall` logic precisely:
-1. Look up the most recent `ongoing` `call_event` for this conversation.
-2. Check `call_participants` for any **other** user with `left_at IS NULL`.
-3. If yes → reuse that `call_event_id`, insert our own `call_participants` row, send `ready-for-offer` over the existing `voice-call:{conversationId}` channel — peer responds with an offer, we answer. **No new call_event row, no new ring.**
-4. If no other live participant → mark the stale event ended and start fresh.
-- Also: if a ring for this conversation is already on screen, "Join" auto-accepts that ring instead of starting anything new.
+## 3. Call lifecycle: never auto-disconnect connected calls
+File: `src/contexts/VoiceContext.tsx`.
 
-**3. CallKit / call_event lifecycle parity**
-- iOS will now insert/upsert a row into `call_participants` when joining (web does this; iOS was skipping it, which is why web never saw iOS as "present" and vice versa).
-- iOS will set `left_at = now()` on its `call_participants` row on hangup, so the next person clicking "Join" correctly sees there's nobody left and starts fresh.
+### 3a. 30s ring timeout — stop ringing only, don't end the call
+Current behavior (lines ~2293–2305): after 30s of `calling`/`ringing`, we call `endCallRef.current()` which tears down everything and broadcasts `hangup`. This is wrong.
 
-**4. GIF picker — single tap sends**
-In `GiphyPickerView`:
-- Single tap → `onPick(url)` + dismiss (already wired, but the parent handler in `ChatView` was looking for an attachment-style payload). Fix the `ChatView` `onPick` closure to send the GIF URL as a normal message immediately.
-- Long-press → toggle favorite (keep current behavior; matches web).
-- Remove the double-tap-favorites behavior since it's confusing.
+New behavior:
+- After 30s of unanswered `calling` state on the **caller** side: stop `outgoingRing` sound, transition `activeCall.state` to a new `"connected-waiting"` (or simply leave it as `calling` but mute the ringtone and surface "Waiting for them to join…"). Do NOT call `endCall`. Do NOT broadcast `hangup`. The call_event row stays `ongoing` so the call pill remains joinable for the callee.
+- After 30s on the **callee** (incoming `ringing`) side: stop `incomingCall` ringtone (already partly done at line 2309) AND auto-dismiss the full-screen incoming overlay, but keep the call pill visible in the chat thread so they can still tap "Join". Do NOT decline / end.
+- The original caller can still hang up manually — that path goes through `endCall` and properly tears down.
 
-**5. Mic test in Voice & Video settings (Discord-style)**
-Add a "Mic Test" section to `VoiceVideoSettingsView`:
-- "Test Mic" button starts capturing from `AVAudioEngine` for ~10s.
-- A live input-level meter (animated bar) shows mic activity in real time.
-- A second button plays back the recording so you can hear yourself, just like Discord's "Let's Check" test.
-- Releases the audio session cleanly when the sheet closes or the test ends.
+### 3b. One-sided hang-up should NOT kill the call for the other party
+Current behavior: `endCall` broadcasts `{type: "hangup"}` whenever the local user ends, and the remote handler at line 1092 calls `endCallRef.current()` — instantly killing the call for the peer.
 
-**6. Sign Out actually signs out**
-The button itself works, but `SessionStore.signOut()` only calls `auth.signOut()` and never tears down realtime channels or the call store, so on some sessions the UI snaps back to signed-in. Fix:
-- End any active call, unsubscribe presence + signaling, clear `currentProfile`, then call `auth.signOut(scope: .local)` so the session is killed even if the network is flaky.
-- Force `state = .signedOut` immediately so RootView routes to Login without waiting for the auth-change stream.
+New behavior: when a user hangs up:
+- Mark only their own `call_participants` row as `left_at` (already done).
+- Do NOT mark the `call_event` as `ended`. Only mark `call_event.ended = true` when the LAST remaining participant leaves (i.e., the count of participants with `left_at IS NULL` after our own update is zero). Do this in a small follow-up query inside `endCall`.
+- Broadcast a new `peer-leave` signaling message instead of `hangup`. The remote handler:
+  - Closes its `RTCPeerConnection` to the leaver, stops their inbound media, drops their entry from peer state.
+  - Keeps `activeCall` alive locally, transitions its UI to "alone in call" (mic still hot, call pill in chat still shows ongoing). The user is still in the call and can be re-joined by anyone in the conversation.
+- Reserve `hangup` for the legacy/explicit "end the entire room" path (which we no longer use in 1:1 calls).
 
-**7. Version bump**
-- `project.yml`: `CFBundleShortVersionString` → `0.1.2`, `CFBundleVersion` → `3`
-- `Info.plist`: same
-- `CubblyConfig.appVersion` → `"0.1.2"` (this is what the "You" tab footer reads)
+### 3c. "Join" pill visibility — only show when there is a real ongoing call with ≥1 active participant
+Files: `src/components/app/ChatView.tsx` and any call-pill component (`GlobalCallIndicator`, mobile chat header).
 
-### Files I'll change
-- `ios-native/Sources/Cubbly/Core/Services/CallSignaling.swift` — single `voice-signal` event protocol, add `ready-for-offer`
-- `ios-native/Sources/Cubbly/Core/Services/CallStore.swift` — join-existing flow, `call_participants` upsert/leave
-- `ios-native/Sources/Cubbly/Features/Chat/ChatView.swift` — `joinCall` checks live participants; GIF onPick sends as message
-- `ios-native/Sources/Cubbly/Features/Chat/GiphyPickerView.swift` — single tap sends; long-press favorites
-- `ios-native/Sources/Cubbly/Features/Settings/VoiceVideoSettingsView.swift` — Mic Test section
-- `ios-native/Sources/Cubbly/Core/Services/MicTestEngine.swift` — **new**, AVAudioEngine recorder/meter/playback
-- `ios-native/Sources/Cubbly/Auth/SessionStore.swift` — robust sign out
-- `ios-native/Sources/Cubbly/App/CubblyConfig.swift` — version → 0.1.2
-- `ios-native/project.yml` + `ios-native/Resources/Info.plist` — version 0.1.2 / build 3
+A call pill should render only when:
+1. There is a `call_events` row with `state = "ongoing"` for the conversation, AND
+2. There is at least one `call_participants` row with `left_at IS NULL` for that event.
 
-### After I'm done
-I'll re-zip the project as `cubbly-ios-v0.1.2.zip` and give you the exact Xcode steps to push it to TestFlight (replace files → in Xcode confirm `ChromeStore.swift` and the new `MicTestEngine.swift` are added to the Cubbly target → Product → Archive → Distribute → upload). Same flow as before — your existing internal testers get it automatically once it finishes processing.
+Add a small `useOngoingCall(conversationId)` hook (or extend `useCallParticipants`) that joins these two and returns `{ event, activeParticipants }`. Pill renders only when `activeParticipants.length > 0`. If the count drops to zero (last person leaves), the pill auto-hides AND the same code marks the event as `ended` so it doesn't linger.
+
+### 3d. Stop spurious auto-cleanup paths
+Audit and remove any remaining wall-clock auto-end timers on `connected` calls (line ~2290 already removed the 5-min one — confirm no other `setTimeout` ends a connected call). Audit `pagehide`/`beforeunload` (line 2345) — already correct (only marks our row left). Confirm `peer-mute` / `screen-stop` / disconnect handlers never call `endCallRef.current` for a `connected` call.
+
+## 4. iOS PWA mute belt-and-suspenders
+The iOS native `CallStore.toggleMute` already disables the local audio track. The likely real-world bug is that the iOS PWA (running in mobile Safari, NOT the native app) uses `src/contexts/VoiceContext.tsx` and on some iOS Safari versions `track.enabled = false` keeps emitting comfort-noise frames at audible level due to the voiceChat audio unit.
+
+Fix in `VoiceContext.tsx → toggleMute`:
+- Disable `localStream` audio tracks (already done).
+- Additionally, on the local `RTCRtpSender` for the audio track, call `sender.replaceTrack(null)` when muting and `sender.replaceTrack(originalTrack)` when un-muting. This guarantees zero RTP audio packets are sent. Keep the original track ref so we can restore it.
+- Continue broadcasting `peer-mute` over the signaling channel (already done) so the remote UI still updates instantly.
+
+Also add a defensive remote-side gate: on receiving `peer-mute` with `isMuted: true`, set the per-peer GainNode for that user's MIC stream to 0 (and back to the user-set value when `isMuted: false`). This guarantees the listener hears silence even if the muter's client misbehaves. Use the existing `usePeerGains` infrastructure — add an internal "forcedMute" multiplier that combines with the user-set volume.
+
+Same defensive gate for `peer-deafen`: no remote-side action needed (deafen is local), but keep the icon UI in sync.
+
+## 5. Edge case sweep
+- Confirm `acceptCall` from a stale incoming overlay (after the 30s ring timeout already fired) still works: the call_event is still `ongoing`, so accepting just creates/updates our `call_participants` row and renegotiates SDP with the existing-in-call peer.
+- Confirm rapid mute/unmute doesn't leak old tracks (because of `replaceTrack`).
+- Confirm the new `peer-leave` event is ignored gracefully by older clients that only know `hangup` (they'll just keep the connection open until ICE failure, which is the desired outcome — they don't auto-disconnect).
+
+## 6. Files touched
+- `src/contexts/VoiceContext.tsx` (largest change: lifecycle, mute hardening, peer-leave)
+- `src/components/app/settings/VoiceVideoSettings.tsx` (live mic test)
+- `src/lib/peerGain.ts` (forcedMute multiplier)
+- `src/components/app/ChatView.tsx` + call-pill components (visibility rule)
+- `src/lib/changelog.ts` (v0.2.26 notes)
+- Possibly a new `src/hooks/useOngoingCall.ts`
+
+## 7. Out of scope (this round)
+- iOS native app changes (already shipped in v0.1.3).
+- Reactions, GIFs, or anything outside voice/calls.
+
+After approval I'll implement the above and bump the build to v0.2.26.

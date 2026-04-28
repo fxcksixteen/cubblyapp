@@ -93,11 +93,20 @@ interface PeerEntry {
   media: Map<string, AttachedMedia>;
 }
 
+/** Per-peer "forced mute" — set when the peer broadcasts they've muted
+ *  themselves. Combined with the user-set volume so even a misbehaving
+ *  peer client cannot leak audio (defensive against the iOS PWA bug
+ *  where mute didn't fully silence outgoing RTP). Stored OUTSIDE the
+ *  per-instance refs so it survives StrictMode double-mounts. */
+const _forcedMutes: Record<string, boolean> = {};
+
 export interface PeerGainApi {
   getUserVolume: (userId: string) => number;
   setUserVolume: (userId: string, volume: number) => void;
   isUserMuted: (userId: string) => boolean;
   setUserMuted: (userId: string, muted: boolean) => void;
+  /** Mark a peer as muted-from-their-side (signaling-driven). */
+  setPeerForcedMute: (userId: string, muted: boolean) => void;
   attachPeerGain: (
     userId: string,
     stream: MediaStream,
@@ -128,24 +137,18 @@ export function usePeerGains(): PeerGainApi {
   const applyPeerGain = useCallback((userId: string) => {
     const entry = peerEntriesRef.current.get(userId);
     if (!entry) return;
-    const muted = !!userMutesRef.current[userId];
+    const localMuted = !!userMutesRef.current[userId];
+    const remoteForcedMute = !!_forcedMutes[userId];
+    const muted = localMuted || remoteForcedMute;
     const vol = userVolumesRef.current[userId];
     const v = typeof vol === "number" && isFinite(vol) ? Math.max(0, Math.min(2, vol)) : 1;
     // Always update the gain node (covers the running-graph case).
     entry.gain.gain.value = muted ? 0 : v;
-    // ALSO update every attached element directly, for two reasons:
-    //   1. Fallback path: if AudioContext is suspended, the element is the
-    //      only audible source — its `volume`/`muted` is what the user hears.
-    //   2. Belt-and-suspenders: if the graph IS running but somehow the source
-    //      isn't connected (race during renegotiation), the slider still works.
     entry.media.forEach((m) => {
       const running = entry.ctx.state === "running";
       if (running && m.routedThroughGraph) {
-        // Element is silent (graph carries audio) — keep it muted.
         try { m.el.muted = true; } catch {}
       } else {
-        // Element is the audible source — apply volume + mute directly.
-        // HTMLMediaElement.volume only goes 0..1, so cap there.
         try {
           m.el.muted = muted;
           m.el.volume = Math.max(0, Math.min(1, v));
@@ -153,6 +156,13 @@ export function usePeerGains(): PeerGainApi {
       }
     });
   }, []);
+
+  const setPeerForcedMute = useCallback((userId: string, muted: boolean) => {
+    if (!userId) return;
+    if (muted) _forcedMutes[userId] = true;
+    else delete _forcedMutes[userId];
+    applyPeerGain(userId);
+  }, [applyPeerGain]);
 
   const setUserVolume = useCallback((userId: string, volume: number) => {
     if (!userId) return;
@@ -281,5 +291,5 @@ export function usePeerGains(): PeerGainApi {
     peerEntriesRef.current.clear();
   }, []);
 
-  return { getUserVolume, setUserVolume, isUserMuted, setUserMuted, attachPeerGain, clearAllPeerGains };
+  return { getUserVolume, setUserVolume, isUserMuted, setUserMuted, setPeerForcedMute, attachPeerGain, clearAllPeerGains };
 }

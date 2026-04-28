@@ -349,13 +349,18 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   // table powers both 1-on-1 and group calls. The hook also routes mic AND
   // screen-share audio for the same peer through ONE GainNode → the slider
   // in `UserVolumeMenu` controls everything you hear from that user.
-  const { getUserVolume, setUserVolume, isUserMuted, setUserMuted, attachPeerGain, clearAllPeerGains } = usePeerGains();
+  const { getUserVolume, setUserVolume, isUserMuted, setUserMuted, setPeerForcedMute, attachPeerGain, clearAllPeerGains } = usePeerGains();
 
   const animFrameRef = useRef<number>(0);
   const remoteAnimFrameRef = useRef<number>(0);
   // Track pre-deafen mute state so undeafen restores it
   const preMuteStateRef = useRef<boolean>(false);
   const localStreamRef = useRef<MediaStream | null>(null);
+  /** Original mic track kept around so toggleMute can replaceTrack(null) → null
+   *  → original. Setting `track.enabled = false` alone has been observed to
+   *  still leak audible audio on iOS PWA peers (the mute bug) — replaceTrack
+   *  guarantees zero RTP frames are sent. */
+  const originalMicTrackRef = useRef<MediaStreamTrack | null>(null);
   // Stable peer userId for the current 1-on-1 call. We READ this in track-event
   // callbacks (mic/screen `ontrack`) instead of `activeCall?.peerId`, which is
   // stale inside closures captured before the call state updates. Without this,
@@ -869,6 +874,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     console.log("[Voice] ✅ Got media stream, tracks:", stream.getTracks().map(t => `${t.kind}:${t.label}:enabled=${t.enabled}`));
     setLocalStream(stream);
     localStreamRef.current = stream;
+      originalMicTrackRef.current = stream.getAudioTracks()[0] || null;
     startAudioLevelMonitor(stream);
 
     const pc = createPeerConnection();
@@ -1089,10 +1095,34 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           return;
         }
 
-        if (payload.type === "hangup") {
-          isRemoteHangup.current = true;
-          endCallRef.current();
-          isRemoteHangup.current = false;
+        // `peer-leave` (new in v0.2.26) and the legacy `hangup` event are now
+        // handled the SAME way: the peer left, but WE stay in the call. We
+        // close the per-peer pieces (PC, remote stream, screenshare PC) but
+        // keep `activeCall` alive so the user remains "in the call alone" —
+        // anyone in the conversation can still rejoin from the chat pill.
+        // The call_event row is only marked ended once the last participant
+        // leaves (see endCall).
+        if (payload.type === "hangup" || payload.type === "peer-leave") {
+          console.log("[Voice] 👋 Peer left — keeping call alive locally");
+          try { pcRef.current?.close(); } catch {}
+          pcRef.current = null;
+          try { screenPcRef.current?.close(); } catch {}
+          screenPcRef.current = null;
+          setRemoteStream(null);
+          setRemoteScreenStream(null);
+          setRemoteVideoStream(null);
+          setRemoteAudioLevel(0);
+          remoteAnalyserRef.current = null;
+          cancelAnimationFrame(remoteAnimFrameRef.current);
+          document.querySelectorAll("audio").forEach((el: any) => {
+            if (el.__cubblyRemote) { el.pause(); el.srcObject = null; el.remove(); }
+          });
+          // Stop ringing on either side if we were still in calling/ringing.
+          stopLooping("outgoingRing");
+          stopLooping("incomingCall");
+          // Drop instant peer state so the UI doesn't keep showing their
+          // mute icon etc. Don't reset activeCall — user is still in the call.
+          setPeerInstantState({});
           return;
         }
 
@@ -1168,11 +1198,17 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
         // Instant peer state (mute/deafen/video) — bypasses DB realtime lag.
         if (payload.type === "peer-mute") {
+          const muted = !!payload.isMuted;
           setPeerInstantState((prev) => ({
             ...prev,
-            is_muted: !!payload.isMuted,
+            is_muted: muted,
             is_deafened: !!payload.isDeafened,
           }));
+          // Defensive: also force their inbound mic gain to 0 here, so even
+          // if their client misbehaves (the historical iOS-PWA mute leak)
+          // we hear absolute silence locally.
+          const peerUserId = peerIdRef.current;
+          if (peerUserId) setPeerForcedMute(peerUserId, muted);
           return;
         }
         if (payload.type === "peer-video") {
@@ -1205,6 +1241,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       console.log("[Voice][Loopback] ✅ Got local media stream, tracks:", stream.getTracks().map(t => `${t.kind}:${t.label}:enabled=${t.enabled}`));
       setLocalStream(stream);
       localStreamRef.current = stream;
+      originalMicTrackRef.current = stream.getAudioTracks()[0] || null;
       startAudioLevelMonitor(stream);
 
       const localPc = new RTCPeerConnection({ iceServers: iceServersRef.current, iceTransportPolicy: "all" });
@@ -1473,6 +1510,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       console.log("[Voice] ✅ Callee got media stream, tracks:", stream.getTracks().map(t => `${t.kind}:${t.label}:enabled=${t.enabled}`));
       setLocalStream(stream);
       localStreamRef.current = stream;
+      originalMicTrackRef.current = stream.getAudioTracks()[0] || null;
       startAudioLevelMonitor(stream);
 
       const pc = createPeerConnection();
@@ -1885,22 +1923,45 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       playSound("leaveCall", { volume: 0.45 });
     }
 
+    // Find the most-recent ongoing call event for this user/conversation.
+    // Mark OUR participant row as `left_at` immediately. Only mark the WHOLE
+    // call_event as ended when the LAST remaining participant has left —
+    // otherwise the other person stays in the call and the chat-thread "Join"
+    // pill keeps working for re-joiners (Discord behavior).
+    const myUserId = user?.id;
     setCallEvents(prev => {
       const updated = [...prev];
       for (let i = updated.length - 1; i >= 0; i--) {
         if (updated[i].state === "ongoing") {
           const evt = updated[i];
-          updated[i] = { ...evt, state: "ended", endedAt };
-          supabase.from("call_events").update({ state: "ended", ended_at: endedAt } as any).eq("id", evt.id).then(() => {});
-          // Mark our participant row as left
-          if (user) {
-            supabase
-              .from("call_participants")
-              .update({ left_at: endedAt })
-              .eq("call_event_id", evt.id)
-              .eq("user_id", user.id)
-              .is("left_at", null)
-              .then(() => {});
+          // Mark our own participant row left first, then check if anyone
+          // else is still in. Do this in an async chain so we don't race.
+          if (myUserId) {
+            (async () => {
+              try {
+                await supabase
+                  .from("call_participants")
+                  .update({ left_at: endedAt })
+                  .eq("call_event_id", evt.id)
+                  .eq("user_id", myUserId)
+                  .is("left_at", null);
+                const { count } = await supabase
+                  .from("call_participants")
+                  .select("user_id", { count: "exact", head: true })
+                  .eq("call_event_id", evt.id)
+                  .is("left_at", null);
+                if (!count || count === 0) {
+                  // Last person left — actually end the event.
+                  await supabase
+                    .from("call_events")
+                    .update({ state: "ended", ended_at: endedAt } as any)
+                    .eq("id", evt.id);
+                  setCallEvents(curr => curr.map(e => e.id === evt.id ? { ...e, state: "ended", endedAt } : e));
+                }
+              } catch (e) {
+                console.warn("[Voice] endCall participant cleanup failed:", e);
+              }
+            })();
           }
           break;
         }
@@ -1918,15 +1979,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     setRemoteVideoStream(null);
     videoTransceiverRef.current = null;
 
-    // Only broadcast hangup if WE initiated it AND we actually had a peer
-    // connection. Without the pcRef guard, declining a stale incoming ring on
-    // a secondary device would push a `hangup` onto the shared signaling
-    // channel and KILL the live call on the primary device.
+    // Tell the peer we left WITHOUT killing their call. They'll close the
+    // RTCPeerConnection on their side and stay in the call alone — anyone
+    // else in the conversation can still join from the chat-thread pill.
+    // The legacy `hangup` event (which forced both sides to end) is gone.
     if (!isRemoteHangup.current && channelRef.current && user && pcRef.current) {
       channelRef.current.send({
         type: "broadcast",
         event: "voice-signal",
-        payload: { type: "hangup", senderId: user.id },
+        payload: { type: "peer-leave", senderId: user.id },
       });
     }
 
@@ -1943,6 +2004,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
     localStreamRef.current?.getTracks().forEach(t => t.stop());
     localStreamRef.current = null;
+    originalMicTrackRef.current = null;
     setLocalStream(null);
     setRemoteStream(null);
     setActiveCall(null);
@@ -2038,14 +2100,44 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     syncParticipantRef.current = syncCallParticipantState;
   }, [syncCallParticipantState]);
 
+  /**
+   * Mute/unmute the local mic. Belt-and-suspenders against the iOS PWA bug
+   * where setting `track.enabled = false` alone could still leak audible audio
+   * to the remote peer:
+   *   1. `track.enabled = false` (legacy path; required so the mic-meter UI
+   *      reads zero level locally).
+   *   2. `sender.replaceTrack(null)` on the audio sender — guarantees zero
+   *      RTP frames are produced regardless of the audio unit's behavior.
+   *   3. Broadcast `peer-mute` so the receiver also force-mutes us locally.
+   */
+  const applyLocalMicMute = useCallback(async (muted: boolean) => {
+    if (localStreamRef.current) {
+      localStreamRef.current.getAudioTracks().forEach(track => { track.enabled = !muted; });
+    }
+    const pc = pcRef.current;
+    if (pc) {
+      const audioSender = pc.getSenders().find(s => s.track?.kind === "audio")
+        || pc.getSenders().find(s => !s.track && originalMicTrackRef.current);
+      if (audioSender) {
+        try {
+          if (muted) {
+            await audioSender.replaceTrack(null);
+          } else if (originalMicTrackRef.current) {
+            await audioSender.replaceTrack(originalMicTrackRef.current);
+            try { originalMicTrackRef.current.enabled = true; } catch {}
+          }
+        } catch (e) {
+          console.warn("[Voice] replaceTrack for mute failed:", e);
+        }
+      }
+    }
+  }, []);
+
   const toggleMute = useCallback(() => {
     setActiveCall(prev => {
       if (!prev) return null;
       const newMuted = !prev.isMuted;
-      if (localStreamRef.current) {
-        localStreamRef.current.getAudioTracks().forEach(track => { track.enabled = !newMuted; });
-      }
-      // Instant peer broadcast over signaling channel — DB is fallback
+      void applyLocalMicMute(newMuted);
       try {
         channelRef.current?.send({
           type: "broadcast",
@@ -2056,7 +2148,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       syncCallParticipantState({ is_muted: newMuted, is_deafened: prev.isDeafened });
       return { ...prev, isMuted: newMuted };
     });
-  }, [syncCallParticipantState, user]);
+  }, [syncCallParticipantState, user, applyLocalMicMute]);
 
   const toggleDeafen = useCallback(() => {
     setActiveCall(prev => {
@@ -2069,15 +2161,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       let nextMuted: boolean;
       if (newDeafened) {
         preMuteStateRef.current = prev.isMuted;
-        if (localStreamRef.current) {
-          localStreamRef.current.getAudioTracks().forEach(track => { track.enabled = false; });
-        }
+        void applyLocalMicMute(true);
         nextMuted = true;
       } else {
         const restoreMuted = preMuteStateRef.current;
-        if (localStreamRef.current) {
-          localStreamRef.current.getAudioTracks().forEach(track => { track.enabled = !restoreMuted; });
-        }
+        void applyLocalMicMute(restoreMuted);
         nextMuted = restoreMuted;
       }
 
@@ -2091,7 +2179,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       syncCallParticipantState({ is_muted: nextMuted, is_deafened: newDeafened });
       return { ...prev, isDeafened: newDeafened, isMuted: nextMuted };
     });
-  }, [syncCallParticipantState, user]);
+  }, [syncCallParticipantState, user, applyLocalMicMute]);
 
   /**
    * Toggle the local camera on/off. Uses replaceTrack on the pre-allocated video
@@ -2290,13 +2378,19 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   // NOTE: removed the 5-min "lonely" auto-hangup. It was a blind wall-clock
   // timer that killed connected calls whether or not the peer was actually
   // gone. Discord doesn't auto-end connected calls; neither do we.
+  // 30s unanswered timeout: ONLY stop the ringing sound (both sides). Do NOT
+  // end the call — the caller stays in the call alone, the call_event stays
+  // ongoing, and the callee can still hit "Join" from the chat-thread pill
+  // afterwards. The call only ends when the caller explicitly hangs up
+  // (Discord behavior).
   useEffect(() => {
     if (!activeCall) return;
     let unansweredTimer: ReturnType<typeof setTimeout> | null = null;
     if (activeCall.state === "calling" || activeCall.state === "ringing") {
       unansweredTimer = setTimeout(() => {
-        console.log("[Voice] ⏰ 30s ring timeout — auto-ending unanswered call");
-        endCallRef.current();
+        console.log("[Voice] ⏰ 30s ring timeout — silencing ringtones, call stays open");
+        stopLooping("outgoingRing");
+        stopLooping("incomingCall");
       }, 30_000);
     }
     return () => {
