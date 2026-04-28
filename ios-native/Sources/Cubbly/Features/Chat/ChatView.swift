@@ -915,10 +915,17 @@ private struct DiscordStyleBubble: View {
     let message: ChatMessage
     let grouped: Bool
     let currentUserID: UUID?
+    @ObservedObject var reactionsStore: MessageReactionsStore
     let onLongPress: () -> Void
     let onPlayVideo: (URL) -> Void
     let onTapImage: (URL) -> Void
     let onTapAvatar: () -> Void
+
+    private var msgUUID: UUID? { UUID(uuidString: message.id) }
+    private var aggregated: [AggregatedReaction] {
+        guard let id = msgUUID else { return [] }
+        return reactionsStore.aggregated(for: id)
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -948,18 +955,40 @@ private struct DiscordStyleBubble: View {
                 }
 
                 if let r = message.replyTo {
-                    HStack(spacing: 4) {
+                    // Discord-style replied-to pill: small connector line +
+                    // arrow + @sender + 1-line content preview.
+                    HStack(spacing: 6) {
                         Image(systemName: "arrowshape.turn.up.left.fill")
-                            .font(.system(size: 9))
-                            .foregroundStyle(Theme.Colors.textMuted)
-                        (Text("\(r.senderName) ").bold().foregroundColor(Theme.Colors.textPrimary)
-                         + Text(r.content).foregroundColor(Theme.Colors.textSecondary))
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(Theme.Colors.textSecondary)
+                        Text("@\(r.senderName)")
+                            .font(.cubbly(12, .semibold))
+                            .foregroundStyle(Theme.Colors.textPrimary)
+                        Text(replyPreview(r.content))
                             .font(.cubbly(12))
+                            .foregroundStyle(Theme.Colors.textSecondary)
                             .lineLimit(1)
                     }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Theme.Colors.bgSecondary.opacity(0.6))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Theme.Colors.divider, lineWidth: 1)
+                    )
                 }
 
                 content
+
+                if !aggregated.isEmpty, let mid = msgUUID {
+                    ReactionsPillRow(reactions: aggregated) { emoji in
+                        Task { await reactionsStore.toggle(messageId: mid, emoji: emoji) }
+                    }
+                    .padding(.top, 2)
+                }
 
                 if message.status == .sending {
                     Text("Sending…")
