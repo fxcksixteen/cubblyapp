@@ -1174,11 +1174,17 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
         // Instant peer state (mute/deafen/video) — bypasses DB realtime lag.
         if (payload.type === "peer-mute") {
+          const muted = !!payload.isMuted;
           setPeerInstantState((prev) => ({
             ...prev,
-            is_muted: !!payload.isMuted,
+            is_muted: muted,
             is_deafened: !!payload.isDeafened,
           }));
+          // Defensive: also force their inbound mic gain to 0 here, so even
+          // if their client misbehaves (the historical iOS-PWA mute leak)
+          // we hear absolute silence locally.
+          const peerUserId = peerIdRef.current;
+          if (peerUserId) setPeerForcedMute(peerUserId, muted);
           return;
         }
         if (payload.type === "peer-video") {
