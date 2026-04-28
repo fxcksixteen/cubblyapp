@@ -2047,14 +2047,44 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     syncParticipantRef.current = syncCallParticipantState;
   }, [syncCallParticipantState]);
 
+  /**
+   * Mute/unmute the local mic. Belt-and-suspenders against the iOS PWA bug
+   * where setting `track.enabled = false` alone could still leak audible audio
+   * to the remote peer:
+   *   1. `track.enabled = false` (legacy path; required so the mic-meter UI
+   *      reads zero level locally).
+   *   2. `sender.replaceTrack(null)` on the audio sender — guarantees zero
+   *      RTP frames are produced regardless of the audio unit's behavior.
+   *   3. Broadcast `peer-mute` so the receiver also force-mutes us locally.
+   */
+  const applyLocalMicMute = useCallback(async (muted: boolean) => {
+    if (localStreamRef.current) {
+      localStreamRef.current.getAudioTracks().forEach(track => { track.enabled = !muted; });
+    }
+    const pc = pcRef.current;
+    if (pc) {
+      const audioSender = pc.getSenders().find(s => s.track?.kind === "audio")
+        || pc.getSenders().find(s => !s.track && originalMicTrackRef.current);
+      if (audioSender) {
+        try {
+          if (muted) {
+            await audioSender.replaceTrack(null);
+          } else if (originalMicTrackRef.current) {
+            await audioSender.replaceTrack(originalMicTrackRef.current);
+            try { originalMicTrackRef.current.enabled = true; } catch {}
+          }
+        } catch (e) {
+          console.warn("[Voice] replaceTrack for mute failed:", e);
+        }
+      }
+    }
+  }, []);
+
   const toggleMute = useCallback(() => {
     setActiveCall(prev => {
       if (!prev) return null;
       const newMuted = !prev.isMuted;
-      if (localStreamRef.current) {
-        localStreamRef.current.getAudioTracks().forEach(track => { track.enabled = !newMuted; });
-      }
-      // Instant peer broadcast over signaling channel — DB is fallback
+      void applyLocalMicMute(newMuted);
       try {
         channelRef.current?.send({
           type: "broadcast",
@@ -2065,7 +2095,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       syncCallParticipantState({ is_muted: newMuted, is_deafened: prev.isDeafened });
       return { ...prev, isMuted: newMuted };
     });
-  }, [syncCallParticipantState, user]);
+  }, [syncCallParticipantState, user, applyLocalMicMute]);
 
   const toggleDeafen = useCallback(() => {
     setActiveCall(prev => {
