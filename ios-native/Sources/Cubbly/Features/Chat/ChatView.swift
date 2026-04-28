@@ -80,14 +80,24 @@ struct ChatView: View {
             .presentationDetents([.fraction(0.55), .large])
         }
         .sheet(item: $actionSheetMessage) { msg in
-            MessageActionSheet(message: msg,
-                               onReply: { replyingTo = msg; actionSheetMessage = nil },
-                               onCopy:  { UIPasteboard.general.string = msg.content; actionSheetMessage = nil },
-                               onDelete: msg.senderID == session.currentUserID
-                                   ? { Task { await deleteMessage(msg) }; actionSheetMessage = nil }
-                                   : nil)
-                .presentationDetents([.fraction(0.32)])
-                .presentationDragIndicator(.visible)
+            MessageActionMenuView(
+                message: msg,
+                myReactions: Set(reactions.aggregated(for: UUID(uuidString: msg.id) ?? UUID())
+                    .filter(\.reactedByMe).map(\.emoji)),
+                onReact: { emoji in
+                    if let id = UUID(uuidString: msg.id) {
+                        Task { await reactions.toggle(messageId: id, emoji: emoji) }
+                    }
+                    actionSheetMessage = nil
+                },
+                onReply: { replyingTo = msg; actionSheetMessage = nil },
+                onCopy:  { UIPasteboard.general.string = msg.content; actionSheetMessage = nil },
+                onDelete: msg.senderID == session.currentUserID
+                    ? { Task { await deleteMessage(msg) }; actionSheetMessage = nil }
+                    : nil
+            )
+            .presentationDetents([.fraction(0.42), .medium])
+            .presentationDragIndicator(.visible)
         }
         .fullScreenCover(item: $videoURL) { item in
             InAppVideoPlayer(url: item.url)
