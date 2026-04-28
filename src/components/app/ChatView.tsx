@@ -237,13 +237,15 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
     return () => window.clearTimeout(timeout);
   }, [rejoiningEventId, activeCall?.conversationId, conversationId, callEvents]);
 
-  // ── Rejoinable detection ────────────────────────────────────────────────
-  // For each ongoing call_event in this DM, an event is "rejoinable for me"
-  // ONLY when:
-  //   (1) I have a participant row with left_at != null  (I previously left)
-  //   (2) at least one OTHER participant has left_at IS NULL (someone live)
-  // We re-evaluate whenever ongoing events change in this conversation, and
-  // subscribe to call_participants realtime so leave/rejoin reflects live.
+  // ── Joinable detection ─────────────────────────────────────────────────
+  // For each ongoing call_event in this DM, an event is "joinable for me"
+  // when:
+  //   (1) at least one OTHER participant has left_at IS NULL (someone live)
+  //   (2) I am NOT currently in the call (either no row, OR my row has
+  //       left_at != null).
+  // This covers BOTH classic rejoin (I left, peer still in) AND the new
+  // v0.2.26 "I never picked up the ring, but the caller is still waiting
+  // in the call alone" flow.
   const ongoingIdsForChat = conversationCallEvents
     .filter(e => e.state === "ongoing")
     .map(e => e.id)
@@ -261,9 +263,9 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
         .eq("call_event_id", eventId);
       if (!data) return false;
       const myRow = data.find(r => r.user_id === user.id);
-      const iLeft = !!myRow && myRow.left_at !== null;
+      const iAmInCall = !!myRow && myRow.left_at === null;
       const otherLive = data.some(r => r.user_id !== user.id && r.left_at === null);
-      return iLeft && otherLive;
+      return otherLive && !iAmInCall;
     };
 
     const recompute = async () => {
