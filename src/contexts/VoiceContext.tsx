@@ -2378,13 +2378,19 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   // NOTE: removed the 5-min "lonely" auto-hangup. It was a blind wall-clock
   // timer that killed connected calls whether or not the peer was actually
   // gone. Discord doesn't auto-end connected calls; neither do we.
+  // 30s unanswered timeout: ONLY stop the ringing sound (both sides). Do NOT
+  // end the call — the caller stays in the call alone, the call_event stays
+  // ongoing, and the callee can still hit "Join" from the chat-thread pill
+  // afterwards. The call only ends when the caller explicitly hangs up
+  // (Discord behavior).
   useEffect(() => {
     if (!activeCall) return;
     let unansweredTimer: ReturnType<typeof setTimeout> | null = null;
     if (activeCall.state === "calling" || activeCall.state === "ringing") {
       unansweredTimer = setTimeout(() => {
-        console.log("[Voice] ⏰ 30s ring timeout — auto-ending unanswered call");
-        endCallRef.current();
+        console.log("[Voice] ⏰ 30s ring timeout — silencing ringtones, call stays open");
+        stopLooping("outgoingRing");
+        stopLooping("incomingCall");
       }, 30_000);
     }
     return () => {
