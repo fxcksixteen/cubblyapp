@@ -1899,22 +1899,45 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       playSound("leaveCall", { volume: 0.45 });
     }
 
+    // Find the most-recent ongoing call event for this user/conversation.
+    // Mark OUR participant row as `left_at` immediately. Only mark the WHOLE
+    // call_event as ended when the LAST remaining participant has left —
+    // otherwise the other person stays in the call and the chat-thread "Join"
+    // pill keeps working for re-joiners (Discord behavior).
+    const myUserId = user?.id;
     setCallEvents(prev => {
       const updated = [...prev];
       for (let i = updated.length - 1; i >= 0; i--) {
         if (updated[i].state === "ongoing") {
           const evt = updated[i];
-          updated[i] = { ...evt, state: "ended", endedAt };
-          supabase.from("call_events").update({ state: "ended", ended_at: endedAt } as any).eq("id", evt.id).then(() => {});
-          // Mark our participant row as left
-          if (user) {
-            supabase
-              .from("call_participants")
-              .update({ left_at: endedAt })
-              .eq("call_event_id", evt.id)
-              .eq("user_id", user.id)
-              .is("left_at", null)
-              .then(() => {});
+          // Mark our own participant row left first, then check if anyone
+          // else is still in. Do this in an async chain so we don't race.
+          if (myUserId) {
+            (async () => {
+              try {
+                await supabase
+                  .from("call_participants")
+                  .update({ left_at: endedAt })
+                  .eq("call_event_id", evt.id)
+                  .eq("user_id", myUserId)
+                  .is("left_at", null);
+                const { count } = await supabase
+                  .from("call_participants")
+                  .select("user_id", { count: "exact", head: true })
+                  .eq("call_event_id", evt.id)
+                  .is("left_at", null);
+                if (!count || count === 0) {
+                  // Last person left — actually end the event.
+                  await supabase
+                    .from("call_events")
+                    .update({ state: "ended", ended_at: endedAt } as any)
+                    .eq("id", evt.id);
+                  setCallEvents(curr => curr.map(e => e.id === evt.id ? { ...e, state: "ended", endedAt } : e));
+                }
+              } catch (e) {
+                console.warn("[Voice] endCall participant cleanup failed:", e);
+              }
+            })();
           }
           break;
         }
@@ -1932,15 +1955,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     setRemoteVideoStream(null);
     videoTransceiverRef.current = null;
 
-    // Only broadcast hangup if WE initiated it AND we actually had a peer
-    // connection. Without the pcRef guard, declining a stale incoming ring on
-    // a secondary device would push a `hangup` onto the shared signaling
-    // channel and KILL the live call on the primary device.
+    // Tell the peer we left WITHOUT killing their call. They'll close the
+    // RTCPeerConnection on their side and stay in the call alone — anyone
+    // else in the conversation can still join from the chat-thread pill.
+    // The legacy `hangup` event (which forced both sides to end) is gone.
     if (!isRemoteHangup.current && channelRef.current && user && pcRef.current) {
       channelRef.current.send({
         type: "broadcast",
         event: "voice-signal",
-        payload: { type: "hangup", senderId: user.id },
+        payload: { type: "peer-leave", senderId: user.id },
       });
     }
 
