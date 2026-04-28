@@ -356,6 +356,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   // Track pre-deafen mute state so undeafen restores it
   const preMuteStateRef = useRef<boolean>(false);
   const localStreamRef = useRef<MediaStream | null>(null);
+  /** Original mic track kept around so toggleMute can replaceTrack(null) → null
+   *  → original. Setting `track.enabled = false` alone has been observed to
+   *  still leak audible audio on iOS PWA peers (the mute bug) — replaceTrack
+   *  guarantees zero RTP frames are sent. */
+  const originalMicTrackRef = useRef<MediaStreamTrack | null>(null);
   // Stable peer userId for the current 1-on-1 call. We READ this in track-event
   // callbacks (mic/screen `ontrack`) instead of `activeCall?.peerId`, which is
   // stale inside closures captured before the call state updates. Without this,
