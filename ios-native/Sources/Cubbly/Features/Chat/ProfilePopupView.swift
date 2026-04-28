@@ -32,25 +32,27 @@ struct ProfilePopupView: View {
             // Banner
             ZStack(alignment: .bottomLeading) {
                 if let banner = p.bannerURL.flatMap(URL.init) {
-                    AsyncImage(url: banner) { img in
-                        img.resizable().scaledToFill()
-                    } placeholder: {
-                        Rectangle().fill(Theme.Colors.bgSecondary)
+                    if Self.isAnimated(url: banner) {
+                        AnimatedImageView(url: banner, contentMode: .scaleAspectFill)
+                            .frame(height: 120)
+                            .clipped()
+                    } else {
+                        AsyncImage(url: banner) { img in
+                            img.resizable().scaledToFill()
+                        } placeholder: {
+                            Rectangle().fill(Theme.Colors.bgSecondary)
+                        }
+                        .frame(height: 120)
+                        .clipped()
                     }
-                    .frame(height: 120)
-                    .clipped()
                 } else {
                     Rectangle()
                         .fill(AvatarView.color(for: p.username))
                         .frame(height: 120)
                 }
-                AvatarView(
-                    url: p.avatarURL.flatMap(URL.init),
-                    fallbackText: p.displayName,
-                    size: 88
-                )
-                .overlay(Circle().stroke(Theme.Colors.bgTertiary, lineWidth: 6))
-                .offset(x: 16, y: 44)
+                profileAvatar(p)
+                    .overlay(Circle().stroke(Theme.Colors.bgTertiary, lineWidth: 6))
+                    .offset(x: 16, y: 44)
             }
 
             VStack(alignment: .leading, spacing: 12) {
@@ -105,4 +107,30 @@ struct ProfilePopupView: View {
             print("[ProfilePopup] failed:", error)
         }
     }
+
+    @ViewBuilder
+    private func profileAvatar(_ p: Profile) -> some View {
+        if let url = p.avatarURL.flatMap(URL.init), Self.isAnimated(url: url) {
+            // Animated GIF / WebP avatar — render with our shared player so it
+            // actually animates inside the profile popup (matches web).
+            AnimatedImageView(url: url, contentMode: .scaleAspectFill)
+                .frame(width: 88, height: 88)
+                .clipShape(Circle())
+        } else {
+            AvatarView(
+                url: p.avatarURL.flatMap(URL.init),
+                fallbackText: p.displayName,
+                size: 88
+            )
+        }
+    }
+
+    /// Treats anything ending in `.gif` or hosted on Giphy/Tenor as animated
+    /// so we route it through `AnimatedImageView` instead of `AsyncImage`.
+    static func isAnimated(url: URL) -> Bool {
+        let s = url.absoluteString.lowercased()
+        return s.contains(".gif") || s.contains("giphy.com")
+            || s.contains("media.giphy") || s.contains("tenor.com")
+    }
 }
+

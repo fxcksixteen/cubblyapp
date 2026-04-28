@@ -34,6 +34,7 @@ struct ChatView: View {
     @State private var lightboxURL: IdentifiedURL?
     @State private var profilePopupUserID: UUID?
     @FocusState private var composerFocused: Bool
+    @StateObject private var reactions = MessageReactionsStore()
 
     private let repo = MessagesRepository()
 
@@ -79,14 +80,24 @@ struct ChatView: View {
             .presentationDetents([.fraction(0.55), .large])
         }
         .sheet(item: $actionSheetMessage) { msg in
-            MessageActionSheet(message: msg,
-                               onReply: { replyingTo = msg; actionSheetMessage = nil },
-                               onCopy:  { UIPasteboard.general.string = msg.content; actionSheetMessage = nil },
-                               onDelete: msg.senderID == session.currentUserID
-                                   ? { Task { await deleteMessage(msg) }; actionSheetMessage = nil }
-                                   : nil)
-                .presentationDetents([.fraction(0.32)])
-                .presentationDragIndicator(.visible)
+            MessageActionMenuView(
+                message: msg,
+                myReactions: Set(reactions.aggregated(for: UUID(uuidString: msg.id) ?? UUID())
+                    .filter(\.reactedByMe).map(\.emoji)),
+                onReact: { emoji in
+                    if let id = UUID(uuidString: msg.id) {
+                        Task { await reactions.toggle(messageId: id, emoji: emoji) }
+                    }
+                    actionSheetMessage = nil
+                },
+                onReply: { replyingTo = msg; actionSheetMessage = nil },
+                onCopy:  { UIPasteboard.general.string = msg.content; actionSheetMessage = nil },
+                onDelete: msg.senderID == session.currentUserID
+                    ? { Task { await deleteMessage(msg) }; actionSheetMessage = nil }
+                    : nil
+            )
+            .presentationDetents([.fraction(0.42), .medium])
+            .presentationDragIndicator(.visible)
         }
         .fullScreenCover(item: $videoURL) { item in
             InAppVideoPlayer(url: item.url)
@@ -104,6 +115,8 @@ struct ChatView: View {
                 .presentationDragIndicator(.visible)
         }
         .task {
+            await reactions.start(conversationId: conversation.id,
+                                  currentUserId: session.currentUserID)
             await loadInitial()
             await subscribe()
             await markRead()
@@ -125,6 +138,7 @@ struct ChatView: View {
                 if let ch = channel { await ch.unsubscribe() }
                 if let tc = typingChannel { await tc.unsubscribe() }
                 if let cc = callEventsChannel { await cc.unsubscribe() }
+                await reactions.stop()
             }
         }
     }
@@ -219,6 +233,7 @@ struct ChatView: View {
                                 message: m,
                                 grouped: grouped,
                                 currentUserID: session.currentUserID,
+                                reactionsStore: reactions,
                                 onLongPress: { actionSheetMessage = m },
                                 onPlayVideo: { url in videoURL = IdentifiedURL(url: url) },
                                 onTapImage: { url in lightboxURL = IdentifiedURL(url: url) },
@@ -459,6 +474,7 @@ struct ChatView: View {
             messages = try await hydrate(Array(asc))
             hasMore = rows.count >= 50
             await loadCallEvents()
+            await reactions.load(messageIds: messages.compactMap { UUID(uuidString: $0.id) })
         } catch is CancellationError {} catch {
             print("[Chat] load failed:", error)
         }
@@ -493,6 +509,7 @@ struct ChatView: View {
             let hydrated = try await hydrate(Array(asc))
             messages.insert(contentsOf: hydrated, at: 0)
             hasMore = rows.count >= 50
+            await reactions.load(messageIds: hydrated.compactMap { UUID(uuidString: $0.id) })
         } catch is CancellationError {} catch {
             print("[Chat] loadOlder failed:", error)
         }
@@ -898,10 +915,17 @@ private struct DiscordStyleBubble: View {
     let message: ChatMessage
     let grouped: Bool
     let currentUserID: UUID?
+    @ObservedObject var reactionsStore: MessageReactionsStore
     let onLongPress: () -> Void
     let onPlayVideo: (URL) -> Void
     let onTapImage: (URL) -> Void
     let onTapAvatar: () -> Void
+
+    private var msgUUID: UUID? { UUID(uuidString: message.id) }
+    private var aggregated: [AggregatedReaction] {
+        guard let id = msgUUID else { return [] }
+        return reactionsStore.aggregated(for: id)
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -931,18 +955,40 @@ private struct DiscordStyleBubble: View {
                 }
 
                 if let r = message.replyTo {
-                    HStack(spacing: 4) {
+                    // Discord-style replied-to pill: small connector line +
+                    // arrow + @sender + 1-line content preview.
+                    HStack(spacing: 6) {
                         Image(systemName: "arrowshape.turn.up.left.fill")
-                            .font(.system(size: 9))
-                            .foregroundStyle(Theme.Colors.textMuted)
-                        (Text("\(r.senderName) ").bold().foregroundColor(Theme.Colors.textPrimary)
-                         + Text(r.content).foregroundColor(Theme.Colors.textSecondary))
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(Theme.Colors.textSecondary)
+                        Text("@\(r.senderName)")
+                            .font(.cubbly(12, .semibold))
+                            .foregroundStyle(Theme.Colors.textPrimary)
+                        Text(replyPreview(r.content))
                             .font(.cubbly(12))
+                            .foregroundStyle(Theme.Colors.textSecondary)
                             .lineLimit(1)
                     }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Theme.Colors.bgSecondary.opacity(0.6))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Theme.Colors.divider, lineWidth: 1)
+                    )
                 }
 
                 content
+
+                if !aggregated.isEmpty, let mid = msgUUID {
+                    ReactionsPillRow(reactions: aggregated) { emoji in
+                        Task { await reactionsStore.toggle(messageId: mid, emoji: emoji) }
+                    }
+                    .padding(.top, 2)
+                }
 
                 if message.status == .sending {
                     Text("Sending…")
@@ -1053,6 +1099,16 @@ private struct DiscordStyleBubble: View {
         f.dateFormat = "h:mm a"
         return f.string(from: d)
     }
+
+    /// Strips out the `[attachments]...[/attachments]` block and returns a
+    /// short text preview so reply pills don't show raw JSON.
+    private func replyPreview(_ raw: String) -> String {
+        if let parsed = MessageAttachmentsParser.parse(raw) {
+            if !parsed.text.isEmpty { return parsed.text }
+            return "📎 Attachment"
+        }
+        return raw
+    }
 }
 
 /// Renders a message body where http(s) links become real tappable links.
@@ -1092,8 +1148,14 @@ private struct LinkifiedText: View {
 
 // MARK: - Long-press action sheet
 
-private struct MessageActionSheet: View {
+// MARK: - Discord-style long-press menu
+
+/// Replaces the old plain action sheet. Shows the message preview, a
+/// horizontal emoji slider for quick reactions, then Reply / Copy / Delete.
+struct MessageActionMenuView: View {
     let message: ChatMessage
+    let myReactions: Set<String>
+    let onReact: (String) -> Void
     let onReply: () -> Void
     let onCopy: () -> Void
     let onDelete: (() -> Void)?
@@ -1104,6 +1166,7 @@ private struct MessageActionSheet: View {
                 .frame(width: 36, height: 4)
                 .padding(.top, 8)
 
+            // Message preview header
             HStack(spacing: 14) {
                 AvatarView(url: message.senderAvatarURL.flatMap(URL.init(string:)),
                            fallbackText: message.senderName ?? "?", size: 36)
@@ -1111,7 +1174,7 @@ private struct MessageActionSheet: View {
                     Text(message.senderName ?? "Unknown")
                         .font(Theme.Fonts.bodyMedium)
                         .foregroundStyle(Theme.Colors.textPrimary)
-                    Text(message.content)
+                    Text(previewText)
                         .font(.cubbly(13))
                         .foregroundStyle(Theme.Colors.textSecondary)
                         .lineLimit(1)
@@ -1120,9 +1183,37 @@ private struct MessageActionSheet: View {
             }
             .padding(.horizontal, 16)
             .padding(.top, 14)
-            .padding(.bottom, 6)
+            .padding(.bottom, 10)
 
-            Divider().background(Theme.Colors.divider)
+            // Horizontal emoji slider — clean, big tap targets, scales the
+            // emoji on press to match Discord's quick-react animation.
+            HStack(spacing: 4) {
+                ForEach(QuickReactions.all, id: \.self) { e in
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        onReact(e)
+                    } label: {
+                        Text(e)
+                            .font(.system(size: 28))
+                            .frame(width: 44, height: 44)
+                            .background(
+                                Circle().fill(myReactions.contains(e)
+                                              ? Theme.Colors.primary.opacity(0.25)
+                                              : Color.clear)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(Theme.Colors.bgTertiary)
+            )
+            .padding(.horizontal, 14)
+            .padding(.bottom, 8)
 
             VStack(spacing: 0) {
                 row(icon: "arrowshape.turn.up.left.fill", label: "Reply", action: onReply)
@@ -1136,6 +1227,13 @@ private struct MessageActionSheet: View {
             Spacer()
         }
         .background(Theme.Colors.bgSecondary)
+    }
+
+    private var previewText: String {
+        if let parsed = MessageAttachmentsParser.parse(message.content) {
+            return parsed.text.isEmpty ? "📎 Attachment" : parsed.text
+        }
+        return message.content
     }
 
     private var divider: some View {
@@ -1159,6 +1257,49 @@ private struct MessageActionSheet: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Reaction pills
+
+/// Discord-style pill row shown beneath a chat bubble. Tapping toggles your
+/// own reaction. The pill highlights when the current user has reacted.
+struct ReactionsPillRow: View {
+    let reactions: [AggregatedReaction]
+    let onToggle: (String) -> Void
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(reactions) { r in
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    onToggle(r.emoji)
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(r.emoji).font(.system(size: 13))
+                        Text("\(r.count)")
+                            .font(.cubbly(12, .semibold))
+                            .foregroundStyle(r.reactedByMe
+                                             ? Theme.Colors.textPrimary
+                                             : Theme.Colors.textSecondary)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(r.reactedByMe
+                                  ? Theme.Colors.primary.opacity(0.22)
+                                  : Theme.Colors.bgSecondary)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(r.reactedByMe ? Theme.Colors.primary : Color.clear,
+                                    lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 }
 

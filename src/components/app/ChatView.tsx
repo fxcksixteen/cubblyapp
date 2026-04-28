@@ -23,6 +23,8 @@ import sendIcon from "@/assets/icons/send.svg";
 import folderFileIcon from "@/assets/icons/folder-file.svg";
 import gifIcon from "@/assets/icons/gif.svg";
 import GifPicker from "./GifPicker";
+import { useMessageReactions } from "@/hooks/useMessageReactions";
+import MessageReactionsBar from "./chat/MessageReactionsBar";
 
 const BOT_USER_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -101,6 +103,11 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
    */
   const [rejoinableEventIds, setRejoinableEventIds] = useState<Set<string>>(new Set());
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const allMessageIds = messages.map((m) => m.id).filter((id) => !id.startsWith("temp-"));
+  const { aggregate: aggregateReactions, toggle: toggleReaction } = useMessageReactions(
+    conversationId,
+    allMessageIds,
+  );
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
@@ -753,6 +760,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                           messageContent={msg.content}
                           isOwnMessage={msg.sender_id === user?.id}
                           onReply={() => handleReply(msg)}
+                          onReact={(emoji) => toggleReaction(msg.id, emoji)}
                         >
                           <div
                             ref={(el) => {
@@ -771,6 +779,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                                 messageContent={msg.content}
                                 isOwnMessage={msg.sender_id === user?.id}
                                 onReply={() => handleReply(msg)}
+                                onReact={(emoji) => toggleReaction(msg.id, emoji)}
                               />
                             </div>
                             {msg.reply_to && (() => {
@@ -818,6 +827,10 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                             {attachments.map((att, ai) => (
                               <AttachmentItem key={ai} attachment={att} />
                             ))}
+                            <MessageReactionsBar
+                              reactions={aggregateReactions(msg.id)}
+                              onToggle={(emoji) => toggleReaction(msg.id, emoji)}
+                            />
                           </div>
                         </MessageContextMenu>
                       );

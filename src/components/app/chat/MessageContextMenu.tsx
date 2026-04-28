@@ -8,8 +8,8 @@ import {
 import { Reply, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import emojiReactIcon from "@/assets/icons/emoji-react.svg";
 import copyIcon from "@/assets/icons/copy.svg";
+import { QUICK_REACTIONS } from "@/hooks/useMessageReactions";
 
 interface MessageContextMenuProps {
   children: React.ReactNode;
@@ -17,9 +17,10 @@ interface MessageContextMenuProps {
   messageContent: string;
   isOwnMessage: boolean;
   onReply?: () => void;
+  onReact?: (emoji: string) => void;
 }
 
-const MessageContextMenu = ({ children, messageId, messageContent, isOwnMessage, onReply }: MessageContextMenuProps) => {
+const MessageContextMenu = ({ children, messageId, messageContent, isOwnMessage, onReply, onReact }: MessageContextMenuProps) => {
   const handleCopy = () => {
     const clean = messageContent.replace(/\[attachments\].*?\[\/attachments\]/s, "").trim();
     navigator.clipboard.writeText(clean);
@@ -36,21 +37,29 @@ const MessageContextMenu = ({ children, messageId, messageContent, isOwnMessage,
     <ContextMenu>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
       <ContextMenuContent
-        className="w-52 rounded-xl border p-1.5 shadow-xl"
+        className="w-56 rounded-xl border p-1.5 shadow-xl"
         style={{ backgroundColor: "#111214", borderColor: "#2b2d31" }}
       >
+        {/* Quick emoji slider */}
+        <div className="flex items-center gap-0.5 px-1 py-1">
+          {QUICK_REACTIONS.map((e) => (
+            <button
+              key={e}
+              type="button"
+              onClick={() => onReact?.(e)}
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-lg transition-transform hover:scale-125 hover:bg-white/10"
+            >
+              {e}
+            </button>
+          ))}
+        </div>
+        <ContextMenuSeparator className="my-1 bg-[#2b2d31]" />
         <ContextMenuItem
           onClick={onReply}
           className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer"
         >
           <Reply className="h-4 w-4" />
           Reply
-        </ContextMenuItem>
-        <ContextMenuItem
-          className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer"
-        >
-          <img src={emojiReactIcon} alt="" className="h-4 w-4 invert opacity-80" />
-          Add Reaction
         </ContextMenuItem>
         <ContextMenuItem
           onClick={handleCopy}

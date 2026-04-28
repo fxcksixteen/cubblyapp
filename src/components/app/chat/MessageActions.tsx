@@ -1,17 +1,18 @@
 import { Reply, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import emojiReactIcon from "@/assets/icons/emoji-react.svg";
 import copyIcon from "@/assets/icons/copy.svg";
+import EmojiReactionPicker from "./EmojiReactionPicker";
 
 interface MessageActionsProps {
   messageId: string;
   messageContent: string;
   isOwnMessage: boolean;
   onReply?: () => void;
+  onReact?: (emoji: string) => void;
 }
 
-const MessageActions = ({ messageId, messageContent, isOwnMessage, onReply }: MessageActionsProps) => {
+const MessageActions = ({ messageId, messageContent, isOwnMessage, onReply, onReact }: MessageActionsProps) => {
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
     const clean = messageContent.replace(/\[attachments\].*?\[\/attachments\]/s, "").trim();
@@ -35,12 +36,7 @@ const MessageActions = ({ messageId, messageContent, isOwnMessage, onReply }: Me
       >
         <Reply className="h-4 w-4" style={{ color: "var(--app-text-secondary, #949ba4)" }} />
       </button>
-      <button
-        className="flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-white/10"
-        title="Add Reaction"
-      >
-        <img src={emojiReactIcon} alt="React" className="h-4 w-4 invert opacity-60" />
-      </button>
+      <EmojiReactionPicker onPick={(e) => onReact?.(e)} />
       <button
         onClick={handleCopy}
         className="flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-white/10"
