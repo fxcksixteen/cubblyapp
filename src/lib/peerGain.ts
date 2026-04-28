@@ -93,11 +93,20 @@ interface PeerEntry {
   media: Map<string, AttachedMedia>;
 }
 
+/** Per-peer "forced mute" — set when the peer broadcasts they've muted
+ *  themselves. Combined with the user-set volume so even a misbehaving
+ *  peer client cannot leak audio (defensive against the iOS PWA bug
+ *  where mute didn't fully silence outgoing RTP). Stored OUTSIDE the
+ *  per-instance refs so it survives StrictMode double-mounts. */
+const _forcedMutes: Record<string, boolean> = {};
+
 export interface PeerGainApi {
   getUserVolume: (userId: string) => number;
   setUserVolume: (userId: string, volume: number) => void;
   isUserMuted: (userId: string) => boolean;
   setUserMuted: (userId: string, muted: boolean) => void;
+  /** Mark a peer as muted-from-their-side (signaling-driven). */
+  setPeerForcedMute: (userId: string, muted: boolean) => void;
   attachPeerGain: (
     userId: string,
     stream: MediaStream,
