@@ -107,4 +107,30 @@ struct ProfilePopupView: View {
             print("[ProfilePopup] failed:", error)
         }
     }
+
+    @ViewBuilder
+    private func profileAvatar(_ p: Profile) -> some View {
+        if let url = p.avatarURL.flatMap(URL.init), Self.isAnimated(url: url) {
+            // Animated GIF / WebP avatar — render with our shared player so it
+            // actually animates inside the profile popup (matches web).
+            AnimatedImageView(url: url, contentMode: .scaleAspectFill)
+                .frame(width: 88, height: 88)
+                .clipShape(Circle())
+        } else {
+            AvatarView(
+                url: p.avatarURL.flatMap(URL.init),
+                fallbackText: p.displayName,
+                size: 88
+            )
+        }
+    }
+
+    /// Treats anything ending in `.gif` or hosted on Giphy/Tenor as animated
+    /// so we route it through `AnimatedImageView` instead of `AsyncImage`.
+    static func isAnimated(url: URL) -> Bool {
+        let s = url.absoluteString.lowercased()
+        return s.contains(".gif") || s.contains("giphy.com")
+            || s.contains("media.giphy") || s.contains("tenor.com")
+    }
 }
+
