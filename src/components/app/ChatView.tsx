@@ -760,6 +760,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                           messageContent={msg.content}
                           isOwnMessage={msg.sender_id === user?.id}
                           onReply={() => handleReply(msg)}
+                          onReact={(emoji) => toggleReaction(msg.id, emoji)}
                         >
                           <div
                             ref={(el) => {
@@ -778,6 +779,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                                 messageContent={msg.content}
                                 isOwnMessage={msg.sender_id === user?.id}
                                 onReply={() => handleReply(msg)}
+                                onReact={(emoji) => toggleReaction(msg.id, emoji)}
                               />
                             </div>
                             {msg.reply_to && (() => {
