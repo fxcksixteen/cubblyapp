@@ -34,6 +34,7 @@ struct ChatView: View {
     @State private var lightboxURL: IdentifiedURL?
     @State private var profilePopupUserID: UUID?
     @FocusState private var composerFocused: Bool
+    @StateObject private var reactions = MessageReactionsStore()
 
     private let repo = MessagesRepository()
 
