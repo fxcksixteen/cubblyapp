@@ -1095,10 +1095,34 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           return;
         }
 
-        if (payload.type === "hangup") {
-          isRemoteHangup.current = true;
-          endCallRef.current();
-          isRemoteHangup.current = false;
+        // `peer-leave` (new in v0.2.26) and the legacy `hangup` event are now
+        // handled the SAME way: the peer left, but WE stay in the call. We
+        // close the per-peer pieces (PC, remote stream, screenshare PC) but
+        // keep `activeCall` alive so the user remains "in the call alone" —
+        // anyone in the conversation can still rejoin from the chat pill.
+        // The call_event row is only marked ended once the last participant
+        // leaves (see endCall).
+        if (payload.type === "hangup" || payload.type === "peer-leave") {
+          console.log("[Voice] 👋 Peer left — keeping call alive locally");
+          try { pcRef.current?.close(); } catch {}
+          pcRef.current = null;
+          try { screenPcRef.current?.close(); } catch {}
+          screenPcRef.current = null;
+          setRemoteStream(null);
+          setRemoteScreenStream(null);
+          setRemoteVideoStream(null);
+          setRemoteAudioLevel(0);
+          remoteAnalyserRef.current = null;
+          cancelAnimationFrame(remoteAnimFrameRef.current);
+          document.querySelectorAll("audio").forEach((el: any) => {
+            if (el.__cubblyRemote) { el.pause(); el.srcObject = null; el.remove(); }
+          });
+          // Stop ringing on either side if we were still in calling/ringing.
+          stopLooping("outgoingRing");
+          stopLooping("incomingCall");
+          // Drop instant peer state so the UI doesn't keep showing their
+          // mute icon etc. Don't reset activeCall — user is still in the call.
+          setPeerInstantState({});
           return;
         }
 
