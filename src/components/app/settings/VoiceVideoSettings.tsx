@@ -426,18 +426,30 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
               {micTesting ? "Stop Test" : "Start Test"}
             </button>
           </div>
-          <div className="h-2 w-full rounded-full overflow-hidden" style={{ backgroundColor: "var(--app-input)" }}>
+          <div className="relative h-2 w-full rounded-full overflow-hidden" style={{ backgroundColor: "var(--app-input)" }}>
             <div
               className="h-full rounded-full transition-all duration-100"
               style={{
                 width: `${Math.min(displayLevel, 100)}%`,
-                backgroundColor: displayLevel > 80 ? "#ed4245" : displayLevel > 40 ? "#faa61a" : "#3ba55c",
+                backgroundColor: showGate && !passingGate
+                  ? "#4f545c" // dimmed gray when below sensitivity gate
+                  : displayLevel > 80 ? "#ed4245" : displayLevel > 40 ? "#faa61a" : "#3ba55c",
+                opacity: showGate && !passingGate ? 0.55 : 1,
               }}
             />
+            {showGate && (
+              <div
+                className="absolute top-[-3px] bottom-[-3px] w-[2px] rounded-full"
+                style={{ left: `calc(${gatePct}% - 1px)`, backgroundColor: "#fff", boxShadow: "0 0 4px rgba(0,0,0,0.6)" }}
+                title={`Sensitivity gate: ${gatePct}%`}
+              />
+            )}
           </div>
           {micTesting && (
             <p className="mt-1.5 text-[11px]" style={{ color: "var(--app-text-secondary)" }}>
-              Speak now — the level bar shows your mic input
+              {showGate
+                ? `Voice gate at ${gatePct}% — ${passingGate ? "transmitting" : "below threshold (silenced for peers)"}`
+                : "Speak now — the level bar shows your mic input"}
             </p>
           )}
         </div>
