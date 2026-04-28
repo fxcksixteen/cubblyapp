@@ -827,6 +827,10 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                             {attachments.map((att, ai) => (
                               <AttachmentItem key={ai} attachment={att} />
                             ))}
+                            <MessageReactionsBar
+                              reactions={aggregateReactions(msg.id)}
+                              onToggle={(emoji) => toggleReaction(msg.id, emoji)}
+                            />
                           </div>
                         </MessageContextMenu>
                       );
