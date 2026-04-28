@@ -8,8 +8,8 @@ import {
 import { Reply, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import emojiReactIcon from "@/assets/icons/emoji-react.svg";
 import copyIcon from "@/assets/icons/copy.svg";
+import { QUICK_REACTIONS } from "@/hooks/useMessageReactions";
 
 interface MessageContextMenuProps {
   children: React.ReactNode;
@@ -17,9 +17,10 @@ interface MessageContextMenuProps {
   messageContent: string;
   isOwnMessage: boolean;
   onReply?: () => void;
+  onReact?: (emoji: string) => void;
 }
 
-const MessageContextMenu = ({ children, messageId, messageContent, isOwnMessage, onReply }: MessageContextMenuProps) => {
+const MessageContextMenu = ({ children, messageId, messageContent, isOwnMessage, onReply, onReact }: MessageContextMenuProps) => {
   const handleCopy = () => {
     const clean = messageContent.replace(/\[attachments\].*?\[\/attachments\]/s, "").trim();
     navigator.clipboard.writeText(clean);
