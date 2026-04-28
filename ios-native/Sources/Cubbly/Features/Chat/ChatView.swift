@@ -233,10 +233,21 @@ struct ChatView: View {
                                 message: m,
                                 grouped: grouped,
                                 currentUserID: session.currentUserID,
+                                reactions: reactions.aggregated(for: UUID(uuidString: m.id) ?? UUID()),
                                 onLongPress: { actionSheetMessage = m },
                                 onPlayVideo: { url in videoURL = IdentifiedURL(url: url) },
                                 onTapImage: { url in lightboxURL = IdentifiedURL(url: url) },
-                                onTapAvatar: { profilePopupUserID = m.senderID }
+                                onTapAvatar: { profilePopupUserID = m.senderID },
+                                onToggleReaction: { emoji in
+                                    if let id = UUID(uuidString: m.id) {
+                                        Task { await reactions.toggle(messageId: id, emoji: emoji) }
+                                    }
+                                },
+                                onTapReplyPreview: { rid in
+                                    // Just pulse-highlight the original by relying on .id() in the list
+                                    UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                                    _ = rid // hook for future scroll-to-reply
+                                }
                             )
                             .id(m.id)
                             .padding(.horizontal, 10)
