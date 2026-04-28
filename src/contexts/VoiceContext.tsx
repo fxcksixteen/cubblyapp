@@ -874,6 +874,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     console.log("[Voice] ✅ Got media stream, tracks:", stream.getTracks().map(t => `${t.kind}:${t.label}:enabled=${t.enabled}`));
     setLocalStream(stream);
     localStreamRef.current = stream;
+      originalMicTrackRef.current = stream.getAudioTracks()[0] || null;
     startAudioLevelMonitor(stream);
 
     const pc = createPeerConnection();
@@ -1210,6 +1211,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       console.log("[Voice][Loopback] ✅ Got local media stream, tracks:", stream.getTracks().map(t => `${t.kind}:${t.label}:enabled=${t.enabled}`));
       setLocalStream(stream);
       localStreamRef.current = stream;
+      originalMicTrackRef.current = stream.getAudioTracks()[0] || null;
       startAudioLevelMonitor(stream);
 
       const localPc = new RTCPeerConnection({ iceServers: iceServersRef.current, iceTransportPolicy: "all" });
@@ -1478,6 +1480,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       console.log("[Voice] ✅ Callee got media stream, tracks:", stream.getTracks().map(t => `${t.kind}:${t.label}:enabled=${t.enabled}`));
       setLocalStream(stream);
       localStreamRef.current = stream;
+      originalMicTrackRef.current = stream.getAudioTracks()[0] || null;
       startAudioLevelMonitor(stream);
 
       const pc = createPeerConnection();
