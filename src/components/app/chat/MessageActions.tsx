@@ -36,12 +36,7 @@ const MessageActions = ({ messageId, messageContent, isOwnMessage, onReply, onRe
       >
         <Reply className="h-4 w-4" style={{ color: "var(--app-text-secondary, #949ba4)" }} />
       </button>
-      <button
-        className="flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-white/10"
-        title="Add Reaction"
-      >
-        <img src={emojiReactIcon} alt="React" className="h-4 w-4 invert opacity-60" />
-      </button>
+      <EmojiReactionPicker onPick={(e) => onReact?.(e)} />
       <button
         onClick={handleCopy}
         className="flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-white/10"
