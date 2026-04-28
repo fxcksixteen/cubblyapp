@@ -103,6 +103,11 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
    */
   const [rejoinableEventIds, setRejoinableEventIds] = useState<Set<string>>(new Set());
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const allMessageIds = messages.map((m) => m.id).filter((id) => !id.startsWith("temp-"));
+  const { aggregate: aggregateReactions, toggle: toggleReaction } = useMessageReactions(
+    conversationId,
+    allMessageIds,
+  );
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
