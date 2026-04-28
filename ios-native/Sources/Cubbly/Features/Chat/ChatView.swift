@@ -508,6 +508,7 @@ struct ChatView: View {
             let hydrated = try await hydrate(Array(asc))
             messages.insert(contentsOf: hydrated, at: 0)
             hasMore = rows.count >= 50
+            await reactions.load(messageIds: hydrated.compactMap { UUID(uuidString: $0.id) })
         } catch is CancellationError {} catch {
             print("[Chat] loadOlder failed:", error)
         }
