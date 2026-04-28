@@ -64,10 +64,18 @@ final class CallSignaling {
     }
 
     private func handleIncomingCall(message: [String: AnyJSON]) {
+        // Web/desktop sends { targetId, callerId, ... }. Older iOS builds sent
+        // { userId, ... }. Accept both shapes so cross-platform rings and the
+        // associated call_event pill stay in sync.
+        if let targetStr = message["targetId"]?.stringValue,
+           let targetId = UUID(uuidString: targetStr),
+           targetId != userId {
+            return
+        }
         guard
             let convStr = message["conversationId"]?.stringValue,
             let conversationId = UUID(uuidString: convStr),
-            let callerStr = message["userId"]?.stringValue,
+            let callerStr = message["callerId"]?.stringValue ?? message["userId"]?.stringValue,
             let callerId = UUID(uuidString: callerStr)
         else { return }
         let callEvtId = message["callEventId"]?.stringValue.flatMap(UUID.init)
@@ -166,8 +174,10 @@ final class CallSignaling {
         let channel = client.realtimeV2.channel("voice-global:\(targetUserId.uuidString)")
         await channel.subscribe()
         var payload: [String: AnyJSON] = [
+            "targetId": .string(targetUserId.uuidString),
             "conversationId": .string(conversationId.uuidString),
             "callEventId": .string(callEventId.uuidString),
+            "callerId": .string(userId.uuidString),
             "userId": .string(userId.uuidString),
         ]
         if let n = callerName { payload["callerName"] = .string(n) }
