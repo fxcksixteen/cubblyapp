@@ -133,34 +133,33 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
   const [micTesting, setMicTesting] = useState(false);
   const streamRef = useRef<MediaStream | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const gainRef = useRef<GainNode | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
+  const audioElRef = useRef<HTMLAudioElement | null>(null);
   const animRef = useRef<number>(0);
   const [testLevel, setTestLevel] = useState(0);
 
-  const toggleMicTest = async () => {
-    if (micTesting) {
-      streamRef.current?.getTracks().forEach(t => t.stop());
-      audioCtxRef.current?.close();
-      cancelAnimationFrame(animRef.current);
-      // Remove mic test audio element
-      document.querySelectorAll("audio").forEach((el: any) => {
-        if (el.__cubblyMicTest) { el.pause(); el.srcObject = null; el.remove(); }
-      });
-      streamRef.current = null;
-      audioCtxRef.current = null;
-      analyserRef.current = null;
-      setMicTesting(false);
-      setTestLevel(0);
-      return;
+  /** Connect a freshly-acquired stream into the existing audio graph + element. */
+  const wireStreamIntoGraph = (stream: MediaStream) => {
+    const ctx = audioCtxRef.current;
+    if (!ctx) return;
+    // Tear down previous source if any (e.g. on input-device change mid-test).
+    try { sourceRef.current?.disconnect(); } catch {}
+    const source = ctx.createMediaStreamSource(stream);
+    sourceRef.current = source;
+    source.connect(gainRef.current!);
+    if (audioElRef.current) {
+      audioElRef.current.srcObject = stream;
+      audioElRef.current.play().catch(() => {});
     }
+  };
 
+  const startTest = async () => {
     if (captureLocked) {
-      // On iOS only one capture can be active. Refuse to open a second mic
-      // stream — it would silently steal the call's mic track.
       console.warn("[MicTest] blocked:", captureLockReason);
       return;
     }
-
     try {
       const constraints: MediaStreamConstraints = {
         audio: {
@@ -176,26 +175,28 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
 
-      // Create audio context for level monitoring
       const ctx = new AudioContext();
       audioCtxRef.current = ctx;
-      const source = ctx.createMediaStreamSource(stream);
+      const gain = ctx.createGain();
+      gain.gain.value = (settings.inputVolume ?? 100) / 100;
+      gainRef.current = gain;
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 256;
       analyser.smoothingTimeConstant = 0.5;
-      source.connect(analyser);
+      gain.connect(analyser);
       analyserRef.current = analyser;
 
-      // Play mic audio back through speakers so user can hear themselves
+      // Playback element
       const audioEl = document.createElement("audio");
-      audioEl.srcObject = stream;
       audioEl.autoplay = true;
       (audioEl as any).__cubblyMicTest = true;
-      // Set output device if specified
+      audioElRef.current = audioEl;
       if (settings.outputDeviceId !== "default" && (audioEl as any).setSinkId) {
         (audioEl as any).setSinkId(settings.outputDeviceId).catch(console.error);
       }
       document.body.appendChild(audioEl);
+
+      wireStreamIntoGraph(stream);
 
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
       const tick = () => {
@@ -205,18 +206,39 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
         animRef.current = requestAnimationFrame(tick);
       };
       tick();
-
       setMicTesting(true);
     } catch (err) {
       console.error("Mic test failed:", err);
     }
   };
 
-  // Apply constraints in real-time when settings change during mic test
+  const stopTest = () => {
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    audioCtxRef.current?.close().catch(() => {});
+    cancelAnimationFrame(animRef.current);
+    document.querySelectorAll("audio").forEach((el: any) => {
+      if (el.__cubblyMicTest) { el.pause(); el.srcObject = null; el.remove(); }
+    });
+    streamRef.current = null;
+    audioCtxRef.current = null;
+    sourceRef.current = null;
+    gainRef.current = null;
+    analyserRef.current = null;
+    audioElRef.current = null;
+    setMicTesting(false);
+    setTestLevel(0);
+  };
+
+  const toggleMicTest = () => {
+    if (micTesting) stopTest();
+    else void startTest();
+  };
+
+  // ─── Live-update the test stream WITHOUT restarting it ────────────────
+  // Echo / noise / AGC: applyConstraints on the live track.
   useEffect(() => {
     if (!streamRef.current || !micTesting) return;
-    const tracks = streamRef.current.getAudioTracks();
-    tracks.forEach(track => {
+    streamRef.current.getAudioTracks().forEach(track => {
       track.applyConstraints({
         echoCancellation: settings.echoCancellation,
         noiseSuppression: settings.noiseSuppression,
@@ -225,10 +247,61 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
     });
   }, [settings.echoCancellation, settings.noiseSuppression, settings.autoGainControl, micTesting]);
 
+  // Input volume slider → GainNode (also caps the playback element volume so
+  // the user actually HEARS the change in real time).
+  useEffect(() => {
+    if (!micTesting) return;
+    const v = (settings.inputVolume ?? 100) / 100;
+    if (gainRef.current) gainRef.current.gain.value = v;
+    if (audioElRef.current) {
+      try { audioElRef.current.volume = Math.max(0, Math.min(1, v)); } catch {}
+    }
+  }, [settings.inputVolume, micTesting]);
+
+  // Output sink change (e.g., switch headphones mid-test).
+  useEffect(() => {
+    if (!micTesting || !audioElRef.current) return;
+    const el = audioElRef.current as any;
+    if (!el.setSinkId) return;
+    const target = settings.outputDeviceId === "default" ? "" : settings.outputDeviceId;
+    el.setSinkId(target).catch((e: unknown) => console.warn("setSinkId failed:", e));
+  }, [settings.outputDeviceId, micTesting]);
+
+  // Input device change → swap MediaStream in place, keep AudioContext alive.
+  useEffect(() => {
+    if (!micTesting) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const newStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            deviceId: settings.inputDeviceId !== "default" ? { exact: settings.inputDeviceId } : undefined,
+            echoCancellation: settings.echoCancellation,
+            noiseSuppression: settings.noiseSuppression,
+            autoGainControl: settings.autoGainControl,
+            sampleRate: 48000,
+            sampleSize: 24,
+            channelCount: 2,
+          } as MediaTrackConstraints,
+        });
+        if (cancelled) { newStream.getTracks().forEach(t => t.stop()); return; }
+        // Stop the OLD stream after the new one is wired in to avoid a gap.
+        const old = streamRef.current;
+        streamRef.current = newStream;
+        wireStreamIntoGraph(newStream);
+        old?.getTracks().forEach(t => t.stop());
+      } catch (e) {
+        console.warn("Mic device hot-swap failed:", e);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.inputDeviceId]);
+
   useEffect(() => {
     return () => {
       streamRef.current?.getTracks().forEach(t => t.stop());
-      audioCtxRef.current?.close();
+      audioCtxRef.current?.close().catch(() => {});
       cancelAnimationFrame(animRef.current);
       document.querySelectorAll("audio").forEach((el: any) => {
         if (el.__cubblyMicTest) { el.pause(); el.srcObject = null; el.remove(); }
@@ -237,6 +310,10 @@ function VoiceTab({ settings, updateSettings, availableDevices, audioLevel, dete
   }, []);
 
   const displayLevel = micTesting ? testLevel : audioLevel;
+  // Sensitivity gate: when auto is off, voice below threshold isn't transmitted.
+  const showGate = !settings.autoSensitivity && micTesting;
+  const gatePct = Math.max(0, Math.min(100, settings.sensitivityThreshold ?? 50));
+  const passingGate = displayLevel >= gatePct;
 
   return (
     <div className="space-y-6">
