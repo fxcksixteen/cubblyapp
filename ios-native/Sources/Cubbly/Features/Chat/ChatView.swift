@@ -115,6 +115,8 @@ struct ChatView: View {
                 .presentationDragIndicator(.visible)
         }
         .task {
+            await reactions.start(conversationId: conversation.id,
+                                  currentUserId: session.currentUserID)
             await loadInitial()
             await subscribe()
             await markRead()
@@ -136,6 +138,7 @@ struct ChatView: View {
                 if let ch = channel { await ch.unsubscribe() }
                 if let tc = typingChannel { await tc.unsubscribe() }
                 if let cc = callEventsChannel { await cc.unsubscribe() }
+                await reactions.stop()
             }
         }
     }
