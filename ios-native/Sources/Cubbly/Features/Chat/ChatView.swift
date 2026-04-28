@@ -1148,8 +1148,14 @@ private struct LinkifiedText: View {
 
 // MARK: - Long-press action sheet
 
-private struct MessageActionSheet: View {
+// MARK: - Discord-style long-press menu
+
+/// Replaces the old plain action sheet. Shows the message preview, a
+/// horizontal emoji slider for quick reactions, then Reply / Copy / Delete.
+struct MessageActionMenuView: View {
     let message: ChatMessage
+    let myReactions: Set<String>
+    let onReact: (String) -> Void
     let onReply: () -> Void
     let onCopy: () -> Void
     let onDelete: (() -> Void)?
@@ -1160,6 +1166,7 @@ private struct MessageActionSheet: View {
                 .frame(width: 36, height: 4)
                 .padding(.top, 8)
 
+            // Message preview header
             HStack(spacing: 14) {
                 AvatarView(url: message.senderAvatarURL.flatMap(URL.init(string:)),
                            fallbackText: message.senderName ?? "?", size: 36)
@@ -1167,7 +1174,7 @@ private struct MessageActionSheet: View {
                     Text(message.senderName ?? "Unknown")
                         .font(Theme.Fonts.bodyMedium)
                         .foregroundStyle(Theme.Colors.textPrimary)
-                    Text(message.content)
+                    Text(previewText)
                         .font(.cubbly(13))
                         .foregroundStyle(Theme.Colors.textSecondary)
                         .lineLimit(1)
@@ -1176,9 +1183,37 @@ private struct MessageActionSheet: View {
             }
             .padding(.horizontal, 16)
             .padding(.top, 14)
-            .padding(.bottom, 6)
+            .padding(.bottom, 10)
 
-            Divider().background(Theme.Colors.divider)
+            // Horizontal emoji slider — clean, big tap targets, scales the
+            // emoji on press to match Discord's quick-react animation.
+            HStack(spacing: 4) {
+                ForEach(QuickReactions.all, id: \.self) { e in
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        onReact(e)
+                    } label: {
+                        Text(e)
+                            .font(.system(size: 28))
+                            .frame(width: 44, height: 44)
+                            .background(
+                                Circle().fill(myReactions.contains(e)
+                                              ? Theme.Colors.primary.opacity(0.25)
+                                              : Color.clear)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(Theme.Colors.bgTertiary)
+            )
+            .padding(.horizontal, 14)
+            .padding(.bottom, 8)
 
             VStack(spacing: 0) {
                 row(icon: "arrowshape.turn.up.left.fill", label: "Reply", action: onReply)
@@ -1192,6 +1227,13 @@ private struct MessageActionSheet: View {
             Spacer()
         }
         .background(Theme.Colors.bgSecondary)
+    }
+
+    private var previewText: String {
+        if let parsed = MessageAttachmentsParser.parse(message.content) {
+            return parsed.text.isEmpty ? "📎 Attachment" : parsed.text
+        }
+        return message.content
     }
 
     private var divider: some View {
@@ -1215,6 +1257,49 @@ private struct MessageActionSheet: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Reaction pills
+
+/// Discord-style pill row shown beneath a chat bubble. Tapping toggles your
+/// own reaction. The pill highlights when the current user has reacted.
+struct ReactionsPillRow: View {
+    let reactions: [AggregatedReaction]
+    let onToggle: (String) -> Void
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(reactions) { r in
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    onToggle(r.emoji)
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(r.emoji).font(.system(size: 13))
+                        Text("\(r.count)")
+                            .font(.cubbly(12, .semibold))
+                            .foregroundStyle(r.reactedByMe
+                                             ? Theme.Colors.textPrimary
+                                             : Theme.Colors.textSecondary)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(r.reactedByMe
+                                  ? Theme.Colors.primary.opacity(0.22)
+                                  : Theme.Colors.bgSecondary)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(r.reactedByMe ? Theme.Colors.primary : Color.clear,
+                                    lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 }
 
