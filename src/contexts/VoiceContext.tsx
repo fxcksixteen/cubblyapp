@@ -2126,7 +2126,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       syncCallParticipantState({ is_muted: nextMuted, is_deafened: newDeafened });
       return { ...prev, isDeafened: newDeafened, isMuted: nextMuted };
     });
-  }, [syncCallParticipantState, user]);
+  }, [syncCallParticipantState, user, applyLocalMicMute]);
 
   /**
    * Toggle the local camera on/off. Uses replaceTrack on the pre-allocated video
