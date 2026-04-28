@@ -23,9 +23,26 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.25";
+export const CURRENT_VERSION = "0.2.26";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.2.26",
+    title: "Calls that don't bail on you, plus a smarter mic test",
+    date: "2026-04-28",
+    hero: bearImage,
+    newFeatures: [
+      "The mic test in Voice & Video now reflects EVERY change you make in real-time — swap input device, change output, drag the input volume slider, or move the sensitivity threshold and you'll hear/see it instantly without restarting the test.",
+      "The level bar in mic test now shows your sensitivity gate as a vertical line, with the segments below the gate dimmed — so you can actually see whether your voice is loud enough to be transmitted.",
+    ],
+    bugFixes: [
+      "Calls no longer end when ONE person hangs up. The other side stays in the call, and anyone in the conversation can still hit Join — exactly like Discord. The call only fully ends when the last person leaves.",
+      "The 30-second ringing timeout now ONLY stops the ringing sound and incoming-call overlay — it no longer kills the call. The callee can still join from the chat thread pill afterwards, and the caller stays in the call alone waiting for them.",
+      "The 'Ongoing call — Join' pill in chat threads now ONLY appears when there is genuinely at least one user actively in the call. No more ghost pills for calls nobody is in.",
+      "Muting now uses BOTH track.enabled = false AND sender.replaceTrack(null) on the mic, so peers (including the iOS PWA) hear absolute silence — fixes the bug where the iOS PWA could still hear a desktop user who had muted themselves.",
+      "Added a defensive listener on the receiving side: when a peer broadcasts that they're muted, we also force their inbound mic gain to 0 locally, so even if their client misbehaves you hear nothing.",
+    ],
+  },
   {
     version: "0.2.25",
     title: "Status, unread bars & screenshare controls fixed",
