@@ -1,17 +1,18 @@
 import { Reply, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import emojiReactIcon from "@/assets/icons/emoji-react.svg";
 import copyIcon from "@/assets/icons/copy.svg";
+import EmojiReactionPicker from "./EmojiReactionPicker";
 
 interface MessageActionsProps {
   messageId: string;
   messageContent: string;
   isOwnMessage: boolean;
   onReply?: () => void;
+  onReact?: (emoji: string) => void;
 }
 
-const MessageActions = ({ messageId, messageContent, isOwnMessage, onReply }: MessageActionsProps) => {
+const MessageActions = ({ messageId, messageContent, isOwnMessage, onReply, onReact }: MessageActionsProps) => {
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
     const clean = messageContent.replace(/\[attachments\].*?\[\/attachments\]/s, "").trim();
