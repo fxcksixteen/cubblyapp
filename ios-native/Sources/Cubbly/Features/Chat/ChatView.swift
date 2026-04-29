@@ -1190,6 +1190,8 @@ struct MessageActionMenuView: View {
     let onCopy: () -> Void
     let onDelete: (() -> Void)?
 
+    @State private var showFullEmojiPicker = false
+
     var body: some View {
         VStack(spacing: 0) {
             Capsule().fill(Color.white.opacity(0.18))
@@ -1215,8 +1217,8 @@ struct MessageActionMenuView: View {
             .padding(.top, 14)
             .padding(.bottom, 10)
 
-            // Horizontal emoji slider — clean, big tap targets, scales the
-            // emoji on press to match Discord's quick-react animation.
+            // Horizontal emoji slider — quick reactions + a "+" tile that
+            // opens the full system emoji keyboard for any-emoji reactions.
             HStack(spacing: 4) {
                 ForEach(QuickReactions.all, id: \.self) { e in
                     Button {
@@ -1234,6 +1236,17 @@ struct MessageActionMenuView: View {
                     }
                     .buttonStyle(.plain)
                 }
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    showFullEmojiPicker = true
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(Theme.Colors.textPrimary)
+                        .frame(width: 44, height: 44)
+                        .background(Circle().fill(Color.white.opacity(0.08)))
+                }
+                .buttonStyle(.plain)
             }
             .frame(maxWidth: .infinity)
             .padding(.horizontal, 12)
@@ -1257,6 +1270,13 @@ struct MessageActionMenuView: View {
             Spacer()
         }
         .background(Theme.Colors.bgSecondary)
+        .sheet(isPresented: $showFullEmojiPicker) {
+            FullEmojiPickerView { emoji in
+                onReact(emoji)
+            }
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
     }
 
     private var previewText: String {
