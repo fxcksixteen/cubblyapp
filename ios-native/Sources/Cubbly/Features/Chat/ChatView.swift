@@ -921,6 +921,11 @@ private struct DiscordStyleBubble: View {
     let onTapImage: (URL) -> Void
     let onTapAvatar: () -> Void
 
+    /// True while the user's finger is down during a potential long-press, so
+    /// we can give Discord-style visual feedback (row tint + slight scale) and
+    /// make it obvious which message they're targeting.
+    @State private var isPressing: Bool = false
+
     private var msgUUID: UUID? { UUID(uuidString: message.id) }
     private var aggregated: [AggregatedReaction] {
         guard let id = msgUUID else { return [] }
@@ -1003,9 +1008,34 @@ private struct DiscordStyleBubble: View {
 
             Spacer(minLength: 0)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 4)
+        .padding(.vertical, 2)
         .padding(.top, grouped ? 1 : 6)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.white.opacity(isPressing ? 0.06 : 0))
+        )
+        .scaleEffect(isPressing ? 0.97 : 1.0)
+        .animation(.spring(response: 0.25, dampingFraction: 0.75), value: isPressing)
         .contentShape(Rectangle())
-        .onLongPressGesture(minimumDuration: 0.32) {
+        // Touch-down detection via a 0-distance drag — flips the press flag
+        // immediately so the user sees they're targeting the right message.
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                    if !isPressing {
+                        isPressing = true
+                        UISelectionFeedbackGenerator().selectionChanged()
+                    }
+                    // Cancel visual if the finger drifts (so scrolling works).
+                    let d = abs(value.translation.width) + abs(value.translation.height)
+                    if d > 10 { isPressing = false }
+                }
+                .onEnded { _ in isPressing = false }
+        )
+        .onLongPressGesture(minimumDuration: 0.25) {
+            isPressing = false
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             onLongPress()
         }
@@ -1160,6 +1190,8 @@ struct MessageActionMenuView: View {
     let onCopy: () -> Void
     let onDelete: (() -> Void)?
 
+    @State private var showFullEmojiPicker = false
+
     var body: some View {
         VStack(spacing: 0) {
             Capsule().fill(Color.white.opacity(0.18))
@@ -1185,8 +1217,8 @@ struct MessageActionMenuView: View {
             .padding(.top, 14)
             .padding(.bottom, 10)
 
-            // Horizontal emoji slider — clean, big tap targets, scales the
-            // emoji on press to match Discord's quick-react animation.
+            // Horizontal emoji slider — quick reactions + a "+" tile that
+            // opens the full system emoji keyboard for any-emoji reactions.
             HStack(spacing: 4) {
                 ForEach(QuickReactions.all, id: \.self) { e in
                     Button {
@@ -1204,6 +1236,17 @@ struct MessageActionMenuView: View {
                     }
                     .buttonStyle(.plain)
                 }
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    showFullEmojiPicker = true
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(Theme.Colors.textPrimary)
+                        .frame(width: 44, height: 44)
+                        .background(Circle().fill(Color.white.opacity(0.08)))
+                }
+                .buttonStyle(.plain)
             }
             .frame(maxWidth: .infinity)
             .padding(.horizontal, 12)
@@ -1227,6 +1270,13 @@ struct MessageActionMenuView: View {
             Spacer()
         }
         .background(Theme.Colors.bgSecondary)
+        .sheet(isPresented: $showFullEmojiPicker) {
+            FullEmojiPickerView { emoji in
+                onReact(emoji)
+            }
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
     }
 
     private var previewText: String {
