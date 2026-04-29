@@ -167,9 +167,11 @@ final class MessageReactionsStore: ObservableObject {
         Task { [weak self] in
             for await action in deletes {
                 let oldDict = action.oldRecord
-                guard let idStr = oldDict["id"] as? String,
+                // supabase-swift v2 returns `[String: AnyJSON]` — pull the
+                // underlying string via the `.stringValue` accessor.
+                guard let idStr = oldDict["id"]?.stringValue,
                       let id = UUID(uuidString: idStr),
-                      let msgIdStr = oldDict["message_id"] as? String,
+                      let msgIdStr = oldDict["message_id"]?.stringValue,
                       let msgId = UUID(uuidString: msgIdStr) else { continue }
                 await MainActor.run {
                     guard let self else { return }

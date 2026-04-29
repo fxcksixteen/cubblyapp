@@ -16,7 +16,11 @@ final class SupabaseManager {
             options: .init(
                 auth: .init(
                     storage: KeychainAuthStorage(),
-                    autoRefreshToken: true
+                    autoRefreshToken: true,
+                    // Opt into the upcoming behavior so the locally stored
+                    // session is emitted as the initial session — silences
+                    // the "Initial session emitted after refresh" warning.
+                    emitLocalSessionAsInitialSession: true
                 )
             )
         )

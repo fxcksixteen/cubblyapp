@@ -21,10 +21,10 @@ final class CallKitService: NSObject {
     private(set) var currentCallUUID: UUID?
 
     override init() {
-        // iOS 14+: use the localizedName initializer so the system call UI
-        // says "Cubbly Audio" instead of the generic "App". Required for the
-        // full-screen incoming call UI to render correctly when reported.
-        let config = CXProviderConfiguration(localizedName: "Cubbly")
+        // iOS 14+: the no-arg initializer pulls the localized name from the
+        // bundle's CFBundleDisplayName ("Cubbly"). The old
+        // `init(localizedName:)` is deprecated.
+        let config = CXProviderConfiguration()
         config.supportsVideo = false
         config.maximumCallsPerCallGroup = 1
         config.maximumCallGroups = 1
