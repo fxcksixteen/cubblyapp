@@ -17,7 +17,7 @@ struct FullEmojiPickerView: View {
 
             VStack(spacing: 6) {
                 Text("Pick any emoji")
-                    .font(Theme.Fonts.title3)
+                    .font(Theme.Fonts.heading)
                     .foregroundStyle(Theme.Colors.textPrimary)
                 Text("Tap the 😀 key on your keyboard, then choose any emoji.")
                     .font(.cubbly(13))
