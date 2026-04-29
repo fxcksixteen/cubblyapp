@@ -921,6 +921,11 @@ private struct DiscordStyleBubble: View {
     let onTapImage: (URL) -> Void
     let onTapAvatar: () -> Void
 
+    /// True while the user's finger is down during a potential long-press, so
+    /// we can give Discord-style visual feedback (row tint + slight scale) and
+    /// make it obvious which message they're targeting.
+    @State private var isPressing: Bool = false
+
     private var msgUUID: UUID? { UUID(uuidString: message.id) }
     private var aggregated: [AggregatedReaction] {
         guard let id = msgUUID else { return [] }
@@ -1003,9 +1008,34 @@ private struct DiscordStyleBubble: View {
 
             Spacer(minLength: 0)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 4)
+        .padding(.vertical, 2)
         .padding(.top, grouped ? 1 : 6)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.white.opacity(isPressing ? 0.06 : 0))
+        )
+        .scaleEffect(isPressing ? 0.97 : 1.0)
+        .animation(.spring(response: 0.25, dampingFraction: 0.75), value: isPressing)
         .contentShape(Rectangle())
-        .onLongPressGesture(minimumDuration: 0.32) {
+        // Touch-down detection via a 0-distance drag — flips the press flag
+        // immediately so the user sees they're targeting the right message.
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                    if !isPressing {
+                        isPressing = true
+                        UISelectionFeedbackGenerator().selectionChanged()
+                    }
+                    // Cancel visual if the finger drifts (so scrolling works).
+                    let d = abs(value.translation.width) + abs(value.translation.height)
+                    if d > 10 { isPressing = false }
+                }
+                .onEnded { _ in isPressing = false }
+        )
+        .onLongPressGesture(minimumDuration: 0.25) {
+            isPressing = false
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             onLongPress()
         }
