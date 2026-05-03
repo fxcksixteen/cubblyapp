@@ -246,11 +246,16 @@ struct ChatView: View {
                             .padding(.vertical, 10)
                     }
                     // Sentinel at the very top — when it appears, fetch older.
+                    // The id is tied to the oldest loaded message so SwiftUI
+                    // re-mounts the sentinel after each prepend and re-fires
+                    // onAppear, allowing repeated upward pagination instead
+                    // of stalling after the first batch.
+                    let topSentinelId = "top-sentinel-\(messages.first?.id ?? "none")"
                     Color.clear.frame(height: 1)
                         .onAppear {
                             if hasMore && !loadingOlder { Task { await loadOlder() } }
                         }
-                        .id("top-sentinel")
+                        .id(topSentinelId)
 
                     let items = timelineItems
                     ForEach(Array(items.enumerated()), id: \.element.id) { idx, item in
