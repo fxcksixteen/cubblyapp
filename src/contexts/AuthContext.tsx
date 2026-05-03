@@ -134,8 +134,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // React StrictMode / HMR / fast remounts.
     try {
       const topic = "realtime:global:online";
-      // @ts-expect-error — supabase-js exposes getChannels() on the realtime client
-      const existing = supabase.getChannels?.() || [];
+      const existing = (supabase as any).getChannels?.() || [];
       for (const ch of existing) {
         if (ch?.topic === topic) {
           try { supabase.removeChannel(ch); } catch {}
