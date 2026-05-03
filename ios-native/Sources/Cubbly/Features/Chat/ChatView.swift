@@ -481,7 +481,36 @@ struct ChatView: View {
         }
     }
 
-    private func loadCallEvents() async {
+    /// Pulls the newest 50 messages and merges anything we don't already have.
+    /// Used as a safety net when the realtime websocket has silently dropped —
+    /// e.g. iOS suspended the app, the network flipped, or the channel just
+    /// died. Without this, peers can sit on a stale chat thread thinking
+    /// nobody has replied. Called on scene-phase → .active and on a slow
+    /// 15-second tick while the chat is open.
+    private func resyncLatestMessages() async {
+        do {
+            let rows = try await repo.fetchPage(conversationID: conversation.id, limit: 50)
+            let asc = Array(rows.reversed())
+            // Hydrate first, then merge — never drop messages we already have.
+            let hydrated = try await hydrate(asc)
+            await MainActor.run {
+                var merged = messages
+                let existingIds = Set(merged.map { $0.id })
+                var inserted = false
+                for m in hydrated where !existingIds.contains(m.id) {
+                    merged.append(m)
+                    inserted = true
+                }
+                if inserted {
+                    merged.sort { $0.createdAt < $1.createdAt }
+                    messages = merged
+                }
+            }
+            await reactions.load(messageIds: messages.compactMap { UUID(uuidString: $0.id) })
+        } catch is CancellationError {} catch {
+            print("[Chat] resync failed:", error)
+        }
+    }
         do {
             let rows: [CallEventRow] = try await SupabaseManager.shared.client
                 .from("call_events")
