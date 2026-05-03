@@ -511,6 +511,8 @@ struct ChatView: View {
             print("[Chat] resync failed:", error)
         }
     }
+
+    private func loadCallEvents() async {
         do {
             let rows: [CallEventRow] = try await SupabaseManager.shared.client
                 .from("call_events")
