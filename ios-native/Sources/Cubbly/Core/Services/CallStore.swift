@@ -381,6 +381,7 @@ final class CallStore: ObservableObject {
         await signaling.joinCallChannel(conversationId: inc.conversationId)
         if let evt = inc.callEventId {
             await ensureOwnParticipantRow(callEventId: evt)
+            startHeartbeat()
         }
         // Voice client will be created when we receive the offer (web sends offer right after ring).
     }
