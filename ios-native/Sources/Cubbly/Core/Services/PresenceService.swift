@@ -46,9 +46,10 @@ final class PresenceService: ObservableObject {
         // channel is subscribing/subscribed.
         let sub = ch.onPresenceChange { [weak self] action in
             guard let self else { return }
-            // Hop to the main actor for the @Published mutation.
+            let joinKeys = Array(action.joins.keys)
+            let leaveKeys = Array(action.leaves.keys)
             Task { @MainActor in
-                self.applyPresence(joins: action.joins.keys, leaves: action.leaves.keys)
+                self.applyPresence(joins: joinKeys, leaves: leaveKeys)
             }
         }
         presenceSubscription = sub
