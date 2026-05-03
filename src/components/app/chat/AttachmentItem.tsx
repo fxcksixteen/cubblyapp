@@ -172,19 +172,40 @@ const AttachmentItem = ({ attachment }: AttachmentItemProps) => {
   if (isImage && url && !errored) {
     return (
       <>
-        <button
-          type="button"
-          onClick={() => setLightboxOpen(true)}
-          className="block mt-1 max-w-sm cursor-zoom-in"
-        >
-          <img
-            src={url}
-            alt={attachment.name}
-            className="max-h-[400px] max-w-full rounded-lg object-contain hover:brightness-90 transition-[filter]"
-            onError={() => setErrored(true)}
-            loading="lazy"
-          />
-        </button>
+        <ContextMenu>
+          <ContextMenuTrigger asChild>
+            <button
+              type="button"
+              onClick={() => setLightboxOpen(true)}
+              className="block mt-1 max-w-sm cursor-zoom-in"
+            >
+              <img
+                src={url}
+                alt={attachment.name}
+                className="max-h-[400px] max-w-full rounded-lg object-contain hover:brightness-90 transition-[filter]"
+                onError={() => setErrored(true)}
+                loading="lazy"
+              />
+            </button>
+          </ContextMenuTrigger>
+          <ContextMenuContent
+            className="w-52 rounded-xl border p-1.5 shadow-xl"
+            style={{ backgroundColor: "#111214", borderColor: "var(--app-border, #2b2d31)" }}
+          >
+            <ContextMenuItem onClick={() => saveImage(url, attachment.name)} className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer">
+              <Download className="h-4 w-4" /> Save image as…
+            </ContextMenuItem>
+            <ContextMenuItem onClick={() => copyImageBytes(url)} className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer">
+              <Copy className="h-4 w-4" /> Copy image
+            </ContextMenuItem>
+            <ContextMenuItem onClick={() => copyImageLink(url)} className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer">
+              <LinkIcon className="h-4 w-4" /> Copy image link
+            </ContextMenuItem>
+            <ContextMenuItem onClick={() => window.open(url, "_blank", "noopener,noreferrer")} className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer">
+              <ExternalLink className="h-4 w-4" /> Open in new tab
+            </ContextMenuItem>
+          </ContextMenuContent>
+        </ContextMenu>
         {lightboxOpen && (
           <ImageLightbox url={url} name={attachment.name} onClose={() => setLightboxOpen(false)} />
         )}
