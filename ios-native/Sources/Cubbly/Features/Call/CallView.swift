@@ -314,7 +314,9 @@ struct MinimizedCallPill: View {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(store.state == .connected
                           ? Color(red: 0.23, green: 0.65, blue: 0.36)
-                          : Color(red: 0.98, green: 0.65, blue: 0.10))
+                          : (store.ringTimedOut
+                             ? Color(red: 0.40, green: 0.42, blue: 0.48)
+                             : Color(red: 0.98, green: 0.65, blue: 0.10)))
             )
             .shadow(color: .black.opacity(0.3), radius: 10, y: 4)
         }
