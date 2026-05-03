@@ -33,6 +33,11 @@ const GlobalCallIndicator = () => {
 
   if (!activeCall) return null;
 
+  // On mobile (iOS PWA / phone web), MobileCallOverlay already provides its
+  // own minimized "in call" pill anchored above the bottom nav. Hide this
+  // desktop-style indicator there to avoid showing two competing pills.
+  if (isMobile) return null;
+
   // Hide when the user is already on the call's chat — that screen has the full call panel
   const onCallsChat = location.pathname.includes(`/chat/${activeCall.conversationId}`);
   if (onCallsChat) return null;
