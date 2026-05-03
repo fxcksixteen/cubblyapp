@@ -66,6 +66,10 @@ final class CallStore: ObservableObject {
     private var pendingRemoteIce: [RTCIceCandidate] = []
     private var pendingScreenIce: [RTCIceCandidate] = []
 
+    /// Heartbeat task — pings `heartbeat_call_participant` every 10s while
+    /// in a real call so other clients can tell us apart from a ghost row.
+    private var heartbeatTask: Task<Void, Never>?
+
     private init() {}
 
     // MARK: - Bootstrap (call once after sign-in)
@@ -170,6 +174,7 @@ final class CallStore: ObservableObject {
             // we're live (mirrors web's ensureOwnParticipantRow).
             if let evtId = currentCallEventId {
                 await ensureOwnParticipantRow(callEventId: evtId)
+                startHeartbeat()
             }
             // Ring the peer's global channel so they get the incoming-call sheet.
             if let evtId = currentCallEventId {
@@ -221,12 +226,15 @@ final class CallStore: ObservableObject {
         }
         guard let evt = existing else { return false }
 
-        // 2. Confirm a non-self peer is still live (left_at IS NULL).
-        struct PartRow: Decodable { let user_id: UUID }
+        // 2. Confirm at least one non-self peer is FRESHLY live: left_at IS
+        //    NULL **AND** last_seen_at within the last 30s. A row that hasn't
+        //    heartbeated in over 30s is treated as a ghost (closed laptop,
+        //    crashed tab, etc.) and DOES NOT count.
+        struct PartRow: Decodable { let user_id: UUID; let last_seen_at: Date?; let left_at: Date? }
         var live: [PartRow] = []
         do {
             live = try await client.from("call_participants")
-                .select("user_id")
+                .select("user_id,last_seen_at,left_at")
                 .eq("call_event_id", value: evt.id.uuidString)
                 .filter("left_at", operator: "is", value: "null")
                 .execute()
@@ -234,14 +242,16 @@ final class CallStore: ObservableObject {
         } catch {
             print("[Call] tryJoinExisting participants check failed:", error)
         }
-        let otherActive = live.contains { $0.user_id != myId }
+        let freshCutoff = Date().addingTimeInterval(-30)
+        let otherActive = live.contains { row in
+            row.user_id != myId &&
+            (row.last_seen_at == nil || row.last_seen_at! > freshCutoff)
+        }
         if !otherActive {
-            // Stale event — close it so the next attempt starts clean,
-            // then signal failure so caller starts a fresh call.
-            _ = try? await client.from("call_events")
-                .update(["state": "ended", "ended_at": ISO8601DateFormatter().string(from: Date())])
-                .eq("id", value: evt.id.uuidString)
-                .execute()
+            // Stale event — force-close it via the RPC so any straggler rows
+            // are also marked left, then signal failure so caller starts a
+            // fresh call instead of joining a ghost.
+            _ = try? await client.rpc("end_call_event_if_stale", params: ["_call_event_id": evt.id.uuidString]).execute()
             return false
         }
 
@@ -257,6 +267,7 @@ final class CallStore: ObservableObject {
         CallKitService.shared.startOutgoing(handleName: peerName)
         await signaling.joinCallChannel(conversationId: convId)
         await ensureOwnParticipantRow(callEventId: evt.id)
+        startHeartbeat()
 
         // Ask the live peer for a fresh offer. They'll respond with `offer`,
         // we'll answer in handleVoiceOffer. No ring, no duplicate event.
@@ -266,21 +277,51 @@ final class CallStore: ObservableObject {
     }
 
     /// Insert (or upsert) our row in call_participants for a given call_event.
+    /// Uses the `heartbeat_call_participant` RPC so a previously-left row is
+    /// REVIVED (left_at cleared, last_seen_at refreshed) instead of failing
+    /// the unique (call_event_id, user_id) constraint.
     private func ensureOwnParticipantRow(callEventId: UUID) async {
         let client = SupabaseManager.shared.client
-        guard let myId = try? await client.auth.user().id else { return }
-        struct Row: Encodable {
-            let call_event_id: String
-            let user_id: String
+        struct Params: Encodable {
+            let _call_event_id: String
+            let _is_muted: Bool
+            let _is_deafened: Bool
+            let _is_video_on: Bool
+            let _is_screen_sharing: Bool
         }
         do {
-            _ = try await client.from("call_participants")
-                .insert(Row(call_event_id: callEventId.uuidString, user_id: myId.uuidString))
-                .execute()
+            _ = try await client.rpc(
+                "heartbeat_call_participant",
+                params: Params(
+                    _call_event_id: callEventId.uuidString,
+                    _is_muted: isMuted,
+                    _is_deafened: isDeafened,
+                    _is_video_on: false,
+                    _is_screen_sharing: false
+                )
+            ).execute()
         } catch {
-            // Probably already a row from an earlier attempt — that's fine.
-            print("[Call] ensureOwnParticipantRow:", error)
+            print("[Call] heartbeat_call_participant failed:", error)
         }
+    }
+
+    /// Start a 10-second heartbeat that keeps our `last_seen_at` fresh while
+    /// in a call. Without this, peers' liveness check would mark us stale
+    /// after 30s and the rejoin pill would incorrectly disappear.
+    private func startHeartbeat() {
+        heartbeatTask?.cancel()
+        heartbeatTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self = self, let evt = await self.currentCallEventId else { return }
+                await self.ensureOwnParticipantRow(callEventId: evt)
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
+            }
+        }
+    }
+
+    private func stopHeartbeat() {
+        heartbeatTask?.cancel()
+        heartbeatTask = nil
     }
 
     // MARK: - CubblyBot test call (local loopback)
@@ -340,6 +381,7 @@ final class CallStore: ObservableObject {
         await signaling.joinCallChannel(conversationId: inc.conversationId)
         if let evt = inc.callEventId {
             await ensureOwnParticipantRow(callEventId: evt)
+            startHeartbeat()
         }
         // Voice client will be created when we receive the offer (web sends offer right after ring).
     }
@@ -352,6 +394,7 @@ final class CallStore: ObservableObject {
     // MARK: - End call
 
     func endCall() async {
+        stopHeartbeat()
         let conv = conversationId
         if let signaling = signaling, conv != nil {
             await signaling.broadcast(type: "hangup")

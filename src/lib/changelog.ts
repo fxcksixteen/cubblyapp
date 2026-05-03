@@ -23,9 +23,24 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.26";
+export const CURRENT_VERSION = "0.2.27";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.2.27",
+    title: "Ghost calls killed for good — rejoin actually rejoins",
+    date: "2026-05-03",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Calls now use a 10-second heartbeat per participant. If nobody has checked in within the last 30 seconds, the call is considered ended — no more 'Rejoin' pill for a call that nobody is actually in.",
+      "Tapping Rejoin on an existing ongoing call no longer fails with a unique-constraint error — your participant row is REVIVED in place (left_at cleared, last_seen refreshed) instead of trying to insert a duplicate.",
+      "Tapping a voice/video call button on a stale ongoing call now force-ends the ghost event server-side and starts a brand-new call instead of dumping you into a dead one.",
+      "Screen-share volume sliders now affect the only audible audio path — removed a duplicate hidden audio element that was leaking sound past the volume control on the web app.",
+      "iOS native app: matched the same liveness rules — Join/Rejoin only appears when at least one peer has heartbeated recently, and the chat thread auto-sweeps stale ongoing pills into 'Call ended' on open.",
+      "Group calls now share the same heartbeat + liveness logic as 1-on-1 calls, so multi-person Rejoin is no longer a roulette wheel.",
+    ],
+  },
   {
     version: "0.2.26",
     title: "Calls that don't bail on you, plus a smarter mic test",

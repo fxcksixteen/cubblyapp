@@ -487,13 +487,16 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       state: "ongoing",
     } as any);
 
-    // Insert participant row for self
-    await supabase.from("call_participants").insert({
-      call_event_id: callEventId,
-      user_id: user.id,
-      is_muted: false,
-      is_deafened: false,
-    } as any);
+    // Insert participant row for self via the heartbeat RPC so left_at is
+    // cleared and last_seen_at is fresh (revives any prior row instead of
+    // failing the unique constraint).
+    await (supabase as any).rpc("heartbeat_call_participant", {
+      _call_event_id: callEventId,
+      _is_muted: false,
+      _is_deafened: false,
+      _is_video_on: false,
+      _is_screen_sharing: false,
+    });
 
     setActiveCall({ conversationId, conversationName, joinedAt: Date.now(), isMuted: false, isDeafened: false, isVideoOn: false, isScreenSharing: false });
     playSound("message", { volume: 0.4 });
@@ -704,14 +707,17 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     });
     playSound("message", { volume: 0.4 });
 
-    // Insert participant row
+    // Insert participant row via the heartbeat RPC so a previously-left
+    // row is REVIVED (left_at cleared) instead of failing the unique
+    // (call_event_id, user_id) constraint.
     if (inc.callEventId) {
-      await supabase.from("call_participants").insert({
-        call_event_id: inc.callEventId,
-        user_id: user.id,
-        is_muted: false,
-        is_deafened: false,
-      } as any);
+      await (supabase as any).rpc("heartbeat_call_participant", {
+        _call_event_id: inc.callEventId,
+        _is_muted: false,
+        _is_deafened: false,
+        _is_video_on: false,
+        _is_screen_sharing: false,
+      });
     }
 
     await joinCallChannel(inc.conversationId);
@@ -1104,6 +1110,28 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     }, 2000);
     return () => clearInterval(interval);
   }, [activeCall?.conversationId]);
+
+  // Heartbeat: refresh last_seen_at every 10s while in a group call so other
+  // clients can tell us apart from a ghost participant row. Without this,
+  // peers' liveness check (FRESH_MS = 30s) would mark us stale and the
+  // rejoin pill would incorrectly disappear.
+  useEffect(() => {
+    if (!activeCall || !user) return;
+    const evtId = callEventIdRef.current;
+    if (!evtId) return;
+    const tick = () => {
+      (supabase as any).rpc("heartbeat_call_participant", {
+        _call_event_id: evtId,
+        _is_muted: activeCall.isMuted ?? null,
+        _is_deafened: activeCall.isDeafened ?? null,
+        _is_video_on: activeCall.isVideoOn ?? null,
+        _is_screen_sharing: activeCall.isScreenSharing ?? null,
+      }).catch(() => {});
+    };
+    tick();
+    const i = setInterval(tick, 10_000);
+    return () => clearInterval(i);
+  }, [activeCall, user]);
 
   return (
     <GroupCallContext.Provider value={{
