@@ -18,6 +18,7 @@ const GlobalCallIndicator = () => {
   const { activeCall, endCall } = useVoice();
   const navigate = useNavigate();
   const location = useLocation();
+  const isMobile = useIsMobile();
   const [elapsed, setElapsed] = useState(0);
 
   // Tick a duration counter while connected
