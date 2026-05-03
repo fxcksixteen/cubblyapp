@@ -28,17 +28,24 @@ export const CURRENT_VERSION = "0.2.27";
 export const CHANGELOG: ChangelogEntry[] = [
   {
     version: "0.2.27",
-    title: "Ghost calls killed for good — rejoin actually rejoins",
+    title: "Image right-click, honest 'Not in call' UI, cleaner mobile call view",
     date: "2026-05-03",
     hero: bearImage,
-    newFeatures: [],
+    newFeatures: [
+      "Right-click any image in chat — or in the fullscreen viewer — to Save image as…, Copy image, Copy image link, or Open in new tab.",
+      "iOS PWA: brand-new Discord-style fullscreen call view with a centered avatar tile, a green animated speaking ring, name pill, and a clean rounded controls bar.",
+    ],
     bugFixes: [
-      "Calls now use a 10-second heartbeat per participant. If nobody has checked in within the last 30 seconds, the call is considered ended — no more 'Rejoin' pill for a call that nobody is actually in.",
-      "Tapping Rejoin on an existing ongoing call no longer fails with a unique-constraint error — your participant row is REVIVED in place (left_at cleared, last_seen refreshed) instead of trying to insert a duplicate.",
-      "Tapping a voice/video call button on a stale ongoing call now force-ends the ghost event server-side and starts a brand-new call instead of dumping you into a dead one.",
-      "Screen-share volume sliders now affect the only audible audio path — removed a duplicate hidden audio element that was leaking sound past the volume control on the web app.",
-      "iOS native app: matched the same liveness rules — Join/Rejoin only appears when at least one peer has heartbeated recently, and the chat thread auto-sweeps stale ongoing pills into 'Call ended' on open.",
-      "Group calls now share the same heartbeat + liveness logic as 1-on-1 calls, so multi-person Rejoin is no longer a roulette wheel.",
+      "When you ring someone and they don't answer for 30 seconds, the call panel now flips from 'Ringing…' to 'Not in call' so you actually KNOW they haven't joined. The call stays ongoing — they can still tap the chat-thread pill to join.",
+      "iOS PWA: removed the desktop floating call pill — only the mobile-anchored 'in call' pill above the bottom nav shows now. No more two competing indicators.",
+      "Calls now use a 10-second heartbeat per participant. If nobody has checked in within 30s, the call is treated as ended — no more ghost 'Rejoin' pills.",
+      "Tapping Rejoin no longer fails with a unique-constraint error — your participant row is revived in place instead.",
+      "Tapping a call button on a stale ongoing call force-ends the ghost event and starts a brand-new call instead of dumping you into a dead one.",
+      "Screen-share volume sliders now affect the only audible audio path — removed a duplicate hidden audio element.",
+      "iOS native: chat threads now resync the latest messages whenever the app returns to the foreground AND every 15 seconds in the background, so peers no longer get stuck on stale threads when the realtime websocket silently drops.",
+      "iOS native: matched the same call liveness rules — Join/Rejoin only appears when at least one peer has heartbeated recently, and stale ongoing pills auto-collapse to 'Call ended' on open.",
+      "Group calls share the same heartbeat + liveness logic as 1-on-1 calls, so multi-person Rejoin is no longer a roulette wheel.",
+      "Hardened the What's New modal against missing list fields so it can't crash with an undefined.map on older entries.",
     ],
   },
   {
