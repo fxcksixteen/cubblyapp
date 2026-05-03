@@ -394,6 +394,7 @@ final class CallStore: ObservableObject {
     // MARK: - End call
 
     func endCall() async {
+        stopHeartbeat()
         let conv = conversationId
         if let signaling = signaling, conv != nil {
             await signaling.broadcast(type: "hangup")
