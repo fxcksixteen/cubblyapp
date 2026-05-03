@@ -547,7 +547,11 @@ final class CallStore: ObservableObject {
             peerIsScreenSharing = false
 
         case .hangup:
-            Task { await endCall() }
+            // Match web parity (VoiceContext.tsx): the peer left, but WE stay
+            // in the call (it's still "ongoing" until the LAST participant
+            // leaves). Tear down the per-peer pieces but keep CallStore.state
+            // alive so the user can still see the call UI / be rejoined.
+            Task { await peerLeftButStayInCall() }
 
         case .peerMute(_, let m, let d):
             peerIsMuted = m || d
