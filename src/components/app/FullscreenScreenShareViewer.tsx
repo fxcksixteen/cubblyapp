@@ -49,15 +49,17 @@ const saveStreamVolume = (key: string, v: number) => {
   } catch {}
 };
 
-const FullscreenScreenShareViewer = ({ stream, sharerName, type = "screen", isLocal, onClose }: Props) => {
+const FullscreenScreenShareViewer = ({ stream, sharerName, type = "screen", isLocal, peerUserId, onClose }: Props) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const hiddenAudioRef = useRef<HTMLAudioElement | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
 
   // Persistence key — per stream id so each share remembers its own volume.
   const persistKey = `${type}:${stream.id || "unknown"}`;
 
-  // 0..2 (200%). Stream-level volume — drives the playback element directly.
+  // 0..2 (200%). Stream-level volume — drives the SAME audio element the
+  // call panel already created for this peer's screen audio. We never
+  // create a second audio element here — that was the "duplicate audio
+  // that mute didn't silence" bug.
   const [volume, setVolume] = useState<number>(() => isLocal ? 1 : loadStreamVolume(persistKey));
   const [muted, setMuted] = useState<boolean>(false);
   const [fitMode, setFitMode] = useState<"contain" | "cover">("contain");
@@ -66,55 +68,39 @@ const FullscreenScreenShareViewer = ({ stream, sharerName, type = "screen", isLo
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const [previewPaused, setPreviewPaused] = useState(false);
 
-  // Wire stream + autoplay. The visible <video> element only ever PLAYS
-  // VIDEO — its audio is muted because we route the audible playback
-  // through a hidden <audio> element with the same MediaStream. That gives
-  // us reliable >100% volume boost via WebAudio when needed.
+  // Locate the SHARED screenshare <audio> element managed by VoiceContext /
+  // GroupCallContext. We control IT directly — no duplicate playback.
+  const findSharedAudioEl = (): HTMLAudioElement | null => {
+    if (!peerUserId || type !== "screen" || isLocal) return null;
+    return document.querySelector<HTMLAudioElement>(
+      `audio[data-cubbly-peer="${peerUserId}"][data-cubbly-kind="screen"]`
+    );
+  };
+
+  // Wire the visible <video> for picture only — its audio stays muted because
+  // the audible playback is owned by the shared <audio> element above.
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
     v.srcObject = stream;
-    v.muted = true;          // visible <video> stays silent
+    v.muted = true;
     v.volume = 1;
     v.play().catch(() => {});
   }, [stream]);
 
-  // Hidden <audio> element drives the audible playback (when not local).
-  useEffect(() => {
-    if (isLocal) return;
-    let audioEl = hiddenAudioRef.current;
-    if (!audioEl) {
-      audioEl = document.createElement("audio");
-      audioEl.autoplay = true;
-      audioEl.setAttribute("playsinline", "true");
-      (audioEl as any).playsInline = true;
-      audioEl.style.display = "none";
-      document.body.appendChild(audioEl);
-      hiddenAudioRef.current = audioEl;
-    }
-    audioEl.srcObject = stream;
-    audioEl.muted = muted;
-    audioEl.volume = Math.max(0, Math.min(1, volume));
-    audioEl.play().catch(() => {});
-    return () => {
-      // Clean up only when component unmounts — handled in the unmount effect below.
-    };
-  }, [stream, isLocal]);
-
-  // Apply volume/mute to the hidden <audio> element + (above 1.0) a WebAudio
-  // gain stage so users can boost a quiet stream up to 200%.
+  // Apply volume/mute. Below 100%: element.volume directly. Above 100%:
+  // route the SAME stream through a WebAudio gain graph and mute the element
+  // so we don't double-play. Either way, only ONE audible path exists.
   const audioCtxRef = useRef<AudioContext | null>(null);
   const audioGainRef = useRef<GainNode | null>(null);
   const audioSrcRef = useRef<MediaStreamAudioSourceNode | null>(null);
   useEffect(() => {
-    if (isLocal) return;
-    const audioEl = hiddenAudioRef.current;
+    if (isLocal || type !== "screen") return;
+    const audioEl = findSharedAudioEl();
     if (!audioEl) return;
-    // Below 100%: just use element.volume — works everywhere incl. iOS.
+
     if (volume <= 1) {
-      audioEl.muted = muted;
-      audioEl.volume = volume;
-      // If a graph was active, tear it down so we go back to element-driven.
+      // Tear down any boost graph from a previous higher value.
       if (audioCtxRef.current) {
         try { audioSrcRef.current?.disconnect(); } catch {}
         try { audioGainRef.current?.disconnect(); } catch {}
@@ -123,9 +109,15 @@ const FullscreenScreenShareViewer = ({ stream, sharerName, type = "screen", isLo
         audioGainRef.current = null;
         audioSrcRef.current = null;
       }
+      try {
+        audioEl.muted = muted;
+        audioEl.volume = volume;
+        audioEl.play().catch(() => {});
+      } catch {}
       return;
     }
-    // > 100%: spin up a gain graph (does not work on iOS — boost capped at 1.0).
+
+    // > 100%: WebAudio boost on the shared stream, element muted to prevent doubling.
     try {
       if (!audioCtxRef.current) {
         const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -135,16 +127,14 @@ const FullscreenScreenShareViewer = ({ stream, sharerName, type = "screen", isLo
         audioCtxRef.current = ctx;
         audioGainRef.current = gain;
         audioSrcRef.current = src;
-        // Mute the element so we don't double-play.
-        audioEl.muted = true;
       }
       audioGainRef.current!.gain.value = muted ? 0 : volume;
+      try { audioEl.muted = true; } catch {}
     } catch (e) {
       console.warn("[FullscreenViewer] WebAudio boost failed, falling back to element:", e);
-      audioEl.muted = muted;
-      audioEl.volume = 1;
+      try { audioEl.muted = muted; audioEl.volume = 1; } catch {}
     }
-  }, [volume, muted, isLocal, stream]);
+  }, [volume, muted, isLocal, stream, type, peerUserId]);
 
   // Persist stream volume.
   useEffect(() => {
@@ -152,19 +142,19 @@ const FullscreenScreenShareViewer = ({ stream, sharerName, type = "screen", isLo
     saveStreamVolume(persistKey, volume);
   }, [volume, persistKey, isLocal]);
 
-  // Cleanup on unmount.
+  // On unmount, tear down the boost graph and RESTORE the shared element to
+  // a sane unmuted/full volume state so the user keeps hearing the share.
   useEffect(() => {
     return () => {
       try { audioSrcRef.current?.disconnect(); } catch {}
       try { audioGainRef.current?.disconnect(); } catch {}
       try { audioCtxRef.current?.close(); } catch {}
-      const audioEl = hiddenAudioRef.current;
+      const audioEl = findSharedAudioEl();
       if (audioEl) {
-        try { audioEl.pause(); } catch {}
-        try { audioEl.srcObject = null; } catch {}
-        try { audioEl.remove(); } catch {}
+        try { audioEl.muted = false; audioEl.volume = 1; audioEl.play().catch(() => {}); } catch {}
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Auto-hide chrome after idle
