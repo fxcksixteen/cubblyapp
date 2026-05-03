@@ -52,7 +52,7 @@ final class CallSignaling {
     // MARK: - Global ring channel (always on)
 
     func subscribeToIncomingCalls() async {
-        let channel = client.realtimeV2.channel("voice-global:\(userId.uuidString)")
+        let channel = await RealtimeChannelFactory.make("voice-global:\(userId.uuidString)", client: client)
         let stream = channel.broadcastStream(event: "incoming-call")
         Task { [weak self] in
             for await message in stream {
@@ -88,7 +88,7 @@ final class CallSignaling {
 
     func joinCallChannel(conversationId: UUID) async {
         await leaveCallChannel()
-        let channel = client.realtimeV2.channel("voice-call:\(conversationId.uuidString)")
+        let channel = await RealtimeChannelFactory.make("voice-call:\(conversationId.uuidString)", client: client)
         currentConversationId = conversationId
 
         let stream = channel.broadcastStream(event: "voice-signal")
@@ -102,7 +102,7 @@ final class CallSignaling {
     }
 
     func leaveCallChannel() async {
-        if let ch = callChannel { await ch.unsubscribe() }
+        await RealtimeChannelFactory.remove(callChannel, client: client)
         callChannel = nil
         currentConversationId = nil
     }
@@ -174,7 +174,7 @@ final class CallSignaling {
 
     /// Ring a remote user via their global channel.
     func ringUser(targetUserId: UUID, conversationId: UUID, callEventId: UUID, callerName: String?, callerAvatarUrl: String?) async {
-        let channel = client.realtimeV2.channel("voice-global:\(targetUserId.uuidString)")
+        let channel = await RealtimeChannelFactory.make("voice-global:\(targetUserId.uuidString)", client: client)
         await channel.subscribe()
         var payload: [String: AnyJSON] = [
             "targetId": .string(targetUserId.uuidString),
@@ -189,7 +189,7 @@ final class CallSignaling {
         // Keep the global channel alive so the ringee's ack/answer can come back.
         Task {
             try? await Task.sleep(nanoseconds: 5_000_000_000)
-            await channel.unsubscribe()
+            await RealtimeChannelFactory.remove(channel, client: client)
         }
     }
 }
