@@ -67,9 +67,13 @@ struct CallView: View {
 
     private var topBar: some View {
         HStack(spacing: 8) {
-            Text(store.state == .connected ? "Voice Connected" : (store.state == .calling ? "Calling…" : "Connecting…"))
+            Text(store.state == .connected
+                 ? "Voice Connected"
+                 : (store.ringTimedOut ? "Not in call"
+                                       : (store.state == .calling ? "Calling…" : "Connecting…")))
                 .font(.cubbly(11, .bold))
-                .foregroundStyle(store.state == .connected ? Color.green : Color.orange)
+                .foregroundStyle(store.state == .connected ? Color.green
+                                 : (store.ringTimedOut ? Theme.Colors.textSecondary : Color.orange))
                 .textCase(.uppercase)
             Spacer()
             if store.state == .connected {
@@ -287,7 +291,8 @@ struct MinimizedCallPill: View {
                 }
                 VStack(alignment: .leading, spacing: 0) {
                     Text(store.state == .connected ? "In call with \(store.peerName)"
-                                                   : "Calling \(store.peerName)…")
+                         : (store.ringTimedOut ? "Not in call · \(store.peerName)"
+                                               : "Calling \(store.peerName)…"))
                         .font(.cubbly(13, .semibold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
