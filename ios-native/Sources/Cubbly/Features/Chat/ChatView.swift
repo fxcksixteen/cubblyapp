@@ -61,11 +61,11 @@ struct ChatView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.Colors.bgPrimary)
         .navigationBarHidden(true)
-        .horizontalSwipe(
-            right: { dismiss() },
-            leftPreview: { Color.clear },
-            rightPreview: { DMSidebarPreview() }
-        )
+        // NOTE: previously wrapped in `.horizontalSwipe(...)` so a finger
+        // drag from anywhere could pop back to the DM list — but that
+        // simultaneous drag gesture was eating vertical touches and
+        // breaking the chat ScrollView entirely on iOS 17/18. Use the
+        // back chevron in the header (and the system edge swipe) instead.
         .sheet(isPresented: $showGifPicker) {
             GiphyPickerView { url in
                 showGifPicker = false
@@ -290,7 +290,10 @@ struct ChatView: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .simultaneousGesture(TapGesture().onEnded { composerFocused = false })
-            .onChange(of: messages.count) { _, _ in
+            .onChange(of: messages.last?.id) { _, _ in
+                // Only snap to the new last message — NOT on every count
+                // change, otherwise prepending older messages while
+                // paginating yanks the user back down to the bottom.
                 if let last = messages.last?.id {
                     withAnimation(.easeOut(duration: 0.18)) {
                         proxy.scrollTo(last, anchor: .bottom)
@@ -1110,26 +1113,16 @@ private struct DiscordStyleBubble: View {
         .scaleEffect(isPressing ? 0.97 : 1.0)
         .animation(.spring(response: 0.25, dampingFraction: 0.75), value: isPressing)
         .contentShape(Rectangle())
-        // Touch-down detection via a 0-distance drag — flips the press flag
-        // immediately so the user sees they're targeting the right message.
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { value in
-                    if !isPressing {
-                        isPressing = true
-                        UISelectionFeedbackGenerator().selectionChanged()
-                    }
-                    // Cancel visual if the finger drifts (so scrolling works).
-                    let d = abs(value.translation.width) + abs(value.translation.height)
-                    if d > 10 { isPressing = false }
-                }
-                .onEnded { _ in isPressing = false }
-        )
-        .onLongPressGesture(minimumDuration: 0.25) {
-            isPressing = false
+        // Long-press only — a 0-distance DragGesture for "press feedback"
+        // was eating every vertical scroll touch and freezing the chat
+        // thread. Long-press alone is enough; SwiftUI handles its own
+        // scroll-vs-press disambiguation.
+        .onLongPressGesture(minimumDuration: 0.28, maximumDistance: 12, perform: {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             onLongPress()
-        }
+        }, onPressingChanged: { pressing in
+            isPressing = pressing
+        })
     }
 
     @ViewBuilder
