@@ -567,6 +567,7 @@ final class CallStore: ObservableObject {
                 callEventId: evtId
             )
             SoundService.shared.playLooping(.incomingCall)
+            startIncomingRingTimeout()
             // Hand the ring to CallKit too so iOS shows the system call UI
             // (and the green status-bar pill once accepted).
             CallKitService.shared.reportIncoming(handleName: name ?? "Someone") { _ in }
@@ -667,6 +668,8 @@ final class CallStore: ObservableObject {
             // Auto-accepted via accept sheet flow.
             state = .connected
             startedAt = Date()
+            ringTimedOut = false
+            stopRingTimeouts()
         }
         do {
             try await voice.setRemoteDescription(RTCSessionDescription(type: .offer, sdp: sdp))
@@ -689,6 +692,8 @@ final class CallStore: ObservableObject {
             pendingRemoteIce.removeAll()
             state = .connected
             startedAt = Date()
+            ringTimedOut = false
+            stopRingTimeouts()
             // Tell CallKit we're connected so the green pill appears.
             CallKitService.shared.reportConnected()
         } catch {
@@ -755,6 +760,8 @@ final class CallStore: ObservableObject {
                     if self.state != .connected {
                         self.state = .connected
                         self.startedAt = self.startedAt ?? Date()
+                        self.ringTimedOut = false
+                        self.stopRingTimeouts()
                         CallKitService.shared.reportConnected()
                         print("[Call] ✅ ICE connected — call is live")
                     }
