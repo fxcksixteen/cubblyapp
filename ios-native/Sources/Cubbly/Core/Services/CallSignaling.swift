@@ -141,7 +141,10 @@ final class CallSignaling {
             }
         case "screen-stop":
             onEvent?(.screenStop(senderId: senderId))
-        case "hangup":
+        case "hangup", "peer-leave":
+            // v0.2.27 web/desktop sends `peer-leave` for soft-leave (peer
+            // gone but call_event still ongoing). Older clients still send
+            // `hangup`. Both map to the same iOS-side soft-leave handling.
             onEvent?(.hangup(senderId: senderId))
         case "peer-mute":
             let m = payload["isMuted"]?.boolValue ?? false

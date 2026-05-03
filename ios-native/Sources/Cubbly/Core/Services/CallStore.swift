@@ -26,6 +26,10 @@ final class CallStore: ObservableObject {
     @Published private(set) var startedAt: Date?
     @Published var isMuted: Bool = false
     @Published var isDeafened: Bool = false
+    /// Mirrors web's `ringTimedOut`: true once the 30s outgoing-ring timer
+    /// elapsed without the peer answering. Call STAYS open (peer can still
+    /// Join from the chat pill) but UI flips from "Calling…" → "Not in call".
+    @Published var ringTimedOut: Bool = false
     /// When true, the full-screen CallView is hidden; only the pill at the
     /// top of MainTabView remains. The call itself keeps running.
     @Published var isMinimized: Bool = false
@@ -69,6 +73,9 @@ final class CallStore: ObservableObject {
     /// Heartbeat task — pings `heartbeat_call_participant` every 10s while
     /// in a real call so other clients can tell us apart from a ghost row.
     private var heartbeatTask: Task<Void, Never>?
+    /// 30s unanswered-ring timer (Discord parity).
+    private var ringTimeoutTask: Task<Void, Never>?
+    private var incomingRingTimeoutTask: Task<Void, Never>?
 
     private init() {}
 
@@ -182,6 +189,7 @@ final class CallStore: ObservableObject {
                 callerAvatarUrl: peerAvatarUrl
             )
         }
+        startOutgoingRingTimeout()
         print("[Call] ⏳ Waiting for peer to send ready-for-offer…")
     }
 
@@ -369,6 +377,8 @@ final class CallStore: ObservableObject {
         self.startedAt = nil
         self.isMinimized = false
         self.incoming = nil
+        self.ringTimedOut = false
+        incomingRingTimeoutTask?.cancel(); incomingRingTimeoutTask = nil
         SoundService.shared.stopLooping(.incomingCall)
         SoundService.shared.play(.message)
         configureAudioSession()
@@ -388,16 +398,21 @@ final class CallStore: ObservableObject {
 
     func declineIncoming() {
         SoundService.shared.stopLooping(.incomingCall)
+        incomingRingTimeoutTask?.cancel(); incomingRingTimeoutTask = nil
         incoming = nil
+        CallKitService.shared.endActiveCallIfNeeded()
     }
 
     // MARK: - End call
 
     func endCall() async {
         stopHeartbeat()
+        stopRingTimeouts()
         let conv = conversationId
         if let signaling = signaling, conv != nil {
-            await signaling.broadcast(type: "hangup")
+            // v0.2.27 parity: soft-leave so the call_event stays ongoing for
+            // any remaining participants. Web/desktop accept both for compat.
+            await signaling.broadcast(type: "peer-leave")
         }
         SoundService.shared.stopLooping(.incomingCall)
         SoundService.shared.stopLooping(.outgoingRing)
@@ -408,9 +423,7 @@ final class CallStore: ObservableObject {
         await signaling?.leaveCallChannel()
         if let evt = currentCallEventId {
             let endedAt = ISO8601DateFormatter().string(from: Date())
-            // Mark our own participant row as left so the next "Join" attempt
-            // correctly sees there's no live peer and starts a fresh call
-            // instead of joining a ghost.
+            // Mark our own participant row as left first.
             if let myId = try? await SupabaseManager.shared.client.auth.user().id {
                 _ = try? await SupabaseManager.shared.client
                     .from("call_participants")
@@ -420,11 +433,24 @@ final class CallStore: ObservableObject {
                     .filter("left_at", operator: "is", value: "null")
                     .execute()
             }
-            try? await SupabaseManager.shared.client
-                .from("call_events")
-                .update(["state": "ended", "ended_at": endedAt])
-                .eq("id", value: evt.uuidString)
+            // Only end the whole call_event if NO other participant is still
+            // live. Mirrors web/desktop: the call_event lives until the last
+            // person leaves so others can still join from the chat pill.
+            struct PartRow: Decodable { let user_id: UUID }
+            let live: [PartRow] = (try? await SupabaseManager.shared.client
+                .from("call_participants")
+                .select("user_id")
+                .eq("call_event_id", value: evt.uuidString)
+                .filter("left_at", operator: "is", value: "null")
                 .execute()
+                .value) ?? []
+            if live.isEmpty {
+                try? await SupabaseManager.shared.client
+                    .from("call_events")
+                    .update(["state": "ended", "ended_at": endedAt])
+                    .eq("id", value: evt.uuidString)
+                    .execute()
+            }
         }
         resetAudioSession()
         CallKitService.shared.endActiveCallIfNeeded()
@@ -442,8 +468,46 @@ final class CallStore: ObservableObject {
         isMuted = false
         isDeafened = false
         isMinimized = false
+        ringTimedOut = false
         pendingRemoteIce.removeAll()
         pendingScreenIce.removeAll()
+    }
+
+    // MARK: - 30s ring timeouts (Discord parity)
+
+    private func startOutgoingRingTimeout() {
+        ringTimeoutTask?.cancel()
+        ringTimeoutTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 30_000_000_000)
+            await MainActor.run {
+                guard let self = self else { return }
+                guard self.state == .calling || self.state == .ringing else { return }
+                SoundService.shared.stopLooping(.outgoingRing)
+                self.ringTimedOut = true
+                print("[Call] ⏰ 30s ring timeout — peer didn't answer; staying in call alone")
+            }
+        }
+    }
+
+    private func startIncomingRingTimeout() {
+        incomingRingTimeoutTask?.cancel()
+        incomingRingTimeoutTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 30_000_000_000)
+            await MainActor.run {
+                guard let self = self else { return }
+                if self.incoming != nil {
+                    SoundService.shared.stopLooping(.incomingCall)
+                    self.incoming = nil
+                    CallKitService.shared.endActiveCallIfNeeded()
+                    print("[Call] ⏰ 30s incoming ring timeout — auto-dismissed")
+                }
+            }
+        }
+    }
+
+    private func stopRingTimeouts() {
+        ringTimeoutTask?.cancel(); ringTimeoutTask = nil
+        incomingRingTimeoutTask?.cancel(); incomingRingTimeoutTask = nil
     }
 
     // MARK: - Mute / Deafen
@@ -507,6 +571,7 @@ final class CallStore: ObservableObject {
                 callEventId: evtId
             )
             SoundService.shared.playLooping(.incomingCall)
+            startIncomingRingTimeout()
             // Hand the ring to CallKit too so iOS shows the system call UI
             // (and the green status-bar pill once accepted).
             CallKitService.shared.reportIncoming(handleName: name ?? "Someone") { _ in }
@@ -607,6 +672,8 @@ final class CallStore: ObservableObject {
             // Auto-accepted via accept sheet flow.
             state = .connected
             startedAt = Date()
+            ringTimedOut = false
+            stopRingTimeouts()
         }
         do {
             try await voice.setRemoteDescription(RTCSessionDescription(type: .offer, sdp: sdp))
@@ -629,6 +696,8 @@ final class CallStore: ObservableObject {
             pendingRemoteIce.removeAll()
             state = .connected
             startedAt = Date()
+            ringTimedOut = false
+            stopRingTimeouts()
             // Tell CallKit we're connected so the green pill appears.
             CallKitService.shared.reportConnected()
         } catch {
@@ -695,6 +764,8 @@ final class CallStore: ObservableObject {
                     if self.state != .connected {
                         self.state = .connected
                         self.startedAt = self.startedAt ?? Date()
+                        self.ringTimedOut = false
+                        self.stopRingTimeouts()
                         CallKitService.shared.reportConnected()
                         print("[Call] ✅ ICE connected — call is live")
                     }
