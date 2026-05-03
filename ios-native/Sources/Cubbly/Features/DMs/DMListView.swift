@@ -67,8 +67,8 @@ struct DMListView: View {
             }
             .onDisappear {
                 Task {
-                    if let c = msgChannel { await c.unsubscribe() }
-                    if let c = convChannel { await c.unsubscribe() }
+                    await RealtimeChannelFactory.remove(msgChannel)
+                    await RealtimeChannelFactory.remove(convChannel)
                     msgChannel = nil
                     convChannel = nil
                 }
@@ -210,9 +210,7 @@ struct DMListView: View {
     /// and keeps the home tab live without a manual refresh.
     private func subscribeRealtime() async {
         guard msgChannel == nil, convChannel == nil else { return }
-        let client = SupabaseManager.shared.client
-
-        let mc = client.channel("dm-list-messages")
+        let mc = await RealtimeChannelFactory.make("dm-list-messages")
         let mInserts = mc.postgresChange(
             InsertAction.self, schema: "public", table: "messages")
         Task {
@@ -226,7 +224,7 @@ struct DMListView: View {
         catch { print("[DMList] messages channel subscribe failed:", error) }
         msgChannel = mc
 
-        let cc = client.channel("dm-list-conversations")
+        let cc = await RealtimeChannelFactory.make("dm-list-conversations")
         let cUpdates = cc.postgresChange(
             UpdateAction.self, schema: "public", table: "conversations")
         Task {
