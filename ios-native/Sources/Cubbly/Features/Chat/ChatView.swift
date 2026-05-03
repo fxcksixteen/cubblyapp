@@ -1110,26 +1110,16 @@ private struct DiscordStyleBubble: View {
         .scaleEffect(isPressing ? 0.97 : 1.0)
         .animation(.spring(response: 0.25, dampingFraction: 0.75), value: isPressing)
         .contentShape(Rectangle())
-        // Touch-down detection via a 0-distance drag — flips the press flag
-        // immediately so the user sees they're targeting the right message.
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { value in
-                    if !isPressing {
-                        isPressing = true
-                        UISelectionFeedbackGenerator().selectionChanged()
-                    }
-                    // Cancel visual if the finger drifts (so scrolling works).
-                    let d = abs(value.translation.width) + abs(value.translation.height)
-                    if d > 10 { isPressing = false }
-                }
-                .onEnded { _ in isPressing = false }
-        )
-        .onLongPressGesture(minimumDuration: 0.25) {
-            isPressing = false
+        // Long-press only — a 0-distance DragGesture for "press feedback"
+        // was eating every vertical scroll touch and freezing the chat
+        // thread. Long-press alone is enough; SwiftUI handles its own
+        // scroll-vs-press disambiguation.
+        .onLongPressGesture(minimumDuration: 0.28, maximumDistance: 12, perform: {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             onLongPress()
-        }
+        }, onPressingChanged: { pressing in
+            isPressing = pressing
+        })
     }
 
     @ViewBuilder
