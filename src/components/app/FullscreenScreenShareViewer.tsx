@@ -9,6 +9,10 @@ interface Props {
   type?: "screen" | "cam";
   /** Whether viewer is the local user (so we mute their own stream). */
   isLocal?: boolean;
+  /** Peer userId — used to find the existing per-peer screenshare audio
+   *  element so we don't create a duplicate playback path. Required when
+   *  `type === "screen"` and `isLocal === false`. */
+  peerUserId?: string;
   onClose: () => void;
 }
 
