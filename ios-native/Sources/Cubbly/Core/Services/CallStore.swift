@@ -583,10 +583,11 @@ final class CallStore: ObservableObject {
         }
         do {
             let offer = try await voice.createOffer()
+            let myName = SessionStore.shared?.currentProfile?.displayName
             await signaling.broadcast(type: "offer", payload: [
                 "sdp": .object(["type": .string("offer"), "sdp": .string(offer.sdp)]),
                 "callerAvatarUrl": peerAvatarUrl.map { .string($0) } ?? .null,
-                "senderName": SessionStore.shared?.currentProfile?.displayName.map { .string($0) } ?? .null,
+                "senderName": myName.map { .string($0) } ?? .null,
                 "callEventId": currentCallEventId.map { .string($0.uuidString) } ?? .null
             ])
             print("[Call] 📤 Offer sent in response to ready-for-offer")
