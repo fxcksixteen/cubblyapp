@@ -1149,6 +1149,18 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           // Drop instant peer state so the UI doesn't keep showing their
           // mute icon etc. Don't reset activeCall — user is still in the call.
           setPeerInstantState({});
+          // Fire an immediate heartbeat so our last_seen_at is fresh — the
+          // leaver's rejoin liveness check (30s window) will then see us and
+          // join the SAME call_event instead of starting a fresh one.
+          if (currentCallEventId) {
+            void (async () => {
+              try {
+                await (supabase as any).rpc("heartbeat_call_participant", {
+                  _call_event_id: currentCallEventId,
+                });
+              } catch {}
+            })();
+          }
           return;
         }
 
