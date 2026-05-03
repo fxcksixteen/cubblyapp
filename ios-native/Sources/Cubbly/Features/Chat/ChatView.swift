@@ -61,11 +61,10 @@ struct ChatView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.Colors.bgPrimary)
         .navigationBarHidden(true)
-        // NOTE: previously wrapped in `.horizontalSwipe(...)` so a finger
-        // drag from anywhere could pop back to the DM list — but that
-        // simultaneous drag gesture was eating vertical touches and
-        // breaking the chat ScrollView entirely on iOS 17/18. Use the
-        // back chevron in the header (and the system edge swipe) instead.
+        // Re-enable the system left-edge swipe-back gesture (hiding the nav
+        // bar disables it by default). Native edge-pan only — does NOT eat
+        // vertical scroll touches the way a custom DragGesture would.
+        .enableEdgeSwipeBack()
         .sheet(isPresented: $showGifPicker) {
             GiphyPickerView { url in
                 showGifPicker = false
@@ -247,11 +246,16 @@ struct ChatView: View {
                             .padding(.vertical, 10)
                     }
                     // Sentinel at the very top — when it appears, fetch older.
+                    // The id is tied to the oldest loaded message so SwiftUI
+                    // re-mounts the sentinel after each prepend and re-fires
+                    // onAppear, allowing repeated upward pagination instead
+                    // of stalling after the first batch.
+                    let topSentinelId = "top-sentinel-\(messages.first?.id ?? "none")"
                     Color.clear.frame(height: 1)
                         .onAppear {
                             if hasMore && !loadingOlder { Task { await loadOlder() } }
                         }
-                        .id("top-sentinel")
+                        .id(topSentinelId)
 
                     let items = timelineItems
                     ForEach(Array(items.enumerated()), id: \.element.id) { idx, item in

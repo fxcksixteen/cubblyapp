@@ -86,7 +86,10 @@ final class PresenceService: ObservableObject {
         statusRefreshTask?.cancel()
         statusRefreshTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 30_000_000_000)
+                // Tighter poll (10s) so DND/Idle/Invisible flips on the
+                // web/desktop side reflect on iOS within seconds even if the
+                // postgres_changes subscription on profiles silently drops.
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
                 guard let self else { return }
                 await self.refreshProfileStatuses()
             }
