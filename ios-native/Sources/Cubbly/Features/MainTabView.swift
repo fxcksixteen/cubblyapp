@@ -8,6 +8,8 @@ struct MainTabView: View {
     @StateObject private var presence = PresenceService.shared
     @ObservedObject private var callStore = CallStore.shared
     @ObservedObject private var chrome = ChromeStore.shared
+    @EnvironmentObject private var session: SessionStore
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         ZStack {
