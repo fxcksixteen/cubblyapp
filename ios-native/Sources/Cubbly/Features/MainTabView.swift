@@ -59,6 +59,14 @@ struct MainTabView: View {
         .animation(.easeInOut(duration: 0.2), value: callStore.state)
         .animation(.easeInOut(duration: 0.2), value: callStore.isMinimized)
         .animation(.easeInOut(duration: 0.2), value: callStore.incoming?.id)
+        // Presence websocket can die silently while the app is suspended,
+        // leaving everyone looking offline. Restart it whenever the app
+        // returns to the foreground so iOS matches web/desktop.
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active, let uid = session.currentUserID {
+                Task { await PresenceService.shared.start(userID: uid) }
+            }
+        }
     }
 }
 
