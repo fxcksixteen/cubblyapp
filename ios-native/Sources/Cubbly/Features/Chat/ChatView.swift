@@ -290,7 +290,10 @@ struct ChatView: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .simultaneousGesture(TapGesture().onEnded { composerFocused = false })
-            .onChange(of: messages.count) { _, _ in
+            .onChange(of: messages.last?.id) { _, _ in
+                // Only snap to the new last message — NOT on every count
+                // change, otherwise prepending older messages while
+                // paginating yanks the user back down to the bottom.
                 if let last = messages.last?.id {
                     withAnimation(.easeOut(duration: 0.18)) {
                         proxy.scrollTo(last, anchor: .bottom)
