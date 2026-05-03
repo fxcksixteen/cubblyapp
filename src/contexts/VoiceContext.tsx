@@ -812,6 +812,23 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
   const ensureOwnParticipantRow = useCallback(async (callEventId: string, overrides?: ParticipantStatePatch) => {
     if (!user) return;
+    // Prefer the new heartbeat RPC: it upserts on (call_event_id, user_id),
+    // CLEARS left_at (this is what makes rejoin work — the previous insert()
+    // path failed silently because of the UNIQUE constraint), and refreshes
+    // last_seen_at so other devices know we're really live.
+    try {
+      await (supabase as any).rpc("heartbeat_call_participant", {
+        _call_event_id: callEventId,
+        _is_muted: overrides?.is_muted ?? null,
+        _is_deafened: overrides?.is_deafened ?? null,
+        _is_video_on: overrides?.is_video_on ?? null,
+        _is_screen_sharing: overrides?.is_screen_sharing ?? null,
+      });
+      return;
+    } catch (e) {
+      console.warn("[Voice] heartbeat_call_participant RPC failed, falling back to direct insert:", e);
+    }
+    // Fallback (older backend): emulate the old behaviour.
     const { data: existing } = await supabase
       .from("call_participants")
       .select("id")
