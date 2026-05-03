@@ -159,37 +159,30 @@ final class CallStore: ObservableObject {
         // Activate audio session up front for outgoing tone.
         configureAudioSession()
 
-        // Build the voice peer connection and send an offer.
-        let voice = WebRTCClient(iceServers: iceServers, includeMicTrack: true)
-        wireVoiceCallbacks(voice)
-        voiceClient = voice
-
-        do {
-            let offer = try await voice.createOffer()
-            await signaling.broadcast(type: "offer", payload: [
-                "sdp": .object(["type": .string("offer"), "sdp": .string(offer.sdp)]),
-                "callerAvatarUrl": peerAvatarUrl.map { .string($0) } ?? .null
-            ])
-            // Insert our own call_participants row so the other side knows
-            // we're live (mirrors web's ensureOwnParticipantRow).
-            if let evtId = currentCallEventId {
-                await ensureOwnParticipantRow(callEventId: evtId)
-                startHeartbeat()
-            }
-            // Ring the peer's global channel so they get the incoming-call sheet.
-            if let evtId = currentCallEventId {
-                await signaling.ringUser(
-                    targetUserId: peerId,
-                    conversationId: conversationId,
-                    callEventId: evtId,
-                    callerName: SessionStore.shared?.currentProfile?.displayName,
-                    callerAvatarUrl: peerAvatarUrl
-                )
-            }
-        } catch {
-            print("[Call] createOffer failed:", error)
-            await endCall()
+        // Heartbeat into the call_participants row immediately so the peer
+        // can see us as live the moment they accept.
+        if let evtId = currentCallEventId {
+            await ensureOwnParticipantRow(callEventId: evtId)
+            startHeartbeat()
         }
+
+        // CRITICAL — match web/desktop handshake (VoiceContext.tsx):
+        //  1. Caller does NOT send an offer up front.
+        //  2. Caller rings the peer.
+        //  3. Peer accepts → broadcasts `ready-for-offer` on the per-call channel.
+        //  4. Caller responds with the actual SDP offer.
+        // Sending an offer before the peer is on the channel was the reason
+        // cross-platform calls between iOS and web/desktop never connected.
+        if let evtId = currentCallEventId {
+            await signaling.ringUser(
+                targetUserId: peerId,
+                conversationId: conversationId,
+                callEventId: evtId,
+                callerName: SessionStore.shared?.currentProfile?.displayName,
+                callerAvatarUrl: peerAvatarUrl
+            )
+        }
+        print("[Call] ⏳ Waiting for peer to send ready-for-offer…")
     }
 
     // MARK: - Join an already-ongoing call (no new ring, no duplicate event)
@@ -371,8 +364,9 @@ final class CallStore: ObservableObject {
         self.peerName = inc.callerName
         self.peerAvatarUrl = inc.callerAvatarUrl
         self.currentCallEventId = inc.callEventId
-        self.state = .connected
-        self.startedAt = Date()
+        // Web flips to "calling" while waiting for the offer to arrive — match it.
+        self.state = .calling
+        self.startedAt = nil
         self.isMinimized = false
         self.incoming = nil
         SoundService.shared.stopLooping(.incomingCall)
@@ -383,7 +377,13 @@ final class CallStore: ObservableObject {
             await ensureOwnParticipantRow(callEventId: evt)
             startHeartbeat()
         }
-        // Voice client will be created when we receive the offer (web sends offer right after ring).
+        // Tell the caller we're on the channel and ready for their offer.
+        // Without this, web/desktop callers (which now wait for ready-for-offer
+        // before sending the SDP offer) hang forever and the call never forms.
+        await signaling.broadcast(type: "ready-for-offer", payload: [
+            "callEventId": inc.callEventId.map { .string($0.uuidString) } ?? .null
+        ])
+        print("[Call] 📡 Sent ready-for-offer to caller")
     }
 
     func declineIncoming() {
@@ -547,7 +547,11 @@ final class CallStore: ObservableObject {
             peerIsScreenSharing = false
 
         case .hangup:
-            Task { await endCall() }
+            // Match web parity (VoiceContext.tsx): the peer left, but WE stay
+            // in the call (it's still "ongoing" until the LAST participant
+            // leaves). Tear down the per-peer pieces but keep CallStore.state
+            // alive so the user can still see the call UI / be rejoined.
+            Task { await peerLeftButStayInCall() }
 
         case .peerMute(_, let m, let d):
             peerIsMuted = m || d
@@ -579,9 +583,14 @@ final class CallStore: ObservableObject {
         }
         do {
             let offer = try await voice.createOffer()
+            let myName = SessionStore.shared?.currentProfile?.displayName
             await signaling.broadcast(type: "offer", payload: [
-                "sdp": .object(["type": .string("offer"), "sdp": .string(offer.sdp)])
+                "sdp": .object(["type": .string("offer"), "sdp": .string(offer.sdp)]),
+                "callerAvatarUrl": peerAvatarUrl.map { .string($0) } ?? .null,
+                "senderName": myName.map { .string($0) } ?? .null,
+                "callEventId": currentCallEventId.map { .string($0.uuidString) } ?? .null
             ])
+            print("[Call] 📤 Offer sent in response to ready-for-offer")
         } catch {
             print("[Call] sendFreshOfferForJoiner failed:", error)
         }
@@ -679,12 +688,42 @@ final class CallStore: ObservableObject {
             }
         }
         c.onConnectionState = { [weak self] s in
-            if s == .failed || s == .disconnected || s == .closed {
-                Task { @MainActor in
-                    if self?.state == .connected { await self?.endCall() }
+            Task { @MainActor in
+                guard let self = self else { return }
+                if s == .connected {
+                    SoundService.shared.stopLooping(.outgoingRing)
+                    if self.state != .connected {
+                        self.state = .connected
+                        self.startedAt = self.startedAt ?? Date()
+                        CallKitService.shared.reportConnected()
+                        print("[Call] ✅ ICE connected — call is live")
+                    }
+                } else if s == .failed || s == .closed {
+                    if self.state == .connected { await self.endCall() }
                 }
+                // .disconnected can be transient — let WebRTC try to recover
+                // (a brief network blip shouldn't kill the call). Mirrors web.
             }
         }
+    }
+
+    /// Peer hung up but the call_event is still ongoing for everyone else.
+    /// Tear down the per-peer media but keep CallStore alive (web parity).
+    private func peerLeftButStayInCall() async {
+        voiceClient?.close(); voiceClient = nil
+        screenClient?.close(); screenClient = nil
+        remoteScreenTrack = nil
+        peerIsScreenSharing = false
+        peerIsVideoOn = false
+        peerIsMuted = false
+        pendingRemoteIce.removeAll()
+        pendingScreenIce.removeAll()
+        SoundService.shared.stopLooping(.outgoingRing)
+        // Stay "calling" so UI shows we're waiting alone in the call. The
+        // user can either End Call or wait for the peer to rejoin.
+        state = .calling
+        startedAt = nil
+        print("[Call] 👋 Peer left — staying in call, waiting for rejoin")
     }
 
     private func makeIce(from dict: [String: Any]) -> RTCIceCandidate? {
