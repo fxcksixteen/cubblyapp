@@ -49,7 +49,7 @@ final class MessageReactionsStore: ObservableObject {
     }
 
     func stop() async {
-        if let ch = channel { await ch.unsubscribe() }
+        await RealtimeChannelFactory.remove(channel)
         channel = nil
         byMessage = [:]
     }
@@ -142,8 +142,7 @@ final class MessageReactionsStore: ObservableObject {
     }
 
     private func subscribe(conversationId: UUID) async {
-        let client = SupabaseManager.shared.client
-        let ch = client.channel("message-reactions:\(conversationId.uuidString)")
+        let ch = await RealtimeChannelFactory.make("message-reactions:\(conversationId.uuidString)")
         let inserts = ch.postgresChange(
             InsertAction.self, schema: "public", table: "message_reactions")
         let deletes = ch.postgresChange(
