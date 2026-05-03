@@ -159,37 +159,30 @@ final class CallStore: ObservableObject {
         // Activate audio session up front for outgoing tone.
         configureAudioSession()
 
-        // Build the voice peer connection and send an offer.
-        let voice = WebRTCClient(iceServers: iceServers, includeMicTrack: true)
-        wireVoiceCallbacks(voice)
-        voiceClient = voice
-
-        do {
-            let offer = try await voice.createOffer()
-            await signaling.broadcast(type: "offer", payload: [
-                "sdp": .object(["type": .string("offer"), "sdp": .string(offer.sdp)]),
-                "callerAvatarUrl": peerAvatarUrl.map { .string($0) } ?? .null
-            ])
-            // Insert our own call_participants row so the other side knows
-            // we're live (mirrors web's ensureOwnParticipantRow).
-            if let evtId = currentCallEventId {
-                await ensureOwnParticipantRow(callEventId: evtId)
-                startHeartbeat()
-            }
-            // Ring the peer's global channel so they get the incoming-call sheet.
-            if let evtId = currentCallEventId {
-                await signaling.ringUser(
-                    targetUserId: peerId,
-                    conversationId: conversationId,
-                    callEventId: evtId,
-                    callerName: SessionStore.shared?.currentProfile?.displayName,
-                    callerAvatarUrl: peerAvatarUrl
-                )
-            }
-        } catch {
-            print("[Call] createOffer failed:", error)
-            await endCall()
+        // Heartbeat into the call_participants row immediately so the peer
+        // can see us as live the moment they accept.
+        if let evtId = currentCallEventId {
+            await ensureOwnParticipantRow(callEventId: evtId)
+            startHeartbeat()
         }
+
+        // CRITICAL — match web/desktop handshake (VoiceContext.tsx):
+        //  1. Caller does NOT send an offer up front.
+        //  2. Caller rings the peer.
+        //  3. Peer accepts → broadcasts `ready-for-offer` on the per-call channel.
+        //  4. Caller responds with the actual SDP offer.
+        // Sending an offer before the peer is on the channel was the reason
+        // cross-platform calls between iOS and web/desktop never connected.
+        if let evtId = currentCallEventId {
+            await signaling.ringUser(
+                targetUserId: peerId,
+                conversationId: conversationId,
+                callEventId: evtId,
+                callerName: SessionStore.shared?.currentProfile?.displayName,
+                callerAvatarUrl: peerAvatarUrl
+            )
+        }
+        print("[Call] ⏳ Waiting for peer to send ready-for-offer…")
     }
 
     // MARK: - Join an already-ongoing call (no new ring, no duplicate event)
