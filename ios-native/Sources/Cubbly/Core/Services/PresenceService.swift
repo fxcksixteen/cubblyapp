@@ -112,15 +112,29 @@ final class PresenceService: ObservableObject {
         onlineUserIDs = []
     }
 
-    /// Re-broadcast our presence so the server resets our TTL. Safe to call
-    /// repeatedly. If the channel died, fully restart it.
+    /// Re-broadcast our presence so the server resets our TTL. If the channel
+    /// is missing OR a track() throws, fully restart so status indicators
+    /// auto-recover from network blips, sleep/resume, and silent socket drops
+    /// — without the user having to relaunch the app.
     func retrack() async {
-        guard let ch = channel, let uid = trackedUserID else { return }
+        guard let uid = trackedUserID else { return }
         let key = uid.uuidString.lowercased()
+        guard let ch = channel else {
+            await start(userID: uid, force: true)
+            return
+        }
         await ch.track(state: [
             "user_id": .string(key),
             "online_at": .string(ISO8601DateFormatter().string(from: Date()))
         ])
+    }
+
+    /// Force-restart the presence channel. Called from app foreground +
+    /// network-came-back observers so a dead socket recovers immediately
+    /// instead of waiting for the 25s heartbeat tick.
+    func forceReconnect() async {
+        guard let uid = trackedUserID else { return }
+        await start(userID: uid, force: true)
     }
 
     // MARK: - Presence application

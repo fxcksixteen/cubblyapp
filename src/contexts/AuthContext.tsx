@@ -1,8 +1,9 @@
-import { createContext, useContext, useEffect, useState, useRef, ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { setDndActive } from "@/lib/sounds";
 import { setNotificationDnd } from "@/lib/notifications";
+import { subscribeWithReconnect, removeChannelByTopic } from "@/lib/realtimeReconnect";
 
 const syncDnd = (isDnd: boolean) => {
   setDndActive(isDnd);
@@ -38,7 +39,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
   const [myStatus, setMyStatusState] = useState<string>("online");
-  const presenceChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -79,24 +79,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return () => { cancelled = true; };
   }, [session?.user?.id]);
 
-  // Realtime: listen for changes to my own status row (could be edited from another tab)
+  // Realtime: listen for changes to my own status row (could be edited from another tab).
+  // Wrapped in subscribeWithReconnect so a transient socket drop doesn't leave
+  // us stuck on a stale status — it auto-resubscribes after backoff.
   useEffect(() => {
     const user = session?.user;
     if (!user) return;
-    // CRITICAL: attach .on() before .subscribe()
-    const uniqueSuffix = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const channel = supabase.channel(`my-profile-status:${user.id}:${uniqueSuffix}`);
-    channel.on(
-      "postgres_changes",
-      { event: "UPDATE", schema: "public", table: "profiles", filter: `user_id=eq.${user.id}` },
-      (payload) => {
-        const newStatus = (payload.new as any)?.status || "online";
-        setMyStatusState(newStatus);
-        syncDnd(newStatus === "dnd");
-      }
-    );
-    channel.subscribe();
-    return () => { supabase.removeChannel(channel); };
+    const topic = `my-profile-status:${user.id}`;
+    const cleanup = subscribeWithReconnect(topic, () => {
+      removeChannelByTopic(topic);
+      const channel = supabase.channel(topic);
+      channel.on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "profiles", filter: `user_id=eq.${user.id}` },
+        (payload) => {
+          const newStatus = (payload.new as any)?.status || "online";
+          setMyStatusState(newStatus);
+          syncDnd(newStatus === "dnd");
+        }
+      );
+      return channel;
+    });
+    return cleanup;
   }, [session?.user?.id]);
 
   const setMyStatus = async (status: string) => {
@@ -108,69 +112,54 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // Presence tracking — broadcast that we're online and track who else is
+  // Presence tracking — broadcast that we're online + track who else is.
+  // Wrapped in subscribeWithReconnect so a closed/errored channel auto-rebuilds
+  // (presence is what powers the green status dots — if it drops we MUST recover
+  // automatically or every user looks offline forever).
   useEffect(() => {
     const user = session?.user;
     if (!user) {
-      // Clean up presence when logged out
-      if (presenceChannelRef.current) {
-        supabase.removeChannel(presenceChannelRef.current);
-        presenceChannelRef.current = null;
-      }
       setOnlineUserIds(new Set());
       return;
     }
 
-    // CRITICAL: this MUST be a single shared channel name across all users
-    // and tabs (matches the iOS-native `global:online` room). Using a unique
-    // per-tab suffix puts every client into its own isolated room, so nobody
-    // ever sees anyone else as online — that was the root cause of all the
-    // "status indicators don't work anymore" reports.
-    // Remove any stale channel with the same topic FIRST. Without this,
-    // supabase-js hands back the cached (already-subscribed) channel and
-    // adding our presence callbacks throws "cannot add presence callbacks
-    // for realtime:global:online after subscribe()" — which then prevents
-    // the presence tracking from ever wiring up. Most often hit under
-    // React StrictMode / HMR / fast remounts.
-    try {
-      const topic = "realtime:global:online";
-      const existing = (supabase as any).getChannels?.() || [];
-      for (const ch of existing) {
-        if (ch?.topic === topic) {
-          try { supabase.removeChannel(ch); } catch {}
-        }
-      }
-    } catch {}
+    // CRITICAL: must be a single shared channel name across all users + tabs
+    // (matches the iOS-native `global:online` room). Per-tab suffixes would
+    // isolate each client and break presence entirely.
+    const topic = "global:online";
 
-    const channel = supabase.channel(`global:online`, {
-      config: { presence: { key: user.id } },
+    const cleanup = subscribeWithReconnect(topic, () => {
+      // Drop any stale cached channel before re-attaching .on() handlers,
+      // otherwise supabase-js throws "cannot add presence callbacks ... after
+      // subscribe()" on the rebuild.
+      removeChannelByTopic(topic);
+      const channel = supabase.channel(topic, {
+        config: { presence: { key: user.id } },
+      });
+      const syncPresence = () => {
+        const state = channel.presenceState();
+        const ids = new Set<string>(Object.keys(state));
+        setOnlineUserIds(ids);
+      };
+      channel
+        .on("presence", { event: "sync" }, syncPresence)
+        .on("presence", { event: "join" }, syncPresence)
+        .on("presence", { event: "leave" }, syncPresence);
+      // Track ourselves once SUBSCRIBED. We can't intercept the wrapper's
+      // .subscribe() callback so we listen for the system "sync" event, which
+      // fires immediately after SUBSCRIBED.
+      channel.on("presence", { event: "sync" }, () => {
+        // Re-track on every sync — cheap, idempotent, and ensures our presence
+        // entry survives a reconnect even if our previous track() was lost.
+        channel.track({ user_id: user.id, online_at: new Date().toISOString() }).catch(() => {});
+        syncPresence();
+      });
+      return channel;
     });
 
-    const syncPresence = () => {
-      const state = channel.presenceState();
-      const ids = new Set<string>(Object.keys(state));
-      setOnlineUserIds(ids);
-    };
-
-    channel
-      .on("presence", { event: "sync" }, syncPresence)
-      .on("presence", { event: "join" }, syncPresence)
-      .on("presence", { event: "leave" }, syncPresence)
-      .subscribe(async (status) => {
-        if (status === "SUBSCRIBED") {
-          await channel.track({ user_id: user.id, online_at: new Date().toISOString() });
-          // Hydrate immediately — presence "sync" sometimes fires only on the
-          // NEXT join/leave, which leaves the friends list looking offline
-          // until someone toggles their status. Pull the current snapshot.
-          syncPresence();
-        }
-      });
-
-    presenceChannelRef.current = channel;
-
     return () => {
-      supabase.removeChannel(channel);
-      presenceChannelRef.current = null;
+      cleanup();
+      setOnlineUserIds(new Set());
     };
   }, [session?.user?.id]);
 
