@@ -135,9 +135,9 @@ struct ChatView: View {
             }
             ChromeStore.shared.tabBarHidden = false
             Task {
-                if let ch = channel { await ch.unsubscribe() }
-                if let tc = typingChannel { await tc.unsubscribe() }
-                if let cc = callEventsChannel { await cc.unsubscribe() }
+                await RealtimeChannelFactory.remove(channel)
+                await RealtimeChannelFactory.remove(typingChannel)
+                await RealtimeChannelFactory.remove(callEventsChannel)
                 await reactions.stop()
             }
         }
@@ -154,9 +154,9 @@ struct ChatView: View {
                     await resyncLatestMessages()
                     await loadCallEvents()
                     // Re-subscribe in case the websocket died while suspended.
-                    if let ch = channel { await ch.unsubscribe() }
-                    if let tc = typingChannel { await tc.unsubscribe() }
-                    if let cc = callEventsChannel { await cc.unsubscribe() }
+                    await RealtimeChannelFactory.remove(channel)
+                    await RealtimeChannelFactory.remove(typingChannel)
+                    await RealtimeChannelFactory.remove(callEventsChannel)
                     await subscribe()
                 }
             }
@@ -781,9 +781,7 @@ struct ChatView: View {
     // MARK: - Realtime (messages + typing)
 
     private func subscribe() async {
-        let client = SupabaseManager.shared.client
-
-        let ch = client.channel("messages:\(conversation.id.uuidString)")
+        let ch = await RealtimeChannelFactory.make("messages:\(conversation.id.uuidString)")
         let inserts = ch.postgresChange(
             InsertAction.self, schema: "public", table: "messages",
             filter: "conversation_id=eq.\(conversation.id.uuidString)")
@@ -823,7 +821,7 @@ struct ChatView: View {
         catch { print("[Chat] messages channel subscribe failed:", error) }
         channel = ch
 
-        let tc = client.channel("typing:\(conversation.id.uuidString)")
+        let tc = await RealtimeChannelFactory.make("typing:\(conversation.id.uuidString)")
         let typing = tc.broadcastStream(event: "typing")
         Task {
             for await msg in typing {
@@ -845,7 +843,7 @@ struct ChatView: View {
 
         // Subscribe to call_events for this conversation so the in-thread
         // pill appears the moment a call starts and updates when it ends.
-        let cc = client.channel("call_events:\(conversation.id.uuidString)")
+        let cc = await RealtimeChannelFactory.make("call_events:\(conversation.id.uuidString)")
         let callInserts = cc.postgresChange(
             InsertAction.self, schema: "public", table: "call_events",
             filter: "conversation_id=eq.\(conversation.id.uuidString)")
