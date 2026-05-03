@@ -23,9 +23,21 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.27";
+export const CURRENT_VERSION = "0.2.28";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.2.28",
+    title: "Emergency call + chat history hotfix",
+    date: "2026-05-03",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Desktop and web chat threads now load true older history again when you scroll up, including normal messages and call pills in the right order.",
+      "Fixed a call startup crash where answering or starting a voice chat could hit the snag screen with D.rpc(...).catch is not a function.",
+      "Call signaling now handles pickup/start flows more defensively so desktop and web users can ring, answer, and join without the app crashing.",
+    ],
+  },
   {
     version: "0.2.27",
     title: "Cleaner calls, image right-click, friendlier chat",
