@@ -487,13 +487,16 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       state: "ongoing",
     } as any);
 
-    // Insert participant row for self
-    await supabase.from("call_participants").insert({
-      call_event_id: callEventId,
-      user_id: user.id,
-      is_muted: false,
-      is_deafened: false,
-    } as any);
+    // Insert participant row for self via the heartbeat RPC so left_at is
+    // cleared and last_seen_at is fresh (revives any prior row instead of
+    // failing the unique constraint).
+    await (supabase as any).rpc("heartbeat_call_participant", {
+      _call_event_id: callEventId,
+      _is_muted: false,
+      _is_deafened: false,
+      _is_video_on: false,
+      _is_screen_sharing: false,
+    });
 
     setActiveCall({ conversationId, conversationName, joinedAt: Date.now(), isMuted: false, isDeafened: false, isVideoOn: false, isScreenSharing: false });
     playSound("message", { volume: 0.4 });
