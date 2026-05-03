@@ -25,7 +25,7 @@ const formatDuration = (ms: number) => {
   return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 };
 
-const SPEAKING_THRESHOLD = 10;
+const SPEAKING_THRESHOLD = 6;
 const speakingShadow = (level: number) => {
   const clamped = Math.max(SPEAKING_THRESHOLD, Math.min(100, level));
   const t = (clamped - SPEAKING_THRESHOLD) / (100 - SPEAKING_THRESHOLD);

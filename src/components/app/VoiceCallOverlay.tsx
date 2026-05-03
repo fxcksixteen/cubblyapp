@@ -28,7 +28,7 @@ const formatDuration = (ms: number) => {
 };
 
 /** Threshold below which we consider the user silent (background hiss filter). */
-const SPEAKING_THRESHOLD = 10;
+const SPEAKING_THRESHOLD = 6;
 /**
  * Discord-style speaking ring. Clamps level to [10..100], normalizes to 0..1
  * with an ease-out curve, then scales the ring radius (4→14px) and outer glow
