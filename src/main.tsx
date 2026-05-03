@@ -7,9 +7,14 @@ import { preloadAllSounds } from "./lib/sounds";
 import { registerServiceWorker } from "./lib/pwa";
 import "./index.css";
 import { CURRENT_VERSION } from "./lib/changelog";
+import { installRealtimeWatchdog } from "./lib/realtimeReconnect";
 
 // Register the service worker for PWA + push (skipped inside Lovable preview iframe).
 registerServiceWorker();
+
+// Install the realtime reconnect watchdog so presence + postgres_changes
+// callbacks never get stuck after a network blip, tab wake or socket drop.
+installRealtimeWatchdog();
 
 const APP_VERSION = CURRENT_VERSION;
 console.log(`%c🧸 Cubbly v${APP_VERSION} (pre-alpha)`, "color: hsl(32, 80%, 50%); font-weight: bold; font-size: 14px;");
