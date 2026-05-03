@@ -1111,6 +1111,28 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     return () => clearInterval(interval);
   }, [activeCall?.conversationId]);
 
+  // Heartbeat: refresh last_seen_at every 10s while in a group call so other
+  // clients can tell us apart from a ghost participant row. Without this,
+  // peers' liveness check (FRESH_MS = 30s) would mark us stale and the
+  // rejoin pill would incorrectly disappear.
+  useEffect(() => {
+    if (!activeCall || !user) return;
+    const evtId = callEventIdRef.current;
+    if (!evtId) return;
+    const tick = () => {
+      (supabase as any).rpc("heartbeat_call_participant", {
+        _call_event_id: evtId,
+        _is_muted: activeCall.isMuted ?? null,
+        _is_deafened: activeCall.isDeafened ?? null,
+        _is_video_on: activeCall.isVideoOn ?? null,
+        _is_screen_sharing: activeCall.isScreenSharing ?? null,
+      }).catch(() => {});
+    };
+    tick();
+    const i = setInterval(tick, 10_000);
+    return () => clearInterval(i);
+  }, [activeCall, user]);
+
   return (
     <GroupCallContext.Provider value={{
       activeCall, incomingCall, peers, ping,
