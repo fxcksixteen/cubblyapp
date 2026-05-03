@@ -31,6 +31,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     title: "Ghost calls killed for good — rejoin actually rejoins",
     date: "2026-05-03",
     hero: bearImage,
+    newFeatures: [],
     bugFixes: [
       "Calls now use a 10-second heartbeat per participant. If nobody has checked in within the last 30 seconds, the call is considered ended — no more 'Rejoin' pill for a call that nobody is actually in.",
       "Tapping Rejoin on an existing ongoing call no longer fails with a unique-constraint error — your participant row is REVIVED in place (left_at cleared, last_seen refreshed) instead of trying to insert a duplicate.",
