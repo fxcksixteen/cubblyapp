@@ -66,6 +66,10 @@ final class CallStore: ObservableObject {
     private var pendingRemoteIce: [RTCIceCandidate] = []
     private var pendingScreenIce: [RTCIceCandidate] = []
 
+    /// Heartbeat task — pings `heartbeat_call_participant` every 10s while
+    /// in a real call so other clients can tell us apart from a ghost row.
+    private var heartbeatTask: Task<Void, Never>?
+
     private init() {}
 
     // MARK: - Bootstrap (call once after sign-in)
