@@ -23,22 +23,9 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.30";
+export const CURRENT_VERSION = "0.2.29";
 
 export const CHANGELOG: ChangelogEntry[] = [
-  {
-    version: "0.2.30",
-    title: "Realtime auto-reconnect — status indicators that never get stuck",
-    date: "2026-05-03",
-    hero: bearImage,
-    newFeatures: [
-      "Global realtime watchdog: presence + live message channels now auto-reconnect after a network blip, tab wake, sleep/resume or silent socket drop. No more 'everyone looks offline' until you reload.",
-    ],
-    bugFixes: [
-      "Friend status dots now recover automatically when the realtime connection drops, instead of getting stuck on stale values.",
-      "Own profile-status updates from another device propagate even after a long idle period, because the channel reconnects on its own.",
-    ],
-  },
   {
     version: "0.2.29",
     title: "Calls polish: fullscreen volume, smoother rings, reliable rejoin",
