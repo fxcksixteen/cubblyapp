@@ -364,8 +364,9 @@ final class CallStore: ObservableObject {
         self.peerName = inc.callerName
         self.peerAvatarUrl = inc.callerAvatarUrl
         self.currentCallEventId = inc.callEventId
-        self.state = .connected
-        self.startedAt = Date()
+        // Web flips to "calling" while waiting for the offer to arrive — match it.
+        self.state = .calling
+        self.startedAt = nil
         self.isMinimized = false
         self.incoming = nil
         SoundService.shared.stopLooping(.incomingCall)
@@ -376,7 +377,13 @@ final class CallStore: ObservableObject {
             await ensureOwnParticipantRow(callEventId: evt)
             startHeartbeat()
         }
-        // Voice client will be created when we receive the offer (web sends offer right after ring).
+        // Tell the caller we're on the channel and ready for their offer.
+        // Without this, web/desktop callers (which now wait for ready-for-offer
+        // before sending the SDP offer) hang forever and the call never forms.
+        await signaling.broadcast(type: "ready-for-offer", payload: [
+            "callEventId": inc.callEventId.map { .string($0.uuidString) } ?? .null
+        ])
+        print("[Call] 📡 Sent ready-for-offer to caller")
     }
 
     func declineIncoming() {
