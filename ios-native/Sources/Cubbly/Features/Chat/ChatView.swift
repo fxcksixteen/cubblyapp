@@ -493,9 +493,28 @@ struct ChatView: View {
                 .limit(100)
                 .execute()
                 .value
+            // Sweep: ask the server to close any "ongoing" call_event whose
+            // participants haven't heartbeated in 30s. This collapses ghost
+            // pills into "Call ended" without the user having to tap Join
+            // first to discover the call is dead.
+            await sweepStaleOngoingCalls(rows.filter { $0.state == "ongoing" })
             callEvents = normalizedCallEvents(rows)
         } catch {
             print("[Chat] loadCallEvents failed:", error)
+        }
+    }
+
+    /// Best-effort: for each ongoing row, hit `end_call_event_if_stale`. If
+    /// the RPC returns true, the row is now ended in the DB; the realtime
+    /// UPDATE subscription on call_events will refresh our local list.
+    private func sweepStaleOngoingCalls(_ ongoing: [CallEventRow]) async {
+        guard !ongoing.isEmpty else { return }
+        // Don't sweep the call WE'RE currently in.
+        let myActive = CallStore.shared.currentCallEventId
+        for row in ongoing where row.id != myActive {
+            _ = try? await SupabaseManager.shared.client
+                .rpc("end_call_event_if_stale", params: ["_call_event_id": row.id.uuidString])
+                .execute()
         }
     }
 
