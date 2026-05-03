@@ -557,7 +557,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     const source = ctx.createMediaStreamSource(stream);
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 256;
-    analyser.smoothingTimeConstant = 0.5;
+    analyser.smoothingTimeConstant = 0.35;
     source.connect(analyser);
     // Do NOT connect to ctx.destination — that causes echo/underwater effect
     analyserRef.current = analyser;
@@ -567,8 +567,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       analyser.getByteFrequencyData(dataArray);
       const avg = dataArray.reduce((sum, v) => sum + v, 0) / dataArray.length;
       const next = (avg / 255) * 100;
-      // Only re-render when delta > 1 — cuts ~95% of CallPanel re-renders.
-      if (Math.abs(next - lastLocal) > 1) {
+      // Smaller gate (0.3) keeps the speaking-ring smooth & reactive while
+      // still cutting most idle re-renders.
+      if (Math.abs(next - lastLocal) > 0.3) {
         lastLocal = next;
         setAudioLevel(next);
       }
@@ -686,7 +687,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         const source = analyserCtx.createMediaStreamSource(remote);
         const remoteAnalyser = analyserCtx.createAnalyser();
         remoteAnalyser.fftSize = 256;
-        remoteAnalyser.smoothingTimeConstant = 0.5;
+        remoteAnalyser.smoothingTimeConstant = 0.35;
         source.connect(remoteAnalyser);
         remoteAnalyserRef.current = remoteAnalyser;
         const remoteData = new Uint8Array(remoteAnalyser.frequencyBinCount);
@@ -695,7 +696,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           remoteAnalyser.getByteFrequencyData(remoteData);
           const avg = remoteData.reduce((sum, v) => sum + v, 0) / remoteData.length;
           const next = (avg / 255) * 100;
-          if (Math.abs(next - lastRemote) > 1) {
+          if (Math.abs(next - lastRemote) > 0.3) {
             lastRemote = next;
             setRemoteAudioLevel(next);
           }

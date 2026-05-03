@@ -175,7 +175,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       const source = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 256;
-      analyser.smoothingTimeConstant = 0.5;
+      analyser.smoothingTimeConstant = 0.35;
       source.connect(analyser);
       const data = new Uint8Array(analyser.frequencyBinCount);
       let lastSelf = 0;
@@ -183,7 +183,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         analyser.getByteFrequencyData(data);
         const avg = data.reduce((s, v) => s + v, 0) / data.length;
         const next = (avg / 255) * 100;
-        if (Math.abs(next - lastSelf) > 1) {
+        if (Math.abs(next - lastSelf) > 0.3) {
           lastSelf = next;
           setSelfAudioLevel(next);
         }
@@ -209,7 +209,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       const source = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 256;
-      analyser.smoothingTimeConstant = 0.5;
+      analyser.smoothingTimeConstant = 0.35;
       source.connect(analyser);
       const data = new Uint8Array(analyser.frequencyBinCount);
       let raf = 0;
@@ -218,9 +218,9 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         analyser.getByteFrequencyData(data);
         const avg = data.reduce((s, v) => s + v, 0) / data.length;
         const next = (avg / 255) * 100;
-        // Only update peer state when level meaningfully changes — without this
-        // every PeerTile re-renders 60×/s during silence.
-        if (Math.abs(next - lastLevel) > 1) {
+        // Smaller gate keeps the speaking-ring smooth & reactive without
+        // re-rendering every PeerTile 60×/s during silence.
+        if (Math.abs(next - lastLevel) > 0.3) {
           lastLevel = next;
           setPeers(prev => prev.map(p => p.userId === peerId ? { ...p, audioLevel: next } : p));
         }
