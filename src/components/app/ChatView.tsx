@@ -710,7 +710,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
             {items.map((item, idx) => {
               if (item.type === "divider") {
                 return (
-                  <div key={`divider-${idx}`} className="my-4 flex items-center gap-2">
+                  <div key={`divider-${item.timestamp}-${item.label}`} className="my-4 flex items-center gap-2">
                     <div className="flex-1 h-px" style={{ backgroundColor: "var(--app-border, #3f4147)" }} />
                     <span className="text-[11px] font-semibold px-2 whitespace-nowrap" style={{ color: "var(--app-text-secondary, #949ba4)" }}>{item.label}</span>
                     <div className="flex-1 h-px" style={{ backgroundColor: "var(--app-border, #3f4147)" }} />
@@ -740,7 +740,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
 
               const groupContainsFirstUnread = !!firstUnreadId && item.messages.some(m => m.id === firstUnreadId);
               return (
-                <div key={idx}>
+                <div key={`group-${item.messages[0].id}`}>
                   {groupContainsFirstUnread && (
                     <div className="my-3 flex items-center gap-2" data-new-divider>
                       <div className="flex-1 h-px" style={{ backgroundColor: "#ed4245" }} />
