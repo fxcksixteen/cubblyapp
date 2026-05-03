@@ -23,9 +23,22 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.28";
+export const CURRENT_VERSION = "0.2.29";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.2.29",
+    title: "Calls polish: fullscreen volume, smoother rings, reliable rejoin",
+    date: "2026-05-03",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Screen-share volume now stays at the level you set after exiting fullscreen — it no longer snaps back to 100%.",
+      "Green speaking-ring indicators are smooth and reactive again, lighting up promptly at normal speaking volume just like before.",
+      "Hanging up and clicking Rejoin in the chat now actually puts you back in the SAME ongoing call your friend is still waiting in, instead of starting a brand-new one.",
+      "When someone leaves a call, the other person's avatar now updates to 'Not in call' immediately rather than appearing stuck as still in the call.",
+    ],
+  },
   {
     version: "0.2.28",
     title: "Emergency call + chat history hotfix",
