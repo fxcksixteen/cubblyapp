@@ -150,7 +150,7 @@ const WhatsNewModal = ({ forceVersion, onClose }: WhatsNewModalProps) => {
         <div className="px-6 pb-6 pt-5">
           <SectionDivider label="WHAT'S NEW" color="#3ba55c" />
           <ul className="mt-4 space-y-2.5">
-            {entry.newFeatures.map((item, i) => (
+            {(entry.newFeatures ?? []).map((item, i) => (
               <li key={i} className="flex gap-2.5 text-sm leading-snug" style={{ color: "rgba(255,255,255,0.85)" }}>
                 <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: "#3ba55c" }} />
                 <span>{item}</span>
@@ -162,7 +162,7 @@ const WhatsNewModal = ({ forceVersion, onClose }: WhatsNewModalProps) => {
             <SectionDivider label="BUG FIXES & QOL" color="#5865f2" />
           </div>
           <ul className="mt-4 space-y-2.5">
-            {entry.bugFixes.map((item, i) => (
+            {(entry.bugFixes ?? []).map((item, i) => (
               <li key={i} className="flex gap-2.5 text-sm leading-snug" style={{ color: "rgba(255,255,255,0.85)" }}>
                 <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: "#5865f2" }} />
                 <span>{item}</span>
