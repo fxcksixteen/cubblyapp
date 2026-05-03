@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useVoice } from "@/contexts/VoiceContext";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Phone, PhoneOff } from "lucide-react";
 
 /**
@@ -17,6 +18,7 @@ const GlobalCallIndicator = () => {
   const { activeCall, endCall } = useVoice();
   const navigate = useNavigate();
   const location = useLocation();
+  const isMobile = useIsMobile();
   const [elapsed, setElapsed] = useState(0);
 
   // Tick a duration counter while connected
@@ -30,6 +32,11 @@ const GlobalCallIndicator = () => {
   }, [activeCall?.startedAt]);
 
   if (!activeCall) return null;
+
+  // On mobile (iOS PWA / phone web), MobileCallOverlay already provides its
+  // own minimized "in call" pill anchored above the bottom nav. Hide this
+  // desktop-style indicator there to avoid showing two competing pills.
+  if (isMobile) return null;
 
   // Hide when the user is already on the call's chat — that screen has the full call panel
   const onCallsChat = location.pathname.includes(`/chat/${activeCall.conversationId}`);

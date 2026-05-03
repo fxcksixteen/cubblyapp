@@ -14,6 +14,7 @@ struct ChatView: View {
     @EnvironmentObject private var session: SessionStore
     @EnvironmentObject private var presence: PresenceService
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var messages: [ChatMessage] = []
     @State private var callEvents: [CallEventRow] = []
@@ -139,6 +140,36 @@ struct ChatView: View {
                 if let tc = typingChannel { await tc.unsubscribe() }
                 if let cc = callEventsChannel { await cc.unsubscribe() }
                 await reactions.stop()
+            }
+        }
+        // Safety net: realtime websockets occasionally drop silently on iOS
+        // (especially after a long background suspension or a network flip),
+        // which is why some peers were "stuck" on stale chat threads until
+        // they backed out and re-entered. We resync the latest 50 messages
+        // every 15s while the chat is on screen and immediately whenever the
+        // app comes back to the foreground — and we re-subscribe the realtime
+        // channel itself if it lost its connection.
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                Task {
+                    await resyncLatestMessages()
+                    await loadCallEvents()
+                    // Re-subscribe in case the websocket died while suspended.
+                    if let ch = channel { await ch.unsubscribe() }
+                    if let tc = typingChannel { await tc.unsubscribe() }
+                    if let cc = callEventsChannel { await cc.unsubscribe() }
+                    await subscribe()
+                }
+            }
+        }
+        .task(id: conversation.id) {
+            // Slow background poll — guarantees liveness even if the realtime
+            // channel is fully wedged. Sleeps cancel automatically when the
+            // task is invalidated (e.g. switching chats / leaving the view).
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 15_000_000_000)
+                if Task.isCancelled { break }
+                await resyncLatestMessages()
             }
         }
     }
@@ -477,6 +508,37 @@ struct ChatView: View {
             await reactions.load(messageIds: messages.compactMap { UUID(uuidString: $0.id) })
         } catch is CancellationError {} catch {
             print("[Chat] load failed:", error)
+        }
+    }
+
+    /// Pulls the newest 50 messages and merges anything we don't already have.
+    /// Used as a safety net when the realtime websocket has silently dropped —
+    /// e.g. iOS suspended the app, the network flipped, or the channel just
+    /// died. Without this, peers can sit on a stale chat thread thinking
+    /// nobody has replied. Called on scene-phase → .active and on a slow
+    /// 15-second tick while the chat is open.
+    private func resyncLatestMessages() async {
+        do {
+            let rows = try await repo.fetchPage(conversationID: conversation.id, limit: 50)
+            let asc = Array(rows.reversed())
+            // Hydrate first, then merge — never drop messages we already have.
+            let hydrated = try await hydrate(asc)
+            await MainActor.run {
+                var merged = messages
+                let existingIds = Set(merged.map { $0.id })
+                var inserted = false
+                for m in hydrated where !existingIds.contains(m.id) {
+                    merged.append(m)
+                    inserted = true
+                }
+                if inserted {
+                    merged.sort { $0.createdAt < $1.createdAt }
+                    messages = merged
+                }
+            }
+            await reactions.load(messageIds: messages.compactMap { UUID(uuidString: $0.id) })
+        } catch is CancellationError {} catch {
+            print("[Chat] resync failed:", error)
         }
     }
 

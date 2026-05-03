@@ -75,6 +75,14 @@ export interface ActiveCall {
   isMuted: boolean;
   isDeafened: boolean;
   isVideoOn: boolean;
+  /**
+   * Set to true once the 30s outgoing-ring timer has elapsed without the peer
+   * picking up. The call STAYS ongoing (caller waits alone, peer can still
+   * Join from the chat-thread pill), but the UI flips from "Ringing…" to
+   * "Not in call" so the caller knows their friend hasn't answered.
+   * Reset back to false the moment a peer actually connects.
+   */
+  ringTimedOut?: boolean;
 }
 
 export interface CallEvent {
@@ -701,7 +709,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       console.log("[Voice] ICE state:", pc.iceConnectionState);
       if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
         // Mark call as truly connected only when ICE transport is up
-        setActiveCall(prev => prev && prev.state !== "connected" ? { ...prev, state: "connected", startedAt: prev.startedAt || Date.now() } : prev);
+        setActiveCall(prev => prev && prev.state !== "connected" ? { ...prev, state: "connected", ringTimedOut: false, startedAt: prev.startedAt || Date.now() } : prev);
         // Ensure ALL local audio tracks are enabled when connected
         const senders = pc.getSenders();
         senders.forEach(s => {
@@ -2412,9 +2420,14 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     let unansweredTimer: ReturnType<typeof setTimeout> | null = null;
     if (activeCall.state === "calling" || activeCall.state === "ringing") {
       unansweredTimer = setTimeout(() => {
-        console.log("[Voice] ⏰ 30s ring timeout — silencing ringtones, call stays open");
+        console.log("[Voice] ⏰ 30s ring timeout — silencing ringtones, flipping UI to 'Not in call' (call stays open)");
         stopLooping("outgoingRing");
         stopLooping("incomingCall");
+        // Mark the call as ring-timed-out so the CallPanel switches from
+        // "Ringing…" → "Not in call". The call_event stays ongoing so the
+        // peer can still Join via the chat-thread pill.
+        setActiveCall(prev => prev && (prev.state === "calling" || prev.state === "ringing")
+          ? { ...prev, ringTimedOut: true } : prev);
       }, 30_000);
     }
     return () => {

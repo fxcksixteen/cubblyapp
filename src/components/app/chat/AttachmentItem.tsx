@@ -3,7 +3,65 @@ import { supabase } from "@/integrations/supabase/client";
 import folderFileIcon from "@/assets/icons/folder-file.svg";
 import ImageLightbox from "@/components/app/ImageLightbox";
 import VideoLightbox from "@/components/app/VideoLightbox";
-import { Maximize2 } from "lucide-react";
+import { Maximize2, Download, Copy, Link as LinkIcon, ExternalLink } from "lucide-react";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import { toast } from "sonner";
+
+/**
+ * Shared image actions: save, copy image bytes, copy link, open in new tab.
+ * Mirrors the desktop ImageLightbox menu so chat-thread images get the same
+ * right-click affordances as the fullscreen viewer.
+ */
+async function saveImage(url: string, name?: string) {
+  try {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = name || `image-${Date.now()}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(a.href);
+    toast.success("Image saved");
+  } catch {
+    toast.error("Failed to save image");
+  }
+}
+async function copyImageBytes(url: string) {
+  try {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    let toWrite = blob;
+    if (blob.type !== "image/png" && blob.type !== "image/jpeg") {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      toWrite = await new Promise<Blob>((resolve, reject) => {
+        img.onload = () => {
+          const c = document.createElement("canvas");
+          c.width = img.naturalWidth; c.height = img.naturalHeight;
+          c.getContext("2d")?.drawImage(img, 0, 0);
+          c.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob failed"))), "image/png");
+        };
+        img.onerror = reject;
+        img.src = URL.createObjectURL(blob);
+      });
+    }
+    await navigator.clipboard.write([new ClipboardItem({ [toWrite.type]: toWrite })]);
+    toast.success("Image copied");
+  } catch {
+    toast.error("Failed to copy image");
+  }
+}
+async function copyImageLink(url: string) {
+  try { await navigator.clipboard.writeText(url); toast.success("Link copied"); }
+  catch { toast.error("Failed to copy link"); }
+}
 
 interface Attachment {
   name: string;
@@ -114,19 +172,40 @@ const AttachmentItem = ({ attachment }: AttachmentItemProps) => {
   if (isImage && url && !errored) {
     return (
       <>
-        <button
-          type="button"
-          onClick={() => setLightboxOpen(true)}
-          className="block mt-1 max-w-sm cursor-zoom-in"
-        >
-          <img
-            src={url}
-            alt={attachment.name}
-            className="max-h-[400px] max-w-full rounded-lg object-contain hover:brightness-90 transition-[filter]"
-            onError={() => setErrored(true)}
-            loading="lazy"
-          />
-        </button>
+        <ContextMenu>
+          <ContextMenuTrigger asChild>
+            <button
+              type="button"
+              onClick={() => setLightboxOpen(true)}
+              className="block mt-1 max-w-sm cursor-zoom-in"
+            >
+              <img
+                src={url}
+                alt={attachment.name}
+                className="max-h-[400px] max-w-full rounded-lg object-contain hover:brightness-90 transition-[filter]"
+                onError={() => setErrored(true)}
+                loading="lazy"
+              />
+            </button>
+          </ContextMenuTrigger>
+          <ContextMenuContent
+            className="w-52 rounded-xl border p-1.5 shadow-xl"
+            style={{ backgroundColor: "#111214", borderColor: "var(--app-border, #2b2d31)" }}
+          >
+            <ContextMenuItem onClick={() => saveImage(url, attachment.name)} className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer">
+              <Download className="h-4 w-4" /> Save image as…
+            </ContextMenuItem>
+            <ContextMenuItem onClick={() => copyImageBytes(url)} className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer">
+              <Copy className="h-4 w-4" /> Copy image
+            </ContextMenuItem>
+            <ContextMenuItem onClick={() => copyImageLink(url)} className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer">
+              <LinkIcon className="h-4 w-4" /> Copy image link
+            </ContextMenuItem>
+            <ContextMenuItem onClick={() => window.open(url, "_blank", "noopener,noreferrer")} className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer">
+              <ExternalLink className="h-4 w-4" /> Open in new tab
+            </ContextMenuItem>
+          </ContextMenuContent>
+        </ContextMenu>
         {lightboxOpen && (
           <ImageLightbox url={url} name={attachment.name} onClose={() => setLightboxOpen(false)} />
         )}
