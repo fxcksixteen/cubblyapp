@@ -1972,24 +1972,40 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           if (myUserId) {
             (async () => {
               try {
+                // 1) Mark our own row as left.
                 await supabase
                   .from("call_participants")
                   .update({ left_at: endedAt })
                   .eq("call_event_id", evt.id)
                   .eq("user_id", myUserId)
                   .is("left_at", null);
-                const { count } = await supabase
-                  .from("call_participants")
-                  .select("user_id", { count: "exact", head: true })
-                  .eq("call_event_id", evt.id)
-                  .is("left_at", null);
-                if (!count || count === 0) {
-                  // Last person left — actually end the event.
-                  await supabase
-                    .from("call_events")
-                    .update({ state: "ended", ended_at: endedAt } as any)
-                    .eq("id", evt.id);
-                  setCallEvents(curr => curr.map(e => e.id === evt.id ? { ...e, state: "ended", endedAt } : e));
+
+                // 2) Let the SERVER decide whether to end the event. The RPC
+                // checks live participants with a freshness window so we don't
+                // race the database into "ended" while a peer is still in the
+                // call (which made Rejoin start a brand-new event instead of
+                // dropping us back into the original one).
+                try {
+                  await (supabase as any).rpc("end_call_event_if_stale", {
+                    _call_event_id: evt.id,
+                    _stale_seconds: 30,
+                  });
+                } catch (e) {
+                  console.warn("[Voice] end_call_event_if_stale RPC failed:", e);
+                }
+
+                // 3) Re-read the event state — only flip our local copy when
+                // the server actually ended it. Avoids the leaver's UI showing
+                // "ended" while the peer is still live.
+                const { data: ev } = await supabase
+                  .from("call_events")
+                  .select("state, ended_at")
+                  .eq("id", evt.id)
+                  .maybeSingle();
+                if (ev?.state === "ended") {
+                  setCallEvents(curr => curr.map(e => e.id === evt.id
+                    ? { ...e, state: "ended", endedAt: ev.ended_at || endedAt }
+                    : e));
                 }
               } catch (e) {
                 console.warn("[Voice] endCall participant cleanup failed:", e);
