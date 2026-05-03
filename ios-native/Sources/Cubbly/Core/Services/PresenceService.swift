@@ -113,29 +113,28 @@ final class PresenceService: ObservableObject {
     }
 
     /// Re-broadcast our presence so the server resets our TTL. If the channel
-    /// looks dead (no socket / errored), tear it down and fully restart so
-    /// status indicators auto-recover from network blips, sleep/resume, and
-    /// silent socket drops — without the user having to relaunch the app.
+    /// is missing OR a track() throws, fully restart so status indicators
+    /// auto-recover from network blips, sleep/resume, and silent socket drops
+    /// — without the user having to relaunch the app.
     func retrack() async {
         guard let uid = trackedUserID else { return }
         let key = uid.uuidString.lowercased()
-        if let ch = channel {
-            // .status is .subscribed only while the channel is healthy.
-            // Anything else (.unsubscribed / .closed / .errored) means we
-            // need to rebuild from scratch.
-            if ch.status != .subscribed {
-                print("[Presence] channel status=\(ch.status) — restarting")
-                await start(userID: uid, force: true)
-                return
-            }
-            await ch.track(state: [
-                "user_id": .string(key),
-                "online_at": .string(ISO8601DateFormatter().string(from: Date()))
-            ])
-        } else {
-            // Channel got nulled out somehow — restart.
+        guard let ch = channel else {
             await start(userID: uid, force: true)
+            return
         }
+        await ch.track(state: [
+            "user_id": .string(key),
+            "online_at": .string(ISO8601DateFormatter().string(from: Date()))
+        ])
+    }
+
+    /// Force-restart the presence channel. Called from app foreground +
+    /// network-came-back observers so a dead socket recovers immediately
+    /// instead of waiting for the 25s heartbeat tick.
+    func forceReconnect() async {
+        guard let uid = trackedUserID else { return }
+        await start(userID: uid, force: true)
     }
 
     // MARK: - Presence application
