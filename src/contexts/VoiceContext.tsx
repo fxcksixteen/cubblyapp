@@ -2490,6 +2490,26 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     };
   }, [activeCall, user, currentCallEventId]);
 
+  // Heartbeat: while in a real call, refresh last_seen_at every 10s so other
+  // clients can tell us apart from a ghost. Without this, the new liveness
+  // check would consider us stale after 30s and the rejoin pill would
+  // incorrectly disappear.
+  useEffect(() => {
+    if (!activeCall || !user || !currentCallEventId) return;
+    const tick = () => {
+      (supabase as any).rpc("heartbeat_call_participant", {
+        _call_event_id: currentCallEventId,
+        _is_muted: activeCall.isMuted ?? null,
+        _is_deafened: activeCall.isDeafened ?? null,
+        _is_video_on: activeCall.isVideoOn ?? null,
+        _is_screen_sharing: isScreenSharing ?? null,
+      }).catch(() => {});
+    };
+    tick();
+    const i = setInterval(tick, 10_000);
+    return () => clearInterval(i);
+  }, [activeCall, user, currentCallEventId, isScreenSharing]);
+
   return (
     <VoiceContext.Provider value={{
       settings, updateSettings, screenShareSettings, updateScreenShareSettings,
