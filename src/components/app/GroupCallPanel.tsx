@@ -69,7 +69,7 @@ const PeerTile = ({ userId, displayName, avatarUrl, audioLevel, isMuted, isLocal
           style={{
             width: 220,
             height: 124,
-            transition: "box-shadow 80ms linear",
+            transition: "box-shadow 60ms linear",
             boxShadow: speaking ? speakingShadow(audioLevel) : "0 0 0 0px transparent",
           }}
         >
@@ -104,7 +104,7 @@ const PeerTile = ({ userId, displayName, avatarUrl, audioLevel, isMuted, isLocal
           className="flex h-20 w-20 items-center justify-center rounded-full text-2xl font-bold text-white overflow-hidden"
           style={{
             backgroundColor: color.bg,
-            transition: "box-shadow 80ms linear",
+            transition: "box-shadow 60ms linear",
             boxShadow: speaking ? speakingShadow(audioLevel) : "0 0 0 0px transparent",
           }}
         >
