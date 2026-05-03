@@ -126,6 +126,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // per-tab suffix puts every client into its own isolated room, so nobody
     // ever sees anyone else as online — that was the root cause of all the
     // "status indicators don't work anymore" reports.
+    // Remove any stale channel with the same topic FIRST. Without this,
+    // supabase-js hands back the cached (already-subscribed) channel and
+    // adding our presence callbacks throws "cannot add presence callbacks
+    // for realtime:global:online after subscribe()" — which then prevents
+    // the presence tracking from ever wiring up. Most often hit under
+    // React StrictMode / HMR / fast remounts.
+    try {
+      const topic = "realtime:global:online";
+      const existing = (supabase as any).getChannels?.() || [];
+      for (const ch of existing) {
+        if (ch?.topic === topic) {
+          try { supabase.removeChannel(ch); } catch {}
+        }
+      }
+    } catch {}
+
     const channel = supabase.channel(`global:online`, {
       config: { presence: { key: user.id } },
     });

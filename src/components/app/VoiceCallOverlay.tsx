@@ -28,7 +28,7 @@ const formatDuration = (ms: number) => {
 };
 
 /** Threshold below which we consider the user silent (background hiss filter). */
-const SPEAKING_THRESHOLD = 10;
+const SPEAKING_THRESHOLD = 6;
 /**
  * Discord-style speaking ring. Clamps level to [10..100], normalizes to 0..1
  * with an ease-out curve, then scales the ring radius (4→14px) and outer glow
@@ -227,7 +227,7 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
                   hasScreenShare ? "h-20 w-28" : "h-[140px] w-[200px]"
                 }`}
                 style={{
-                  transition: "box-shadow 80ms linear",
+                  transition: "box-shadow 60ms linear",
                   boxShadow:
                     activeCall.state === "connected" && !activeCall.isMuted && audioLevel > SPEAKING_THRESHOLD
                       ? speakingRingShadow(audioLevel)
@@ -258,7 +258,7 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
                 className={`flex items-center justify-center rounded-full font-bold text-white ${hasScreenShare ? "h-12 w-12 text-lg" : "h-[72px] w-[72px] text-2xl"}`}
                 style={{
                   backgroundColor: callerColor.bg,
-                  transition: "box-shadow 80ms linear",
+                  transition: "box-shadow 60ms linear",
                   boxShadow:
                     activeCall.state === "connected" && !activeCall.isMuted && audioLevel > SPEAKING_THRESHOLD
                       ? speakingRingShadow(audioLevel)
@@ -304,7 +304,7 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
                   hasScreenShare ? "h-20 w-28" : "h-[140px] w-[200px]"
                 }`}
                 style={{
-                  transition: "box-shadow 80ms linear",
+                  transition: "box-shadow 60ms linear",
                   boxShadow:
                     activeCall.state === "connected" && !peerState?.is_muted && remoteAudioLevel > SPEAKING_THRESHOLD
                       ? speakingRingShadow(remoteAudioLevel)
@@ -329,7 +329,7 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
                 style={{
                   backgroundColor: recipientColor.bg,
                   filter: isWaiting ? "grayscale(0.3)" : "none",
-                  transition: "box-shadow 80ms linear, opacity 300ms",
+                  transition: "box-shadow 60ms linear, opacity 300ms",
                   boxShadow: !isWaiting && activeCall.state === "connected" && !peerState?.is_muted && remoteAudioLevel > SPEAKING_THRESHOLD
                     ? speakingRingShadow(remoteAudioLevel)
                     : "0 0 0 0px transparent",

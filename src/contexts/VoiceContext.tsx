@@ -557,7 +557,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     const source = ctx.createMediaStreamSource(stream);
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 256;
-    analyser.smoothingTimeConstant = 0.5;
+    analyser.smoothingTimeConstant = 0.35;
     source.connect(analyser);
     // Do NOT connect to ctx.destination — that causes echo/underwater effect
     analyserRef.current = analyser;
@@ -567,8 +567,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       analyser.getByteFrequencyData(dataArray);
       const avg = dataArray.reduce((sum, v) => sum + v, 0) / dataArray.length;
       const next = (avg / 255) * 100;
-      // Only re-render when delta > 1 — cuts ~95% of CallPanel re-renders.
-      if (Math.abs(next - lastLocal) > 1) {
+      // Smaller gate (0.3) keeps the speaking-ring smooth & reactive while
+      // still cutting most idle re-renders.
+      if (Math.abs(next - lastLocal) > 0.3) {
         lastLocal = next;
         setAudioLevel(next);
       }
@@ -686,7 +687,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         const source = analyserCtx.createMediaStreamSource(remote);
         const remoteAnalyser = analyserCtx.createAnalyser();
         remoteAnalyser.fftSize = 256;
-        remoteAnalyser.smoothingTimeConstant = 0.5;
+        remoteAnalyser.smoothingTimeConstant = 0.35;
         source.connect(remoteAnalyser);
         remoteAnalyserRef.current = remoteAnalyser;
         const remoteData = new Uint8Array(remoteAnalyser.frequencyBinCount);
@@ -695,7 +696,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           remoteAnalyser.getByteFrequencyData(remoteData);
           const avg = remoteData.reduce((sum, v) => sum + v, 0) / remoteData.length;
           const next = (avg / 255) * 100;
-          if (Math.abs(next - lastRemote) > 1) {
+          if (Math.abs(next - lastRemote) > 0.3) {
             lastRemote = next;
             setRemoteAudioLevel(next);
           }
@@ -1148,6 +1149,18 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           // Drop instant peer state so the UI doesn't keep showing their
           // mute icon etc. Don't reset activeCall — user is still in the call.
           setPeerInstantState({});
+          // Fire an immediate heartbeat so our last_seen_at is fresh — the
+          // leaver's rejoin liveness check (30s window) will then see us and
+          // join the SAME call_event instead of starting a fresh one.
+          if (currentCallEventId) {
+            void (async () => {
+              try {
+                await (supabase as any).rpc("heartbeat_call_participant", {
+                  _call_event_id: currentCallEventId,
+                });
+              } catch {}
+            })();
+          }
           return;
         }
 
@@ -1971,24 +1984,40 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           if (myUserId) {
             (async () => {
               try {
+                // 1) Mark our own row as left.
                 await supabase
                   .from("call_participants")
                   .update({ left_at: endedAt })
                   .eq("call_event_id", evt.id)
                   .eq("user_id", myUserId)
                   .is("left_at", null);
-                const { count } = await supabase
-                  .from("call_participants")
-                  .select("user_id", { count: "exact", head: true })
-                  .eq("call_event_id", evt.id)
-                  .is("left_at", null);
-                if (!count || count === 0) {
-                  // Last person left — actually end the event.
-                  await supabase
-                    .from("call_events")
-                    .update({ state: "ended", ended_at: endedAt } as any)
-                    .eq("id", evt.id);
-                  setCallEvents(curr => curr.map(e => e.id === evt.id ? { ...e, state: "ended", endedAt } : e));
+
+                // 2) Let the SERVER decide whether to end the event. The RPC
+                // checks live participants with a freshness window so we don't
+                // race the database into "ended" while a peer is still in the
+                // call (which made Rejoin start a brand-new event instead of
+                // dropping us back into the original one).
+                try {
+                  await (supabase as any).rpc("end_call_event_if_stale", {
+                    _call_event_id: evt.id,
+                    _stale_seconds: 30,
+                  });
+                } catch (e) {
+                  console.warn("[Voice] end_call_event_if_stale RPC failed:", e);
+                }
+
+                // 3) Re-read the event state — only flip our local copy when
+                // the server actually ended it. Avoids the leaver's UI showing
+                // "ended" while the peer is still live.
+                const { data: ev } = await supabase
+                  .from("call_events")
+                  .select("state, ended_at")
+                  .eq("id", evt.id)
+                  .maybeSingle();
+                if (ev?.state === "ended") {
+                  setCallEvents(curr => curr.map(e => e.id === evt.id
+                    ? { ...e, state: "ended", endedAt: ev.ended_at || endedAt }
+                    : e));
                 }
               } catch (e) {
                 console.warn("[Voice] endCall participant cleanup failed:", e);

@@ -1,46 +1,46 @@
-I found two high-risk areas matching your reports:
+## Plan — Two deliverables
 
-1. The call crash is consistent with call heartbeat RPC calls being treated like normal Promises in places where the client returns a builder-like object. In the heartbeat interval paths this can throw `...rpc(...).catch is not a function`, exactly matching the crash text.
-2. Chat history is currently merging call-event rows directly into the visible message timeline and only fetching 50 message rows at a time. With heavy call history, call pills can flood/interrupt the timeline and make “true message history” feel missing or incorrectly ordered.
+### 1) Re-package the iOS Build 11 zip
+The previous run never produced `cubbly-ios-v0.1.4-build11.zip` in `/mnt/documents/`. Re-zip the current `ios-native/` source tree (which already contains all build-11 fixes — RealtimeChannelFactory, presence/reactions/calls refactor, `CFBundleVersion = 11`) and emit it as a `presentation-artifact`.
 
-Plan for v0.2.28 hotfix:
+---
 
-1. Bump release metadata
-   - Update `package.json` version to `0.2.28`.
-   - Update `package-lock.json` root/package version to `0.2.28` so Electron builder/publish uses the correct artifact metadata.
+### 2) Web + Desktop hotfix → bump to **v0.2.29**
 
-2. Stop the `D.rpc(...).catch is not a function` crash completely
-   - Add a small safe async helper around call RPC execution in the call contexts instead of chaining `.catch()` directly on RPC results.
-   - Replace all call heartbeat interval usages like `supabase.rpc(...).catch(...)` with `void safeHeartbeat(...)` / `try await ...` style.
-   - Apply this in both:
-     - `src/contexts/VoiceContext.tsx`
-     - `src/contexts/GroupCallContext.tsx`
-   - Keep existing start/accept behavior, but make RPC failures non-fatal and logged instead of crashing the UI.
+#### A. Screen-share volume persists across fullscreen exit
+File: `src/components/app/FullscreenScreenShareViewer.tsx`
+- The unmount cleanup currently force-resets the shared `<audio>` element to `muted = false; volume = 1`. That is why dragging the slider in fullscreen takes effect, but the moment you exit fullscreen the audio snaps back to 100%.
+- Change the unmount path to **apply the user's last persisted stream volume** (already saved per-stream in `localStorage`) to the shared `<audio>` element instead of hard-resetting to `1`. For volumes > 100%, persist the boost setting and re-apply it via a long-lived WebAudio gain node owned by `VoiceContext` (so it survives unmount), or cap to 1.0 on the element when leaving fullscreen but remember the >100% intent for the next fullscreen open.
+- Also re-apply the saved volume in `VoiceContext` / `GroupCallContext` `ontrack` for screen audio so a stream that arrives while NOT in fullscreen also respects the last-set volume.
 
-3. Make call start/answer resilient so pressing call/accept cannot crash the app
-   - Wrap group and 1:1 call start/accept heartbeat calls with the same safe helper.
-   - Ensure `call_events` inserts are awaited or safely handled so local UI does not assume a call row exists if the insert failed.
-   - Keep the outgoing/incoming signaling flow intact, but prevent uncaught Promise/builder errors from reaching the app error boundary.
+#### B. Speaking-ring smoothness/sensitivity regression
+Files: `src/contexts/VoiceContext.tsx`, `src/contexts/GroupCallContext.tsx`, `src/components/app/VoiceCallOverlay.tsx`, `src/components/app/GroupCallPanel.tsx`
+- The recent `Math.abs(next - last) > 1` re-render gate (added in 0.2.28) is too coarse — it kills small-but-meaningful updates, making the green ring feel "sticky" instead of reactive. Lower the gate to `0.3` (or remove for the local meter and keep `0.5` for remote).
+- Lower analyser `smoothingTimeConstant` from `0.5` → `0.35` and `fftSize` stays `256`, so the meter follows transients again.
+- Lower `SPEAKING_THRESHOLD` from `10` → `6` in both `VoiceCallOverlay.tsx` and `GroupCallPanel.tsx` so the ring lights up at normal speaking volume the way it used to.
+- Tighten the box-shadow CSS transition from `80ms linear` → `60ms linear` so the ring tracks the meter visually.
 
-4. Fix call pill history pollution in web/desktop chat threads
-   - Stop letting every loaded historical call event compete with messages in the chat timeline.
-   - Only render call-event pills that belong within the currently loaded message window, plus the latest genuinely ongoing/rejoinable call.
-   - This preserves the current live-call/rejoin UI, but prevents old/stale call rows from taking over scrollback and hiding usable message history.
-   - Use stable keys for chat timeline items instead of array indexes where call pills/dividers are interleaved, so React does not recycle the wrong rows while scrolling/paginating.
+#### C. "Rejoin" creates a new call instead of joining the live one + peer still shown as in-call
+Files: `src/contexts/VoiceContext.tsx`, `src/components/app/ChatView.tsx`
+Root causes:
+1. After a hangup, the leaver's `endCall` issues an **async** `UPDATE … left_at = …` followed by a `SELECT count`. If the count read replica is behind, it can momentarily return 0 → the whole `call_event` gets flipped to `ended`, even though the peer is still in. On rejoin, `startCall`'s "find existing ongoing event" lookup then misses → it creates a brand-new event.
+2. The peer's UI in-call indicator (avatar badge) reads `call_participants` once and isn't subscribed to live changes, so the leaver looks "still in call" even after `left_at` updates.
 
-5. Tighten stale ongoing call cleanup without damaging history
-   - Keep stale ongoing call sweeps, but make them best-effort and safe.
-   - Do not visually demote/insert extra duplicate ongoing call pills in the chat timeline beyond the newest active one.
-   - Ensure ended/missed call records remain visible only when they fall naturally in the loaded history range.
+Fixes:
+- In `endCall`, only mark the **event** as ended when (a) our update succeeded **and** (b) there are zero rows with `left_at IS NULL` **and** zero rows with a `last_seen_at` within the last 15s. Use the existing `end_call_event_if_stale` RPC instead of a raw `UPDATE` so the server is the single source of truth.
+- In `startCall`'s existing-event lookup, also accept events whose state was flipped to `ended` within the last 30s **if** another participant still has `left_at IS NULL` and a fresh `last_seen_at` — re-open the event in that case (RPC: a small new `reopen_call_event_if_live`, or just clear `state` back to `ongoing` via RLS-safe update by the still-live participant; simpler path: prefer reusing **any** event with a fresh live peer, regardless of state).
+- On the receiver, when `peer-leave` is handled, fire one immediate `heartbeat_call_participant` so our own `last_seen_at` is fresh and the leaver's rejoin logic picks us up instantly.
+- In `SidebarVoiceCard` / `GlobalCallIndicator` (whichever paints the "in call" avatar overlay), subscribe to `postgres_changes` on `call_participants` filtered to the watched user, so the indicator drops to "Not In Call" the instant `left_at` is written.
 
-6. Verify affected flows after implementation
-   - Inspect all `.rpc()` call sites in web/desktop call code to confirm no unsafe `.catch()` remains.
-   - Run the project test command available in the environment, focused on catching TypeScript/runtime regressions.
-   - Confirm package versions are aligned at `0.2.28`.
+#### D. Update log + version bump
+- `src/lib/changelog.ts`: bump `CURRENT_VERSION` to `"0.2.29"` and prepend a new entry titled "Calls polish: fullscreen volume, smoother speaking rings, reliable rejoin".
+- `package.json` + `package-lock.json`: bump `version` to `0.2.29`.
 
-Expected result:
-- Starting voice chat on web/desktop no longer crashes.
-- Accepting an incoming call no longer crashes with `D.rpc(...).catch is not a function`.
-- Chat scrollback shows real messages normally again instead of being dominated/misordered by call pills.
-- Live/rejoin call pill behavior remains, but historical call pills are bounded to the actual loaded history window.
-- Desktop build metadata is ready for your `BUILD_TARGET=electron` / electron-builder v0.2.28 release command.
+#### Out of scope
+- iOS native app (already on build 11; no changes).
+- Mobile web overlay speaking ring uses the same constants — it gets the fix for free.
+
+#### Deliverables to user
+- `presentation-artifact` for `cubbly-ios-v0.1.4-build11.zip`
+- Code changes above (Lovable auto-deploys preview/published web app)
+- Note that the user still needs to run the desktop electron build pipeline locally after `git pull` — same flow as 0.2.28.
