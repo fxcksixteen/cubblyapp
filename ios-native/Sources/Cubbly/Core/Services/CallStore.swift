@@ -26,6 +26,10 @@ final class CallStore: ObservableObject {
     @Published private(set) var startedAt: Date?
     @Published var isMuted: Bool = false
     @Published var isDeafened: Bool = false
+    /// Mirrors web's `ringTimedOut`: true once the 30s outgoing-ring timer
+    /// elapsed without the peer answering. Call STAYS open (peer can still
+    /// Join from the chat pill) but UI flips from "Calling…" → "Not in call".
+    @Published var ringTimedOut: Bool = false
     /// When true, the full-screen CallView is hidden; only the pill at the
     /// top of MainTabView remains. The call itself keeps running.
     @Published var isMinimized: Bool = false
@@ -69,6 +73,9 @@ final class CallStore: ObservableObject {
     /// Heartbeat task — pings `heartbeat_call_participant` every 10s while
     /// in a real call so other clients can tell us apart from a ghost row.
     private var heartbeatTask: Task<Void, Never>?
+    /// 30s unanswered-ring timer (Discord parity).
+    private var ringTimeoutTask: Task<Void, Never>?
+    private var incomingRingTimeoutTask: Task<Void, Never>?
 
     private init() {}
 
