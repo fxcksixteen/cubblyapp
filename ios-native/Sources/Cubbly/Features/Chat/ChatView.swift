@@ -61,11 +61,10 @@ struct ChatView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.Colors.bgPrimary)
         .navigationBarHidden(true)
-        // NOTE: previously wrapped in `.horizontalSwipe(...)` so a finger
-        // drag from anywhere could pop back to the DM list — but that
-        // simultaneous drag gesture was eating vertical touches and
-        // breaking the chat ScrollView entirely on iOS 17/18. Use the
-        // back chevron in the header (and the system edge swipe) instead.
+        // Re-enable the system left-edge swipe-back gesture (hiding the nav
+        // bar disables it by default). Native edge-pan only — does NOT eat
+        // vertical scroll touches the way a custom DragGesture would.
+        .enableEdgeSwipeBack()
         .sheet(isPresented: $showGifPicker) {
             GiphyPickerView { url in
                 showGifPicker = false
