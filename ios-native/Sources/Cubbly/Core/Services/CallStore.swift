@@ -688,12 +688,42 @@ final class CallStore: ObservableObject {
             }
         }
         c.onConnectionState = { [weak self] s in
-            if s == .failed || s == .disconnected || s == .closed {
-                Task { @MainActor in
-                    if self?.state == .connected { await self?.endCall() }
+            Task { @MainActor in
+                guard let self = self else { return }
+                if s == .connected {
+                    SoundService.shared.stopLooping(.outgoingRing)
+                    if self.state != .connected {
+                        self.state = .connected
+                        self.startedAt = self.startedAt ?? Date()
+                        CallKitService.shared.reportConnected()
+                        print("[Call] ✅ ICE connected — call is live")
+                    }
+                } else if s == .failed || s == .closed {
+                    if self.state == .connected { await self.endCall() }
                 }
+                // .disconnected can be transient — let WebRTC try to recover
+                // (a brief network blip shouldn't kill the call). Mirrors web.
             }
         }
+    }
+
+    /// Peer hung up but the call_event is still ongoing for everyone else.
+    /// Tear down the per-peer media but keep CallStore alive (web parity).
+    private func peerLeftButStayInCall() async {
+        voiceClient?.close(); voiceClient = nil
+        screenClient?.close(); screenClient = nil
+        remoteScreenTrack = nil
+        peerIsScreenSharing = false
+        peerIsVideoOn = false
+        peerIsMuted = false
+        pendingRemoteIce.removeAll()
+        pendingScreenIce.removeAll()
+        SoundService.shared.stopLooping(.outgoingRing)
+        // Stay "calling" so UI shows we're waiting alone in the call. The
+        // user can either End Call or wait for the peer to rejoin.
+        state = .calling
+        startedAt = nil
+        print("[Call] 👋 Peer left — staying in call, waiting for rejoin")
     }
 
     private func makeIce(from dict: [String: Any]) -> RTCIceCandidate? {
