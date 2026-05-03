@@ -123,7 +123,7 @@ final class PresenceService: ObservableObject {
 
     // MARK: - Presence application
 
-    private func applyPresence(joins: Dictionary<String, PresenceV2>.Keys, leaves: Dictionary<String, PresenceV2>.Keys) {
+    private func applyPresence(joins: [String], leaves: [String]) {
         var current = onlineUserIDs
         var newJoins: [UUID] = []
         for key in joins {
@@ -137,7 +137,6 @@ final class PresenceService: ObservableObject {
             }
         }
         onlineUserIDs = current
-        // Pull fresh statuses for users we didn't have a status for yet.
         let missing = newJoins.filter { profileStatuses[$0.uuidString.lowercased()] == nil }
         if !missing.isEmpty {
             Task { await self.fetchStatuses(for: missing) }
