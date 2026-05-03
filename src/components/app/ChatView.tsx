@@ -131,20 +131,29 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
     }
   }, [lastMsgSenderId, messages.length]);
 
-  // Filter call events for THIS conversation, but enforce the invariant that
-  // there can only ever be ONE "ongoing" pill at a time per chat (multiple
-  // would be a stale-data bug — only one call can actually be live in a chat).
-  // We keep the most recent ongoing one and demote any older "ongoing"
-  // duplicates to "ended" visually so the chat history is coherent.
+  // Filter call events for THIS conversation. CRITICAL fix (v0.2.28): only
+  // render call pills that fall WITHIN the currently-loaded message window
+  // (between oldest and newest loaded message timestamps), plus any genuinely
+  // ongoing call. Without this clamp, every historical call_event ever loaded
+  // gets injected into the timeline regardless of which message page is
+  // visible — that was making real chat history look broken/missing as users
+  // scrolled up. Also enforce the invariant of at most ONE ongoing pill.
   const conversationCallEvents = (() => {
     const all = callEvents.filter(e => e.conversationId === conversationId);
-    const ongoingByStart = all
+    const oldestLoadedTs = messages.length > 0 ? new Date(messages[0].created_at).getTime() : null;
+    const newestLoadedTs = messages.length > 0 ? new Date(messages[messages.length - 1].created_at).getTime() : null;
+    const inWindow = all.filter(e => {
+      if (e.state === "ongoing") return true;
+      if (oldestLoadedTs == null || newestLoadedTs == null) return false;
+      const ts = new Date(e.startedAt).getTime();
+      return ts >= oldestLoadedTs - 1000 && ts <= newestLoadedTs + 1000;
+    });
+    const ongoingByStart = inWindow
       .filter(e => e.state === "ongoing")
       .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
     const keepOngoingId = ongoingByStart[0]?.id;
-    return all.map(e => {
+    return inWindow.map(e => {
       if (e.state === "ongoing" && e.id !== keepOngoingId) {
-        // Stale duplicate — render as ended
         return { ...e, state: "ended" as const, endedAt: e.endedAt || new Date().toISOString() };
       }
       return e;
@@ -701,7 +710,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
             {items.map((item, idx) => {
               if (item.type === "divider") {
                 return (
-                  <div key={`divider-${idx}`} className="my-4 flex items-center gap-2">
+                  <div key={`divider-${item.timestamp}-${item.label}`} className="my-4 flex items-center gap-2">
                     <div className="flex-1 h-px" style={{ backgroundColor: "var(--app-border, #3f4147)" }} />
                     <span className="text-[11px] font-semibold px-2 whitespace-nowrap" style={{ color: "var(--app-text-secondary, #949ba4)" }}>{item.label}</span>
                     <div className="flex-1 h-px" style={{ backgroundColor: "var(--app-border, #3f4147)" }} />
@@ -731,7 +740,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
 
               const groupContainsFirstUnread = !!firstUnreadId && item.messages.some(m => m.id === firstUnreadId);
               return (
-                <div key={idx}>
+                <div key={`group-${item.messages[0].id}`}>
                   {groupContainsFirstUnread && (
                     <div className="my-3 flex items-center gap-2" data-new-divider>
                       <div className="flex-1 h-px" style={{ backgroundColor: "#ed4245" }} />

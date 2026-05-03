@@ -1,44 +1,46 @@
-I found two likely root causes in the current native iOS code:
+I found two high-risk areas matching your reports:
 
-1. Chat threads are wrapped in a global horizontal swipe gesture and each message row adds a zero-distance drag gesture for press feedback. That combination can steal vertical drag touches from the `ScrollView`, which matches the “cannot scroll up/down at all” report.
-2. iOS presence relies only on realtime presence diffs. If the initial presence snapshot is missed, if IDs have case mismatches, or if the socket silently drops, iOS keeps showing friends offline even though web/desktop are online.
+1. The call crash is consistent with call heartbeat RPC calls being treated like normal Promises in places where the client returns a builder-like object. In the heartbeat interval paths this can throw `...rpc(...).catch is not a function`, exactly matching the crash text.
+2. Chat history is currently merging call-event rows directly into the visible message timeline and only fetching 50 message rows at a time. With heavy call history, call pills can flood/interrupt the timeline and make “true message history” feel missing or incorrectly ordered.
 
-Plan:
+Plan for v0.2.28 hotfix:
 
-1. Restore native iOS chat scrolling immediately
-   - Remove or replace the message row `DragGesture(minimumDistance: 0)` press detector so message rows no longer capture scroll drags.
-   - Disable or narrow the chat-level horizontal swipe gesture so it only starts from the screen edge and never competes with vertical chat scrolling.
-   - Keep long-press actions working, but make them non-blocking for normal vertical scrolling.
+1. Bump release metadata
+   - Update `package.json` version to `0.2.28`.
+   - Update `package-lock.json` root/package version to `0.2.28` so Electron builder/publish uses the correct artifact metadata.
 
-2. Make iOS chat timeline stable while scrolling
-   - Stop auto-scrolling to the newest message every time `messages.count` changes when older messages are prepended.
-   - Only auto-scroll when the user sends/receives a new latest message while already near the bottom, or on initial open.
-   - Keep pagination anchored so scrolling up does not yank the thread back to the bottom.
+2. Stop the `D.rpc(...).catch is not a function` crash completely
+   - Add a small safe async helper around call RPC execution in the call contexts instead of chaining `.catch()` directly on RPC results.
+   - Replace all call heartbeat interval usages like `supabase.rpc(...).catch(...)` with `void safeHeartbeat(...)` / `try await ...` style.
+   - Apply this in both:
+     - `src/contexts/VoiceContext.tsx`
+     - `src/contexts/GroupCallContext.tsx`
+   - Keep existing start/accept behavior, but make RPC failures non-fatal and logged instead of crashing the UI.
 
-3. Fix native iOS online/status sync globally
-   - Rework `PresenceService` to use the official Swift realtime presence callback pattern before subscribing.
-   - Maintain a full snapshot of online user IDs, not just incremental joins/leaves that can become stale or incomplete.
-   - Normalize all UUIDs to lowercase for parity with web/desktop.
-   - Add foreground restart/heartbeat retry logic so iOS rejoins the global presence room after app suspension or network changes.
-   - Add a fallback profile/status refresh for friends/conversations so status labels update even when the cached conversation profile is stale.
+3. Make call start/answer resilient so pressing call/accept cannot crash the app
+   - Wrap group and 1:1 call start/accept heartbeat calls with the same safe helper.
+   - Ensure `call_events` inserts are awaited or safely handled so local UI does not assume a call row exists if the insert failed.
+   - Keep the outgoing/incoming signaling flow intact, but prevent uncaught Promise/builder errors from reaching the app error boundary.
 
-4. Verify parity with web/desktop behavior
-   - Confirm web/desktop still use `global:online` with presence key `user.id`.
-   - Confirm iOS publishes and reads the same channel/key/payload format.
-   - Confirm Friends tab, DM list rows, chat headers, and profile popups all use the same live presence source.
+4. Fix call pill history pollution in web/desktop chat threads
+   - Stop letting every loaded historical call event compete with messages in the chat timeline.
+   - Only render call-event pills that belong within the currently loaded message window, plus the latest genuinely ongoing/rejoinable call.
+   - This preserves the current live-call/rejoin UI, but prevents old/stale call rows from taking over scrollback and hiding usable message history.
+   - Use stable keys for chat timeline items instead of array indexes where call pills/dividers are interleaved, so React does not recycle the wrong rows while scrolling/paginating.
 
-5. Ship a new native iOS v0.1.4 zip
-   - Bump iOS build number from 8 to 9 while keeping version `0.1.4`.
-   - Regenerate/package the Xcode source folder as a new zip.
-   - Also fix the existing `package-lock.json` root version mismatch to `0.2.27` if it is still wrong, because I confirmed it currently still says `0.2.1` even though `package.json` says `0.2.27`.
+5. Tighten stale ongoing call cleanup without damaging history
+   - Keep stale ongoing call sweeps, but make them best-effort and safe.
+   - Do not visually demote/insert extra duplicate ongoing call pills in the chat timeline beyond the newest active one.
+   - Ensure ended/missed call records remain visible only when they fall naturally in the loaded history range.
 
-Files expected to change:
-- `ios-native/Sources/Cubbly/Features/Chat/ChatView.swift`
-- `ios-native/Sources/Cubbly/Shared/HorizontalSwipe.swift` or the chat call site using it
-- `ios-native/Sources/Cubbly/Core/Services/PresenceService.swift`
-- possibly `ios-native/Sources/Cubbly/Features/Friends/FriendsView.swift` / `DMListView.swift` if cached status refresh is needed
-- `ios-native/Resources/Info.plist`
-- possibly `ios-native/project.yml`
-- `package-lock.json` for the v0.2.27 desktop/web lockfile version mismatch
+6. Verify affected flows after implementation
+   - Inspect all `.rpc()` call sites in web/desktop call code to confirm no unsafe `.catch()` remains.
+   - Run the project test command available in the environment, focused on catching TypeScript/runtime regressions.
+   - Confirm package versions are aligned at `0.2.28`.
 
-After approval I’ll implement these fixes and create a fresh `cubbly-ios-v0.1.4-build9.zip`.
+Expected result:
+- Starting voice chat on web/desktop no longer crashes.
+- Accepting an incoming call no longer crashes with `D.rpc(...).catch is not a function`.
+- Chat scrollback shows real messages normally again instead of being dominated/misordered by call pills.
+- Live/rejoin call pill behavior remains, but historical call pills are bounded to the actual loaded history window.
+- Desktop build metadata is ready for your `BUILD_TARGET=electron` / electron-builder v0.2.28 release command.
