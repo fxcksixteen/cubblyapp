@@ -61,11 +61,11 @@ struct ChatView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.Colors.bgPrimary)
         .navigationBarHidden(true)
-        .horizontalSwipe(
-            right: { dismiss() },
-            leftPreview: { Color.clear },
-            rightPreview: { DMSidebarPreview() }
-        )
+        // NOTE: previously wrapped in `.horizontalSwipe(...)` so a finger
+        // drag from anywhere could pop back to the DM list — but that
+        // simultaneous drag gesture was eating vertical touches and
+        // breaking the chat ScrollView entirely on iOS 17/18. Use the
+        // back chevron in the header (and the system edge swipe) instead.
         .sheet(isPresented: $showGifPicker) {
             GiphyPickerView { url in
                 showGifPicker = false
