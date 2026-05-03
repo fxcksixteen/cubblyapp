@@ -174,6 +174,7 @@ final class CallStore: ObservableObject {
             // we're live (mirrors web's ensureOwnParticipantRow).
             if let evtId = currentCallEventId {
                 await ensureOwnParticipantRow(callEventId: evtId)
+                startHeartbeat()
             }
             // Ring the peer's global channel so they get the incoming-call sheet.
             if let evtId = currentCallEventId {
