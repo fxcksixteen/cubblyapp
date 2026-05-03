@@ -2,18 +2,27 @@ import Foundation
 import Supabase
 import Realtime
 
-/// Joins a single global Supabase Realtime presence channel ("global:online")
-/// and exposes the live set of online user IDs. Mirrors the web app's
-/// presence behaviour (any open client = considered online).
+/// Joins the global Supabase Realtime presence channel ("global:online") that
+/// web/desktop also use, and exposes the live set of online user IDs plus a
+/// cached `status` per user (online / idle / dnd / invisible) pulled from
+/// the `profiles` table. Mirrors the web app exactly so iOS sees the same
+/// status indicators in real time.
 @MainActor
 final class PresenceService: ObservableObject {
     static let shared = PresenceService()
 
     @Published private(set) var onlineUserIDs: Set<UUID> = []
+    /// Last known DB `profiles.status` per user, keyed by lowercase UUID
+    /// string. Refreshed in bulk on start + every 30s + on foreground, and
+    /// also nudged whenever a presence diff brings someone new online.
+    @Published private(set) var profileStatuses: [String: String] = [:]
 
     private var channel: RealtimeChannelV2?
+    private var presenceSubscription: RealtimeSubscription?
     private var trackedUserID: UUID?
-    private var listenTask: Task<Void, Never>?
+    private var statusRefreshTask: Task<Void, Never>?
+    private var heartbeatTask: Task<Void, Never>?
+    private var profileStatusChannel: RealtimeChannelV2?
 
     private init() {}
 
@@ -25,73 +34,180 @@ final class PresenceService: ObservableObject {
         trackedUserID = userID
 
         let client = SupabaseManager.shared.client
-        // CRITICAL: web app uses `user.id` which is a lowercase UUID. Swift's
-        // UUID().uuidString is UPPERCASE, which would put us in a separate
-        // presence keyspace and we'd never see web/desktop users as online.
+        // Web uses lowercase UUID strings as the presence key. Match exactly
+        // so we land in the same presence keyspace.
         let presenceKey = userID.uuidString.lowercased()
         let ch = client.channel("global:online") { config in
             config.presence.key = presenceKey
         }
 
-        // Register the presence listener *before* subscribing — supabase-swift
-        // v2 enforces that all callbacks are wired up prior to subscribe().
-        let stream = ch.presenceChange()
-        listenTask = Task { [weak self] in
-            for await change in stream {
-                guard let self else { return }
-                var current = await MainActor.run { self.onlineUserIDs }
-                // Presence keys from web are lowercase UUID strings; Swift's
-                // UUID(uuidString:) is case-insensitive but we normalize anyway.
-                for key in change.joins.keys {
-                    if let id = UUID(uuidString: key) { current.insert(id) }
-                }
-                for key in change.leaves.keys {
-                    if let id = UUID(uuidString: key) { current.remove(id) }
-                }
-                let snapshot = current
-                await MainActor.run { self.onlineUserIDs = snapshot }
+        // CRITICAL: register the presence callback BEFORE subscribing.
+        // supabase-swift refuses to attach presence callbacks once the
+        // channel is subscribing/subscribed.
+        let sub = ch.onPresenceChange { [weak self] action in
+            guard let self else { return }
+            // Hop to the main actor for the @Published mutation.
+            Task { @MainActor in
+                self.applyPresence(joins: action.joins.keys, leaves: action.leaves.keys)
             }
         }
+        presenceSubscription = sub
 
-        // Now subscribe, then track our presence — this order silences both
-        // "track presence after subscribing" warnings.
         do {
             try await ch.subscribeWithError()
         } catch {
             print("[Presence] subscribe failed:", error)
             return
         }
-        // Track our presence with the same payload shape as web
-        // (`{ user_id, online_at }`). The presence KEY (set above on the
-        // channel config) is what supabase uses to identify members, but
-        // matching the payload exactly avoids any future server-side
-        // filter quirks and keeps debugging easy from web devtools.
+
         await ch.track(state: [
             "user_id": .string(presenceKey),
             "online_at": .string(ISO8601DateFormatter().string(from: Date()))
         ])
 
-        // Initial presence state is delivered automatically by supabase-swift v2:
-        // on subscribe, the server sends a `presence_state` event which is
-        // surfaced through `presenceChange()` as a joins-only PresenceAction
-        // (see RealtimeChannelV2.swift, case .presenceState). So the existing
-        // listener above hydrates already-online users on connect — mirroring
-        // the web app's initial sync without a separate presenceState() call
-        // (that API only exists on the deprecated v1 RealtimeChannel).
-
         self.channel = ch
+
+        // Pull current profile statuses so the dot color is accurate even
+        // before we get our first realtime update.
+        await refreshProfileStatuses()
+        await subscribeProfileStatusUpdates()
+
+        // Periodic safety net: re-track presence + refresh statuses so the
+        // app recovers if the websocket silently dropped while suspended.
+        heartbeatTask?.cancel()
+        heartbeatTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 25_000_000_000)
+                guard let self else { return }
+                await self.retrack()
+            }
+        }
+        statusRefreshTask?.cancel()
+        statusRefreshTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 30_000_000_000)
+                guard let self else { return }
+                await self.refreshProfileStatuses()
+            }
+        }
     }
 
     func stop() async {
-        listenTask?.cancel()
-        listenTask = nil
+        statusRefreshTask?.cancel(); statusRefreshTask = nil
+        heartbeatTask?.cancel(); heartbeatTask = nil
+        presenceSubscription?.cancel(); presenceSubscription = nil
         if let ch = channel {
             await ch.untrack()
             await ch.unsubscribe()
         }
         channel = nil
+        if let pc = profileStatusChannel {
+            await pc.unsubscribe()
+        }
+        profileStatusChannel = nil
         trackedUserID = nil
         onlineUserIDs = []
+    }
+
+    /// Re-broadcast our presence so the server resets our TTL. Safe to call
+    /// repeatedly. If the channel died, fully restart it.
+    func retrack() async {
+        guard let ch = channel, let uid = trackedUserID else { return }
+        let key = uid.uuidString.lowercased()
+        await ch.track(state: [
+            "user_id": .string(key),
+            "online_at": .string(ISO8601DateFormatter().string(from: Date()))
+        ])
+    }
+
+    // MARK: - Presence application
+
+    private func applyPresence(joins: Dictionary<String, PresenceV2>.Keys, leaves: Dictionary<String, PresenceV2>.Keys) {
+        var current = onlineUserIDs
+        var newJoins: [UUID] = []
+        for key in joins {
+            if let id = UUID(uuidString: key) {
+                if current.insert(id).inserted { newJoins.append(id) }
+            }
+        }
+        for key in leaves {
+            if let id = UUID(uuidString: key) {
+                current.remove(id)
+            }
+        }
+        onlineUserIDs = current
+        // Pull fresh statuses for users we didn't have a status for yet.
+        let missing = newJoins.filter { profileStatuses[$0.uuidString.lowercased()] == nil }
+        if !missing.isEmpty {
+            Task { await self.fetchStatuses(for: missing) }
+        }
+    }
+
+    // MARK: - Profile status snapshot
+
+    private func refreshProfileStatuses() async {
+        struct Row: Decodable { let user_id: UUID; let status: String? }
+        do {
+            let rows: [Row] = try await SupabaseManager.shared.client
+                .from("profiles")
+                .select("user_id,status")
+                .execute()
+                .value
+            var dict = profileStatuses
+            for r in rows {
+                dict[r.user_id.uuidString.lowercased()] = r.status ?? "online"
+            }
+            profileStatuses = dict
+        } catch {
+            // Silent — the next tick will retry. Don't spam the console.
+        }
+    }
+
+    private func fetchStatuses(for ids: [UUID]) async {
+        struct Row: Decodable { let user_id: UUID; let status: String? }
+        guard !ids.isEmpty else { return }
+        let strings = ids.map { $0.uuidString }
+        do {
+            let rows: [Row] = try await SupabaseManager.shared.client
+                .from("profiles")
+                .select("user_id,status")
+                .in("user_id", values: strings)
+                .execute()
+                .value
+            var dict = profileStatuses
+            for r in rows {
+                dict[r.user_id.uuidString.lowercased()] = r.status ?? "online"
+            }
+            profileStatuses = dict
+        } catch {}
+    }
+
+    /// Listen for live status changes on the profiles table so when a friend
+    /// flips to DND/Idle/Invisible we update instantly without a poll.
+    private func subscribeProfileStatusUpdates() async {
+        let client = SupabaseManager.shared.client
+        let ch = client.channel("profiles-status-global")
+        let stream = ch.postgresChange(
+            UpdateAction.self, schema: "public", table: "profiles")
+        Task { [weak self] in
+            for await action in stream {
+                guard let self else { return }
+                let dict = action.record
+                guard
+                    let uidJSON = dict["user_id"], let uidStr = uidJSON.stringValue,
+                    let uid = UUID(uuidString: uidStr)
+                else { continue }
+                let status = dict["status"]?.stringValue ?? "online"
+                await MainActor.run {
+                    var d = self.profileStatuses
+                    d[uid.uuidString.lowercased()] = status
+                    self.profileStatuses = d
+                }
+            }
+        }
+        do { try await ch.subscribeWithError() }
+        catch { print("[Presence] profile-status subscribe failed:", error) }
+        profileStatusChannel = ch
     }
 
     // MARK: - Helpers
@@ -99,8 +215,11 @@ final class PresenceService: ObservableObject {
     func effectiveStatus(for userID: UUID, storedStatus: String?) -> String {
         if userID.uuidString == "00000000-0000-0000-0000-000000000001" { return "online" }
         if !onlineUserIDs.contains(userID) { return "offline" }
-        if storedStatus == "invisible" { return "online" }
-        return storedStatus ?? "online"
+        // Prefer the live cached profile status (always up to date), then
+        // fall back to the stale snapshot the caller had.
+        let live = profileStatuses[userID.uuidString.lowercased()] ?? storedStatus ?? "online"
+        if live == "invisible" { return "online" }
+        return live
     }
 
     func isOnline(_ userID: UUID) -> Bool {
