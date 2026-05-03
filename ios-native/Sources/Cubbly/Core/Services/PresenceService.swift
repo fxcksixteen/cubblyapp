@@ -19,8 +19,8 @@ final class PresenceService: ObservableObject {
 
     // MARK: - Lifecycle
 
-    func start(userID: UUID) async {
-        if trackedUserID == userID, channel != nil { return }
+    func start(userID: UUID, force: Bool = false) async {
+        if !force, trackedUserID == userID, channel != nil { return }
         await stop()
         trackedUserID = userID
 

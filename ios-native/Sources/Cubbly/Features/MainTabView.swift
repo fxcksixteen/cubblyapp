@@ -64,7 +64,7 @@ struct MainTabView: View {
         // returns to the foreground so iOS matches web/desktop.
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active, let uid = session.currentUserID {
-                Task { await PresenceService.shared.start(userID: uid) }
+                Task { await PresenceService.shared.start(userID: uid, force: true) }
             }
         }
     }
