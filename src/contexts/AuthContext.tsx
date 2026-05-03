@@ -3,6 +3,7 @@ import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { setDndActive } from "@/lib/sounds";
 import { setNotificationDnd } from "@/lib/notifications";
+import { subscribeWithReconnect, removeChannelByTopic } from "@/lib/realtimeReconnect";
 
 const syncDnd = (isDnd: boolean) => {
   setDndActive(isDnd);
@@ -38,7 +39,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
   const [myStatus, setMyStatusState] = useState<string>("online");
-  const presenceChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -79,24 +79,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return () => { cancelled = true; };
   }, [session?.user?.id]);
 
-  // Realtime: listen for changes to my own status row (could be edited from another tab)
+  // Realtime: listen for changes to my own status row (could be edited from another tab).
+  // Wrapped in subscribeWithReconnect so a transient socket drop doesn't leave
+  // us stuck on a stale status — it auto-resubscribes after backoff.
   useEffect(() => {
     const user = session?.user;
     if (!user) return;
-    // CRITICAL: attach .on() before .subscribe()
-    const uniqueSuffix = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const channel = supabase.channel(`my-profile-status:${user.id}:${uniqueSuffix}`);
-    channel.on(
-      "postgres_changes",
-      { event: "UPDATE", schema: "public", table: "profiles", filter: `user_id=eq.${user.id}` },
-      (payload) => {
-        const newStatus = (payload.new as any)?.status || "online";
-        setMyStatusState(newStatus);
-        syncDnd(newStatus === "dnd");
-      }
-    );
-    channel.subscribe();
-    return () => { supabase.removeChannel(channel); };
+    const topic = `my-profile-status:${user.id}`;
+    const cleanup = subscribeWithReconnect(topic, () => {
+      removeChannelByTopic(topic);
+      const channel = supabase.channel(topic);
+      channel.on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "profiles", filter: `user_id=eq.${user.id}` },
+        (payload) => {
+          const newStatus = (payload.new as any)?.status || "online";
+          setMyStatusState(newStatus);
+          syncDnd(newStatus === "dnd");
+        }
+      );
+      return channel;
+    });
+    return cleanup;
   }, [session?.user?.id]);
 
   const setMyStatus = async (status: string) => {
