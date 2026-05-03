@@ -707,14 +707,17 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     });
     playSound("message", { volume: 0.4 });
 
-    // Insert participant row
+    // Insert participant row via the heartbeat RPC so a previously-left
+    // row is REVIVED (left_at cleared) instead of failing the unique
+    // (call_event_id, user_id) constraint.
     if (inc.callEventId) {
-      await supabase.from("call_participants").insert({
-        call_event_id: inc.callEventId,
-        user_id: user.id,
-        is_muted: false,
-        is_deafened: false,
-      } as any);
+      await (supabase as any).rpc("heartbeat_call_participant", {
+        _call_event_id: inc.callEventId,
+        _is_muted: false,
+        _is_deafened: false,
+        _is_video_on: false,
+        _is_screen_sharing: false,
+      });
     }
 
     await joinCallChannel(inc.conversationId);
