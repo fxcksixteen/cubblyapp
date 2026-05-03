@@ -142,8 +142,10 @@ const FullscreenScreenShareViewer = ({ stream, sharerName, type = "screen", isLo
     saveStreamVolume(persistKey, volume);
   }, [volume, persistKey, isLocal]);
 
-  // On unmount, tear down the boost graph and RESTORE the shared element to
-  // a sane unmuted/full volume state so the user keeps hearing the share.
+  // On unmount, tear down the boost graph but PRESERVE the user's chosen
+  // stream volume on the shared <audio> element. Previously we hard-reset
+  // muted=false / volume=1, which made the slider snap back to 100% the
+  // moment the user exited fullscreen — exactly the bug reported in 0.2.29.
   useEffect(() => {
     return () => {
       try { audioSrcRef.current?.disconnect(); } catch {}
@@ -151,7 +153,16 @@ const FullscreenScreenShareViewer = ({ stream, sharerName, type = "screen", isLo
       try { audioCtxRef.current?.close(); } catch {}
       const audioEl = findSharedAudioEl();
       if (audioEl) {
-        try { audioEl.muted = false; audioEl.volume = 1; audioEl.play().catch(() => {}); } catch {}
+        try {
+          // Keep the stream volume the user picked. For >100% boosts we
+          // can't keep the WebAudio graph alive after unmount, so cap the
+          // element to 1.0 — the saved value is restored next time the
+          // viewer is opened (see initial useState).
+          const finalVol = Math.min(1, Math.max(0, volume));
+          audioEl.muted = muted;
+          audioEl.volume = finalVol;
+          audioEl.play().catch(() => {});
+        } catch {}
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
