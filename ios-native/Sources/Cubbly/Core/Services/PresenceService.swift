@@ -33,11 +33,10 @@ final class PresenceService: ObservableObject {
         await stop()
         trackedUserID = userID
 
-        let client = SupabaseManager.shared.client
         // Web uses lowercase UUID strings as the presence key. Match exactly
         // so we land in the same presence keyspace.
         let presenceKey = userID.uuidString.lowercased()
-        let ch = client.channel("global:online") { config in
+        let ch = await RealtimeChannelFactory.make("global:online") { config in
             config.presence.key = presenceKey
         }
 
@@ -102,11 +101,11 @@ final class PresenceService: ObservableObject {
         presenceSubscription?.cancel(); presenceSubscription = nil
         if let ch = channel {
             await ch.untrack()
-            await ch.unsubscribe()
+            await RealtimeChannelFactory.remove(ch)
         }
         channel = nil
         if let pc = profileStatusChannel {
-            await pc.unsubscribe()
+            await RealtimeChannelFactory.remove(pc)
         }
         profileStatusChannel = nil
         trackedUserID = nil
@@ -188,8 +187,7 @@ final class PresenceService: ObservableObject {
     /// Listen for live status changes on the profiles table so when a friend
     /// flips to DND/Idle/Invisible we update instantly without a poll.
     private func subscribeProfileStatusUpdates() async {
-        let client = SupabaseManager.shared.client
-        let ch = client.channel("profiles-status-global")
+        let ch = await RealtimeChannelFactory.make("profiles-status-global")
         let stream = ch.postgresChange(
             UpdateAction.self, schema: "public", table: "profiles")
         Task { [weak self] in
