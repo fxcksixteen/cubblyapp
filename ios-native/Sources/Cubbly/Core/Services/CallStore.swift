@@ -189,6 +189,7 @@ final class CallStore: ObservableObject {
                 callerAvatarUrl: peerAvatarUrl
             )
         }
+        startOutgoingRingTimeout()
         print("[Call] ⏳ Waiting for peer to send ready-for-offer…")
     }
 
