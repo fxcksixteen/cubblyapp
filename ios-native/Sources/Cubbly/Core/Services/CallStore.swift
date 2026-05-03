@@ -377,6 +377,8 @@ final class CallStore: ObservableObject {
         self.startedAt = nil
         self.isMinimized = false
         self.incoming = nil
+        self.ringTimedOut = false
+        incomingRingTimeoutTask?.cancel(); incomingRingTimeoutTask = nil
         SoundService.shared.stopLooping(.incomingCall)
         SoundService.shared.play(.message)
         configureAudioSession()
@@ -396,7 +398,9 @@ final class CallStore: ObservableObject {
 
     func declineIncoming() {
         SoundService.shared.stopLooping(.incomingCall)
+        incomingRingTimeoutTask?.cancel(); incomingRingTimeoutTask = nil
         incoming = nil
+        CallKitService.shared.endActiveCallIfNeeded()
     }
 
     // MARK: - End call
