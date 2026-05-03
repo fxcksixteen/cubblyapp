@@ -357,6 +357,7 @@ const GroupCallPanel = ({ conversationId }: Props) => {
           sharerName={fullscreenView.name}
           type={fullscreenView.type}
           isLocal={fullscreenView.isLocal}
+          peerUserId={fullscreenView.isLocal ? undefined : fullscreenView.peerId}
           onClose={() => setFullscreenView(null)}
         />
       )}

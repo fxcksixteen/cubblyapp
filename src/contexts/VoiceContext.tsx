@@ -812,6 +812,23 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
   const ensureOwnParticipantRow = useCallback(async (callEventId: string, overrides?: ParticipantStatePatch) => {
     if (!user) return;
+    // Prefer the new heartbeat RPC: it upserts on (call_event_id, user_id),
+    // CLEARS left_at (this is what makes rejoin work — the previous insert()
+    // path failed silently because of the UNIQUE constraint), and refreshes
+    // last_seen_at so other devices know we're really live.
+    try {
+      await (supabase as any).rpc("heartbeat_call_participant", {
+        _call_event_id: callEventId,
+        _is_muted: overrides?.is_muted ?? null,
+        _is_deafened: overrides?.is_deafened ?? null,
+        _is_video_on: overrides?.is_video_on ?? null,
+        _is_screen_sharing: overrides?.is_screen_sharing ?? null,
+      });
+      return;
+    } catch (e) {
+      console.warn("[Voice] heartbeat_call_participant RPC failed, falling back to direct insert:", e);
+    }
+    // Fallback (older backend): emulate the old behaviour.
     const { data: existing } = await supabase
       .from("call_participants")
       .select("id")
@@ -1350,25 +1367,32 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           .limit(1)
           .maybeSingle();
         if (existing?.id) {
-          // Count OTHER participants still active (exclude self). Joining your
-          // own zombie row is what created the "rejoin into a fake call where
-          // both users sit in calling-limbo" bug — we must only treat the
-          // event as live if a non-self user has left_at IS NULL.
+          // Liveness: another participant must be FRESHLY live (left_at NULL
+          // AND last_seen_at within 30s). Stale ghosts no longer count, so
+          // clicking voice/video starts a brand-new real call instead of
+          // dropping you into a fake "calling..." with no one on the other end.
           const { data: liveRows } = await supabase
             .from("call_participants")
-            .select("user_id")
-            .eq("call_event_id", existing.id)
-            .is("left_at", null);
+            .select("user_id, last_seen_at, left_at")
+            .eq("call_event_id", existing.id);
 
-          const otherActive = (liveRows || []).some((r: any) => r.user_id !== user.id);
+          const FRESH_MS = 30_000;
+          const now = Date.now();
+          const otherActive = (liveRows || []).some((r: any) =>
+            r.user_id !== user.id &&
+            r.left_at === null &&
+            (!r.last_seen_at || now - new Date(r.last_seen_at).getTime() < FRESH_MS)
+          );
 
           if (otherActive) {
             callEventId = existing.id;
             isJoiningExisting = true;
             console.log("[Voice] 🔁 Joining existing ongoing call_event:", callEventId);
           } else {
-            // No real peer present — close this stale event and start a fresh call.
-            await supabase.from("call_events").update({ state: "ended", ended_at: new Date().toISOString() } as any).eq("id", existing.id);
+            // No real peer present — close this stale event via the RPC
+            // (works even if we weren't the original caller) and start fresh.
+            try { await (supabase as any).rpc("end_call_event_if_stale", { _call_event_id: existing.id }); } catch {}
+            try { await supabase.from("call_events").update({ state: "ended", ended_at: new Date().toISOString() } as any).eq("id", existing.id); } catch {}
           }
         }
       } catch (e) {
@@ -2465,6 +2489,26 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       window.removeEventListener("pagehide", handleUnload);
     };
   }, [activeCall, user, currentCallEventId]);
+
+  // Heartbeat: while in a real call, refresh last_seen_at every 10s so other
+  // clients can tell us apart from a ghost. Without this, the new liveness
+  // check would consider us stale after 30s and the rejoin pill would
+  // incorrectly disappear.
+  useEffect(() => {
+    if (!activeCall || !user || !currentCallEventId) return;
+    const tick = () => {
+      (supabase as any).rpc("heartbeat_call_participant", {
+        _call_event_id: currentCallEventId,
+        _is_muted: activeCall.isMuted ?? null,
+        _is_deafened: activeCall.isDeafened ?? null,
+        _is_video_on: activeCall.isVideoOn ?? null,
+        _is_screen_sharing: isScreenSharing ?? null,
+      }).catch(() => {});
+    };
+    tick();
+    const i = setInterval(tick, 10_000);
+    return () => clearInterval(i);
+  }, [activeCall, user, currentCallEventId, isScreenSharing]);
 
   return (
     <VoiceContext.Provider value={{

@@ -97,6 +97,7 @@ export type Database = {
           is_screen_sharing: boolean
           is_video_on: boolean
           joined_at: string
+          last_seen_at: string
           left_at: string | null
           user_id: string
         }
@@ -108,6 +109,7 @@ export type Database = {
           is_screen_sharing?: boolean
           is_video_on?: boolean
           joined_at?: string
+          last_seen_at?: string
           left_at?: string | null
           user_id: string
         }
@@ -119,6 +121,7 @@ export type Database = {
           is_screen_sharing?: boolean
           is_video_on?: boolean
           joined_at?: string
+          last_seen_at?: string
           left_at?: string | null
           user_id?: string
         }
@@ -467,6 +470,20 @@ export type Database = {
       create_group_conversation: {
         Args: { _member_ids: string[]; _name: string }
         Returns: string
+      }
+      end_call_event_if_stale: {
+        Args: { _call_event_id: string; _stale_seconds?: number }
+        Returns: boolean
+      }
+      heartbeat_call_participant: {
+        Args: {
+          _call_event_id: string
+          _is_deafened?: boolean
+          _is_muted?: boolean
+          _is_screen_sharing?: boolean
+          _is_video_on?: boolean
+        }
+        Returns: undefined
       }
       is_conversation_participant: {
         Args: { _conversation_id: string; _user_id: string }

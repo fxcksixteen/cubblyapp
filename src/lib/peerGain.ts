@@ -189,6 +189,23 @@ export function usePeerGains(): PeerGainApi {
     if (!userId || !stream) return;
     if (!stream.getAudioTracks().length) return;
 
+    // ── Screen-share receiver audio: ALWAYS element-driven, never WebAudio. ──
+    // The fullscreen screenshare viewer needs to control the *exact same*
+    // audio element the user is already hearing. Routing through the per-peer
+    // GainNode (which is shared with mic audio) made the slider hit a parallel
+    // copy while the original kept playing — that was the "two audios" bug.
+    // Tag the element so the viewer can find it and drive volume/mute directly.
+    if (streamKind === "screen") {
+      try {
+        mediaEl.setAttribute("data-cubbly-peer", userId);
+        mediaEl.setAttribute("data-cubbly-kind", "screen");
+        // Default: full volume, unmuted. User-volume menu still affects mic
+        // only — screen audio is a separate, viewer-controlled stream.
+        try { mediaEl.muted = false; mediaEl.volume = 1; } catch {}
+      } catch {}
+      return;
+    }
+
     // ── iOS PWA path: do NOT use the Web Audio gain graph at all. ──
     // On iOS Safari / PWA, piping a live WebRTC MediaStream through
     // `createMediaStreamSource()` reliably plays SILENCE (long-standing

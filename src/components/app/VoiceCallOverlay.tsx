@@ -460,6 +460,7 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
           sharerName={fullscreenView.name}
           type={fullscreenView.type}
           isLocal={fullscreenView.isLocal}
+          peerUserId={fullscreenView.isLocal ? undefined : recipientUserId}
           onClose={() => setFullscreenView(null)}
         />
       )}
