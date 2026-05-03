@@ -1120,13 +1120,19 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     const evtId = callEventIdRef.current;
     if (!evtId) return;
     const tick = () => {
-      (supabase as any).rpc("heartbeat_call_participant", {
-        _call_event_id: evtId,
-        _is_muted: activeCall.isMuted ?? null,
-        _is_deafened: activeCall.isDeafened ?? null,
-        _is_video_on: activeCall.isVideoOn ?? null,
-        _is_screen_sharing: activeCall.isScreenSharing ?? null,
-      }).catch(() => {});
+      // supabase.rpc() returns a PostgrestBuilder (thenable, not a Promise) —
+      // `.catch()` on it throws "rpc(...).catch is not a function". Wrap.
+      void (async () => {
+        try {
+          await (supabase as any).rpc("heartbeat_call_participant", {
+            _call_event_id: evtId,
+            _is_muted: activeCall.isMuted ?? null,
+            _is_deafened: activeCall.isDeafened ?? null,
+            _is_video_on: activeCall.isVideoOn ?? null,
+            _is_screen_sharing: activeCall.isScreenSharing ?? null,
+          });
+        } catch { /* best-effort */ }
+      })();
     };
     tick();
     const i = setInterval(tick, 10_000);

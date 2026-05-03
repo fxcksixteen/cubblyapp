@@ -2510,13 +2510,20 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     if (!activeCall || !user || !currentCallEventId) return;
     const tick = () => {
-      (supabase as any).rpc("heartbeat_call_participant", {
-        _call_event_id: currentCallEventId,
-        _is_muted: activeCall.isMuted ?? null,
-        _is_deafened: activeCall.isDeafened ?? null,
-        _is_video_on: activeCall.isVideoOn ?? null,
-        _is_screen_sharing: isScreenSharing ?? null,
-      }).catch(() => {});
+      // NOTE: supabase.rpc() returns a PostgrestBuilder (thenable, not a real
+      // Promise) — calling `.catch()` directly on it throws
+      // "rpc(...).catch is not a function". Wrap in an async IIFE.
+      void (async () => {
+        try {
+          await (supabase as any).rpc("heartbeat_call_participant", {
+            _call_event_id: currentCallEventId,
+            _is_muted: activeCall.isMuted ?? null,
+            _is_deafened: activeCall.isDeafened ?? null,
+            _is_video_on: activeCall.isVideoOn ?? null,
+            _is_screen_sharing: isScreenSharing ?? null,
+          });
+        } catch { /* ignore — heartbeat is best-effort */ }
+      })();
     };
     tick();
     const i = setInterval(tick, 10_000);
