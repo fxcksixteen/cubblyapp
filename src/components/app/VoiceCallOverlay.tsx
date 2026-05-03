@@ -148,8 +148,9 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
   const callerColor = defaultProfileColor;
   const recipientColor = recipientUserId ? getProfileColor(recipientUserId) : { bg: "#5865f2" };
   const displayName = user?.user_metadata?.display_name || "You";
+  const ringTimedOut = !!activeCall.ringTimedOut;
   const isWaiting = activeCall.state === "calling" || activeCall.state === "ringing";
-  const isRinging = activeCall.state === "ringing";
+  const isRinging = activeCall.state === "ringing" && !ringTimedOut;
   const hasScreenShare = isScreenSharing || !!remoteScreenStream;
 
   // Determine which badge to show: deafen takes priority over mute
@@ -161,9 +162,13 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
       {/* Call header */}
       <div className="flex items-center justify-between px-5 py-3 border-b" style={{ borderColor: "var(--app-border)" }}>
         <div className="flex items-center gap-2">
-          <div className="h-2 w-2 rounded-full animate-pulse" style={{ backgroundColor: activeCall.state === "connected" ? "#3ba55c" : "#faa61a" }} />
-          <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: activeCall.state === "connected" ? "#3ba55c" : "var(--app-text-secondary)" }}>
-            {activeCall.state === "calling" ? "Calling..." : activeCall.state === "ringing" ? "Ringing..." : formatDuration(elapsed)}
+          <div className="h-2 w-2 rounded-full animate-pulse" style={{ backgroundColor: activeCall.state === "connected" ? "#3ba55c" : ringTimedOut ? "#949ba4" : "#faa61a" }} />
+          <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: activeCall.state === "connected" ? "#3ba55c" : ringTimedOut ? "var(--app-text-secondary)" : "var(--app-text-secondary)" }}>
+            {activeCall.state === "connected"
+              ? formatDuration(elapsed)
+              : ringTimedOut
+                ? "Not in call"
+                : activeCall.state === "calling" ? "Calling..." : "Ringing..."}
           </span>
         </div>
         {hasScreenShare && (
