@@ -12,5 +12,5 @@ enum CubblyConfig {
     }
 
     /// Display version, shown in Settings.
-    static let appVersion = "0.1.3"
+    static let appVersion = "0.1.4"
 }

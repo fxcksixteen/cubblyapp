@@ -203,7 +203,7 @@ const GifPicker = ({ isOpen, onClose, onSelect }: GifPickerProps) => {
             }`}
             style={activeCategory !== cat.name ? { backgroundColor: "var(--app-bg-tertiary, #1e1f22)", color: "var(--app-text-secondary, #949ba4)" } : undefined}
           >
-            {cat.name === "Favorites" ? "❤️ Favorites" : cat.name}
+            {cat.name}
           </button>
         ))}
       </div>

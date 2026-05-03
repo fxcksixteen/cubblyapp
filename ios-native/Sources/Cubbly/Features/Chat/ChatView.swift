@@ -317,9 +317,19 @@ struct ChatView: View {
     }
 
     // Mixed timeline of messages + call events, sorted by created time.
+    // IMPORTANT: we only show call pills that fall WITHIN the loaded message
+    // window. Otherwise, scrolling up would surface very old call_events while
+    // the matching messages haven't been paginated in yet — looking like the
+    // chat history "vanished" leaving only call pills.
     private var timelineItems: [TimelineItem] {
         var items: [TimelineItem] = messages.map { .message($0) }
-        items.append(contentsOf: callEvents.map { .callEvent($0) })
+        let oldestLoadedMessage = messages.first?.createdAt
+        let visibleCalls: [CallEventRow] = {
+            guard hasMore, let cutoff = oldestLoadedMessage else { return callEvents }
+            // Keep ongoing calls + any call newer than the oldest loaded message.
+            return callEvents.filter { $0.state == "ongoing" || $0.startedAt >= cutoff }
+        }()
+        items.append(contentsOf: visibleCalls.map { .callEvent($0) })
         items.sort { $0.timestamp < $1.timestamp }
         return items
     }
