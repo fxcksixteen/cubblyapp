@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useVoice } from "@/contexts/VoiceContext";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Phone, PhoneOff } from "lucide-react";
 
 /**
