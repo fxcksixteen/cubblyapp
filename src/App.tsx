@@ -23,6 +23,7 @@ import UpdateModal from "./components/app/UpdateModal";
 import WhatsNewModal from "./components/app/WhatsNewModal";
 import GlobalCallIndicator from "./components/app/GlobalCallIndicator";
 import { GroupIncomingCallOverlay } from "./components/app/GroupCallPanel";
+import SpaceBackground from "./components/app/SpaceBackground";
 
 const queryClient = new QueryClient();
 
