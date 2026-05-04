@@ -272,6 +272,9 @@ const AppLayout = () => {
     if (isShop) {
       return <span className="font-semibold" style={{ color: "var(--app-text-primary)" }}>Shop</span>;
     }
+    if (isNotes) {
+      return <span className="font-semibold" style={{ color: "var(--app-text-primary)" }}>Private Notes</span>;
+    }
     return (
       <>
         <div className="hidden sm:flex items-center gap-2">
