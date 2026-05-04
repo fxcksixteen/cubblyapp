@@ -41,7 +41,7 @@ async function deriveKey(pin: string, salt: Uint8Array, iterations: number): Pro
     ["deriveKey"]
   );
   return crypto.subtle.deriveKey(
-    { name: "PBKDF2", salt, iterations, hash: "SHA-256" },
+    { name: "PBKDF2", salt: salt as BufferSource, iterations, hash: "SHA-256" },
     baseKey,
     { name: "AES-GCM", length: 256 },
     true, // extractable so we can wrap for trusted-device storage
@@ -62,7 +62,7 @@ export async function setupNewKey(pin: string): Promise<{ key: CryptoKey; materi
   const iterations = 250000;
   const key = await deriveKey(pin, salt, iterations);
   const iv = randomBytes(12);
-  const verifier = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, enc.encode(KNOWN_VERIFIER_PLAINTEXT));
+  const verifier = await crypto.subtle.encrypt({ name: "AES-GCM", iv: iv as BufferSource }, key, enc.encode(KNOWN_VERIFIER_PLAINTEXT));
   return {
     key,
     material: {
@@ -93,7 +93,7 @@ export async function unlockKey(pin: string, material: KeyMaterial): Promise<Cry
 export async function encryptJson(key: CryptoKey, value: unknown): Promise<{ iv: string; ciphertext: string }> {
   const iv = randomBytes(12);
   const data = enc.encode(JSON.stringify(value));
-  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, data);
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv: iv as BufferSource }, key, data);
   return { iv: b64encode(iv), ciphertext: b64encode(ct) };
 }
 
@@ -108,7 +108,7 @@ export async function decryptJson<T = unknown>(key: CryptoKey, iv: string, ciphe
 
 export async function encryptBytes(key: CryptoKey, bytes: ArrayBuffer): Promise<{ iv: string; ciphertext: ArrayBuffer }> {
   const iv = randomBytes(12);
-  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, bytes);
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv: iv as BufferSource }, key, bytes);
   return { iv: b64encode(iv), ciphertext: ct };
 }
 
@@ -176,7 +176,7 @@ export async function trustDevice(userId: string, masterKey: CryptoKey): Promise
     await idbSet(`device:${userId}`, deviceKey);
   }
   const iv = randomBytes(12);
-  const wrapped = await crypto.subtle.wrapKey("raw", masterKey, deviceKey, { name: "AES-GCM", iv });
+  const wrapped = await crypto.subtle.wrapKey("raw", masterKey, deviceKey, { name: "AES-GCM", iv: iv as BufferSource });
   localStorage.setItem(TRUST_LS_KEY(userId), JSON.stringify({ iv: b64encode(iv), wrapped: b64encode(wrapped) }));
 }
 
