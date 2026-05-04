@@ -348,6 +348,9 @@ const AppLayout = () => {
     if (isShop) {
       return <ShopView />;
     }
+    if (isNotes) {
+      return <NotesView />;
+    }
     return <FriendsView activeTab={friendTab} setActiveTab={setFriendTab} onOpenDM={handleOpenDM} activeNowOpen={activeNowOpen} setActiveNowOpen={setActiveNowOpen} />;
   };
 
