@@ -355,6 +355,9 @@ const AppLayout = () => {
     if (isNotes) {
       return <NotesView />;
     }
+    if (isServerRoute) {
+      return <ServerView />;
+    }
     return <FriendsView activeTab={friendTab} setActiveTab={setFriendTab} onOpenDM={handleOpenDM} activeNowOpen={activeNowOpen} setActiveNowOpen={setActiveNowOpen} />;
   };
 
