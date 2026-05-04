@@ -177,7 +177,8 @@ Deno.serve(async (req) => {
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e) {
-    return new Response(JSON.stringify({ error: String(e) }), {
+    console.error("[link-preview] error:", e);
+    return new Response(JSON.stringify({ error: "Failed to fetch preview" }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
