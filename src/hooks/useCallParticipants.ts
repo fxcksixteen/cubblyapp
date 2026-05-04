@@ -52,10 +52,31 @@ export function useCallParticipants(callEventId: string | null) {
     channel.on(
       "postgres_changes",
       { event: "*", schema: "public", table: "call_participants", filter: `call_event_id=eq.${callEventId}` },
-      () => fetchParticipants()
+      () => {
+        fetchParticipants();
+        // Safety re-fetch ~1.5s later in case the realtime payload arrived
+        // before the row was fully visible to RLS, or another change is
+        // imminent (peer-leave often triggers two updates back-to-back).
+        window.setTimeout(() => fetchParticipants(), 1500);
+      }
     );
     channel.subscribe();
-    return () => { supabase.removeChannel(channel); };
+
+    // VoiceContext fires this the moment a `peer-leave` broadcast arrives.
+    // Re-fetch immediately so the call overlay's peer label flips to "Not in
+    // call" without waiting on the (sometimes-dropped) postgres_changes event.
+    const onPeerLeft = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { callEventId?: string } | undefined;
+      if (!detail?.callEventId || detail.callEventId === callEventId) {
+        fetchParticipants();
+      }
+    };
+    window.addEventListener("cubbly:peer-left", onPeerLeft);
+
+    return () => {
+      supabase.removeChannel(channel);
+      window.removeEventListener("cubbly:peer-left", onPeerLeft);
+    };
   }, [callEventId, fetchParticipants]);
 
   /** Get state for a specific user in this call (or undefined if not joined) */
