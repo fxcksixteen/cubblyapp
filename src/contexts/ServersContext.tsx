@@ -24,6 +24,11 @@ interface ServersContextValue {
   loading: boolean;
   refresh: () => Promise<void>;
   createServer: (name: string, iconUrl?: string | null) => Promise<string | null>;
+  createServerFromTemplate: (
+    name: string,
+    iconUrl: string | null,
+    channels: Array<{ name: string; kind: "text" | "voice"; category: string | null }>,
+  ) => Promise<string | null>;
   joinByCode: (code: string) => Promise<string | null>;
   lookupInvite: (code: string) => Promise<{ server_id: string; name: string; icon_url: string | null; member_count: number } | null>;
 }
@@ -73,6 +78,24 @@ export const ServersProvider = ({ children }: { children: React.ReactNode }) => 
     return data as string;
   }, [refresh]);
 
+  const createServerFromTemplate = useCallback(
+    async (
+      name: string,
+      iconUrl: string | null,
+      channels: Array<{ name: string; kind: "text" | "voice"; category: string | null }>,
+    ) => {
+      const { data, error } = await supabase.rpc("create_server_from_template", {
+        _name: name,
+        _icon_url: iconUrl,
+        _channels: channels as any,
+      });
+      if (error) throw error;
+      await refresh();
+      return data as string;
+    },
+    [refresh],
+  );
+
   const joinByCode = useCallback(async (code: string) => {
     const { data, error } = await supabase.rpc("join_server_by_code", { _code: code });
     if (error) throw error;
@@ -86,8 +109,10 @@ export const ServersProvider = ({ children }: { children: React.ReactNode }) => 
     return data as any;
   }, []);
 
-  const value = useMemo(() => ({ servers, loading, refresh, createServer, joinByCode, lookupInvite }),
-    [servers, loading, refresh, createServer, joinByCode, lookupInvite]);
+  const value = useMemo(
+    () => ({ servers, loading, refresh, createServer, createServerFromTemplate, joinByCode, lookupInvite }),
+    [servers, loading, refresh, createServer, createServerFromTemplate, joinByCode, lookupInvite],
+  );
 
   return <ServersContext.Provider value={value}>{children}</ServersContext.Provider>;
 };

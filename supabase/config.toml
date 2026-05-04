@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.link-preview]
 verify_jwt = false
+
+[functions.discord-template]
+verify_jwt = false
