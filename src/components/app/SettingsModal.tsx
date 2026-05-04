@@ -525,6 +525,17 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
                 </div>
               </div>
             </div>
+
+            {/* Full shop themes catalog — owned themes equip on click, locked ones blur and route to Shop. */}
+            <div className="rounded-[24px] border p-5" style={cardStyle}>
+              <div className="mb-4">
+                <h3 className="text-base font-bold" style={{ color: "var(--app-text-primary)" }}>Shop Themes</h3>
+                <p className="mt-1 text-xs" style={{ color: "var(--app-text-secondary)" }}>
+                  Browse every theme. Equip the ones you own, or tap a locked one to unlock it in the Shop.
+                </p>
+              </div>
+              <ShopItemsGrid category="theme" />
+            </div>
           </div>
         );
 
