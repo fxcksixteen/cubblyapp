@@ -100,6 +100,18 @@ interface PeerEntry {
  *  per-instance refs so it survives StrictMode double-mounts. */
 const _forcedMutes: Record<string, boolean> = {};
 
+/** Local-deafen flag: silences ALL peers we hear. Module-level so it
+ *  applies across every peer entry consistently. Critical: deafen MUST
+ *  go through the gain pipeline (not direct el.muted writes), otherwise
+ *  on the desktop graph path the element gets unmuted while the GainNode
+ *  is also playing → doubled/garbled audio that survives undeafen. */
+let _localDeafened = false;
+const _deafenListeners = new Set<() => void>();
+function setLocalDeafenedFlag(v: boolean) {
+  _localDeafened = v;
+  _deafenListeners.forEach((fn) => { try { fn(); } catch {} });
+}
+
 export interface PeerGainApi {
   getUserVolume: (userId: string) => number;
   setUserVolume: (userId: string, volume: number) => void;
@@ -107,6 +119,8 @@ export interface PeerGainApi {
   setUserMuted: (userId: string, muted: boolean) => void;
   /** Mark a peer as muted-from-their-side (signaling-driven). */
   setPeerForcedMute: (userId: string, muted: boolean) => void;
+  /** Toggle local deafen — silences every peer's playback consistently. */
+  setLocalDeafened: (deafened: boolean) => void;
   attachPeerGain: (
     userId: string,
     stream: MediaStream,
@@ -139,7 +153,7 @@ export function usePeerGains(): PeerGainApi {
     if (!entry) return;
     const localMuted = !!userMutesRef.current[userId];
     const remoteForcedMute = !!_forcedMutes[userId];
-    const muted = localMuted || remoteForcedMute;
+    const muted = localMuted || remoteForcedMute || _localDeafened;
     const vol = userVolumesRef.current[userId];
     const v = typeof vol === "number" && isFinite(vol) ? Math.max(0, Math.min(2, vol)) : 1;
     // Always update the gain node (covers the running-graph case).
@@ -147,6 +161,9 @@ export function usePeerGains(): PeerGainApi {
     entry.media.forEach((m) => {
       const running = entry.ctx.state === "running";
       if (running && m.routedThroughGraph) {
+        // Element MUST stay muted — the graph is what's audible. Setting
+        // el.muted=false here while the graph also plays causes doubled/
+        // garbled audio that survives undeafen (the deafen-breaks-call bug).
         try { m.el.muted = true; } catch {}
       } else {
         try {
@@ -155,6 +172,21 @@ export function usePeerGains(): PeerGainApi {
         } catch {}
       }
     });
+  }, []);
+
+  const applyAllPeerGains = useCallback(() => {
+    peerEntriesRef.current.forEach((_e, uid) => applyPeerGain(uid));
+  }, [applyPeerGain]);
+
+  // Re-apply whenever the module-level deafen flag changes.
+  if (typeof window !== "undefined") {
+    // Register a listener once per hook instance; cleaned up in clearAllPeerGains.
+    // Idempotent re-add is fine because Set dedupes by reference.
+    _deafenListeners.add(applyAllPeerGains);
+  }
+
+  const setLocalDeafened = useCallback((deafened: boolean) => {
+    setLocalDeafenedFlag(deafened);
   }, []);
 
   const setPeerForcedMute = useCallback((userId: string, muted: boolean) => {
@@ -308,5 +340,5 @@ export function usePeerGains(): PeerGainApi {
     peerEntriesRef.current.clear();
   }, []);
 
-  return { getUserVolume, setUserVolume, isUserMuted, setUserMuted, setPeerForcedMute, attachPeerGain, clearAllPeerGains };
+  return { getUserVolume, setUserVolume, isUserMuted, setUserMuted, setPeerForcedMute, setLocalDeafened, attachPeerGain, clearAllPeerGains };
 }

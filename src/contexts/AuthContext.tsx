@@ -128,29 +128,48 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // isolate each client and break presence entirely.
     const topic = "global:online";
 
+    // Per-CONNECTION presence key (NOT per-user). If we keyed by user.id, every
+    // device the user has open would collide on the same key — and when ANY one
+    // device drops (iOS backgrounded, tab closed, network blip), Supabase fires
+    // a `leave` for that shared key and the user momentarily disappears from
+    // presenceState on every other client until the next track() lands. That
+    // caused the on/off/on/off flicker. With a unique per-connection key, the
+    // user is "online" as long as ≥1 of their devices has an active entry.
+    const presenceKey = `${user.id}:${crypto.randomUUID()}`;
+
     const cleanup = subscribeWithReconnect(topic, () => {
       // Drop any stale cached channel before re-attaching .on() handlers,
       // otherwise supabase-js throws "cannot add presence callbacks ... after
       // subscribe()" on the rebuild.
       removeChannelByTopic(topic);
       const channel = supabase.channel(topic, {
-        config: { presence: { key: user.id } },
+        config: { presence: { key: presenceKey } },
       });
       const syncPresence = () => {
-        const state = channel.presenceState();
-        const ids = new Set<string>(Object.keys(state));
+        const state = channel.presenceState() as Record<string, Array<{ user_id?: string }>>;
+        const ids = new Set<string>();
+        for (const entries of Object.values(state)) {
+          for (const entry of entries) {
+            // Prefer the explicit user_id we tracked; fall back to parsing the
+            // key (format: "<user_id>:<uuid>") for resilience.
+            const uid = entry?.user_id ?? Object.keys(state).find((k) => state[k] === entries)?.split(":")[0];
+            if (uid) ids.add(uid);
+          }
+        }
+        // Also union in any keys themselves (handles iOS native clients that
+        // may key directly by user.id without a metadata payload).
+        for (const key of Object.keys(state)) {
+          ids.add(key.split(":")[0]);
+        }
         setOnlineUserIds(ids);
       };
       channel
         .on("presence", { event: "sync" }, syncPresence)
         .on("presence", { event: "join" }, syncPresence)
         .on("presence", { event: "leave" }, syncPresence);
-      // Track ourselves once SUBSCRIBED. We can't intercept the wrapper's
-      // .subscribe() callback so we listen for the system "sync" event, which
-      // fires immediately after SUBSCRIBED.
+      // Re-track on every sync — cheap, idempotent, and ensures our presence
+      // entry survives a reconnect even if our previous track() was lost.
       channel.on("presence", { event: "sync" }, () => {
-        // Re-track on every sync — cheap, idempotent, and ensures our presence
-        // entry survives a reconnect even if our previous track() was lost.
         channel.track({ user_id: user.id, online_at: new Date().toISOString() }).catch(() => {});
         syncPresence();
       });

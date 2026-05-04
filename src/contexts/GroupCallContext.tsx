@@ -144,7 +144,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
   const preMuteRef = useRef<boolean>(false);
 
   // Per-user volume / local mute (shared with VoiceContext via localStorage).
-  const { getUserVolume, setUserVolume, isUserMuted, setUserMuted, attachPeerGain, clearAllPeerGains } = usePeerGains();
+  const { getUserVolume, setUserVolume, isUserMuted, setUserMuted, setLocalDeafened, attachPeerGain, clearAllPeerGains } = usePeerGains();
 
   // Fetch ICE servers (same as 1-on-1)
   useEffect(() => {
@@ -819,10 +819,12 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     setActiveCall(prev => {
       if (!prev) return null;
       const newDeafened = !prev.isDeafened;
-      // Mute all peer <audio> elements
-      document.querySelectorAll<HTMLAudioElement>("audio[data-group-peer]").forEach(el => {
-        el.muted = newDeafened;
-      });
+      // Use the gain-pipeline deafen instead of writing el.muted directly:
+      // group calls route every peer through a per-peer GainNode while the
+      // <audio> element stays muted. Flipping el.muted on undeafen made the
+      // element start playing IN ADDITION to the graph → garbled audio that
+      // didn't recover until the call was rebuilt.
+      setLocalDeafened(newDeafened);
       let nextMuted: boolean;
       if (newDeafened) {
         preMuteRef.current = prev.isMuted;
@@ -849,7 +851,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       }
       return { ...prev, isMuted: nextMuted, isDeafened: newDeafened };
     });
-  }, [user]);
+  }, [user, setLocalDeafened]);
 
   /**
    * Toggle local camera. When turning on, request a camera stream and add the

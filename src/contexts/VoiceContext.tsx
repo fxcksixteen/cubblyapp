@@ -364,7 +364,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   // table powers both 1-on-1 and group calls. The hook also routes mic AND
   // screen-share audio for the same peer through ONE GainNode → the slider
   // in `UserVolumeMenu` controls everything you hear from that user.
-  const { getUserVolume, setUserVolume, isUserMuted, setUserMuted, setPeerForcedMute, attachPeerGain, clearAllPeerGains } = usePeerGains();
+  const { getUserVolume, setUserVolume, isUserMuted, setUserMuted, setPeerForcedMute, setLocalDeafened, attachPeerGain, clearAllPeerGains } = usePeerGains();
 
   const animFrameRef = useRef<number>(0);
   const remoteAnimFrameRef = useRef<number>(0);
@@ -1085,6 +1085,71 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               setIncomingCall(null);
             } catch (e) {
               console.error("[Voice] Failed handling accepted offer:", e);
+              endCallRef.current();
+            }
+            return;
+          }
+
+          // ── Rejoin auto-accept path ────────────────────────────────────
+          // If we already have an activeCall on this conversation and no
+          // peer connection yet, this offer is the response to OUR
+          // `ready-for-offer` (we just clicked Rejoin). Don't show an
+          // incoming-call ring — accept the offer in place and finish the
+          // handshake so we end up actually connected. Without this branch
+          // the rejoiner sat in "connected" state with no pc, no audio,
+          // and a phantom incoming card.
+          if (!pc && activeCall?.conversationId === conversationId) {
+            try {
+              console.log("[Voice] 🔁 Rejoin offer received — auto-accepting");
+              const stream = await getUserMedia();
+              setLocalStream(stream);
+              localStreamRef.current = stream;
+              originalMicTrackRef.current = stream.getAudioTracks()[0] || null;
+              startAudioLevelMonitor(stream);
+
+              const newPc = createPeerConnection();
+              stream.getTracks().forEach(track => {
+                newPc.addTrack(track, stream);
+              });
+              outgoingCandidateBuffer.current = [];
+              incomingCandidateQueue.current = [];
+              remoteDescriptionSet.current = false;
+              newPc.onicecandidate = (event) => {
+                if (event.candidate) {
+                  channel.send({
+                    type: "broadcast",
+                    event: "voice-signal",
+                    payload: { type: "ice-candidate", candidate: event.candidate.toJSON(), senderId: user.id },
+                  });
+                }
+              };
+
+              remoteDescriptionSet.current = true;
+              await newPc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+              await flushQueuedIceCandidates(newPc);
+
+              const answer = await newPc.createAnswer();
+              let sdp = answer.sdp || "";
+              sdp = setHighQualityOpus(sdp);
+              answer.sdp = sdp;
+              await newPc.setLocalDescription(answer);
+
+              channel.send({
+                type: "broadcast",
+                event: "voice-signal",
+                payload: { type: "answer", sdp: answer, senderId: user.id },
+              });
+
+              setActiveCall(prev => prev ? {
+                ...prev,
+                peerId: payload.senderId || prev.peerId,
+                peerName: payload.senderName || prev.peerName,
+                state: "calling",
+                peerLeftAt: undefined,
+              } : prev);
+              peerIdRef.current = payload.senderId || peerIdRef.current;
+            } catch (e) {
+              console.error("[Voice] Rejoin auto-accept failed:", e);
               endCallRef.current();
             }
             return;
@@ -2239,8 +2304,14 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       if (!prev) return null;
       const newDeafened = !prev.isDeafened;
 
-      const audioElements = document.querySelectorAll("audio");
-      audioElements.forEach((el: any) => { if (el.__cubblyRemote) el.muted = newDeafened; });
+      // Route deafen through the per-peer gain pipeline. Direct el.muted
+      // writes here used to corrupt the call: on desktop the audio is played
+      // through a WebAudio GainNode while the element is intentionally
+      // muted, so flipping el.muted=false on undeafen made the element
+      // play in parallel with the graph → garbled audio that survived
+      // toggling. setLocalDeafened consults state inside applyPeerGain so
+      // both graph- and element-driven peers stay coherent.
+      setLocalDeafened(newDeafened);
 
       let nextMuted: boolean;
       if (newDeafened) {
@@ -2263,7 +2334,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       syncCallParticipantState({ is_muted: nextMuted, is_deafened: newDeafened });
       return { ...prev, isDeafened: newDeafened, isMuted: nextMuted };
     });
-  }, [syncCallParticipantState, user, applyLocalMicMute]);
+  }, [syncCallParticipantState, user, applyLocalMicMute, setLocalDeafened]);
 
   /**
    * Toggle the local camera on/off. Uses replaceTrack on the pre-allocated video
