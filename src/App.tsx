@@ -13,6 +13,7 @@ import { CoinsProvider } from "@/contexts/CoinsContext";
 import { NameColorsProvider } from "@/contexts/NameColorsContext";
 import { UserBadgesProvider } from "@/contexts/UserBadgesContext";
 import { NotesProvider } from "@/contexts/NotesContext";
+import { ServersProvider } from "@/contexts/ServersContext";
 import { NameColorsStyles } from "@/components/app/UserDisplayName";
 import CoinTrackingBridge from "@/components/app/CoinTrackingBridge";
 import EquippedThemeBridge from "@/components/app/EquippedThemeBridge";
