@@ -443,6 +443,8 @@ const AppLayout = () => {
                 navigate(`/@me/chat/${convId}`, { replace: true });
               } else if (view === "shop") {
                 navigate("/@me/shop", { replace: true });
+              } else if (view === "notes") {
+                navigate("/@me/notes", { replace: true });
               } else {
                 navigate(`/@me/${friendTab}`, { replace: true });
               }
