@@ -1,8 +1,20 @@
 import { useEffect, useRef, useState } from "react";
 import { useNotes, NoteRow, NotePlaintext } from "@/contexts/NotesContext";
-import { Pin, PinOff, Trash2, Plus, Paperclip, ShieldCheck, Loader2, FileText, Download, X, EyeOff, ArrowLeft } from "lucide-react";
+import { Pin, PinOff, Trash2, Plus, Paperclip, ShieldCheck, Loader2, FileText, Download, X, EyeOff, ArrowLeft, KeyRound } from "lucide-react";
 import { toast } from "sonner";
 import notesIcon from "@/assets/password-lock.svg";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { isStandalonePWA } from "@/lib/pwa";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const PIN_LENGTH = 4;
 
@@ -108,10 +120,8 @@ const LockScreen = () => {
 
   const handleFirstComplete = async (v: string) => {
     if (setup) {
-      // move to confirm step
       setStep(2);
     } else {
-      // unlock immediately
       setBusy(true);
       try {
         const ok = await n.unlock(v, trust);
@@ -153,14 +163,13 @@ const LockScreen = () => {
     setConfirmPin("");
   };
 
-  // ── SETUP: STEP 2 (confirm) ──
   if (setup && step === 2) {
     return (
       <ScreenShell>
         <button
           onClick={goBack}
           className="absolute top-6 left-6 flex items-center gap-1.5 text-sm transition-opacity hover:opacity-70"
-          style={{ color: "var(--app-text-secondary)" }}
+          style={{ color: "var(--app-text-secondary)", marginTop: "env(safe-area-inset-top, 0px)" }}
         >
           <ArrowLeft className="h-4 w-4" /> Back
         </button>
@@ -180,7 +189,6 @@ const LockScreen = () => {
     );
   }
 
-  // ── STEP 1: enter PIN (setup or unlock) ──
   return (
     <ScreenShell>
       <IconBadge />
@@ -207,7 +215,11 @@ const LockScreen = () => {
 const ScreenShell = ({ children }: { children: React.ReactNode }) => (
   <div
     className="relative flex flex-1 flex-col items-center justify-center gap-6 p-8"
-    style={{ backgroundColor: "var(--app-bg-primary)" }}
+    style={{
+      backgroundColor: "var(--app-bg-primary)",
+      paddingTop: "max(2rem, env(safe-area-inset-top, 0px))",
+      paddingBottom: "max(2rem, env(safe-area-inset-bottom, 0px))",
+    }}
   >
     {children}
   </div>
@@ -251,68 +263,107 @@ const TrustToggle = ({ trust, setTrust }: { trust: boolean; setTrust: (b: boolea
 /* ─────────── Notes editor ─────────── */
 const NotesEditor = () => {
   const n = useNotes();
+  const isMobile = useIsMobile();
   const [activeId, setActiveId] = useState<string | null>(null);
   const active = n.notes.find((x) => x.id === activeId) || null;
 
+  // On desktop, default to the first note. On mobile, start with the list.
   useEffect(() => {
-    if (!activeId && n.notes[0]) setActiveId(n.notes[0].id);
-  }, [n.notes, activeId]);
+    if (!isMobile && !activeId && n.notes[0]) setActiveId(n.notes[0].id);
+  }, [n.notes, activeId, isMobile]);
 
   const create = async () => {
     const note = await n.createNote({ title: "Untitled", body: "" });
     if (note) setActiveId(note.id);
   };
 
-  return (
-    <div className="flex flex-1 min-h-0" style={{ backgroundColor: "var(--app-bg-primary)" }}>
-      {/* Notes list */}
-      <div className="w-72 flex flex-col border-r min-h-0" style={{ borderColor: "var(--app-border)", backgroundColor: "var(--app-bg-secondary)" }}>
-        <div className="flex items-center justify-between px-3 py-3 border-b" style={{ borderColor: "var(--app-border)" }}>
-          <span className="text-sm font-semibold" style={{ color: "var(--app-text-primary)" }}>Personal Notes</span>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={create}
-              className="flex h-7 w-7 items-center justify-center rounded transition-colors"
-              title="New note"
-              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--app-hover)")}
-              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "")}
-            >
-              <Plus className="h-4 w-4" style={{ color: "var(--app-text-secondary)" }} />
-            </button>
-            <button
-              onClick={() => n.lock()}
-              className="flex h-7 w-7 items-center justify-center rounded transition-colors"
-              title="Lock vault"
-              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--app-hover)")}
-              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "")}
-            >
-              <EyeOff className="h-4 w-4" style={{ color: "var(--app-text-secondary)" }} />
-            </button>
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto">
-          {n.notes.length === 0 && (
-            <div className="px-4 py-6 text-xs text-center" style={{ color: "var(--app-text-secondary)" }}>
-              No notes yet. Click + to create one.
-            </div>
-          )}
-          {n.notes.map((note) => (
-            <NoteListItem
-              key={note.id}
-              note={note}
-              active={note.id === activeId}
-              onClick={() => setActiveId(note.id)}
-            />
-          ))}
-        </div>
-
-        <div className="px-3 py-2 border-t text-[10px] flex items-center gap-1" style={{ borderColor: "var(--app-border)", color: "var(--app-text-secondary)" }}>
-          <ShieldCheck className="h-3 w-3" /> Encrypted on your device
+  const NotesList = (
+    <div
+      className="flex w-full md:w-72 flex-col border-r min-h-0"
+      style={{ borderColor: "var(--app-border)", backgroundColor: "var(--app-bg-secondary)" }}
+    >
+      <div
+        className="flex items-center justify-between px-3 py-3 border-b"
+        style={{ borderColor: "var(--app-border)", paddingTop: "max(0.75rem, env(safe-area-inset-top, 0px))" }}
+      >
+        <span className="text-sm font-semibold" style={{ color: "var(--app-text-primary)" }}>Personal Notes</span>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={create}
+            className="flex h-8 w-8 items-center justify-center rounded transition-colors active:bg-[var(--app-hover)]"
+            title="New note"
+          >
+            <Plus className="h-4 w-4" style={{ color: "var(--app-text-secondary)" }} />
+          </button>
+          <button
+            onClick={() => n.lock()}
+            className="flex h-8 w-8 items-center justify-center rounded transition-colors active:bg-[var(--app-hover)]"
+            title="Lock vault"
+          >
+            <EyeOff className="h-4 w-4" style={{ color: "var(--app-text-secondary)" }} />
+          </button>
+          <button
+            onClick={async () => {
+              await n.forgetDevice();
+              toast.success("This device will require your PIN next time");
+            }}
+            className="flex h-8 w-8 items-center justify-center rounded transition-colors active:bg-[var(--app-hover)]"
+            title="Forget this device (require PIN next time)"
+          >
+            <KeyRound className="h-4 w-4" style={{ color: "var(--app-text-secondary)" }} />
+          </button>
         </div>
       </div>
 
-      {/* Editor */}
+      <div className="flex-1 overflow-y-auto">
+        {n.notes.length === 0 && (
+          <div className="px-4 py-6 text-xs text-center" style={{ color: "var(--app-text-secondary)" }}>
+            No notes yet. Tap + to create one.
+          </div>
+        )}
+        {n.notes.map((note) => (
+          <NoteListItem
+            key={note.id}
+            note={note}
+            active={!isMobile && note.id === activeId}
+            onClick={() => setActiveId(note.id)}
+          />
+        ))}
+      </div>
+
+      <div
+        className="px-3 py-2 border-t text-[10px] flex items-center gap-1"
+        style={{
+          borderColor: "var(--app-border)",
+          color: "var(--app-text-secondary)",
+          paddingBottom: "max(0.5rem, env(safe-area-inset-bottom, 0px))",
+        }}
+      >
+        <ShieldCheck className="h-3 w-3" /> Encrypted on your device
+      </div>
+    </div>
+  );
+
+  // ── MOBILE: stacked layout — list OR editor (not both) ──
+  if (isMobile) {
+    if (active) {
+      return (
+        <div className="flex flex-1 min-h-0 flex-col" style={{ backgroundColor: "var(--app-bg-primary)" }}>
+          <NoteEditor note={active} key={active.id} onBack={() => setActiveId(null)} />
+        </div>
+      );
+    }
+    return (
+      <div className="flex flex-1 min-h-0" style={{ backgroundColor: "var(--app-bg-primary)" }}>
+        {NotesList}
+      </div>
+    );
+  }
+
+  // ── DESKTOP: dual-pane ──
+  return (
+    <div className="flex flex-1 min-h-0" style={{ backgroundColor: "var(--app-bg-primary)" }}>
+      {NotesList}
       <div className="flex-1 min-w-0 flex flex-col">
         {active ? (
           <NoteEditor note={active} key={active.id} />
@@ -332,7 +383,7 @@ const NoteListItem = ({ note, active, onClick }: { note: NoteRow; active: boolea
   return (
     <button
       onClick={onClick}
-      className="w-full text-left px-3 py-2 border-b transition-colors"
+      className="w-full text-left px-3 py-2.5 border-b transition-colors active:bg-[var(--app-hover)]"
       style={{
         borderColor: "var(--app-border)",
         backgroundColor: active ? "var(--app-active, #404249)" : undefined,
@@ -349,24 +400,43 @@ const NoteListItem = ({ note, active, onClick }: { note: NoteRow; active: boolea
   );
 };
 
-const NoteEditor = ({ note }: { note: NoteRow }) => {
+const NoteEditor = ({ note, onBack }: { note: NoteRow; onBack?: () => void }) => {
   const n = useNotes();
+  // RESET state per note id (was leaking between notes before)
   const [title, setTitle] = useState(note.decrypted?.title || "");
   const [body, setBody] = useState(note.decrypted?.body || "");
   const [attachments, setAttachments] = useState(note.decrypted?.attachments || []);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const dirty = useRef(false);
+  const latestRef = useRef({ title, body, attachments });
+  latestRef.current = { title, body, attachments };
 
-  // Initialize body HTML once
+  // Initialize body HTML once per note
   useEffect(() => {
-    if (bodyRef.current && bodyRef.current.innerHTML !== body) {
-      bodyRef.current.innerHTML = body;
+    if (bodyRef.current) {
+      bodyRef.current.innerHTML = note.decrypted?.body || "";
     }
+    setTitle(note.decrypted?.title || "");
+    setBody(note.decrypted?.body || "");
+    setAttachments(note.decrypted?.attachments || []);
+    dirty.current = false;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [note.id]);
+
+  const flush = async () => {
+    if (!dirty.current) return;
+    const { title: t, body: b, attachments: a } = latestRef.current;
+    try {
+      await n.updateNote(note.id, { title: t, body: b, attachments: a });
+      dirty.current = false;
+    } catch {
+      // toast handled below
+    }
+  };
 
   // Debounced autosave
   useEffect(() => {
@@ -376,7 +446,7 @@ const NoteEditor = ({ note }: { note: NoteRow }) => {
       try {
         await n.updateNote(note.id, { title, body, attachments });
         dirty.current = false;
-      } catch (e: any) {
+      } catch {
         toast.error("Failed to save");
       } finally {
         setSaving(false);
@@ -384,6 +454,19 @@ const NoteEditor = ({ note }: { note: NoteRow }) => {
     }, 700);
     return () => clearTimeout(t);
   }, [title, body, attachments, note.id, n]);
+
+  // Flush on unmount + before tab close (avoids losing the last 700ms of typing)
+  useEffect(() => {
+    const handler = () => { void flush(); };
+    window.addEventListener("beforeunload", handler);
+    window.addEventListener("pagehide", handler);
+    return () => {
+      window.removeEventListener("beforeunload", handler);
+      window.removeEventListener("pagehide", handler);
+      void flush();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [note.id]);
 
   const onUpload = async (file: File) => {
     if (file.size > 25 * 1024 * 1024) return toast.error("File too large (25MB max)");
@@ -403,10 +486,16 @@ const NoteEditor = ({ note }: { note: NoteRow }) => {
     try {
       const blob = await n.downloadAttachment(att);
       const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url; a.download = att.name; a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 5000);
-    } catch (e: any) {
+      // iOS standalone PWAs ignore the `download` attribute — open in a new tab
+      // so the user can long-press → save instead of getting nothing.
+      if (isStandalonePWA()) {
+        window.open(url, "_blank");
+      } else {
+        const a = document.createElement("a");
+        a.href = url; a.download = att.name; a.click();
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch {
       toast.error("Download failed");
     }
   };
@@ -426,52 +515,62 @@ const NoteEditor = ({ note }: { note: NoteRow }) => {
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <div className="flex items-center gap-2 px-4 py-2 border-b" style={{ borderColor: "var(--app-border)" }}>
+      <div
+        className="flex items-center gap-2 px-4 py-2 border-b"
+        style={{ borderColor: "var(--app-border)", paddingTop: "max(0.5rem, env(safe-area-inset-top, 0px))" }}
+      >
+        {onBack && (
+          <button
+            onClick={async () => { await flush(); onBack(); }}
+            className="flex h-8 w-8 items-center justify-center rounded transition-colors active:bg-[var(--app-hover)] -ml-1"
+            title="Back to notes"
+            aria-label="Back"
+          >
+            <ArrowLeft className="h-5 w-5" style={{ color: "var(--app-text-secondary)" }} />
+          </button>
+        )}
         <input
           value={title}
           onChange={(e) => { setTitle(e.target.value); dirty.current = true; }}
           placeholder="Untitled"
+          autoCapitalize="sentences"
+          autoCorrect="on"
+          spellCheck
           className="flex-1 bg-transparent outline-none text-base font-semibold"
           style={{ color: "var(--app-text-primary)" }}
         />
         {saving && <Loader2 className="h-4 w-4 animate-spin" style={{ color: "var(--app-text-secondary)" }} />}
         <button
           onClick={() => n.togglePin(note.id, !note.pinned)}
-          className="flex h-7 w-7 items-center justify-center rounded transition-colors"
+          className="flex h-8 w-8 items-center justify-center rounded transition-colors active:bg-[var(--app-hover)]"
           title={note.pinned ? "Unpin" : "Pin"}
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--app-hover)")}
-          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "")}
         >
           {note.pinned ? <PinOff className="h-4 w-4" style={{ color: "var(--app-text-secondary)" }} /> : <Pin className="h-4 w-4" style={{ color: "var(--app-text-secondary)" }} />}
         </button>
         <button
-          onClick={async () => {
-            if (!confirm("Delete this note? This cannot be undone.")) return;
-            await n.deleteNote(note.id);
-          }}
-          className="flex h-7 w-7 items-center justify-center rounded transition-colors"
+          onClick={() => setConfirmDelete(true)}
+          className="flex h-8 w-8 items-center justify-center rounded transition-colors active:bg-[var(--app-hover)]"
           title="Delete"
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--app-hover)")}
-          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "")}
         >
           <Trash2 className="h-4 w-4" style={{ color: "#ed4245" }} />
         </button>
       </div>
 
       {/* Toolbar */}
-      <div className="flex items-center gap-1 px-4 py-1.5 border-b text-xs" style={{ borderColor: "var(--app-border)", color: "var(--app-text-secondary)" }}>
+      <div
+        className="flex items-center gap-1 px-4 py-1.5 border-b text-xs overflow-x-auto"
+        style={{ borderColor: "var(--app-border)", color: "var(--app-text-secondary)" }}
+      >
         <ToolBtn label="B" bold onClick={() => exec("bold")} />
         <ToolBtn label="I" italic onClick={() => exec("italic")} />
         <ToolBtn label="U" underline onClick={() => exec("underline")} />
-        <span className="mx-1 h-4 w-px" style={{ backgroundColor: "var(--app-border)" }} />
+        <span className="mx-1 h-4 w-px shrink-0" style={{ backgroundColor: "var(--app-border)" }} />
         <ToolBtn label="• List" onClick={() => exec("insertUnorderedList")} />
         <ToolBtn label="1. List" onClick={() => exec("insertOrderedList")} />
-        <span className="mx-1 h-4 w-px" style={{ backgroundColor: "var(--app-border)" }} />
+        <span className="mx-1 h-4 w-px shrink-0" style={{ backgroundColor: "var(--app-border)" }} />
         <button
           onClick={() => fileRef.current?.click()}
-          className="flex items-center gap-1 px-2 py-1 rounded transition-colors"
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--app-hover)")}
-          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "")}
+          className="flex items-center gap-1 px-2 py-1 rounded transition-colors active:bg-[var(--app-hover)] shrink-0"
         >
           {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Paperclip className="h-3.5 w-3.5" />}
           Attach
@@ -491,14 +590,20 @@ const NoteEditor = ({ note }: { note: NoteRow }) => {
       <div
         ref={bodyRef}
         contentEditable
+        autoCapitalize="sentences"
+        autoCorrect="on"
+        spellCheck
         onInput={(e) => { setBody((e.target as HTMLDivElement).innerHTML); dirty.current = true; }}
         className="flex-1 overflow-y-auto px-6 py-4 outline-none prose prose-sm max-w-none"
-        style={{ color: "var(--app-text-primary)", minHeight: 0 }}
+        style={{ color: "var(--app-text-primary)", minHeight: 0, WebkitUserSelect: "text" }}
         suppressContentEditableWarning
       />
 
       {attachments.length > 0 && (
-        <div className="border-t px-4 py-2 flex flex-wrap gap-2" style={{ borderColor: "var(--app-border)" }}>
+        <div
+          className="border-t px-4 py-2 flex flex-wrap gap-2"
+          style={{ borderColor: "var(--app-border)", paddingBottom: "max(0.5rem, env(safe-area-inset-bottom, 0px))" }}
+        >
           {attachments.map((att) => (
             <div key={att.id} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs" style={{ backgroundColor: "var(--app-bg-secondary)", border: "1px solid var(--app-border)" }}>
               <FileText className="h-3.5 w-3.5" style={{ color: "var(--app-text-secondary)" }} />
@@ -514,6 +619,30 @@ const NoteEditor = ({ note }: { note: NoteRow }) => {
           ))}
         </div>
       )}
+
+      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this note?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes the note and any attached files. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                setConfirmDelete(false);
+                await n.deleteNote(note.id);
+                if (onBack) onBack();
+              }}
+              className="bg-[#ed4245] hover:bg-[#c93b3e] text-white"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
@@ -521,10 +650,9 @@ const NoteEditor = ({ note }: { note: NoteRow }) => {
 const ToolBtn = ({ label, onClick, bold, italic, underline }: { label: string; onClick: () => void; bold?: boolean; italic?: boolean; underline?: boolean }) => (
   <button
     onMouseDown={(e) => { e.preventDefault(); onClick(); }}
-    className="px-2 py-1 rounded transition-colors"
+    onTouchStart={(e) => { e.preventDefault(); onClick(); }}
+    className="px-2 py-1 rounded transition-colors active:bg-[var(--app-hover)] shrink-0"
     style={{ fontWeight: bold ? 700 : undefined, fontStyle: italic ? "italic" : undefined, textDecoration: underline ? "underline" : undefined }}
-    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--app-hover)")}
-    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "")}
   >
     {label}
   </button>
