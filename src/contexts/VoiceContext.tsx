@@ -2239,8 +2239,14 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       if (!prev) return null;
       const newDeafened = !prev.isDeafened;
 
-      const audioElements = document.querySelectorAll("audio");
-      audioElements.forEach((el: any) => { if (el.__cubblyRemote) el.muted = newDeafened; });
+      // Route deafen through the per-peer gain pipeline. Direct el.muted
+      // writes here used to corrupt the call: on desktop the audio is played
+      // through a WebAudio GainNode while the element is intentionally
+      // muted, so flipping el.muted=false on undeafen made the element
+      // play in parallel with the graph → garbled audio that survived
+      // toggling. setLocalDeafened consults state inside applyPeerGain so
+      // both graph- and element-driven peers stay coherent.
+      setLocalDeafened(newDeafened);
 
       let nextMuted: boolean;
       if (newDeafened) {
@@ -2263,7 +2269,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       syncCallParticipantState({ is_muted: nextMuted, is_deafened: newDeafened });
       return { ...prev, isDeafened: newDeafened, isMuted: nextMuted };
     });
-  }, [syncCallParticipantState, user, applyLocalMicMute]);
+  }, [syncCallParticipantState, user, applyLocalMicMute, setLocalDeafened]);
 
   /**
    * Toggle the local camera on/off. Uses replaceTrack on the pre-allocated video
