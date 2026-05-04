@@ -40,11 +40,18 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Tons of new sound effects: mute/unmute, deafen/undeafen, joining a call, screen-share start/stop, plus the coin-earned and coin-spent jingles.",
       "Big settings expansion: Devices, Data & Privacy, Chat, Language & Time, Content & Social, Accessibility, and Keybinds tabs are now real and configurable.",
       "Locked shop items now show up inside Settings → Appearance and Settings → My Account too — blurred and one tap away from the shop, equippable in place once you own them.",
+      "Right-click any DM or group in the sidebar to instantly Mark As Read — clears its unread badge and the red pill at the top of the server sidebar without opening the chat.",
+      "Right-click any personal note for a clean menu with Open & Edit, Pin, Duplicate, Copy Text, and Delete.",
+      "Deleting a personal note now shows a polished confirmation modal with the note's title, so you never wipe one by accident.",
+      "Brand-new server creation modal: pick between creating a server from scratch, joining via invite, or importing a public Discord template URL — the importer recreates all categories and channels for you.",
+      "Polished install experience: high-resolution PWA icons, Apple touch icon, and maskable Android icon so Cubbly looks crisp when installed on any device.",
     ],
     bugFixes: [
       "Status indicators no longer flicker between online and offline when one of your devices (especially the iOS app) backgrounds. You're shown as online as long as ANY of your devices is connected.",
       "Muting or deafening yourself in a voice call no longer corrupts the audio for the rest of the call. Undeafening cleanly restores everyone's audio without needing to rejoin.",
       "Clicking 'Rejoin' on a call pill now actually drops you back into the existing call your friend is still in, with audio working immediately.",
+      "The coin pill no longer follows you across every tab — it now only appears on the Shop, and tapping it opens a proper info modal explaining how coins work.",
+      "Personal Notes editor saves correctly when you switch between notes or close the tab mid-typing — no more lost edits.",
     ],
   },
   {
