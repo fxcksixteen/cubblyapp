@@ -17,6 +17,9 @@ import ChatSettings from "./settings/ChatSettings";
 import LanguageTimeSettings from "./settings/LanguageTimeSettings";
 import DataPrivacySettings from "./settings/DataPrivacySettings";
 import DevicesSettings from "./settings/DevicesSettings";
+import ContentSocialSettings from "./settings/ContentSocialSettings";
+import AccessibilitySettings from "./settings/AccessibilitySettings";
+import KeybindsSettings from "./settings/KeybindsSettings";
 import { CURRENT_VERSION } from "@/lib/changelog";
 
 const APP_VERSION = CURRENT_VERSION;
