@@ -99,6 +99,7 @@ const ShopView = () => {
   const { balance } = useCoins();
   const [items, setItems] = useState<ShopItem[]>([]);
   const [owned, setOwned] = useState<Set<string>>(new Set());
+  const [equipped, setEquipped] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<Category | "all">("all");
   const [displayName, setDisplayName] = useState<string>("");
   const [loading, setLoading] = useState(true);
@@ -109,15 +110,19 @@ const ShopView = () => {
     let alive = true;
     (async () => {
       setLoading(true);
-      const [{ data: catalog }, { data: inv }] = await Promise.all([
+      const [{ data: catalog }, { data: inv }, { data: eq }] = await Promise.all([
         supabase.from("shop_items").select("*").order("sort_order", { ascending: true }),
         user
           ? supabase.from("user_inventory").select("item_id").eq("user_id", user.id)
+          : Promise.resolve({ data: [] as { item_id: string }[] }),
+        user
+          ? supabase.from("user_equipped").select("item_id").eq("user_id", user.id)
           : Promise.resolve({ data: [] as { item_id: string }[] }),
       ]);
       if (!alive) return;
       setItems((catalog as ShopItem[]) ?? []);
       setOwned(new Set((inv ?? []).map((r: any) => r.item_id)));
+      setEquipped(new Set((eq ?? []).map((r: any) => r.item_id)));
       setLoading(false);
     })();
     return () => {
@@ -136,6 +141,14 @@ const ShopView = () => {
         (payload) => {
           const id = (payload.new as any)?.item_id;
           if (id) setOwned((prev) => new Set(prev).add(id));
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "user_equipped", filter: `user_id=eq.${user.id}` },
+        async () => {
+          const { data } = await supabase.from("user_equipped").select("item_id").eq("user_id", user.id);
+          setEquipped(new Set((data ?? []).map((r: any) => r.item_id)));
         }
       )
       .subscribe();
