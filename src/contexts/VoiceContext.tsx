@@ -1214,7 +1214,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         // The call_event row is only marked ended once the last participant
         // leaves (see endCall).
         if (payload.type === "hangup" || payload.type === "peer-leave") {
-          console.log("[Voice] 👋 Peer left — keeping call alive locally");
+          console.log("[Voice] 👋 Peer left — keeping call alive locally; hard-resetting signaling state");
           try { pcRef.current?.close(); } catch {}
           pcRef.current = null;
           try { screenPcRef.current?.close(); } catch {}
@@ -1231,13 +1231,33 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           // Stop ringing on either side if we were still in calling/ringing.
           stopLooping("outgoingRing");
           stopLooping("incomingCall");
-          // Drop instant peer state so the UI doesn't keep showing their
-          // mute icon etc. Don't reset activeCall — user is still in the call.
           setPeerInstantState({});
+          // CRITICAL: clear ALL stale signaling state so the next rejoin
+          // negotiation starts clean. Without this the staying peer's
+          // initializeOutgoingConnection bails (stale pending offer), or
+          // re-uses leftover ICE candidates from the dead PC, leaving the
+          // rejoiner stuck in fake-connected with no audio.
+          pendingOfferRef.current = null;
+          acceptedIncomingCallRef.current = null;
+          outgoingCallMetaRef.current = null;
+          outgoingCandidateBuffer.current = [];
+          incomingCandidateQueue.current = [];
+          remoteDescriptionSet.current = false;
+          // Tear down our local mic stream + audio level monitor. We're alone
+          // in the call now; mic will be re-acquired fresh when the rejoiner
+          // arrives. Keeping it hot caused getUserMedia() to stack a second
+          // stream on rejoin, which is what made mute/deafen permanently
+          // break the audio after a rejoin race.
+          try { localStreamRef.current?.getTracks().forEach(t => t.stop()); } catch {}
+          localStreamRef.current = null;
+          originalMicTrackRef.current = null;
+          setLocalStream(null);
+          stopAudioLevelMonitor();
+          // Tear down per-peer gain pipelines so they don't leak into the
+          // next negotiation with stale AudioContext nodes.
+          try { clearAllPeerGains(); } catch {}
           // Stamp peerLeftAt so the call overlay flips the peer's avatar
-          // label to "Not in call" IMMEDIATELY, without waiting for the
-          // realtime postgres UPDATE on call_participants (which can be
-          // delayed up to ~1s and is occasionally dropped under load).
+          // label to "Not in call" IMMEDIATELY.
           setActiveCall(prev => prev ? { ...prev, peerLeftAt: Date.now() } : prev);
           // Tell useCallParticipants to re-fetch right now (covers dropped
           // realtime UPDATEs).
