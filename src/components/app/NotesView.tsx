@@ -268,7 +268,7 @@ const NotesEditor = () => {
       {/* Notes list */}
       <div className="w-72 flex flex-col border-r min-h-0" style={{ borderColor: "var(--app-border)", backgroundColor: "var(--app-bg-secondary)" }}>
         <div className="flex items-center justify-between px-3 py-3 border-b" style={{ borderColor: "var(--app-border)" }}>
-          <span className="text-sm font-semibold" style={{ color: "var(--app-text-primary)" }}>Private notes</span>
+          <span className="text-sm font-semibold" style={{ color: "var(--app-text-primary)" }}>Personal Notes</span>
           <div className="flex items-center gap-1">
             <button
               onClick={create}
