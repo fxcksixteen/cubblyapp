@@ -386,18 +386,66 @@ const NotesEditor = () => {
     </div>
   );
 
+  const DeleteDialog = (
+    <AlertDialog open={!!pendingDeleteId} onOpenChange={(o) => !o && setPendingDeleteId(null)}>
+      <AlertDialogContent
+        className="rounded-2xl border-0 p-0 overflow-hidden max-w-sm"
+        style={{ backgroundColor: "var(--app-bg-secondary)", boxShadow: "0 24px 48px rgba(0,0,0,0.4)" }}
+      >
+        <div className="flex flex-col items-center gap-4 px-6 pt-7 pb-5">
+          <div
+            className="flex h-14 w-14 items-center justify-center rounded-full"
+            style={{ backgroundColor: "rgba(237,66,69,0.12)" }}
+          >
+            <AlertTriangle className="h-7 w-7" style={{ color: "#ed4245" }} />
+          </div>
+          <AlertDialogHeader className="space-y-1.5 text-center sm:text-center">
+            <AlertDialogTitle className="text-lg font-bold" style={{ color: "var(--app-text-primary)" }}>
+              Delete this note?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-sm leading-relaxed" style={{ color: "var(--app-text-secondary)" }}>
+              <span className="font-semibold" style={{ color: "var(--app-text-primary)" }}>
+                "{pendingDeleteTitle}"
+              </span>
+              <br />
+              will be permanently deleted along with any attached files. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+        </div>
+        <AlertDialogFooter
+          className="flex-row gap-2 px-4 pb-4 pt-0 sm:gap-2"
+        >
+          <AlertDialogCancel
+            className="flex-1 m-0 rounded-lg border-0 text-sm font-medium"
+            style={{ backgroundColor: "var(--app-bg-tertiary)", color: "var(--app-text-primary)" }}
+          >
+            Cancel
+          </AlertDialogCancel>
+          <AlertDialogAction
+            onClick={confirmDeleteFromList}
+            className="flex-1 rounded-lg text-sm font-semibold bg-[#ed4245] hover:bg-[#c93b3e] text-white"
+          >
+            Delete
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+
   // ── MOBILE: stacked layout — list OR editor (not both) ──
   if (isMobile) {
     if (active) {
       return (
         <div className="flex flex-1 min-h-0 flex-col" style={{ backgroundColor: "var(--app-bg-primary)" }}>
-          <NoteEditor note={active} key={active.id} onBack={() => setActiveId(null)} />
+          <NoteEditor note={active} key={active.id} onBack={() => setActiveId(null)} onRequestDelete={() => setPendingDeleteId(active.id)} />
+          {DeleteDialog}
         </div>
       );
     }
     return (
       <div className="flex flex-1 min-h-0" style={{ backgroundColor: "var(--app-bg-primary)" }}>
         {NotesList}
+        {DeleteDialog}
       </div>
     );
   }
@@ -408,37 +456,99 @@ const NotesEditor = () => {
       {NotesList}
       <div className="flex-1 min-w-0 flex flex-col">
         {active ? (
-          <NoteEditor note={active} key={active.id} />
+          <NoteEditor note={active} key={active.id} onRequestDelete={() => setPendingDeleteId(active.id)} />
         ) : (
           <div className="flex flex-1 items-center justify-center text-sm" style={{ color: "var(--app-text-secondary)" }}>
             Select or create a note
           </div>
         )}
       </div>
+      {DeleteDialog}
     </div>
   );
 };
 
-const NoteListItem = ({ note, active, onClick }: { note: NoteRow; active: boolean; onClick: () => void }) => {
+const NoteListItem = ({
+  note,
+  active,
+  onClick,
+  onTogglePin,
+  onDuplicate,
+  onCopyText,
+  onRequestDelete,
+}: {
+  note: NoteRow;
+  active: boolean;
+  onClick: () => void;
+  onTogglePin: () => void;
+  onDuplicate: () => void;
+  onCopyText: () => void;
+  onRequestDelete: () => void;
+}) => {
   const title = note.decrypted?.title || (note.decryptError ? "🔒 Decryption error" : "Untitled");
   const preview = stripHtml(note.decrypted?.body || "").slice(0, 60);
   return (
-    <button
-      onClick={onClick}
-      className="w-full text-left px-3 py-2.5 border-b transition-colors active:bg-[var(--app-hover)]"
-      style={{
-        borderColor: "var(--app-border)",
-        backgroundColor: active ? "var(--app-active, #404249)" : undefined,
-      }}
-      onMouseEnter={(e) => { if (!active) e.currentTarget.style.backgroundColor = "var(--app-hover)"; }}
-      onMouseLeave={(e) => { if (!active) e.currentTarget.style.backgroundColor = ""; }}
-    >
-      <div className="flex items-center gap-1.5">
-        {note.pinned && <Pin className="h-3 w-3" style={{ color: "hsl(var(--primary))" }} />}
-        <span className="text-sm font-medium truncate" style={{ color: "var(--app-text-primary)" }}>{title}</span>
-      </div>
-      {preview && <div className="text-xs truncate mt-0.5" style={{ color: "var(--app-text-secondary)" }}>{preview}</div>}
-    </button>
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <button
+          onClick={onClick}
+          className="w-full text-left px-3 py-2.5 border-b transition-colors active:bg-[var(--app-hover)]"
+          style={{
+            borderColor: "var(--app-border)",
+            backgroundColor: active ? "var(--app-active, #404249)" : undefined,
+          }}
+          onMouseEnter={(e) => { if (!active) e.currentTarget.style.backgroundColor = "var(--app-hover)"; }}
+          onMouseLeave={(e) => { if (!active) e.currentTarget.style.backgroundColor = ""; }}
+        >
+          <div className="flex items-center gap-1.5">
+            {note.pinned && <Pin className="h-3 w-3" style={{ color: "hsl(var(--primary))" }} />}
+            <span className="text-sm font-medium truncate" style={{ color: "var(--app-text-primary)" }}>{title}</span>
+          </div>
+          {preview && <div className="text-xs truncate mt-0.5" style={{ color: "var(--app-text-secondary)" }}>{preview}</div>}
+        </button>
+      </ContextMenuTrigger>
+      <ContextMenuContent
+        className="w-52 rounded-xl border p-1.5 shadow-xl"
+        style={{ backgroundColor: "#111214", borderColor: "var(--app-border, #2b2d31)" }}
+      >
+        <ContextMenuItem
+          onClick={onClick}
+          className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer"
+        >
+          <Edit3 className="h-4 w-4" />
+          Open & Edit
+        </ContextMenuItem>
+        <ContextMenuItem
+          onClick={onTogglePin}
+          className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer"
+        >
+          {note.pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
+          {note.pinned ? "Unpin Note" : "Pin Note"}
+        </ContextMenuItem>
+        <ContextMenuItem
+          onClick={onDuplicate}
+          className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer"
+        >
+          <FileText className="h-4 w-4" />
+          Duplicate
+        </ContextMenuItem>
+        <ContextMenuItem
+          onClick={onCopyText}
+          className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer"
+        >
+          <Copy className="h-4 w-4" />
+          Copy Text
+        </ContextMenuItem>
+        <ContextMenuSeparator className="my-1" style={{ backgroundColor: "var(--app-border, #2b2d31)" }} />
+        <ContextMenuItem
+          onClick={onRequestDelete}
+          className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#ed4245] hover:bg-[#ed4245] hover:text-white cursor-pointer"
+        >
+          <Trash2 className="h-4 w-4" />
+          Delete Note
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 };
 
