@@ -95,6 +95,16 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
     else toast.success("Friend removed");
   };
 
+  const handleMarkAsRead = async (conversationId: string) => {
+    try {
+      await supabase.rpc("mark_conversation_read", { _conversation_id: conversationId });
+      window.dispatchEvent(new CustomEvent("cubbly:conversation-marked-read", { detail: { conversationId } }));
+      toast.success("Marked as read");
+    } catch {
+      toast.error("Failed to mark as read");
+    }
+  };
+
   const handleBlockUser = async (userId: string) => {
     if (!user) return;
     const { data: existing } = await supabase
