@@ -7,7 +7,7 @@ import { useActivity } from "@/contexts/ActivityContext";
 import { useFriends } from "@/hooks/useFriends";
 import { Conversation } from "@/hooks/useConversations";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, X, Users, MoreVertical, Lock } from "lucide-react";
+import { Plus, X, Users, MoreVertical } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { getProfileColor } from "@/lib/profileColors";
 import { activityLabel } from "@/lib/activityLabel";
@@ -29,6 +29,7 @@ import UserDisplayName from "./UserDisplayName";
 import UserBadges from "./UserBadges";
 import friendsIcon from "@/assets/icons/friends.svg";
 import shopIcon from "@/assets/icons/shop.svg";
+import notesIcon from "@/assets/password-lock.svg";
 import micIcon from "@/assets/icons/microphone.svg";
 import micMuteIcon from "@/assets/icons/microphone-mute.svg";
 import headphoneIcon from "@/assets/icons/headphone.svg";
@@ -112,7 +113,7 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
 
   const navItems: Array<{ id: string; label: string; icon?: string; lucide?: React.ComponentType<{ className?: string; style?: React.CSSProperties }> }> = [
     { id: "friends", icon: friendsIcon, label: "Friends" },
-    { id: "notes", lucide: Lock, label: "Private Notes" },
+    { id: "notes", icon: notesIcon, label: "Personal Notes" },
     { id: "shop", icon: shopIcon, label: "Shop" },
   ];
 
