@@ -81,11 +81,13 @@ const MobileCallOverlay = ({ conversationId, recipientName, recipientAvatar, rec
   const conv = conversations.find(c => c.id === conversationId);
   const convTitle = conv?.is_group ? (conv.name || "Group call") : recipientName;
   const ringTimedOut = !!activeCall.ringTimedOut;
-  const isWaiting = activeCall.state === "calling" || activeCall.state === "ringing";
-  const isRinging = isWaiting && !ringTimedOut;
-  const stateLabel = activeCall.state === "connected"
+  const peerLeft = !!activeCall.peerLeftAt;
+  const showNotInCall = ringTimedOut || peerLeft;
+  const isWaiting = activeCall.state === "calling" || activeCall.state === "ringing" || peerLeft;
+  const isRinging = (activeCall.state === "ringing") && !ringTimedOut && !peerLeft;
+  const stateLabel = activeCall.state === "connected" && !peerLeft
     ? "In call"
-    : ringTimedOut ? "Not in call" : isRinging ? "Ringing…" : "Calling…";
+    : showNotInCall ? "Not in call" : isRinging ? "Ringing…" : "Calling…";
 
   if (minimized) {
     return (
@@ -94,13 +96,13 @@ const MobileCallOverlay = ({ conversationId, recipientName, recipientAvatar, rec
         className="fixed left-1/2 -translate-x-1/2 z-[60] flex items-center gap-2 rounded-full px-4 py-2.5 shadow-2xl active:scale-95 transition-transform animate-fade-in"
         style={{
           bottom: `calc(56px + env(safe-area-inset-bottom, 0px) + 12px)`,
-          backgroundColor: activeCall.state === "connected" ? "#3ba55c" : ringTimedOut ? "#4f545c" : "#faa61a",
+          backgroundColor: activeCall.state === "connected" && !peerLeft ? "#3ba55c" : showNotInCall ? "#4f545c" : "#faa61a",
           color: "white",
         }}
       >
         <span className="h-2 w-2 rounded-full bg-white animate-pulse" />
         <span className="text-sm font-semibold">
-          {activeCall.state === "connected" ? "In call with " : ringTimedOut ? "Waiting for " : "Calling "}{recipientName}
+          {activeCall.state === "connected" && !peerLeft ? "In call with " : showNotInCall ? "Waiting for " : "Calling "}{recipientName}
         </span>
         <Maximize2 className="h-4 w-4 ml-1" />
       </button>
@@ -220,7 +222,7 @@ const MobileCallOverlay = ({ conversationId, recipientName, recipientAvatar, rec
       </div>
 
       {/* State sub-label (Calling… / Ringing… / Not in call / In call) */}
-      <div className="text-center text-[12px] uppercase tracking-[0.18em] font-semibold pb-1" style={{ color: activeCall.state === "connected" ? "#3ba55c" : ringTimedOut ? "#949ba4" : "#faa61a" }}>
+      <div className="text-center text-[12px] uppercase tracking-[0.18em] font-semibold pb-1" style={{ color: activeCall.state === "connected" && !peerLeft ? "#3ba55c" : showNotInCall ? "#949ba4" : "#faa61a" }}>
         {stateLabel}
       </div>
 

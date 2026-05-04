@@ -149,8 +149,10 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
   const recipientColor = recipientUserId ? getProfileColor(recipientUserId) : { bg: "#5865f2" };
   const displayName = user?.user_metadata?.display_name || "You";
   const ringTimedOut = !!activeCall.ringTimedOut;
-  const isWaiting = activeCall.state === "calling" || activeCall.state === "ringing";
-  const isRinging = activeCall.state === "ringing" && !ringTimedOut;
+  const peerLeft = !!activeCall.peerLeftAt;
+  const isWaiting = activeCall.state === "calling" || activeCall.state === "ringing" || peerLeft;
+  const isRinging = activeCall.state === "ringing" && !ringTimedOut && !peerLeft;
+  const showNotInCall = ringTimedOut || peerLeft;
   const hasScreenShare = isScreenSharing || !!remoteScreenStream;
 
   // Determine which badge to show: deafen takes priority over mute
@@ -162,11 +164,11 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
       {/* Call header */}
       <div className="flex items-center justify-between px-5 py-3 border-b" style={{ borderColor: "var(--app-border)" }}>
         <div className="flex items-center gap-2">
-          <div className="h-2 w-2 rounded-full animate-pulse" style={{ backgroundColor: activeCall.state === "connected" ? "#3ba55c" : ringTimedOut ? "#949ba4" : "#faa61a" }} />
-          <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: activeCall.state === "connected" ? "#3ba55c" : ringTimedOut ? "var(--app-text-secondary)" : "var(--app-text-secondary)" }}>
-            {activeCall.state === "connected"
+          <div className="h-2 w-2 rounded-full animate-pulse" style={{ backgroundColor: activeCall.state === "connected" && !peerLeft ? "#3ba55c" : showNotInCall ? "#949ba4" : "#faa61a" }} />
+          <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: activeCall.state === "connected" && !peerLeft ? "#3ba55c" : "var(--app-text-secondary)" }}>
+            {activeCall.state === "connected" && !peerLeft
               ? formatDuration(elapsed)
-              : ringTimedOut
+              : showNotInCall
                 ? "Not in call"
                 : activeCall.state === "calling" ? "Calling..." : "Ringing..."}
           </span>

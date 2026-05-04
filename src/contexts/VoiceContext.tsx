@@ -83,6 +83,13 @@ export interface ActiveCall {
    * Reset back to false the moment a peer actually connects.
    */
   ringTimedOut?: boolean;
+  /**
+   * Timestamp (ms) the moment we received `peer-leave`/`hangup` from the
+   * other side. Used by the call overlay to flip the peer's avatar label to
+   * "Not in call" instantly — without waiting on a postgres_changes UPDATE
+   * that may be delayed or dropped. Cleared when the peer rejoins.
+   */
+  peerLeftAt?: number;
 }
 
 export interface CallEvent {
@@ -710,7 +717,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       console.log("[Voice] ICE state:", pc.iceConnectionState);
       if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
         // Mark call as truly connected only when ICE transport is up
-        setActiveCall(prev => prev && prev.state !== "connected" ? { ...prev, state: "connected", ringTimedOut: false, startedAt: prev.startedAt || Date.now() } : prev);
+        setActiveCall(prev => prev && prev.state !== "connected" ? { ...prev, state: "connected", ringTimedOut: false, peerLeftAt: undefined, startedAt: prev.startedAt || Date.now() } : prev);
         // Ensure ALL local audio tracks are enabled when connected
         const senders = pc.getSenders();
         senders.forEach(s => {
@@ -1149,6 +1156,18 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           // Drop instant peer state so the UI doesn't keep showing their
           // mute icon etc. Don't reset activeCall — user is still in the call.
           setPeerInstantState({});
+          // Stamp peerLeftAt so the call overlay flips the peer's avatar
+          // label to "Not in call" IMMEDIATELY, without waiting for the
+          // realtime postgres UPDATE on call_participants (which can be
+          // delayed up to ~1s and is occasionally dropped under load).
+          setActiveCall(prev => prev ? { ...prev, peerLeftAt: Date.now() } : prev);
+          // Tell useCallParticipants to re-fetch right now (covers dropped
+          // realtime UPDATEs).
+          try {
+            window.dispatchEvent(new CustomEvent("cubbly:peer-left", {
+              detail: { callEventId: currentCallEventId },
+            }));
+          } catch {}
           // Fire an immediate heartbeat so our last_seen_at is fresh — the
           // leaver's rejoin liveness check (30s window) will then see us and
           // join the SAME call_event instead of starting a fresh one.

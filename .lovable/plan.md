@@ -1,46 +1,80 @@
-## Plan — Two deliverables
 
-### 1) Re-package the iOS Build 11 zip
-The previous run never produced `cubbly-ios-v0.1.4-build11.zip` in `/mnt/documents/`. Re-zip the current `ios-native/` source tree (which already contains all build-11 fixes — RealtimeChannelFactory, presence/reactions/calls refactor, `CFBundleVersion = 11`) and emit it as a `presentation-artifact`.
+# Fix calls cross-platform + Not-in-call indicator
+
+## What's actually broken
+
+### Issue 1 — iOS-initiated call never rings the peer; pill flickers and disappears
+
+Root cause is in `ios-native/Sources/Cubbly/Core/Services/CallStore.swift::startCall`:
+
+1. We call `await signaling.joinCallChannel(conversationId:)` and **immediately** call `signaling.ringUser(...)`. But `ringUser` builds a **brand-new** `voice-global:{peerId}` channel, calls `await channel.subscribe()`, fires the `incoming-call` broadcast, then schedules removal 5s later. With supabase-swift 2.24, `subscribe()` returns before the channel is actually JOINED — the broadcast is sent into a half-open channel and dropped on the floor for the peer. That is why "her app showed ringing but mine never rang."
+2. Right after that, we call `signaling.broadcast("peer-leave"/"hangup"...)` indirectly: when the peer never picks up and the user taps end, our `endCall` broadcasts `peer-leave`. But the bigger flicker bug is that `currentCallEventId` gets inserted, the realtime INSERT fires the `Ongoing call` pill on her end, then the iOS endCall path runs the cleanup that updates `state=ended` because `live.isEmpty` (the peer never joined → no other participant rows → call ended). On rapid hang-ups that whole sequence happens in <1s, which is exactly the "appeared for a split second then immediately removed" symptom.
+3. Also: the global ring channel uses a fresh channel per ring instead of reusing one we know is JOINED. The signaling channel (`voice-call:{conv}`) is joined first with `await channel.subscribe()`, but the same race applies on supabase-swift — broadcasts before the JOIN ack are dropped silently.
+
+### Issue 2 — Web "Not in call" indicator stuck when peer leaves
+
+`useCallParticipants` listens to `postgres_changes` on `call_participants` filtered by `call_event_id=eq.X`. That works fine for the **leaver's** UPDATE (their `left_at` flips non-null), but the realtime row payload only includes the changed row. The peer's `useCallParticipants` runs `fetchParticipants()` which re-queries `.is("left_at", null)` — so the leaver should disappear. The actual gap is in `VoiceContext.tsx::handlePeerLeave` (lines 1131–1165): when the **remaining** peer receives `peer-leave`, it tears down the PC and clears `peerInstantState`, but it does **not** re-fetch `call_participants`. The DM `VoiceCallOverlay` uses `peerState` from `useCallParticipants(currentCallEventId)` which won't update until the leaver's UPDATE is broadcast — and the leaver only writes `left_at` *after* the `peer-leave` broadcast. There's a 200–800ms gap where the remaining peer's overlay shows the old peer state, and if the realtime UPDATE drops, it never recovers.
+
+The fix: when receiving `peer-leave`/`hangup`, immediately re-call `useCallParticipants.refetch()` (and add a 1s safety retry). Also flip the local overlay to "Not in call" by introducing a `peerLeftAt` timestamp on `activeCall` so the overlay does not depend solely on `useCallParticipants` for that label.
 
 ---
 
-### 2) Web + Desktop hotfix → bump to **v0.2.29**
+## Plan
 
-#### A. Screen-share volume persists across fullscreen exit
-File: `src/components/app/FullscreenScreenShareViewer.tsx`
-- The unmount cleanup currently force-resets the shared `<audio>` element to `muted = false; volume = 1`. That is why dragging the slider in fullscreen takes effect, but the moment you exit fullscreen the audio snaps back to 100%.
-- Change the unmount path to **apply the user's last persisted stream volume** (already saved per-stream in `localStorage`) to the shared `<audio>` element instead of hard-resetting to `1`. For volumes > 100%, persist the boost setting and re-apply it via a long-lived WebAudio gain node owned by `VoiceContext` (so it survives unmount), or cap to 1.0 on the element when leaving fullscreen but remember the >100% intent for the next fullscreen open.
-- Also re-apply the saved volume in `VoiceContext` / `GroupCallContext` `ontrack` for screen audio so a stream that arrives while NOT in fullscreen also respects the last-set volume.
+### A. iOS `v0.1.5` — calls actually work
 
-#### B. Speaking-ring smoothness/sensitivity regression
-Files: `src/contexts/VoiceContext.tsx`, `src/contexts/GroupCallContext.tsx`, `src/components/app/VoiceCallOverlay.tsx`, `src/components/app/GroupCallPanel.tsx`
-- The recent `Math.abs(next - last) > 1` re-render gate (added in 0.2.28) is too coarse — it kills small-but-meaningful updates, making the green ring feel "sticky" instead of reactive. Lower the gate to `0.3` (or remove for the local meter and keep `0.5` for remote).
-- Lower analyser `smoothingTimeConstant` from `0.5` → `0.35` and `fftSize` stays `256`, so the meter follows transients again.
-- Lower `SPEAKING_THRESHOLD` from `10` → `6` in both `VoiceCallOverlay.tsx` and `GroupCallPanel.tsx` so the ring lights up at normal speaking volume the way it used to.
-- Tighten the box-shadow CSS transition from `80ms linear` → `60ms linear` so the ring tracks the meter visually.
+1. **`CallSignaling.swift`**
+   - In `subscribeToIncomingCalls()`, `joinCallChannel()`, and `ringUser()`, add a **JOINED-status wait** helper that polls `channel.status` (or uses `RealtimeChannelV2.status` callback) and only resolves once `status == .subscribed`. supabase-swift 2.24 exposes `channel.statusChange` async sequence — await it.
+   - Helper signature: `private func awaitJoined(_ channel: RealtimeChannelV2, timeoutMs: Int = 5000) async`.
+   - Use it in `ringUser` BEFORE the `broadcast(event: "incoming-call", ...)` call so the ring is never dropped. Keep the channel alive 8s (not 5s) to receive any ack.
+   - Also use it in `joinCallChannel` so the very first `broadcast(...)` after join (the `ready-for-offer` from the callee, the offer from the caller) actually lands. This also fixes the "split-second pill" symptom — the call_event INSERT was happening before our presence on the per-call channel, so any peer-side reaction was racing.
 
-#### C. "Rejoin" creates a new call instead of joining the live one + peer still shown as in-call
-Files: `src/contexts/VoiceContext.tsx`, `src/components/app/ChatView.tsx`
-Root causes:
-1. After a hangup, the leaver's `endCall` issues an **async** `UPDATE … left_at = …` followed by a `SELECT count`. If the count read replica is behind, it can momentarily return 0 → the whole `call_event` gets flipped to `ended`, even though the peer is still in. On rejoin, `startCall`'s "find existing ongoing event" lookup then misses → it creates a brand-new event.
-2. The peer's UI in-call indicator (avatar badge) reads `call_participants` once and isn't subscribed to live changes, so the leaver looks "still in call" even after `left_at` updates.
+2. **`CallStore.swift::startCall`**
+   - Reorder so we (a) `joinCallChannel` and `awaitJoined`, (b) insert `call_events` row, (c) `ensureOwnParticipantRow` + `startHeartbeat()`, (d) **then** `ringUser`. This guarantees that by the time the peer's `incoming-call` arrives, our participant row is live, so when she taps Accept her client's "is anyone in this event?" check sees us and joins the same event.
+   - On `endCall` when the call_event was created but never had a peer join, **delete** the `call_events` row instead of marking it `state=ended` (or insert it with `state='missed'`). Today we mark `ended`, which still flashes a "Call ended" pill in chat. New behavior: if `live.isEmpty` AND `currentCallEventId` was just created within the last 35s AND nobody else ever joined, set `state='missed'` so chat shows the proper red "Missed call" pill instead of the flicker.
 
-Fixes:
-- In `endCall`, only mark the **event** as ended when (a) our update succeeded **and** (b) there are zero rows with `left_at IS NULL` **and** zero rows with a `last_seen_at` within the last 15s. Use the existing `end_call_event_if_stale` RPC instead of a raw `UPDATE` so the server is the single source of truth.
-- In `startCall`'s existing-event lookup, also accept events whose state was flipped to `ended` within the last 30s **if** another participant still has `left_at IS NULL` and a fresh `last_seen_at` — re-open the event in that case (RPC: a small new `reopen_call_event_if_live`, or just clear `state` back to `ongoing` via RLS-safe update by the still-live participant; simpler path: prefer reusing **any** event with a fresh live peer, regardless of state).
-- On the receiver, when `peer-leave` is handled, fire one immediate `heartbeat_call_participant` so our own `last_seen_at` is fresh and the leaver's rejoin logic picks us up instantly.
-- In `SidebarVoiceCard` / `GlobalCallIndicator` (whichever paints the "in call" avatar overlay), subscribe to `postgres_changes` on `call_participants` filtered to the watched user, so the indicator drops to "Not In Call" the instant `left_at` is written.
+3. **`CallStore.swift::tryJoinExisting`** — already correct; no change.
 
-#### D. Update log + version bump
-- `src/lib/changelog.ts`: bump `CURRENT_VERSION` to `"0.2.29"` and prepend a new entry titled "Calls polish: fullscreen volume, smoother speaking rings, reliable rejoin".
-- `package.json` + `package-lock.json`: bump `version` to `0.2.29`.
+4. **`CubblyConfig.swift`** — bump `appVersion` to `"0.1.5"`.
 
-#### Out of scope
-- iOS native app (already on build 11; no changes).
-- Mobile web overlay speaking ring uses the same constants — it gets the fix for free.
+5. **`ios-native/project.yml`** — bump `MARKETING_VERSION` to `"0.1.5"`, `CURRENT_PROJECT_VERSION` +1.
 
-#### Deliverables to user
-- `presentation-artifact` for `cubbly-ios-v0.1.4-build11.zip`
-- Code changes above (Lovable auto-deploys preview/published web app)
-- Note that the user still needs to run the desktop electron build pipeline locally after `git pull` — same flow as 0.2.28.
+### B. Web/Desktop `v0.2.31` — Not-in-call updates instantly + caller-side missed-call sweeping
+
+1. **`src/contexts/VoiceContext.tsx`** (around lines 1131–1165, the `peer-leave`/`hangup` handler):
+   - Add a `setActiveCall(prev => prev ? { ...prev, peerLeftAt: Date.now() } : prev)` so we have a deterministic local signal.
+   - Fire a new custom event `window.dispatchEvent(new CustomEvent("cubbly:peer-left", { detail: { callEventId: currentCallEventId } }))` so any listening component refetches.
+
+2. **`src/hooks/useCallParticipants.ts`**:
+   - Listen to `window` `cubbly:peer-left` and call `fetchParticipants()`.
+   - Add a 1.5s safety re-fetch after any postgres_changes event (covers dropped UPDATEs).
+
+3. **`src/components/app/VoiceCallOverlay.tsx`** + **`src/components/app/mobile/MobileCallOverlay.tsx`**:
+   - Treat `activeCall.peerLeftAt` as the same condition as `ringTimedOut` for showing "Not in call" under the peer's avatar. Clear it whenever `peerState` becomes defined again (peer rejoined) or when ICE reconnects.
+
+4. **`src/contexts/VoiceContext.tsx`** types: add `peerLeftAt?: number` to `ActiveCall`.
+
+5. **Bump version**:
+   - `package.json` + `package-lock.json` → `0.2.31`
+   - `src/lib/changelog.ts`: prepend `0.2.31` entry titled "Calls actually reach the other side":
+     - "When iOS rings you, your phone now actually rings — fixed a race in the realtime channel that was dropping the call notification before it left the device."
+     - "When the person you're in a call with leaves, their avatar in your call panel now updates to 'Not in call' the instant they hang up, even if their realtime update was missed."
+
+### C. Native iOS zip
+- After the iOS edits + version bump, rebuild the prebuilt zip via the existing `.github/workflows/prebuild-native.yml` flow (or local zip of `ios-native/`) and surface it in `/mnt/documents/`.
+
+---
+
+## Files touched
+
+- `ios-native/Sources/Cubbly/Core/Services/CallSignaling.swift`
+- `ios-native/Sources/Cubbly/Core/Services/CallStore.swift`
+- `ios-native/Sources/Cubbly/App/CubblyConfig.swift`
+- `ios-native/project.yml`
+- `src/contexts/VoiceContext.tsx`
+- `src/hooks/useCallParticipants.ts`
+- `src/components/app/VoiceCallOverlay.tsx`
+- `src/components/app/mobile/MobileCallOverlay.tsx`
+- `src/lib/changelog.ts`
+- `package.json`, `package-lock.json`
+- New iOS zip in `/mnt/documents/cubbly-ios-native-v0.1.5.zip`
