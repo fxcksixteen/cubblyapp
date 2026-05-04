@@ -340,5 +340,5 @@ export function usePeerGains(): PeerGainApi {
     peerEntriesRef.current.clear();
   }, []);
 
-  return { getUserVolume, setUserVolume, isUserMuted, setUserMuted, setPeerForcedMute, attachPeerGain, clearAllPeerGains };
+  return { getUserVolume, setUserVolume, isUserMuted, setUserMuted, setPeerForcedMute, setLocalDeafened, attachPeerGain, clearAllPeerGains };
 }
