@@ -9,6 +9,8 @@ import { VoiceProvider } from "@/contexts/VoiceContext";
 import { GroupCallProvider } from "@/contexts/GroupCallContext";
 import { ActivityProvider } from "@/contexts/ActivityContext";
 import { GamingModeProvider } from "@/contexts/GamingModeContext";
+import { CoinsProvider } from "@/contexts/CoinsContext";
+import CoinTrackingBridge from "@/components/app/CoinTrackingBridge";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Index from "./pages/Index.tsx";
 import Login from "./pages/Login.tsx";
@@ -37,6 +39,8 @@ const App = () => (
             <GroupCallProvider>
             <ActivityProvider>
               <GamingModeProvider>
+              <CoinsProvider>
+              <CoinTrackingBridge />
               <Routes>
                 <Route path="/" element={<Index />} />
                 <Route path="/login" element={<Login />} />
@@ -55,6 +59,7 @@ const App = () => (
               <WhatsNewModal />
               <GlobalCallIndicator />
               <GroupIncomingCallOverlay />
+              </CoinsProvider>
               </GamingModeProvider>
             </ActivityProvider>
             </GroupCallProvider>
