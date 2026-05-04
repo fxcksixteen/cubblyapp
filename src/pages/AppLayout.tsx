@@ -23,6 +23,7 @@ import DMSidebar from "@/components/app/DMSidebar";
 import FriendsView from "@/components/app/FriendsView";
 import ChatView from "@/components/app/ChatView";
 import ShopView from "@/components/app/ShopView";
+import NotesView from "@/components/app/NotesView";
 import VoiceCallOverlay from "@/components/app/VoiceCallOverlay";
 import TitleBar from "@/components/app/TitleBar";
 import CreateGroupModal from "@/components/app/CreateGroupModal";
@@ -94,6 +95,7 @@ const AppLayout = () => {
   const activeView = chatIdFromUrl
     ? `dm:${chatIdFromUrl}`
     : pathParts[1] === "shop" ? "shop"
+    : pathParts[1] === "notes" ? "notes"
     : isYouRoute ? "you"
     : "friends";
 
@@ -125,6 +127,7 @@ const AppLayout = () => {
 
   const isDM = activeView.startsWith("dm:");
   const isShop = activeView === "shop";
+  const isNotes = activeView === "notes";
   const isYou = activeView === "you";
   const activeConvId = isDM ? activeView.replace("dm:", "") : null;
   const activeConv = conversations.find((conversation) => conversation.id === activeConvId);
@@ -269,6 +272,9 @@ const AppLayout = () => {
     if (isShop) {
       return <span className="font-semibold" style={{ color: "var(--app-text-primary)" }}>Shop</span>;
     }
+    if (isNotes) {
+      return <span className="font-semibold" style={{ color: "var(--app-text-primary)" }}>Private Notes</span>;
+    }
     return (
       <>
         <div className="hidden sm:flex items-center gap-2">
@@ -341,6 +347,9 @@ const AppLayout = () => {
     }
     if (isShop) {
       return <ShopView />;
+    }
+    if (isNotes) {
+      return <NotesView />;
     }
     return <FriendsView activeTab={friendTab} setActiveTab={setFriendTab} onOpenDM={handleOpenDM} activeNowOpen={activeNowOpen} setActiveNowOpen={setActiveNowOpen} />;
   };
@@ -434,6 +443,8 @@ const AppLayout = () => {
                 navigate(`/@me/chat/${convId}`, { replace: true });
               } else if (view === "shop") {
                 navigate("/@me/shop", { replace: true });
+              } else if (view === "notes") {
+                navigate("/@me/notes", { replace: true });
               } else {
                 navigate(`/@me/${friendTab}`, { replace: true });
               }
@@ -520,6 +531,8 @@ const AppLayout = () => {
               navigate(`/@me/chat/${convId}`, { replace: true });
             } else if (view === "shop") {
               navigate("/@me/shop", { replace: true });
+            } else if (view === "notes") {
+              navigate("/@me/notes", { replace: true });
             } else {
               navigate(`/@me/${friendTab}`, { replace: true });
             }
@@ -659,7 +672,7 @@ const AppLayout = () => {
               <>
                 <div className="flex items-center gap-4">{renderHeader()}</div>
                 <div className="flex items-center gap-3" style={{ color: "var(--app-text-secondary)" }}>
-                  {!activeNowOpen && !isDM && !isShop && (
+                  {!activeNowOpen && !isDM && !isShop && !isNotes && (
                     <button
                       onClick={() => setActiveNowOpen(true)}
                       className="transition-opacity duration-200 animate-fade-in"
