@@ -188,7 +188,7 @@ const ShopView = () => {
       animated: { title: "Motion Gradients", subtitle: "Animated, shifting name colors" },
     },
     theme: {
-      classic: { title: "Classic Themes", subtitle: "Curated palettes for everyday vibes" },
+      static: { title: "Classic Themes", subtitle: "Curated palettes for everyday vibes" },
       animated: { title: "Animated Themes", subtitle: "Living backgrounds with subtle motion" },
       premium: { title: "Premium Themes", subtitle: "Exclusive, high-end atmospheres" },
     },
