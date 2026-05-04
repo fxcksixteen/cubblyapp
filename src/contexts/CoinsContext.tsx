@@ -127,6 +127,7 @@ export const CoinsProvider = ({ children }: { children: ReactNode }) => {
           const row = payload.new as { amount: number; reason: string };
           // Only show a toast for *positive* awards. Spends (negative) don't toast.
           if (row.amount > 0 && row.reason !== "signup_bonus") {
+            playSound("coinsReceive", { volume: 0.5 });
             toast.custom(() => <RewardToast amount={row.amount} reason={row.reason} />, {
               duration: 4000,
             });
