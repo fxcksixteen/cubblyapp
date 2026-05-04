@@ -499,7 +499,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     });
 
     setActiveCall({ conversationId, conversationName, joinedAt: Date.now(), isMuted: false, isDeafened: false, isVideoOn: false, isScreenSharing: false });
-    playSound("message", { volume: 0.4 });
+    playSound("joinCall", { volume: 0.4 });
 
     // Subscribe to call channel
     await joinCallChannel(conversationId);
@@ -705,7 +705,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       isVideoOn: false,
       isScreenSharing: false,
     });
-    playSound("message", { volume: 0.4 });
+    playSound("joinCall", { volume: 0.4 });
 
     // Insert participant row via the heartbeat RPC so a previously-left
     // row is REVIVED (left_at cleared) instead of failing the unique
