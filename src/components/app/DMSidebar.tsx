@@ -7,7 +7,7 @@ import { useActivity } from "@/contexts/ActivityContext";
 import { useFriends } from "@/hooks/useFriends";
 import { Conversation } from "@/hooks/useConversations";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, X, Users, MoreVertical } from "lucide-react";
+import { Plus, X, Users, MoreVertical, Lock } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { getProfileColor } from "@/lib/profileColors";
 import { activityLabel } from "@/lib/activityLabel";
