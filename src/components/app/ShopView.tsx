@@ -181,6 +181,33 @@ const ShopView = () => {
     [items, activeTab]
   );
 
+  const SUBCATEGORY_LABELS: Record<string, Record<string, { title: string; subtitle?: string }>> = {
+    name_color: {
+      static: { title: "Static Colors", subtitle: "Solid, single-tone name colors" },
+      gradient: { title: "Gradient Colors", subtitle: "Two-tone blended name colors" },
+      animated: { title: "Motion Gradients", subtitle: "Animated, shifting name colors" },
+    },
+    theme: {
+      classic: { title: "Classic Themes", subtitle: "Curated palettes for everyday vibes" },
+      animated: { title: "Animated Themes", subtitle: "Living backgrounds with subtle motion" },
+      premium: { title: "Premium Themes", subtitle: "Exclusive, high-end atmospheres" },
+    },
+    badge: {
+      profile: { title: "Profile Badges", subtitle: "Show off next to your name" },
+    },
+  };
+
+  const grouped = useMemo(() => {
+    if (activeTab === "all") return null;
+    const groups = new Map<string, ShopItem[]>();
+    for (const it of visible) {
+      const key = it.subcategory || "other";
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(it);
+    }
+    return Array.from(groups.entries());
+  }, [visible, activeTab]);
+
   const buy = async (item: ShopItem) => {
     if (purchasing) return;
     if (owned.has(item.id)) {
