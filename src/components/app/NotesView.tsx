@@ -552,7 +552,7 @@ const NoteListItem = ({
   );
 };
 
-const NoteEditor = ({ note, onBack }: { note: NoteRow; onBack?: () => void }) => {
+const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?: () => void; onRequestDelete?: () => void }) => {
   const n = useNotes();
   // RESET state per note id (was leaking between notes before)
   const [title, setTitle] = useState(note.decrypted?.title || "");
@@ -560,7 +560,6 @@ const NoteEditor = ({ note, onBack }: { note: NoteRow; onBack?: () => void }) =>
   const [attachments, setAttachments] = useState(note.decrypted?.attachments || []);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const dirty = useRef(false);
