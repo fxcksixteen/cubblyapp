@@ -48,6 +48,7 @@ const App = () => (
               <CoinsProvider>
               <NameColorsProvider>
               <UserBadgesProvider>
+              <NotesProvider>
               <NameColorsStyles />
               <CoinTrackingBridge />
               <EquippedThemeBridge />
@@ -70,6 +71,7 @@ const App = () => (
               <GlobalCallIndicator />
               <GroupIncomingCallOverlay />
               <SpaceBackground />
+              </NotesProvider>
               </UserBadgesProvider>
               </NameColorsProvider>
               </CoinsProvider>
