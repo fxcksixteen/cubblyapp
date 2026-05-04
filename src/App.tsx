@@ -13,6 +13,7 @@ import { CoinsProvider } from "@/contexts/CoinsContext";
 import { NameColorsProvider } from "@/contexts/NameColorsContext";
 import { NameColorsStyles } from "@/components/app/UserDisplayName";
 import CoinTrackingBridge from "@/components/app/CoinTrackingBridge";
+import EquippedThemeBridge from "@/components/app/EquippedThemeBridge";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Index from "./pages/Index.tsx";
 import Login from "./pages/Login.tsx";
@@ -23,6 +24,7 @@ import UpdateModal from "./components/app/UpdateModal";
 import WhatsNewModal from "./components/app/WhatsNewModal";
 import GlobalCallIndicator from "./components/app/GlobalCallIndicator";
 import { GroupIncomingCallOverlay } from "./components/app/GroupCallPanel";
+import SpaceBackground from "./components/app/SpaceBackground";
 
 const queryClient = new QueryClient();
 
@@ -45,6 +47,7 @@ const App = () => (
               <NameColorsProvider>
               <NameColorsStyles />
               <CoinTrackingBridge />
+              <EquippedThemeBridge />
               <Routes>
                 <Route path="/" element={<Index />} />
                 <Route path="/login" element={<Login />} />
@@ -63,6 +66,7 @@ const App = () => (
               <WhatsNewModal />
               <GlobalCallIndicator />
               <GroupIncomingCallOverlay />
+              <SpaceBackground />
               </NameColorsProvider>
               </CoinsProvider>
               </GamingModeProvider>

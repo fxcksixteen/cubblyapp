@@ -1,8 +1,8 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 
-export type ThemeName = "default" | "onyx" | "white" | "cubbly";
+export type ThemeName = "default" | "onyx" | "white" | "cubbly" | "space";
 
-const VALID_THEMES: ThemeName[] = ["default", "onyx", "white", "cubbly"];
+const VALID_THEMES: ThemeName[] = ["default", "onyx", "white", "cubbly", "space"];
 
 interface ThemeContextType {
   theme: ThemeName;
