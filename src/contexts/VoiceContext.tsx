@@ -2287,6 +2287,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       if (!prev) return null;
       const newMuted = !prev.isMuted;
       void applyLocalMicMute(newMuted);
+      playSound(newMuted ? "mute" : "unmute", { volume: 0.4 });
       try {
         channelRef.current?.send({
           type: "broadcast",
@@ -2312,6 +2313,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       // toggling. setLocalDeafened consults state inside applyPeerGain so
       // both graph- and element-driven peers stay coherent.
       setLocalDeafened(newDeafened);
+      playSound(newDeafened ? "deafen" : "undeafen", { volume: 0.4 });
 
       let nextMuted: boolean;
       if (newDeafened) {
