@@ -546,6 +546,15 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
           </ErrorBoundary>
         );
 
+      case "content-social":
+        return <ContentSocialSettings cardStyle={cardStyle as any} />;
+
+      case "accessibility":
+        return <AccessibilitySettings cardStyle={cardStyle as any} />;
+
+      case "keybinds":
+        return <KeybindsSettings cardStyle={cardStyle as any} />;
+
       default:
         return (
           <div className="rounded-[24px] border p-5" style={cardStyle}>
