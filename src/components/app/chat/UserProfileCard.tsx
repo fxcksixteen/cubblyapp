@@ -277,7 +277,10 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
 
       {/* Info */}
       <div className="px-4 pt-1.5 pb-2">
-        <p className="text-lg font-bold text-white">{displayName}</p>
+        <p className="text-lg font-bold text-white flex items-center gap-2">
+          <UserDisplayName userId={userId} name={displayName} fallbackColor="#ffffff" />
+          <UserBadges userId={userId} size={14} />
+        </p>
         <p className="text-sm text-[#949ba4]">@{profile?.username || displayName.toLowerCase()}</p>
         {userActivity?.name && isUserOnline && (
           <div className="mt-2">
