@@ -100,6 +100,18 @@ interface PeerEntry {
  *  per-instance refs so it survives StrictMode double-mounts. */
 const _forcedMutes: Record<string, boolean> = {};
 
+/** Local-deafen flag: silences ALL peers we hear. Module-level so it
+ *  applies across every peer entry consistently. Critical: deafen MUST
+ *  go through the gain pipeline (not direct el.muted writes), otherwise
+ *  on the desktop graph path the element gets unmuted while the GainNode
+ *  is also playing → doubled/garbled audio that survives undeafen. */
+let _localDeafened = false;
+const _deafenListeners = new Set<() => void>();
+function setLocalDeafenedFlag(v: boolean) {
+  _localDeafened = v;
+  _deafenListeners.forEach((fn) => { try { fn(); } catch {} });
+}
+
 export interface PeerGainApi {
   getUserVolume: (userId: string) => number;
   setUserVolume: (userId: string, volume: number) => void;
@@ -107,6 +119,8 @@ export interface PeerGainApi {
   setUserMuted: (userId: string, muted: boolean) => void;
   /** Mark a peer as muted-from-their-side (signaling-driven). */
   setPeerForcedMute: (userId: string, muted: boolean) => void;
+  /** Toggle local deafen — silences every peer's playback consistently. */
+  setLocalDeafened: (deafened: boolean) => void;
   attachPeerGain: (
     userId: string,
     stream: MediaStream,
