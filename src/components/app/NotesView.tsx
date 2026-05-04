@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useNotes, NoteRow, NotePlaintext } from "@/contexts/NotesContext";
-import { Lock, Pin, PinOff, Trash2, Plus, Paperclip, ShieldCheck, Loader2, FileText, Download, X, EyeOff } from "lucide-react";
+import { Pin, PinOff, Trash2, Plus, Paperclip, ShieldCheck, Loader2, FileText, Download, X, EyeOff, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
+import notesIcon from "@/assets/password-lock.svg";
 
-const MAX_PIN = 12;
-const MIN_PIN = 4;
+const PIN_LENGTH = 4;
 
 const NotesView = () => {
   const n = useNotes();
@@ -21,107 +21,232 @@ const NotesView = () => {
   return <NotesEditor />;
 };
 
+/* ─────────── PIN dots input ─────────── */
+const PinDots = ({
+  value,
+  onChange,
+  onComplete,
+  autoFocus,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onComplete?: (v: string) => void;
+  autoFocus?: boolean;
+}) => {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (autoFocus) inputRef.current?.focus();
+  }, [autoFocus]);
+
+  return (
+    <div
+      className="relative flex items-center justify-center gap-4"
+      onClick={() => inputRef.current?.focus()}
+    >
+      <input
+        ref={inputRef}
+        type="tel"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        autoComplete="one-time-code"
+        value={value}
+        maxLength={PIN_LENGTH}
+        onChange={(e) => {
+          const v = e.target.value.replace(/\D/g, "").slice(0, PIN_LENGTH);
+          onChange(v);
+          if (v.length === PIN_LENGTH) onComplete?.(v);
+        }}
+        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+        aria-label="PIN"
+      />
+      {Array.from({ length: PIN_LENGTH }).map((_, i) => {
+        const filled = i < value.length;
+        return (
+          <div
+            key={i}
+            className="flex items-center justify-center rounded-full transition-all duration-200"
+            style={{
+              width: 64,
+              height: 64,
+              backgroundColor: filled ? "hsl(var(--primary))" : "var(--app-bg-tertiary)",
+              border: `2px solid ${filled ? "hsl(var(--primary))" : "var(--app-border)"}`,
+              boxShadow: filled ? "0 4px 12px hsl(var(--primary) / 0.35)" : undefined,
+              transform: filled ? "scale(1.05)" : "scale(1)",
+            }}
+          >
+            {filled && (
+              <span
+                className="text-2xl font-bold"
+                style={{ color: "hsl(var(--primary-foreground))" }}
+              >
+                •
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
 /* ─────────── Lock / Setup screen ─────────── */
 const LockScreen = () => {
   const n = useNotes();
+  const setup = !n.hasExistingVault;
+  const [step, setStep] = useState<1 | 2>(1);
   const [pin, setPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
   const [trust, setTrust] = useState(true);
   const [busy, setBusy] = useState(false);
-  const setup = !n.hasExistingVault;
+  const [shake, setShake] = useState(false);
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (pin.length < MIN_PIN) return toast.error(`PIN must be at least ${MIN_PIN} characters`);
-    if (pin.length > MAX_PIN) return toast.error(`PIN must be at most ${MAX_PIN} characters`);
-    if (setup && pin !== confirmPin) return toast.error("PINs do not match");
+  const triggerShake = () => {
+    setShake(true);
+    setTimeout(() => setShake(false), 450);
+  };
+
+  const handleFirstComplete = async (v: string) => {
+    if (setup) {
+      // move to confirm step
+      setStep(2);
+    } else {
+      // unlock immediately
+      setBusy(true);
+      try {
+        const ok = await n.unlock(v, trust);
+        if (!ok) {
+          triggerShake();
+          setPin("");
+          toast.error("Wrong PIN");
+        }
+      } catch (err: any) {
+        triggerShake();
+        setPin("");
+        toast.error(err?.message || "Failed to unlock");
+      } finally {
+        setBusy(false);
+      }
+    }
+  };
+
+  const handleConfirmComplete = async (v: string) => {
+    if (v !== pin) {
+      triggerShake();
+      setConfirmPin("");
+      toast.error("PINs don't match — try again");
+      return;
+    }
     setBusy(true);
     try {
-      if (setup) {
-        await n.setupVault(pin, trust);
-        toast.success("Vault created");
-      } else {
-        const ok = await n.unlock(pin, trust);
-        if (!ok) toast.error("Wrong PIN");
-      }
+      await n.setupVault(pin, trust);
+      toast.success("Vault created");
     } catch (err: any) {
-      toast.error(err?.message || "Failed");
+      toast.error(err?.message || "Failed to create vault");
     } finally {
       setBusy(false);
     }
   };
 
-  return (
-    <div className="flex flex-1 items-center justify-center p-6" style={{ backgroundColor: "var(--app-bg-primary)" }}>
-      <form onSubmit={submit} className="w-full max-w-sm rounded-xl p-6 space-y-4" style={{ backgroundColor: "var(--app-bg-secondary)", border: "1px solid var(--app-border)" }}>
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full" style={{ backgroundColor: "var(--app-bg-tertiary)" }}>
-            <Lock className="h-5 w-5" style={{ color: "hsl(var(--primary))" }} />
-          </div>
-          <div>
-            <h2 className="text-base font-semibold" style={{ color: "var(--app-text-primary)" }}>
-              {setup ? "Create your private vault" : "Unlock your notes"}
-            </h2>
-            <p className="text-xs" style={{ color: "var(--app-text-secondary)" }}>
-              {setup ? "Choose a PIN. We never see it — your notes are encrypted on this device." : "Enter your PIN to decrypt your notes."}
-            </p>
-          </div>
-        </div>
+  const goBack = () => {
+    setStep(1);
+    setConfirmPin("");
+  };
 
-        <input
-          type="password"
-          inputMode="numeric"
-          autoFocus
-          value={pin}
-          onChange={(e) => setPin(e.target.value)}
-          placeholder="PIN"
-          maxLength={MAX_PIN}
-          className="w-full rounded-md px-3 py-2 outline-none"
-          style={{ backgroundColor: "var(--app-bg-tertiary)", color: "var(--app-text-primary)", border: "1px solid var(--app-border)" }}
-        />
-        {setup && (
-          <input
-            type="password"
-            inputMode="numeric"
-            value={confirmPin}
-            onChange={(e) => setConfirmPin(e.target.value)}
-            placeholder="Confirm PIN"
-            maxLength={MAX_PIN}
-            className="w-full rounded-md px-3 py-2 outline-none"
-            style={{ backgroundColor: "var(--app-bg-tertiary)", color: "var(--app-text-primary)", border: "1px solid var(--app-border)" }}
-          />
-        )}
-
-        <label className="flex items-center gap-2 text-sm cursor-pointer select-none" style={{ color: "var(--app-text-secondary)" }}>
-          <input type="checkbox" checked={trust} onChange={(e) => setTrust(e.target.checked)} className="accent-[hsl(var(--primary))]" />
-          <ShieldCheck className="h-4 w-4" />
-          Trust this device — skip PIN next time
-        </label>
-
+  // ── SETUP: STEP 2 (confirm) ──
+  if (setup && step === 2) {
+    return (
+      <ScreenShell>
         <button
-          type="submit"
-          disabled={busy}
-          className="w-full rounded-md py-2 text-sm font-semibold disabled:opacity-50"
-          style={{ backgroundColor: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" }}
+          onClick={goBack}
+          className="absolute top-6 left-6 flex items-center gap-1.5 text-sm transition-opacity hover:opacity-70"
+          style={{ color: "var(--app-text-secondary)" }}
         >
-          {busy ? "Working…" : setup ? "Create vault" : "Unlock"}
+          <ArrowLeft className="h-4 w-4" /> Back
         </button>
+        <IconBadge />
+        <h1 className="text-2xl font-bold" style={{ color: "var(--app-text-primary)" }}>
+          Confirm your PIN
+        </h1>
+        <p className="text-sm text-center max-w-xs" style={{ color: "var(--app-text-secondary)" }}>
+          Enter the same 4 digits again to set up your personal notes.
+        </p>
+        <div className={shake ? "animate-shake" : ""}>
+          <PinDots value={confirmPin} onChange={setConfirmPin} onComplete={handleConfirmComplete} autoFocus />
+        </div>
+        <TrustToggle trust={trust} setTrust={setTrust} />
+        {busy && <Loader2 className="h-5 w-5 animate-spin" style={{ color: "var(--app-text-secondary)" }} />}
+      </ScreenShell>
+    );
+  }
 
-        {!setup && (
-          <p className="text-[11px] leading-snug" style={{ color: "var(--app-text-secondary)" }}>
-            Forgot your PIN? Notes can't be recovered — they're end-to-end encrypted.
-          </p>
-        )}
-
-        {setup && (
-          <p className="text-[11px] leading-snug" style={{ color: "var(--app-text-secondary)" }}>
-            ⚠ If you forget your PIN, your notes are permanently unrecoverable.
-          </p>
-        )}
-      </form>
-    </div>
+  // ── STEP 1: enter PIN (setup or unlock) ──
+  return (
+    <ScreenShell>
+      <IconBadge />
+      <h1 className="text-2xl font-bold" style={{ color: "var(--app-text-primary)" }}>
+        {setup ? "Create your PIN" : "Enter your PIN"}
+      </h1>
+      <p className="text-sm text-center max-w-xs" style={{ color: "var(--app-text-secondary)" }}>
+        {setup
+          ? "Choose a 4-digit PIN to protect your personal notes on this device."
+          : "Enter your 4-digit PIN to unlock your personal notes."}
+      </p>
+      <div className={shake ? "animate-shake" : ""}>
+        <PinDots value={pin} onChange={setPin} onComplete={handleFirstComplete} autoFocus />
+      </div>
+      <TrustToggle trust={trust} setTrust={setTrust} />
+      {busy && <Loader2 className="h-5 w-5 animate-spin" style={{ color: "var(--app-text-secondary)" }} />}
+      <p className="text-[11px] leading-snug text-center max-w-xs" style={{ color: "var(--app-text-secondary)" }}>
+        Notes are end-to-end encrypted. Forgot your PIN? Recovery is possible by personal request to Cubbly support.
+      </p>
+    </ScreenShell>
   );
 };
+
+const ScreenShell = ({ children }: { children: React.ReactNode }) => (
+  <div
+    className="relative flex flex-1 flex-col items-center justify-center gap-6 p-8"
+    style={{ backgroundColor: "var(--app-bg-primary)" }}
+  >
+    {children}
+  </div>
+);
+
+const IconBadge = () => (
+  <div
+    className="flex h-16 w-16 items-center justify-center rounded-2xl"
+    style={{
+      backgroundColor: "var(--app-bg-secondary)",
+      border: "1px solid var(--app-border)",
+      boxShadow: "0 8px 24px hsl(var(--primary) / 0.15)",
+    }}
+  >
+    <img
+      src={notesIcon}
+      alt=""
+      className="h-8 w-8"
+      style={{ filter: "invert(1) opacity(0.95)" }}
+    />
+  </div>
+);
+
+const TrustToggle = ({ trust, setTrust }: { trust: boolean; setTrust: (b: boolean) => void }) => (
+  <label
+    className="flex items-center gap-2 text-sm cursor-pointer select-none"
+    style={{ color: "var(--app-text-secondary)" }}
+  >
+    <input
+      type="checkbox"
+      checked={trust}
+      onChange={(e) => setTrust(e.target.checked)}
+      className="accent-[hsl(var(--primary))]"
+    />
+    <ShieldCheck className="h-4 w-4" />
+    Trust this device — skip PIN next time
+  </label>
+);
+
 
 /* ─────────── Notes editor ─────────── */
 const NotesEditor = () => {
