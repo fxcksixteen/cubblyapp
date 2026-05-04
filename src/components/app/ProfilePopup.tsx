@@ -110,7 +110,10 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
 
           {/* Info */}
           <div className="px-4 pt-1.5 pb-3">
-            <p className="text-lg font-bold text-white">{displayName}</p>
+            <p className="text-lg font-bold text-white flex items-center gap-2">
+              <UserDisplayName userId={user?.id} name={displayName} fallbackColor="#ffffff" />
+              <UserBadges userId={user?.id} size={14} />
+            </p>
             <p className="text-sm" style={{ color: "var(--app-text-secondary, #949ba4)" }}>{username}</p>
           </div>
 
