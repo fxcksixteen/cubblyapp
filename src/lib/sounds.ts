@@ -30,6 +30,8 @@ const SOUND_PATHS: Record<SoundKey, string> = {
   outgoingRing: resolveSoundUrl("outgoing-ring.wav"),
   incomingCall: resolveSoundUrl("incoming-call.wav"),
   leaveCall: resolveSoundUrl("leave-call.wav"),
+  coinsReceive: resolveSoundUrl("coins-receive.wav"),
+  coinsSpend: resolveSoundUrl("coins-spend.wav"),
 };
 
 const audioCache: Partial<Record<SoundKey, HTMLAudioElement>> = {};
