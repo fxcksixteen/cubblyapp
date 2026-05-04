@@ -127,6 +127,7 @@ const AppLayout = () => {
 
   const isDM = activeView.startsWith("dm:");
   const isShop = activeView === "shop";
+  const isNotes = activeView === "notes";
   const isYou = activeView === "you";
   const activeConvId = isDM ? activeView.replace("dm:", "") : null;
   const activeConv = conversations.find((conversation) => conversation.id === activeConvId);
