@@ -1090,6 +1090,71 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             return;
           }
 
+          // ── Rejoin auto-accept path ────────────────────────────────────
+          // If we already have an activeCall on this conversation and no
+          // peer connection yet, this offer is the response to OUR
+          // `ready-for-offer` (we just clicked Rejoin). Don't show an
+          // incoming-call ring — accept the offer in place and finish the
+          // handshake so we end up actually connected. Without this branch
+          // the rejoiner sat in "connected" state with no pc, no audio,
+          // and a phantom incoming card.
+          if (!pc && activeCall?.conversationId === conversationId) {
+            try {
+              console.log("[Voice] 🔁 Rejoin offer received — auto-accepting");
+              const stream = await getUserMedia();
+              setLocalStream(stream);
+              localStreamRef.current = stream;
+              originalMicTrackRef.current = stream.getAudioTracks()[0] || null;
+              startAudioLevelMonitor(stream);
+
+              const newPc = createPeerConnection();
+              stream.getTracks().forEach(track => {
+                newPc.addTrack(track, stream);
+              });
+              outgoingCandidateBuffer.current = [];
+              incomingCandidateQueue.current = [];
+              remoteDescriptionSet.current = false;
+              newPc.onicecandidate = (event) => {
+                if (event.candidate) {
+                  channel.send({
+                    type: "broadcast",
+                    event: "voice-signal",
+                    payload: { type: "ice-candidate", candidate: event.candidate.toJSON(), senderId: user.id },
+                  });
+                }
+              };
+
+              remoteDescriptionSet.current = true;
+              await newPc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+              await flushQueuedIceCandidates(newPc);
+
+              const answer = await newPc.createAnswer();
+              let sdp = answer.sdp || "";
+              sdp = setHighQualityOpus(sdp);
+              answer.sdp = sdp;
+              await newPc.setLocalDescription(answer);
+
+              channel.send({
+                type: "broadcast",
+                event: "voice-signal",
+                payload: { type: "answer", sdp: answer, senderId: user.id },
+              });
+
+              setActiveCall(prev => prev ? {
+                ...prev,
+                peerId: payload.senderId || prev.peerId,
+                peerName: payload.senderName || prev.peerName,
+                state: "calling",
+                peerLeftAt: undefined,
+              } : prev);
+              peerIdRef.current = payload.senderId || peerIdRef.current;
+            } catch (e) {
+              console.error("[Voice] Rejoin auto-accept failed:", e);
+              endCallRef.current();
+            }
+            return;
+          }
+
           incomingCandidateQueue.current = [];
           remoteDescriptionSet.current = false;
           setIncomingCall({
