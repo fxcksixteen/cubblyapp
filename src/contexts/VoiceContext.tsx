@@ -901,9 +901,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
   const initializeOutgoingConnection = useCallback(async (channel: ReturnType<typeof supabase.channel>, conversationId: string) => {
     if (!user) return;
-    if (pcRef.current || pendingOfferRef.current) {
-      console.log("[Voice] ⚠️ initializeOutgoingConnection skipped — PC or pending offer already exists");
+    if (pcRef.current) {
+      console.log("[Voice] ⚠️ initializeOutgoingConnection skipped — PC already exists");
       return;
+    }
+    // Stale pending offer (left over from a previous call/peer-leave) must
+    // not block a fresh negotiation. Clear it so rejoin handshake works.
+    if (pendingOfferRef.current) {
+      console.log("[Voice] 🧹 Clearing stale pendingOfferRef before fresh negotiation");
+      pendingOfferRef.current = null;
     }
 
     const outgoingCallMeta = outgoingCallMetaRef.current;
