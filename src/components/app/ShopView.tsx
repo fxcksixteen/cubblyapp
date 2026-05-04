@@ -209,6 +209,13 @@ const ShopView = () => {
     toast.success(`Unlocked: ${item.name}`);
   };
 
+  const toggleEquip = async (item: ShopItem) => {
+    const isEq = equipped.has(item.id);
+    const { error } = await supabase.rpc(isEq ? "unequip_shop_item" : "equip_shop_item", { _item_id: item.id });
+    if (error) { toast.error("Couldn't update equipped item"); return; }
+    toast.success(isEq ? `Unequipped ${item.name}` : `Equipped ${item.name}`);
+  };
+
   return (
     <div className="flex-1 min-h-0 overflow-y-auto" style={{ backgroundColor: "var(--app-bg-primary)" }}>
       <style>{`
@@ -280,6 +287,7 @@ const ShopView = () => {
           <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
             {visible.map((item) => {
               const isOwned = owned.has(item.id);
+              const isEq = equipped.has(item.id);
               const canAfford = balance >= item.price;
               const isBusy = purchasing === item.id;
               return (
@@ -288,7 +296,7 @@ const ShopView = () => {
                   className="group rounded-2xl p-3 transition-all hover:-translate-y-0.5 hover:shadow-lg"
                   style={{
                     backgroundColor: "var(--app-bg-secondary, #2b2d31)",
-                    border: "1px solid var(--app-border, #3f4147)",
+                    border: `1px solid ${isEq ? "#5865f2" : "var(--app-border, #3f4147)"}`,
                   }}
                 >
                   <ItemPreview item={item} displayName={displayName} />
@@ -304,28 +312,31 @@ const ShopView = () => {
                       )}
                     </div>
                   </div>
-                  <button
-                    onClick={() => buy(item)}
-                    disabled={isOwned || isBusy}
-                    className="mt-3 w-full rounded-lg py-2 text-sm font-bold transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-                    style={{
-                      backgroundColor: isOwned
-                        ? "var(--app-bg-tertiary, #1e1f22)"
-                        : canAfford
-                        ? "#5865f2"
-                        : "var(--app-bg-tertiary, #1e1f22)",
-                      color: isOwned ? "var(--app-text-secondary)" : "white",
-                    }}
-                  >
-                    {isOwned ? (
-                      "Owned"
-                    ) : (
-                      <>
-                        <img src={canAfford ? coinStack : coinNotEnough} alt="" className="h-6 w-6 -my-1 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]" />
-                        <span>{item.price.toLocaleString()}</span>
-                      </>
-                    )}
-                  </button>
+                  {isOwned ? (
+                    <button
+                      onClick={() => toggleEquip(item)}
+                      className="mt-3 w-full rounded-lg py-2 text-sm font-bold transition-all"
+                      style={{
+                        backgroundColor: isEq ? "#3ba55c" : "var(--app-bg-tertiary, #1e1f22)",
+                        color: "white",
+                      }}
+                    >
+                      {isEq ? "Equipped" : "Equip"}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => buy(item)}
+                      disabled={isBusy}
+                      className="mt-3 w-full rounded-lg py-2 text-sm font-bold transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                      style={{
+                        backgroundColor: canAfford ? "#5865f2" : "var(--app-bg-tertiary, #1e1f22)",
+                        color: "white",
+                      }}
+                    >
+                      <img src={canAfford ? coinStack : coinNotEnough} alt="" className="h-6 w-6 -my-1 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]" />
+                      <span>{item.price.toLocaleString()}</span>
+                    </button>
+                  )}
                 </div>
               );
             })}
