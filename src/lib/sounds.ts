@@ -1,7 +1,7 @@
 // Sound effect manager — plays notification audio while respecting Do-Not-Disturb.
 // Sounds are stored in /public/sounds and loaded lazily.
 
-type SoundKey = "message" | "outgoingRing" | "incomingCall" | "leaveCall";
+type SoundKey = "message" | "outgoingRing" | "incomingCall" | "leaveCall" | "coinsReceive" | "coinsSpend";
 
 // Resolve a sound URL that works in BOTH the web build (served from "/")
 // AND the Electron build (loaded via file:// where leading "/" 404s).
@@ -30,6 +30,8 @@ const SOUND_PATHS: Record<SoundKey, string> = {
   outgoingRing: resolveSoundUrl("outgoing-ring.wav"),
   incomingCall: resolveSoundUrl("incoming-call.wav"),
   leaveCall: resolveSoundUrl("leave-call.wav"),
+  coinsReceive: resolveSoundUrl("coins-receive.wav"),
+  coinsSpend: resolveSoundUrl("coins-spend.wav"),
 };
 
 const audioCache: Partial<Record<SoundKey, HTMLAudioElement>> = {};

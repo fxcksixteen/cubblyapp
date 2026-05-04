@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState, ReactNode, useC
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
+import { playSound } from "@/lib/sounds";
 import coinRewardedIcon from "@/assets/coins/coin-rewarded.png";
 
 /**
@@ -126,6 +127,7 @@ export const CoinsProvider = ({ children }: { children: ReactNode }) => {
           const row = payload.new as { amount: number; reason: string };
           // Only show a toast for *positive* awards. Spends (negative) don't toast.
           if (row.amount > 0 && row.reason !== "signup_bonus") {
+            playSound("coinsReceive", { volume: 0.5 });
             toast.custom(() => <RewardToast amount={row.amount} reason={row.reason} />, {
               duration: 4000,
             });
