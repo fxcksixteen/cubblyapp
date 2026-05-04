@@ -1548,11 +1548,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         conversationId,
         peerId,
         peerName,
-        // When rejoining an existing live call, jump straight to "connected"
-        // so the UI doesn't pretend we're ringing a fresh call. The other
-        // peer is already there waiting for our ready-for-offer.
-        state: isJoiningExisting ? "connected" : "calling",
-        startedAt: isJoiningExisting ? Date.now() : undefined,
+        // Stay in "calling" until ICE actually connects (the
+        // oniceconnectionstatechange handler promotes us to "connected").
+        // Pretending we're connected before the handshake completed was the
+        // root cause of "rejoin lands you in a fake call with no audio".
+        state: "calling",
+        startedAt: undefined,
         isMuted: false,
         isDeafened: false,
         isVideoOn: false,
