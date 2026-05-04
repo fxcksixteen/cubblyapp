@@ -81,15 +81,15 @@ function ItemPreview({ item, displayName }: { item: ShopItem; displayName: strin
         </div>
       );
     }
-    const isAurora = item.id.includes("aurora");
+    const cfg = item.config || {};
+    const bg: string = cfg.preview || "linear-gradient(135deg, #f59e0b, #ef4444, #ec4899)";
+    const animated: boolean = !!cfg.animated;
     return (
       <div
-        className={`h-20 w-full rounded-lg ${isAurora ? "shop-theme-aurora" : ""}`}
+        className={`h-20 w-full rounded-lg ${animated ? "shop-theme-aurora" : ""}`}
         style={{
-          background: isAurora
-            ? "linear-gradient(120deg, #0f172a, #1e1b4b, #312e81, #0f172a)"
-            : "linear-gradient(135deg, #f59e0b, #ef4444, #ec4899)",
-          backgroundSize: isAurora ? "300% 300%" : undefined,
+          backgroundImage: bg,
+          backgroundSize: animated ? "300% 300%" : undefined,
         }}
       />
     );
@@ -180,6 +180,33 @@ const ShopView = () => {
     () => (activeTab === "all" ? items : items.filter((i) => i.category === activeTab)),
     [items, activeTab]
   );
+
+  const SUBCATEGORY_LABELS: Record<string, Record<string, { title: string; subtitle?: string }>> = {
+    name_color: {
+      static: { title: "Static Colors", subtitle: "Solid, single-tone name colors" },
+      gradient: { title: "Gradient Colors", subtitle: "Two-tone blended name colors" },
+      animated: { title: "Motion Gradients", subtitle: "Animated, shifting name colors" },
+    },
+    theme: {
+      static: { title: "Classic Themes", subtitle: "Curated palettes for everyday vibes" },
+      animated: { title: "Animated Themes", subtitle: "Living backgrounds with subtle motion" },
+      premium: { title: "Premium Themes", subtitle: "Exclusive, high-end atmospheres" },
+    },
+    badge: {
+      profile: { title: "Profile Badges", subtitle: "Show off next to your name" },
+    },
+  };
+
+  const grouped = useMemo(() => {
+    if (activeTab === "all") return null;
+    const groups = new Map<string, ShopItem[]>();
+    for (const it of visible) {
+      const key = it.subcategory || "other";
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(it);
+    }
+    return Array.from(groups.entries());
+  }, [visible, activeTab]);
 
   const buy = async (item: ShopItem) => {
     if (purchasing) return;
@@ -295,65 +322,101 @@ const ShopView = () => {
           <div className="text-center text-sm py-12" style={{ color: "var(--app-text-secondary)" }}>
             More items coming soon to this tab.
           </div>
-        ) : (
-          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-            {visible.map((item) => {
-              const isOwned = owned.has(item.id);
-              const isEq = equipped.has(item.id);
-              const canAfford = balance >= item.price;
-              const isBusy = purchasing === item.id;
-              return (
-                <div
-                  key={item.id}
-                  className="group rounded-2xl p-3 transition-all hover:-translate-y-0.5 hover:shadow-lg"
-                  style={{
-                    backgroundColor: "var(--app-bg-secondary, #2b2d31)",
-                    border: `1px solid ${isEq ? "#5865f2" : "var(--app-border, #3f4147)"}`,
-                  }}
-                >
-                  <ItemPreview item={item} displayName={displayName} />
-                  <div className="mt-3 flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="font-bold text-sm truncate" style={{ color: "var(--app-text-primary)" }}>
-                        {item.name}
-                      </div>
-                      {item.description && (
-                        <div className="text-[11px] mt-0.5 line-clamp-2" style={{ color: "var(--app-text-secondary)" }}>
-                          {item.description}
-                        </div>
-                      )}
+        ) : (() => {
+          const renderCard = (item: ShopItem) => {
+            const isOwned = owned.has(item.id);
+            const isEq = equipped.has(item.id);
+            const canAfford = balance >= item.price;
+            const isBusy = purchasing === item.id;
+            return (
+              <div
+                key={item.id}
+                className="group rounded-2xl p-3 transition-all hover:-translate-y-0.5 hover:shadow-lg"
+                style={{
+                  backgroundColor: "var(--app-bg-secondary, #2b2d31)",
+                  border: `1px solid ${isEq ? "#5865f2" : "var(--app-border, #3f4147)"}`,
+                }}
+              >
+                <ItemPreview item={item} displayName={displayName} />
+                <div className="mt-3 flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-bold text-sm truncate" style={{ color: "var(--app-text-primary)" }}>
+                      {item.name}
                     </div>
+                    {item.description && (
+                      <div className="text-[11px] mt-0.5 line-clamp-2" style={{ color: "var(--app-text-secondary)" }}>
+                        {item.description}
+                      </div>
+                    )}
                   </div>
-                  {isOwned ? (
-                    <button
-                      onClick={() => toggleEquip(item)}
-                      className="mt-3 w-full rounded-lg py-2 text-sm font-bold transition-all"
-                      style={{
-                        backgroundColor: isEq ? "#3ba55c" : "var(--app-bg-tertiary, #1e1f22)",
-                        color: "white",
-                      }}
-                    >
-                      {isEq ? "Equipped" : "Equip"}
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => buy(item)}
-                      disabled={isBusy}
-                      className="mt-3 w-full rounded-lg py-2 text-sm font-bold transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-                      style={{
-                        backgroundColor: canAfford ? "#5865f2" : "var(--app-bg-tertiary, #1e1f22)",
-                        color: "white",
-                      }}
-                    >
-                      <img src={canAfford ? coinStack : coinNotEnough} alt="" className="h-6 w-6 -my-1 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]" />
-                      <span>{item.price.toLocaleString()}</span>
-                    </button>
-                  )}
                 </div>
-              );
-            })}
-          </div>
-        )}
+                {isOwned ? (
+                  <button
+                    onClick={() => toggleEquip(item)}
+                    className="mt-3 w-full rounded-lg py-2 text-sm font-bold transition-all"
+                    style={{
+                      backgroundColor: isEq ? "#3ba55c" : "var(--app-bg-tertiary, #1e1f22)",
+                      color: "white",
+                    }}
+                  >
+                    {isEq ? "Equipped" : "Equip"}
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => buy(item)}
+                    disabled={isBusy}
+                    className="mt-3 w-full rounded-lg py-2 text-sm font-bold transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                    style={{
+                      backgroundColor: canAfford ? "#5865f2" : "var(--app-bg-tertiary, #1e1f22)",
+                      color: "white",
+                    }}
+                  >
+                    <img src={canAfford ? coinStack : coinNotEnough} alt="" className="h-6 w-6 -my-1 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]" />
+                    <span>{item.price.toLocaleString()}</span>
+                  </button>
+                )}
+              </div>
+            );
+          };
+
+          if (activeTab === "all" || !grouped) {
+            return (
+              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                {visible.map(renderCard)}
+              </div>
+            );
+          }
+
+          const labels = SUBCATEGORY_LABELS[activeTab as string] || {};
+          return (
+            <div className="space-y-8">
+              {grouped.map(([sub, list]) => {
+                const meta = labels[sub] || { title: sub.charAt(0).toUpperCase() + sub.slice(1) };
+                return (
+                  <section key={sub}>
+                    <div className="mb-3 flex items-baseline gap-3">
+                      <h2 className="text-lg font-extrabold tracking-tight" style={{ color: "var(--app-text-primary)" }}>
+                        {meta.title}
+                      </h2>
+                      {meta.subtitle && (
+                        <span className="text-xs" style={{ color: "var(--app-text-secondary)" }}>
+                          {meta.subtitle}
+                        </span>
+                      )}
+                      <span className="ml-auto text-[11px] font-semibold px-2 py-0.5 rounded-full"
+                            style={{ backgroundColor: "var(--app-bg-tertiary, #1e1f22)", color: "var(--app-text-secondary)" }}>
+                        {list.length}
+                      </span>
+                    </div>
+                    <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                      {list.map(renderCard)}
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
