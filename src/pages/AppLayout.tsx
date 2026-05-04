@@ -36,6 +36,7 @@ import GroupMembersPanel from "@/components/app/GroupMembersPanel";
 import MobileNotificationPrompt from "@/components/app/MobileNotificationPrompt";
 import CallConflictModal from "@/components/app/CallConflictModal";
 import { useActiveCallElsewhere, useRemoteHangupListener } from "@/hooks/useActiveCallElsewhere";
+import CoinPill from "@/components/app/CoinPill";
 
 type FriendTab = "online" | "all" | "pending" | "blocked" | "add";
 
@@ -668,6 +669,7 @@ const AppLayout = () => {
                     </button>
                   )}
                   <img src={messagesInboxIcon} alt="Inbox" className="h-5 w-5 cursor-pointer invert opacity-60 hover:opacity-100 transition-opacity" />
+                  <CoinPill />
                 </div>
               </>
             )}
