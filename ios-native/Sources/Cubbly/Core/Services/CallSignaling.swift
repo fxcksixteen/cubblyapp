@@ -60,7 +60,20 @@ final class CallSignaling {
             }
         }
         await channel.subscribe()
+        await Self.awaitJoined(channel)
         globalChannel = channel
+    }
+
+    /// Wait until a channel reports `.subscribed`. supabase-swift's
+    /// `subscribe()` returns BEFORE the JOIN ack arrives, so any broadcast
+    /// fired immediately after is silently dropped on the floor. Polls the
+    /// channel's status with a short cap so we never block calls forever.
+    static func awaitJoined(_ channel: RealtimeChannelV2, timeoutMs: Int = 4000) async {
+        let start = Date()
+        while channel.status != .subscribed {
+            if Date().timeIntervalSince(start) * 1000 > Double(timeoutMs) { return }
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
     }
 
     private func handleIncomingCall(message: [String: AnyJSON]) {
