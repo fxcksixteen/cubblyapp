@@ -23,9 +23,20 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.29";
+export const CURRENT_VERSION = "0.2.30";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.2.30",
+    title: "Rejoin actually rejoins",
+    date: "2026-05-04",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Clicking Rejoin in the chat now drops you straight back into the same ongoing call your friend is still in — no more 'Ringing…' against an empty new call.",
+      "When someone leaves a call, the remaining peer's UI now flips that person to 'Not in call' immediately instead of leaving them looking like they're still active.",
+    ],
+  },
   {
     version: "0.2.29",
     title: "Calls polish: fullscreen volume, smoother rings, reliable rejoin",
