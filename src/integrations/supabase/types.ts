@@ -926,6 +926,10 @@ export type Database = {
         }
         Returns: string
       }
+      create_server_from_template: {
+        Args: { _channels?: Json; _icon_url?: string; _name: string }
+        Returns: string
+      }
       create_server_invite: {
         Args: {
           _expires_in_seconds?: number
