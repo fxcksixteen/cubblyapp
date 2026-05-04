@@ -79,9 +79,9 @@ export async function unlockKey(pin: string, material: KeyMaterial): Promise<Cry
   try {
     const key = await deriveKey(pin, b64decode(material.salt), material.iterations);
     const plain = await crypto.subtle.decrypt(
-      { name: "AES-GCM", iv: b64decode(material.verifier_iv) },
+      { name: "AES-GCM", iv: b64decode(material.verifier_iv) as BufferSource },
       key,
-      b64decode(material.verifier_ciphertext)
+      b64decode(material.verifier_ciphertext) as BufferSource
     );
     if (dec.decode(plain) === KNOWN_VERIFIER_PLAINTEXT) return key;
     return null;
@@ -99,7 +99,7 @@ export async function encryptJson(key: CryptoKey, value: unknown): Promise<{ iv:
 
 export async function decryptJson<T = unknown>(key: CryptoKey, iv: string, ciphertext: string): Promise<T> {
   const plain = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv: b64decode(iv) },
+    { name: "AES-GCM", iv: b64decode(iv) as BufferSource },
     key,
     b64decode(ciphertext)
   );
@@ -113,7 +113,7 @@ export async function encryptBytes(key: CryptoKey, bytes: ArrayBuffer): Promise<
 }
 
 export async function decryptBytes(key: CryptoKey, iv: string, ciphertext: ArrayBuffer): Promise<ArrayBuffer> {
-  return crypto.subtle.decrypt({ name: "AES-GCM", iv: b64decode(iv) }, key, ciphertext);
+  return crypto.subtle.decrypt({ name: "AES-GCM", iv: b64decode(iv) as BufferSource }, key, ciphertext);
 }
 
 /* ──────────────────────────────────────────────────────────
@@ -193,9 +193,9 @@ export async function unlockTrustedDevice(userId: string): Promise<CryptoKey | n
     if (!deviceKey) return null;
     return crypto.subtle.unwrapKey(
       "raw",
-      b64decode(wrapped),
+      b64decode(wrapped) as BufferSource,
       deviceKey,
-      { name: "AES-GCM", iv: b64decode(iv) },
+      { name: "AES-GCM", iv: b64decode(iv) as BufferSource },
       { name: "AES-GCM", length: 256 },
       true,
       ["encrypt", "decrypt"]
