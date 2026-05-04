@@ -365,6 +365,10 @@ const NotesEditor = () => {
             note={note}
             active={!isMobile && note.id === activeId}
             onClick={() => setActiveId(note.id)}
+            onTogglePin={() => n.togglePin(note.id, !note.pinned)}
+            onDuplicate={() => handleDuplicate(note)}
+            onCopyText={() => handleCopyText(note)}
+            onRequestDelete={() => setPendingDeleteId(note.id)}
           />
         ))}
       </div>
