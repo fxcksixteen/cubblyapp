@@ -222,7 +222,7 @@ const MobileCallOverlay = ({ conversationId, recipientName, recipientAvatar, rec
       </div>
 
       {/* State sub-label (Calling… / Ringing… / Not in call / In call) */}
-      <div className="text-center text-[12px] uppercase tracking-[0.18em] font-semibold pb-1" style={{ color: activeCall.state === "connected" ? "#3ba55c" : ringTimedOut ? "#949ba4" : "#faa61a" }}>
+      <div className="text-center text-[12px] uppercase tracking-[0.18em] font-semibold pb-1" style={{ color: activeCall.state === "connected" && !peerLeft ? "#3ba55c" : showNotInCall ? "#949ba4" : "#faa61a" }}>
         {stateLabel}
       </div>
 
