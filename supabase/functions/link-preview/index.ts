@@ -1,5 +1,6 @@
 // Server-side OG/Twitter card scraper. Runs in the edge (no CORS issues, hides user IP).
 // Returns { title, description, image, siteName } when found.
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
