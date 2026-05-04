@@ -66,19 +66,27 @@ export default function ContentSocialSettings({ cardStyle }: Props) {
     if (!user) return;
     let cancelled = false;
     (async () => {
-      const { data } = await supabase
-        .from("blocked_users" as any)
-        .select("blocked_id, profiles:blocked_id(display_name, username, avatar_url)")
-        .eq("blocker_id", user.id);
-      if (cancelled) return;
-      const rows: BlockedRow[] = (data || []).map((r: any) => ({
-        blocked_id: r.blocked_id,
-        display_name: r.profiles?.display_name ?? null,
-        username: r.profiles?.username ?? null,
-        avatar_url: r.profiles?.avatar_url ?? null,
-      }));
-      setBlocked(rows);
-      setLoading(false);
+      try {
+        const { data, error } = await supabase
+          .from("blocked_users" as any)
+          .select("blocked_id, profiles:blocked_id(display_name, username, avatar_url)")
+          .eq("blocker_id", user.id);
+        if (cancelled) return;
+        if (error) setBlocked([]);
+        else {
+          const rows: BlockedRow[] = (data || []).map((r: any) => ({
+            blocked_id: r.blocked_id,
+            display_name: r.profiles?.display_name ?? null,
+            username: r.profiles?.username ?? null,
+            avatar_url: r.profiles?.avatar_url ?? null,
+          }));
+          setBlocked(rows);
+        }
+      } catch {
+        if (!cancelled) setBlocked([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     })();
     return () => { cancelled = true; };
   }, [user]);
