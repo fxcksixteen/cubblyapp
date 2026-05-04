@@ -699,7 +699,7 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
           {note.pinned ? <PinOff className="h-4 w-4" style={{ color: "var(--app-text-secondary)" }} /> : <Pin className="h-4 w-4" style={{ color: "var(--app-text-secondary)" }} />}
         </button>
         <button
-          onClick={() => setConfirmDelete(true)}
+          onClick={() => onRequestDelete?.()}
           className="flex h-8 w-8 items-center justify-center rounded transition-colors active:bg-[var(--app-hover)]"
           title="Delete"
         >
