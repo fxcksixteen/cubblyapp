@@ -99,7 +99,8 @@ const ShopView = () => {
   const { balance } = useCoins();
   const [items, setItems] = useState<ShopItem[]>([]);
   const [owned, setOwned] = useState<Set<string>>(new Set());
-  const [activeTab, setActiveTab] = useState<Category>("name_color");
+  const [activeTab, setActiveTab] = useState<Category | "all">("all");
+  const [displayName, setDisplayName] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState<string | null>(null);
 
@@ -143,7 +144,21 @@ const ShopView = () => {
     };
   }, [user]);
 
-  const visible = useMemo(() => items.filter((i) => i.category === activeTab), [items, activeTab]);
+  // Load current user's display name for previews
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("profiles")
+      .select("display_name")
+      .eq("user_id", user.id)
+      .maybeSingle()
+      .then(({ data }) => setDisplayName(data?.display_name || ""));
+  }, [user]);
+
+  const visible = useMemo(
+    () => (activeTab === "all" ? items : items.filter((i) => i.category === activeTab)),
+    [items, activeTab]
+  );
 
   const buy = async (item: ShopItem) => {
     if (purchasing) return;
