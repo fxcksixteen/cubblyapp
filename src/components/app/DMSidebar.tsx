@@ -7,7 +7,7 @@ import { useActivity } from "@/contexts/ActivityContext";
 import { useFriends } from "@/hooks/useFriends";
 import { Conversation } from "@/hooks/useConversations";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, X, Users, MoreVertical } from "lucide-react";
+import { Plus, X, Users, MoreVertical, CheckCheck } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { getProfileColor } from "@/lib/profileColors";
 import { activityLabel } from "@/lib/activityLabel";
@@ -93,6 +93,16 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
       .or(`and(requester_id.eq.${user.id},addressee_id.eq.${userId}),and(requester_id.eq.${userId},addressee_id.eq.${user.id})`);
     if (error) toast.error("Failed to remove friend");
     else toast.success("Friend removed");
+  };
+
+  const handleMarkAsRead = async (conversationId: string) => {
+    try {
+      await supabase.rpc("mark_conversation_read", { _conversation_id: conversationId });
+      window.dispatchEvent(new CustomEvent("cubbly:conversation-marked-read", { detail: { conversationId } }));
+      toast.success("Marked as read");
+    } catch {
+      toast.error("Failed to mark as read");
+    }
   };
 
   const handleBlockUser = async (userId: string) => {
@@ -302,6 +312,13 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                       Remove Friend
                     </ContextMenuItem>
                   )}
+                  <ContextMenuItem
+                    onClick={() => handleMarkAsRead(conv.id)}
+                    className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer"
+                  >
+                    <CheckCheck className="h-4 w-4" />
+                    Mark As Read
+                  </ContextMenuItem>
                   <ContextMenuItem
                     onClick={() => onCloseConversation(conv.id)}
                     className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer"

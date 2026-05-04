@@ -238,7 +238,21 @@ export function useUnreadCounts(activeConversationId: string | null) {
     );
     channel.subscribe();
 
+    const onMarkedRead = (e: Event) => {
+      const convId = (e as CustomEvent).detail?.conversationId;
+      if (!convId) return;
+      lastReadByConvRef.current.set(convId, new Date().toISOString());
+      setUnreadByConv((prev) => {
+        if (!prev.has(convId)) return prev;
+        const next = new Map(prev);
+        next.delete(convId);
+        return next;
+      });
+    };
+    window.addEventListener("cubbly:conversation-marked-read", onMarkedRead as EventListener);
+
     return () => {
+      window.removeEventListener("cubbly:conversation-marked-read", onMarkedRead as EventListener);
       supabase.removeChannel(channel);
     };
   }, [user, fetchUnread]);
