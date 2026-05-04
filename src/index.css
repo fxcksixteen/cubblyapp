@@ -174,12 +174,12 @@
 @keyframes cb-space-drift { from { transform: translate(0,0); } to { transform: translate(-200px, -200px); } }
 @keyframes cb-space-twinkle { 0%,100% { opacity: 0.35; } 50% { opacity: 0.75; } }
 
-.cb-shooting-star { position: absolute; width: 140px; height: 1.5px; background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.9) 60%, #fff 100%); border-radius: 999px; filter: drop-shadow(0 0 6px rgba(255,255,255,0.85)); opacity: 0; transform: rotate(-22deg); }
-.cb-shooting-star.s1 { top: 12%; left: -10%; animation: cb-shoot 1.6s ease-in 6s infinite; }
-.cb-shooting-star.s2 { top: 38%; left: -10%; animation: cb-shoot 1.4s ease-in 14s infinite; }
-.cb-shooting-star.s3 { top: 62%; left: -10%; animation: cb-shoot 1.8s ease-in 22s infinite; }
-.cb-shooting-star.s4 { top: 78%; left: -10%; animation: cb-shoot 1.5s ease-in 30s infinite; }
-@keyframes cb-shoot { 0% { opacity: 0; transform: translate(0,0) rotate(-22deg); } 10% { opacity: 1; } 70% { opacity: 1; } 100% { opacity: 0; transform: translate(120vw, 40vh) rotate(-22deg); } }
+.cb-shooting-star { position: absolute; width: 140px; height: 1.5px; background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.9) 60%, #fff 100%); border-radius: 999px; filter: drop-shadow(0 0 6px rgba(255,255,255,0.85)); opacity: 0; transform: rotate(202deg); }
+.cb-shooting-star.s1 { top: -2%;  right: -10%; left: auto; animation: cb-shoot 1.6s ease-in 6s infinite; }
+.cb-shooting-star.s2 { top: 8%;   right: -10%; left: auto; animation: cb-shoot 1.4s ease-in 14s infinite; }
+.cb-shooting-star.s3 { top: 22%;  right: -10%; left: auto; animation: cb-shoot 1.8s ease-in 22s infinite; }
+.cb-shooting-star.s4 { top: 36%;  right: -10%; left: auto; animation: cb-shoot 1.5s ease-in 30s infinite; }
+@keyframes cb-shoot { 0% { opacity: 0; transform: translate(0,0) rotate(202deg); } 10% { opacity: 1; } 70% { opacity: 1; } 100% { opacity: 0; transform: translate(-120vw, 60vh) rotate(202deg); } }
 
 /* Cubbly theme 3D shadow effects */
 [data-theme="cubbly"] .app-themed .cubbly-3d-circle {
