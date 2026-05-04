@@ -144,7 +144,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
   const preMuteRef = useRef<boolean>(false);
 
   // Per-user volume / local mute (shared with VoiceContext via localStorage).
-  const { getUserVolume, setUserVolume, isUserMuted, setUserMuted, attachPeerGain, clearAllPeerGains } = usePeerGains();
+  const { getUserVolume, setUserVolume, isUserMuted, setUserMuted, setLocalDeafened, attachPeerGain, clearAllPeerGains } = usePeerGains();
 
   // Fetch ICE servers (same as 1-on-1)
   useEffect(() => {
