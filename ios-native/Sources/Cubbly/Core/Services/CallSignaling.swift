@@ -111,6 +111,7 @@ final class CallSignaling {
             }
         }
         await channel.subscribe()
+        await Self.awaitJoined(channel)
         callChannel = channel
     }
 
