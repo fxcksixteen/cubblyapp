@@ -135,6 +135,39 @@ export type Database = {
           },
         ]
       }
+      coin_transactions: {
+        Row: {
+          amount: number
+          balance_after: number
+          created_at: string
+          id: string
+          metadata: Json
+          reason: string
+          source_ref: string | null
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          balance_after: number
+          created_at?: string
+          id?: string
+          metadata?: Json
+          reason: string
+          source_ref?: string | null
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          balance_after?: number
+          created_at?: string
+          id?: string
+          metadata?: Json
+          reason?: string
+          source_ref?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       conversation_participants: {
         Row: {
           conversation_id: string
@@ -433,6 +466,33 @@ export type Database = {
         }
         Relationships: []
       }
+      user_coins: {
+        Row: {
+          balance: number
+          created_at: string
+          lifetime_earned: number
+          lifetime_spent: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          balance?: number
+          created_at?: string
+          lifetime_earned?: number
+          lifetime_spent?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          balance?: number
+          created_at?: string
+          lifetime_earned?: number
+          lifetime_spent?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_games: {
         Row: {
           created_at: string
@@ -462,6 +522,16 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      award_coins: {
+        Args: {
+          _amount: number
+          _metadata?: Json
+          _reason: string
+          _source_ref?: string
+          _user_id: string
+        }
+        Returns: number
+      }
       can_access_message: { Args: { _message_id: string }; Returns: boolean }
       create_dm_conversation: {
         Args: { other_user_id: string }
@@ -510,6 +580,15 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      spend_coins: {
+        Args: {
+          _amount: number
+          _metadata?: Json
+          _reason: string
+          _source_ref?: string
+        }
+        Returns: number
       }
     }
     Enums: {
