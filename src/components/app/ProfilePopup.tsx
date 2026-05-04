@@ -5,6 +5,8 @@ import { Copy, Pencil, User, Check } from "lucide-react";
 import { toast } from "sonner";
 import { defaultProfileColor } from "@/lib/profileColors";
 import StatusIndicator from "@/components/app/StatusIndicator";
+import UserDisplayName from "@/components/app/UserDisplayName";
+import UserBadges from "@/components/app/UserBadges";
 
 const statuses = [
   { value: "online", label: "Online" },
