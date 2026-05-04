@@ -8,6 +8,12 @@ const THEME_MAP: Record<string, ThemeName> = {
   theme_midnight_aurora: "onyx",
   theme_sunset_cozy: "cubbly",
   theme_space: "space",
+  theme_ocean_depths: "ocean",
+  theme_cherry_blossom: "blossom",
+  theme_evergreen: "forest",
+  theme_synthwave: "synthwave",
+  theme_lava_flow: "lava",
+  theme_borealis: "borealis",
 };
 
 /**
