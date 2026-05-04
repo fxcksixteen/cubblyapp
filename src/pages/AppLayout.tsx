@@ -36,6 +36,7 @@ import GroupMembersPanel from "@/components/app/GroupMembersPanel";
 import MobileNotificationPrompt from "@/components/app/MobileNotificationPrompt";
 import CallConflictModal from "@/components/app/CallConflictModal";
 import { useActiveCallElsewhere, useRemoteHangupListener } from "@/hooks/useActiveCallElsewhere";
+import CoinPill from "@/components/app/CoinPill";
 
 type FriendTab = "online" | "all" | "pending" | "blocked" | "add";
 
