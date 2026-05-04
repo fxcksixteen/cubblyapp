@@ -267,6 +267,7 @@ const ShopView = () => {
       else toast.error("Purchase failed");
       return;
     }
+    playSound("coinsSpend", { volume: 0.55 });
     toast.success(`Unlocked: ${item.name}`);
   };
 
