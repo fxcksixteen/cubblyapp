@@ -438,7 +438,18 @@ final class CallStore: ObservableObject {
             // Only end the whole call_event if NO other participant is still
             // live. Mirrors web/desktop: the call_event lives until the last
             // person leaves so others can still join from the chat pill.
+            //
+            // SPECIAL CASE: if WE were the only participant who ever joined
+            // (the peer never picked up), mark the event as `missed` instead
+            // of `ended` so the chat thread shows the proper red "Missed
+            // call" pill rather than briefly flashing "Ongoing → ended".
             struct PartRow: Decodable { let user_id: UUID }
+            let allEver: [PartRow] = (try? await SupabaseManager.shared.client
+                .from("call_participants")
+                .select("user_id")
+                .eq("call_event_id", value: evt.uuidString)
+                .execute()
+                .value) ?? []
             let live: [PartRow] = (try? await SupabaseManager.shared.client
                 .from("call_participants")
                 .select("user_id")
@@ -446,10 +457,13 @@ final class CallStore: ObservableObject {
                 .filter("left_at", operator: "is", value: "null")
                 .execute()
                 .value) ?? []
+            let myId = try? await SupabaseManager.shared.client.auth.user().id
+            let onlyMeEver = allEver.allSatisfy { $0.user_id == myId }
             if live.isEmpty {
+                let finalState = onlyMeEver ? "missed" : "ended"
                 try? await SupabaseManager.shared.client
                     .from("call_events")
-                    .update(["state": "ended", "ended_at": endedAt])
+                    .update(["state": finalState, "ended_at": endedAt])
                     .eq("id", value: evt.uuidString)
                     .execute()
             }
