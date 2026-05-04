@@ -149,8 +149,8 @@ const ServerView = () => {
                   </div>
                 </div>
                 <div className="min-w-0 flex-1 flex items-center gap-1">
-                  <UserDisplayName userId={m.user_id} fallback={m.display_name} className="truncate text-sm font-medium" />
-                  <UserBadges userId={m.user_id} size="xs" />
+                  <UserDisplayName userId={m.user_id} name={m.display_name} className="truncate text-sm font-medium" />
+                  <UserBadges userId={m.user_id} size={12} />
                   {m.role === "owner" && <span title="Owner" className="text-[10px]">👑</span>}
                 </div>
               </div>
