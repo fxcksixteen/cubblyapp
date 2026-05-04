@@ -41,21 +41,21 @@ const ServerSidebar = ({
 
       <button
         onClick={() => {
-          if (!isActive) onHomeClick();
+          if (!homeActive) onHomeClick();
         }}
         className="group relative flex h-14 w-14 items-center justify-center overflow-visible transition-all duration-200 hover:scale-[1.03]"
-        aria-current={isActive ? "page" : undefined}
+        aria-current={homeActive ? "page" : undefined}
       >
         <div
           className={`absolute -left-4 w-1 rounded-r-full bg-white transition-all duration-200 ${
-            isActive ? "h-8 opacity-100" : "h-0 opacity-0 group-hover:h-6 group-hover:opacity-100"
+            homeActive ? "h-8 opacity-100" : "h-0 opacity-0 group-hover:h-6 group-hover:opacity-100"
           }`}
         />
         <img
           src={cubblyLogo}
           alt="Home"
           className={`h-14 w-14 object-cover shadow-[0_10px_20px_rgba(0,0,0,0.24)] cubbly-3d-circle transition-all duration-200 ${
-            isActive ? "rounded-[16px]" : "rounded-full group-hover:rounded-[20px]"
+            homeActive ? "rounded-[16px]" : "rounded-full group-hover:rounded-[20px]"
           }`}
         />
       </button>
