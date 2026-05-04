@@ -141,9 +141,17 @@ final class CallStore: ObservableObject {
         SoundService.shared.playLooping(.outgoingRing)
         CallKitService.shared.startOutgoing(handleName: peerName)
 
+        // 1) Join + WAIT FOR JOIN ACK on the per-call channel BEFORE we ring.
+        //    Without this, supabase-swift fires our subsequent broadcasts
+        //    into a half-open channel and the peer's `ready-for-offer`
+        //    arrives at thin air. (CallSignaling.joinCallChannel now waits
+        //    internally, but we keep this comment as a tripwire.)
         await signaling.joinCallChannel(conversationId: conversationId)
 
-        // Insert a call_events row so the chat thread shows an ongoing pill.
+        // 2) Insert call_events row + heartbeat our participant row IMMEDIATELY,
+        //    so by the time the peer receives the ring and her client checks
+        //    "is anyone live in this event?", she sees us and joins the SAME
+        //    event instead of starting a fresh one.
         do {
             struct InsertResp: Decodable { let id: UUID }
             let myUserId = (try? await SupabaseManager.shared.client.auth.user().id.uuidString) ?? ""
@@ -166,20 +174,14 @@ final class CallStore: ObservableObject {
         // Activate audio session up front for outgoing tone.
         configureAudioSession()
 
-        // Heartbeat into the call_participants row immediately so the peer
-        // can see us as live the moment they accept.
         if let evtId = currentCallEventId {
             await ensureOwnParticipantRow(callEventId: evtId)
             startHeartbeat()
         }
 
-        // CRITICAL — match web/desktop handshake (VoiceContext.tsx):
-        //  1. Caller does NOT send an offer up front.
-        //  2. Caller rings the peer.
-        //  3. Peer accepts → broadcasts `ready-for-offer` on the per-call channel.
-        //  4. Caller responds with the actual SDP offer.
-        // Sending an offer before the peer is on the channel was the reason
-        // cross-platform calls between iOS and web/desktop never connected.
+        // 3) NOW ring the peer. Channel is joined, event row exists, our
+        //    participant row is live — the ring will reliably arrive and the
+        //    accept-side liveness check will succeed.
         if let evtId = currentCallEventId {
             await signaling.ringUser(
                 targetUserId: peerId,
