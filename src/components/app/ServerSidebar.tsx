@@ -110,17 +110,56 @@ const ServerSidebar = ({
         </div>
       )}
 
+      {/* Joined servers */}
+      {servers.length > 0 && (
+        <>
+          <div className="mx-auto h-[2px] w-8 rounded-full bg-[#35363c]" />
+          <div className="flex flex-col items-center gap-2">
+            {servers.map((s) => {
+              const active = activeServerId === s.id;
+              const initial = s.name.charAt(0).toUpperCase();
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => navigate(`/@me/server/${s.id}`)}
+                  title={s.name}
+                  className="group relative flex h-12 w-12 items-center justify-center transition-all duration-200 hover:scale-[1.05]"
+                >
+                  <div className={`absolute -left-4 w-1 rounded-r-full bg-white transition-all duration-200 ${active ? "h-8 opacity-100" : "h-0 opacity-0 group-hover:h-6 group-hover:opacity-100"}`} />
+                  {s.icon_url ? (
+                    <img src={s.icon_url} alt={s.name} className={`h-12 w-12 object-cover transition-all duration-200 ${active ? "rounded-[16px]" : "rounded-full group-hover:rounded-[16px]"}`} />
+                  ) : (
+                    <div
+                      className={`flex h-12 w-12 items-center justify-center text-base font-bold text-white transition-all duration-200 ${active ? "rounded-[16px]" : "rounded-full group-hover:rounded-[16px]"}`}
+                      style={{ backgroundColor: "var(--app-bg-primary)" }}
+                    >
+                      {initial}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+
       <div className="mx-auto h-[2px] w-8 rounded-full bg-[#35363c]" />
 
       <button
-        className={`group relative flex h-14 w-14 items-center justify-center text-[#3ba55c] transition-all duration-200 hover:bg-[#3ba55c] hover:text-white cubbly-3d-circle ${
-          false ? "rounded-[16px]" : "rounded-full hover:rounded-[20px]"
-        }`}
+        onClick={() => setCreateOpen(true)}
+        title="Create or join a server"
+        className="group relative flex h-14 w-14 items-center justify-center text-[#3ba55c] transition-all duration-200 hover:bg-[#3ba55c] hover:text-white cubbly-3d-circle rounded-full hover:rounded-[20px]"
         style={{ backgroundColor: "var(--app-bg-primary)" }}
       >
         <div className="absolute -left-4 w-1 rounded-r-full bg-white transition-all duration-200 h-0 opacity-0 group-hover:h-6 group-hover:opacity-100" />
         <Plus className="h-6 w-6" />
       </button>
+
+      <CreateServerModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={(id) => navigate(`/@me/server/${id}`)}
+      />
     </div>
   );
 };
