@@ -101,7 +101,7 @@ export async function decryptJson<T = unknown>(key: CryptoKey, iv: string, ciphe
   const plain = await crypto.subtle.decrypt(
     { name: "AES-GCM", iv: b64decode(iv) as BufferSource },
     key,
-    b64decode(ciphertext)
+    b64decode(ciphertext) as BufferSource
   );
   return JSON.parse(dec.decode(plain)) as T;
 }
