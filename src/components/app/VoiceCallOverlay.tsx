@@ -149,8 +149,10 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
   const recipientColor = recipientUserId ? getProfileColor(recipientUserId) : { bg: "#5865f2" };
   const displayName = user?.user_metadata?.display_name || "You";
   const ringTimedOut = !!activeCall.ringTimedOut;
-  const isWaiting = activeCall.state === "calling" || activeCall.state === "ringing";
-  const isRinging = activeCall.state === "ringing" && !ringTimedOut;
+  const peerLeft = !!activeCall.peerLeftAt;
+  const isWaiting = activeCall.state === "calling" || activeCall.state === "ringing" || peerLeft;
+  const isRinging = activeCall.state === "ringing" && !ringTimedOut && !peerLeft;
+  const showNotInCall = ringTimedOut || peerLeft;
   const hasScreenShare = isScreenSharing || !!remoteScreenStream;
 
   // Determine which badge to show: deafen takes priority over mute
