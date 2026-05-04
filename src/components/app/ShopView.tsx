@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCoins } from "@/contexts/CoinsContext";
 import { toast } from "sonner";
+import { playSound } from "@/lib/sounds";
 import shopIcon from "@/assets/icons/shop.svg";
 import coinStack from "@/assets/coins/coin-stack.png";
 import coinNotEnough from "@/assets/coins/coin-not-enough.png";
