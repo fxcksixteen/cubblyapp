@@ -81,11 +81,13 @@ const MobileCallOverlay = ({ conversationId, recipientName, recipientAvatar, rec
   const conv = conversations.find(c => c.id === conversationId);
   const convTitle = conv?.is_group ? (conv.name || "Group call") : recipientName;
   const ringTimedOut = !!activeCall.ringTimedOut;
-  const isWaiting = activeCall.state === "calling" || activeCall.state === "ringing";
-  const isRinging = isWaiting && !ringTimedOut;
-  const stateLabel = activeCall.state === "connected"
+  const peerLeft = !!activeCall.peerLeftAt;
+  const showNotInCall = ringTimedOut || peerLeft;
+  const isWaiting = activeCall.state === "calling" || activeCall.state === "ringing" || peerLeft;
+  const isRinging = (activeCall.state === "ringing") && !ringTimedOut && !peerLeft;
+  const stateLabel = activeCall.state === "connected" && !peerLeft
     ? "In call"
-    : ringTimedOut ? "Not in call" : isRinging ? "Ringing…" : "Calling…";
+    : showNotInCall ? "Not in call" : isRinging ? "Ringing…" : "Calling…";
 
   if (minimized) {
     return (
