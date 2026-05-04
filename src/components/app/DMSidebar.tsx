@@ -29,7 +29,7 @@ import UserDisplayName from "./UserDisplayName";
 import UserBadges from "./UserBadges";
 import friendsIcon from "@/assets/icons/friends.svg";
 import shopIcon from "@/assets/icons/shop.svg";
-import notesIcon from "@/assets/password-lock.svg";
+import notesIcon from "@/assets/icons/notes.svg";
 import micIcon from "@/assets/icons/microphone.svg";
 import micMuteIcon from "@/assets/icons/microphone-mute.svg";
 import headphoneIcon from "@/assets/icons/headphone.svg";
