@@ -111,7 +111,7 @@ const ShopView = () => {
     (async () => {
       setLoading(true);
       const [{ data: catalog }, { data: inv }, { data: eq }] = await Promise.all([
-        supabase.from("shop_items").select("*").order("sort_order", { ascending: true }),
+        supabase.from("shop_items").select("*").order("price", { ascending: true }).order("sort_order", { ascending: true }),
         user
           ? supabase.from("user_inventory").select("item_id").eq("user_id", user.id)
           : Promise.resolve({ data: [] as { item_id: string }[] }),
