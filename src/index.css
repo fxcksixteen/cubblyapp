@@ -285,3 +285,29 @@ html.cubbly-gaming-mode *::after {
 }
 /* Keep critical UI feedback (typing dots, call ring) visible but cheap */
 html.cubbly-gaming-mode .typing-bounce { animation: none !important; opacity: 0.7; }
+
+/* ===== Accessibility settings ===== */
+html[data-reduced-motion="true"] *,
+html[data-reduced-motion="true"] *::before,
+html[data-reduced-motion="true"] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+html[data-high-contrast="true"] {
+  --app-text-primary: #ffffff;
+  --app-text-secondary: #d6d8dc;
+  --app-border: #ffffff40;
+}
+html[data-larger-text="true"] { font-size: 112.5%; }
+html[data-underline-links="true"] a { text-decoration: underline !important; }
+html[data-reduced-transparency="true"] * { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+html[data-keyboard-outlines="true"] *:focus-visible {
+  outline: 2px solid #5865f2 !important;
+  outline-offset: 2px !important;
+}
+html[data-keyboard-outlines="false"] *:focus-visible { outline: none !important; }
+
+/* Zoom (set by AccessibilitySettings) */
+html { zoom: var(--app-zoom, 1); }
