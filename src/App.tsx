@@ -46,6 +46,7 @@ const App = () => (
               <GamingModeProvider>
               <CoinsProvider>
               <NameColorsProvider>
+              <UserBadgesProvider>
               <NameColorsStyles />
               <CoinTrackingBridge />
               <EquippedThemeBridge />
