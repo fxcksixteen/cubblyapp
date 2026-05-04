@@ -16,6 +16,8 @@ import activityIcon from "@/assets/icons/activity.svg";
 import StatusIndicator from "@/components/app/StatusIndicator";
 import UserProfileCard from "@/components/app/chat/UserProfileCard";
 import ActivityIcon from "@/components/app/ActivityIcon";
+import UserDisplayName from "@/components/app/UserDisplayName";
+import UserBadges from "@/components/app/UserBadges";
 
 type FriendTab = "online" | "all" | "pending" | "blocked" | "add";
 
