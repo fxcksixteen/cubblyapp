@@ -95,6 +95,7 @@ const AppLayout = () => {
   const activeView = chatIdFromUrl
     ? `dm:${chatIdFromUrl}`
     : pathParts[1] === "shop" ? "shop"
+    : pathParts[1] === "notes" ? "notes"
     : isYouRoute ? "you"
     : "friends";
 
