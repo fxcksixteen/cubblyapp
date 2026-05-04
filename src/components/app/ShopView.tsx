@@ -231,6 +231,10 @@ const ShopView = () => {
         .shop-animated-name { animation: shopAnimatedName 6s ease-in-out infinite; }
         @keyframes shopThemeAurora { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
         .shop-theme-aurora { animation: shopThemeAurora 10s ease infinite; }
+        .shop-space-preview-stars { background-image: radial-gradient(1px 1px at 20px 12px,#fff,transparent), radial-gradient(1px 1px at 60px 30px,#fff,transparent), radial-gradient(0.5px 0.5px at 100px 50px,#fff,transparent), radial-gradient(1px 1px at 140px 18px,#fff,transparent), radial-gradient(0.5px 0.5px at 180px 60px,#fff,transparent); background-size: 200px 80px; animation: shopSpaceDrift 25s linear infinite; opacity:0.85; }
+        @keyframes shopSpaceDrift { from{background-position:0 0} to{background-position:-200px 0} }
+        .shop-space-preview-shoot::after { content:""; position:absolute; top:18%; left:-30%; width:70px; height:1.5px; background:linear-gradient(90deg, transparent, rgba(255,255,255,.95)); border-radius:999px; transform:rotate(-22deg); filter: drop-shadow(0 0 4px rgba(255,255,255,.8)); animation: shopSpaceShoot 4.5s ease-in infinite; }
+        @keyframes shopSpaceShoot { 0%{opacity:0; transform:translate(0,0) rotate(-22deg);} 10%{opacity:1;} 60%{opacity:1;} 100%{opacity:0; transform:translate(180%, 60%) rotate(-22deg);} }
       `}</style>
 
       {/* Hero */}
