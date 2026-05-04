@@ -164,11 +164,11 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
       {/* Call header */}
       <div className="flex items-center justify-between px-5 py-3 border-b" style={{ borderColor: "var(--app-border)" }}>
         <div className="flex items-center gap-2">
-          <div className="h-2 w-2 rounded-full animate-pulse" style={{ backgroundColor: activeCall.state === "connected" ? "#3ba55c" : ringTimedOut ? "#949ba4" : "#faa61a" }} />
-          <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: activeCall.state === "connected" ? "#3ba55c" : ringTimedOut ? "var(--app-text-secondary)" : "var(--app-text-secondary)" }}>
-            {activeCall.state === "connected"
+          <div className="h-2 w-2 rounded-full animate-pulse" style={{ backgroundColor: activeCall.state === "connected" && !peerLeft ? "#3ba55c" : showNotInCall ? "#949ba4" : "#faa61a" }} />
+          <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: activeCall.state === "connected" && !peerLeft ? "#3ba55c" : "var(--app-text-secondary)" }}>
+            {activeCall.state === "connected" && !peerLeft
               ? formatDuration(elapsed)
-              : ringTimedOut
+              : showNotInCall
                 ? "Not in call"
                 : activeCall.state === "calling" ? "Calling..." : "Ringing..."}
           </span>
