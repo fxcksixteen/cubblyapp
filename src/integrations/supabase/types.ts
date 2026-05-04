@@ -460,6 +460,45 @@ export type Database = {
         }
         Relationships: []
       }
+      shop_items: {
+        Row: {
+          category: string
+          config: Json
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          price: number
+          sort_order: number
+          subcategory: string | null
+        }
+        Insert: {
+          category: string
+          config?: Json
+          created_at?: string
+          description?: string | null
+          id: string
+          is_active?: boolean
+          name: string
+          price: number
+          sort_order?: number
+          subcategory?: string | null
+        }
+        Update: {
+          category?: string
+          config?: Json
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          price?: number
+          sort_order?: number
+          subcategory?: string | null
+        }
+        Relationships: []
+      }
       user_activities: {
         Row: {
           activity_type: string
@@ -517,6 +556,41 @@ export type Database = {
         }
         Relationships: []
       }
+      user_equipped: {
+        Row: {
+          category: string
+          equipped_at: string
+          id: string
+          item_id: string
+          slot: number
+          user_id: string
+        }
+        Insert: {
+          category: string
+          equipped_at?: string
+          id?: string
+          item_id: string
+          slot?: number
+          user_id: string
+        }
+        Update: {
+          category?: string
+          equipped_at?: string
+          id?: string
+          item_id?: string
+          slot?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_equipped_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "shop_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_games: {
         Row: {
           created_at: string
@@ -540,6 +614,35 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      user_inventory: {
+        Row: {
+          acquired_at: string
+          id: string
+          item_id: string
+          user_id: string
+        }
+        Insert: {
+          acquired_at?: string
+          id?: string
+          item_id: string
+          user_id: string
+        }
+        Update: {
+          acquired_at?: string
+          id?: string
+          item_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_inventory_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "shop_items"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
@@ -601,6 +704,7 @@ export type Database = {
         Args: { _conversation_id: string }
         Returns: undefined
       }
+      purchase_shop_item: { Args: { _item_id: string }; Returns: Json }
       send_test_bot_reply: {
         Args: { _conversation_id: string }
         Returns: {
