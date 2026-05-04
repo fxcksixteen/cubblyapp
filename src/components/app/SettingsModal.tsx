@@ -13,11 +13,15 @@ import GamingModeSettings from "./settings/GamingModeSettings";
 import NotificationSettings from "./settings/NotificationSettings";
 import UpdateLogsSettings from "./settings/UpdateLogsSettings";
 import AdvancedSettings from "./settings/AdvancedSettings";
+import ChatSettings from "./settings/ChatSettings";
+import LanguageTimeSettings from "./settings/LanguageTimeSettings";
+import DataPrivacySettings from "./settings/DataPrivacySettings";
+import DevicesSettings from "./settings/DevicesSettings";
 import { CURRENT_VERSION } from "@/lib/changelog";
 
 const APP_VERSION = CURRENT_VERSION;
 
-type SettingsCategory = "my-account" | "content-social" | "data-privacy" | "notifications" | "appearance" | "accessibility" | "voice-video" | "chat" | "keybinds" | "language-time" | "advanced" | "activity-privacy" | "gaming-mode" | "update-logs";
+type SettingsCategory = "my-account" | "content-social" | "data-privacy" | "notifications" | "appearance" | "accessibility" | "voice-video" | "devices" | "chat" | "keybinds" | "language-time" | "advanced" | "activity-privacy" | "gaming-mode" | "update-logs";
 
 const settingsSections = [
   {
@@ -35,6 +39,7 @@ const settingsSections = [
       { id: "appearance" as SettingsCategory, label: "Appearance" },
       { id: "accessibility" as SettingsCategory, label: "Accessibility" },
       { id: "voice-video" as SettingsCategory, label: "Voice & Video" },
+      { id: "devices" as SettingsCategory, label: "Devices" },
       { id: "chat" as SettingsCategory, label: "Chat" },
       { id: "keybinds" as SettingsCategory, label: "Keybinds" },
       { id: "language-time" as SettingsCategory, label: "Language & Time" },
@@ -521,6 +526,22 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
 
       case "advanced":
         return <AdvancedSettings cardStyle={cardStyle as any} />;
+
+      case "chat":
+        return <ChatSettings cardStyle={cardStyle as any} />;
+
+      case "language-time":
+        return <LanguageTimeSettings cardStyle={cardStyle as any} />;
+
+      case "data-privacy":
+        return <DataPrivacySettings cardStyle={cardStyle as any} />;
+
+      case "devices":
+        return (
+          <ErrorBoundary>
+            <DevicesSettings cardStyle={cardStyle as any} />
+          </ErrorBoundary>
+        );
 
       default:
         return (
