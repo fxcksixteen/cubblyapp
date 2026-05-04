@@ -10,6 +10,8 @@ import { GroupCallProvider } from "@/contexts/GroupCallContext";
 import { ActivityProvider } from "@/contexts/ActivityContext";
 import { GamingModeProvider } from "@/contexts/GamingModeContext";
 import { CoinsProvider } from "@/contexts/CoinsContext";
+import { NameColorsProvider } from "@/contexts/NameColorsContext";
+import { NameColorsStyles } from "@/components/app/UserDisplayName";
 import CoinTrackingBridge from "@/components/app/CoinTrackingBridge";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Index from "./pages/Index.tsx";
@@ -40,6 +42,8 @@ const App = () => (
             <ActivityProvider>
               <GamingModeProvider>
               <CoinsProvider>
+              <NameColorsProvider>
+              <NameColorsStyles />
               <CoinTrackingBridge />
               <Routes>
                 <Route path="/" element={<Index />} />
@@ -59,6 +63,7 @@ const App = () => (
               <WhatsNewModal />
               <GlobalCallIndicator />
               <GroupIncomingCallOverlay />
+              </NameColorsProvider>
               </CoinsProvider>
               </GamingModeProvider>
             </ActivityProvider>

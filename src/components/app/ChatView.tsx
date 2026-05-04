@@ -25,6 +25,7 @@ import gifIcon from "@/assets/icons/gif.svg";
 import GifPicker from "./GifPicker";
 import { useMessageReactions } from "@/hooks/useMessageReactions";
 import MessageReactionsBar from "./chat/MessageReactionsBar";
+import UserDisplayName from "./UserDisplayName";
 
 const BOT_USER_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -766,12 +767,13 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                   )}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-baseline gap-2">
-                      <span
-                        className="font-semibold text-white text-sm cursor-pointer hover:underline"
+                      <UserDisplayName
+                        userId={item.sender_id}
+                        name={item.sender_name}
+                        className="font-semibold text-sm cursor-pointer hover:underline"
+                        fallbackColor="#ffffff"
                         onClick={(e) => handleAvatarClick(e, item.sender_id, item.sender_name)}
-                      >
-                        {item.sender_name}
-                      </span>
+                      />
                       <span className="text-[11px]" style={{ color: "var(--app-text-secondary, #949ba4)" }}>{formatTime(item.messages[0].created_at)}</span>
                     </div>
                     {item.messages.map((msg) => {

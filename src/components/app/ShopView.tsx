@@ -99,6 +99,7 @@ const ShopView = () => {
   const { balance } = useCoins();
   const [items, setItems] = useState<ShopItem[]>([]);
   const [owned, setOwned] = useState<Set<string>>(new Set());
+  const [equipped, setEquipped] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<Category | "all">("all");
   const [displayName, setDisplayName] = useState<string>("");
   const [loading, setLoading] = useState(true);
@@ -109,15 +110,19 @@ const ShopView = () => {
     let alive = true;
     (async () => {
       setLoading(true);
-      const [{ data: catalog }, { data: inv }] = await Promise.all([
+      const [{ data: catalog }, { data: inv }, { data: eq }] = await Promise.all([
         supabase.from("shop_items").select("*").order("sort_order", { ascending: true }),
         user
           ? supabase.from("user_inventory").select("item_id").eq("user_id", user.id)
+          : Promise.resolve({ data: [] as { item_id: string }[] }),
+        user
+          ? supabase.from("user_equipped").select("item_id").eq("user_id", user.id)
           : Promise.resolve({ data: [] as { item_id: string }[] }),
       ]);
       if (!alive) return;
       setItems((catalog as ShopItem[]) ?? []);
       setOwned(new Set((inv ?? []).map((r: any) => r.item_id)));
+      setEquipped(new Set((eq ?? []).map((r: any) => r.item_id)));
       setLoading(false);
     })();
     return () => {
@@ -136,6 +141,14 @@ const ShopView = () => {
         (payload) => {
           const id = (payload.new as any)?.item_id;
           if (id) setOwned((prev) => new Set(prev).add(id));
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "user_equipped", filter: `user_id=eq.${user.id}` },
+        async () => {
+          const { data } = await supabase.from("user_equipped").select("item_id").eq("user_id", user.id);
+          setEquipped(new Set((data ?? []).map((r: any) => r.item_id)));
         }
       )
       .subscribe();
@@ -194,6 +207,13 @@ const ShopView = () => {
       return;
     }
     toast.success(`Unlocked: ${item.name}`);
+  };
+
+  const toggleEquip = async (item: ShopItem) => {
+    const isEq = equipped.has(item.id);
+    const { error } = await supabase.rpc(isEq ? "unequip_shop_item" : "equip_shop_item", { _item_id: item.id });
+    if (error) { toast.error("Couldn't update equipped item"); return; }
+    toast.success(isEq ? `Unequipped ${item.name}` : `Equipped ${item.name}`);
   };
 
   return (
@@ -267,6 +287,7 @@ const ShopView = () => {
           <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
             {visible.map((item) => {
               const isOwned = owned.has(item.id);
+              const isEq = equipped.has(item.id);
               const canAfford = balance >= item.price;
               const isBusy = purchasing === item.id;
               return (
@@ -275,7 +296,7 @@ const ShopView = () => {
                   className="group rounded-2xl p-3 transition-all hover:-translate-y-0.5 hover:shadow-lg"
                   style={{
                     backgroundColor: "var(--app-bg-secondary, #2b2d31)",
-                    border: "1px solid var(--app-border, #3f4147)",
+                    border: `1px solid ${isEq ? "#5865f2" : "var(--app-border, #3f4147)"}`,
                   }}
                 >
                   <ItemPreview item={item} displayName={displayName} />
@@ -291,28 +312,31 @@ const ShopView = () => {
                       )}
                     </div>
                   </div>
-                  <button
-                    onClick={() => buy(item)}
-                    disabled={isOwned || isBusy}
-                    className="mt-3 w-full rounded-lg py-2 text-sm font-bold transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-                    style={{
-                      backgroundColor: isOwned
-                        ? "var(--app-bg-tertiary, #1e1f22)"
-                        : canAfford
-                        ? "#5865f2"
-                        : "var(--app-bg-tertiary, #1e1f22)",
-                      color: isOwned ? "var(--app-text-secondary)" : "white",
-                    }}
-                  >
-                    {isOwned ? (
-                      "Owned"
-                    ) : (
-                      <>
-                        <img src={canAfford ? coinStack : coinNotEnough} alt="" className="h-6 w-6 -my-1 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]" />
-                        <span>{item.price.toLocaleString()}</span>
-                      </>
-                    )}
-                  </button>
+                  {isOwned ? (
+                    <button
+                      onClick={() => toggleEquip(item)}
+                      className="mt-3 w-full rounded-lg py-2 text-sm font-bold transition-all"
+                      style={{
+                        backgroundColor: isEq ? "#3ba55c" : "var(--app-bg-tertiary, #1e1f22)",
+                        color: "white",
+                      }}
+                    >
+                      {isEq ? "Equipped" : "Equip"}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => buy(item)}
+                      disabled={isBusy}
+                      className="mt-3 w-full rounded-lg py-2 text-sm font-bold transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                      style={{
+                        backgroundColor: canAfford ? "#5865f2" : "var(--app-bg-tertiary, #1e1f22)",
+                        color: "white",
+                      }}
+                    >
+                      <img src={canAfford ? coinStack : coinNotEnough} alt="" className="h-6 w-6 -my-1 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]" />
+                      <span>{item.price.toLocaleString()}</span>
+                    </button>
+                  )}
                 </div>
               );
             })}
