@@ -1058,6 +1058,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       }
       screenSendersRef.current.clear();
       setActiveCall(prev => prev ? { ...prev, isScreenSharing: false } : null);
+      playSound("screenshareStop", { volume: 0.4 });
       channelRef.current?.send({
         type: "broadcast",
         event: "group-signal",
