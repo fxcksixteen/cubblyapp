@@ -73,6 +73,14 @@ function ItemPreview({ item, displayName }: { item: ShopItem; displayName: strin
   }
 
   if (item.category === "theme") {
+    if (item.id === "theme_space") {
+      return (
+        <div className="relative h-20 w-full rounded-lg overflow-hidden" style={{ background: "radial-gradient(ellipse at 30% 0%, #0d1224, #07080c 60%, #04050a)" }}>
+          <div className="absolute inset-0 shop-space-preview-stars" />
+          <div className="absolute inset-0 shop-space-preview-shoot" />
+        </div>
+      );
+    }
     const isAurora = item.id.includes("aurora");
     return (
       <div
