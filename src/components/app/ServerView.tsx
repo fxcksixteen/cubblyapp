@@ -15,7 +15,11 @@ import { getEffectivePresenceStatus } from "@/lib/presence";
 import { getProfileColor } from "@/lib/profileColors";
 
 const ServerView = () => {
-  const { serverId, channelId } = useParams<{ serverId: string; channelId?: string }>();
+  const location = useLocation();
+  const parts = location.pathname.split("/").filter(Boolean);
+  // /@me/server/:serverId/:channelId?
+  const serverId = parts[1] === "server" ? parts[2] : undefined;
+  const channelId = parts[1] === "server" ? parts[3] : undefined;
   const navigate = useNavigate();
   const { user, onlineUserIds } = useAuth();
   const { servers, refresh: refreshServers } = useServers();
