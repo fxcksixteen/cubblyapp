@@ -13,6 +13,8 @@ import removeUserIcon from "@/assets/icons/remove-user.svg";
 import blockUserIcon from "@/assets/icons/block-user.svg";
 import StatusIndicator from "@/components/app/StatusIndicator";
 import ActivityCard from "@/components/app/ActivityCard";
+import UserDisplayName from "@/components/app/UserDisplayName";
+import UserBadges from "@/components/app/UserBadges";
 
 interface UserProfileCardProps {
   userId: string;
