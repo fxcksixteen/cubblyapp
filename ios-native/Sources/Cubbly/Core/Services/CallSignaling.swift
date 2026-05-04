@@ -190,6 +190,12 @@ final class CallSignaling {
     func ringUser(targetUserId: UUID, conversationId: UUID, callEventId: UUID, callerName: String?, callerAvatarUrl: String?) async {
         let channel = await RealtimeChannelFactory.make("voice-global:\(targetUserId.uuidString)", client: client)
         await channel.subscribe()
+        // CRITICAL: supabase-swift's `subscribe()` returns BEFORE the JOIN ack
+        // — broadcasting now would silently drop the ring on the floor and
+        // the peer would never see the incoming call (the bug that made
+        // iOS-initiated calls appear to ring on the caller but never reach
+        // the callee). Wait until the channel is actually subscribed.
+        await Self.awaitJoined(channel)
         var payload: [String: AnyJSON] = [
             "targetId": .string(targetUserId.uuidString),
             "conversationId": .string(conversationId.uuidString),
@@ -202,7 +208,7 @@ final class CallSignaling {
         try? await channel.broadcast(event: "incoming-call", message: payload)
         // Keep the global channel alive so the ringee's ack/answer can come back.
         Task {
-            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            try? await Task.sleep(nanoseconds: 8_000_000_000)
             await RealtimeChannelFactory.remove(channel, client: client)
         }
     }
