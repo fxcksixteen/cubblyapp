@@ -23,9 +23,30 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.31";
+export const CURRENT_VERSION = "0.3.0";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.3.0",
+    title: "Shop, encrypted notes, themes & badges",
+    date: "2026-05-04",
+    hero: bearImage,
+    newFeatures: [
+      "Cubbly Shop is live — earn coins by chatting, hanging out in voice, and playing games, then spend them on cosmetics. Open the Shop tab and tap your coin pill for the full breakdown.",
+      "Personal Notes — a brand-new tab between Friends and Shop, gated by a 4-digit PIN you set once. Notes (and any attached files) are encrypted on your device before they ever leave it. Optional 'trust this device' skips the PIN on devices you've already unlocked once.",
+      "Name colors — static, gradient, and animated motion gradients you can equip to make your name stand out everywhere on Cubbly.",
+      "Profile badges — a fresh set of 3D collectible badges that show next to your name in chats, profiles, member lists, everywhere.",
+      "App themes — a whole catalog of new looks, including the Grok-styled Space theme with drifting stars and falling shooting stars.",
+      "Tons of new sound effects: mute/unmute, deafen/undeafen, joining a call, screen-share start/stop, plus the coin-earned and coin-spent jingles.",
+      "Big settings expansion: Devices, Data & Privacy, Chat, Language & Time, Content & Social, Accessibility, and Keybinds tabs are now real and configurable.",
+      "Locked shop items now show up inside Settings → Appearance and Settings → My Account too — blurred and one tap away from the shop, equippable in place once you own them.",
+    ],
+    bugFixes: [
+      "Status indicators no longer flicker between online and offline when one of your devices (especially the iOS app) backgrounds. You're shown as online as long as ANY of your devices is connected.",
+      "Muting or deafening yourself in a voice call no longer corrupts the audio for the rest of the call. Undeafening cleanly restores everyone's audio without needing to rejoin.",
+      "Clicking 'Rejoin' on a call pill now actually drops you back into the existing call your friend is still in, with audio working immediately.",
+    ],
+  },
   {
     version: "0.2.31",
     title: "Calls actually reach the other side",
