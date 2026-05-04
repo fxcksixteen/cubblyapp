@@ -775,6 +775,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                         fallbackColor="#ffffff"
                         onClick={(e) => handleAvatarClick(e, item.sender_id, item.sender_name)}
                       />
+                      <UserBadges userId={item.sender_id} size={14} />
                       <span className="text-[11px]" style={{ color: "var(--app-text-secondary, #949ba4)" }}>{formatTime(item.messages[0].created_at)}</span>
                     </div>
                     {item.messages.map((msg) => {
