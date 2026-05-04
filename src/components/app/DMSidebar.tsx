@@ -110,8 +110,9 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
     toast.success("User blocked");
   };
 
-  const navItems = [
+  const navItems: Array<{ id: string; label: string; icon?: string; lucide?: React.ComponentType<{ className?: string; style?: React.CSSProperties }> }> = [
     { id: "friends", icon: friendsIcon, label: "Friends" },
+    { id: "notes", lucide: Lock, label: "Private Notes" },
     { id: "shop", icon: shopIcon, label: "Shop" },
   ];
 
@@ -136,7 +137,11 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
             onMouseEnter={e => { if (activeView !== item.id) e.currentTarget.style.backgroundColor = "var(--app-hover, #35373c)"; }}
             onMouseLeave={e => { if (activeView !== item.id) e.currentTarget.style.backgroundColor = ""; }}
           >
-            <img src={item.icon} alt="" className="h-5 w-5 shrink-0 invert opacity-80" />
+            {item.icon ? (
+              <img src={item.icon} alt="" className="h-5 w-5 shrink-0 invert opacity-80" />
+            ) : item.lucide ? (
+              <item.lucide className="h-5 w-5 shrink-0 opacity-80" />
+            ) : null}
             {item.label}
             {item.id === "friends" && incomingPendingCount > 0 && (
               <span
