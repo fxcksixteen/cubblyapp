@@ -668,6 +668,7 @@ const AppLayout = () => {
                     </button>
                   )}
                   <img src={messagesInboxIcon} alt="Inbox" className="h-5 w-5 cursor-pointer invert opacity-60 hover:opacity-100 transition-opacity" />
+                  <CoinPill />
                 </div>
               </>
             )}
