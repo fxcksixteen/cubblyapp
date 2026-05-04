@@ -11,6 +11,7 @@ import { ActivityProvider } from "@/contexts/ActivityContext";
 import { GamingModeProvider } from "@/contexts/GamingModeContext";
 import { CoinsProvider } from "@/contexts/CoinsContext";
 import { NameColorsProvider } from "@/contexts/NameColorsContext";
+import { UserBadgesProvider } from "@/contexts/UserBadgesContext";
 import { NameColorsStyles } from "@/components/app/UserDisplayName";
 import CoinTrackingBridge from "@/components/app/CoinTrackingBridge";
 import EquippedThemeBridge from "@/components/app/EquippedThemeBridge";
@@ -45,6 +46,7 @@ const App = () => (
               <GamingModeProvider>
               <CoinsProvider>
               <NameColorsProvider>
+              <UserBadgesProvider>
               <NameColorsStyles />
               <CoinTrackingBridge />
               <EquippedThemeBridge />
@@ -67,6 +69,7 @@ const App = () => (
               <GlobalCallIndicator />
               <GroupIncomingCallOverlay />
               <SpaceBackground />
+              </UserBadgesProvider>
               </NameColorsProvider>
               </CoinsProvider>
               </GamingModeProvider>

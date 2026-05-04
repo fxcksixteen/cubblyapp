@@ -95,6 +95,31 @@ function ItemPreview({ item, displayName }: { item: ShopItem; displayName: strin
     );
   }
 
+  if (item.category === "badge") {
+    const cfg = item.config || {};
+    return (
+      <div className="flex h-20 w-full items-center justify-center gap-2 rounded-lg bg-[#1e1f22] px-3">
+        <span
+          className="inline-flex items-center justify-center rounded-md shrink-0"
+          style={{
+            width: 26,
+            height: 26,
+            backgroundColor: cfg.bg ?? "#3f4147",
+            color: cfg.fg ?? "#fff",
+            boxShadow: cfg.glow ? `0 0 10px ${cfg.glow}66` : undefined,
+            fontWeight: 800,
+            fontSize: 14,
+          }}
+        >
+          ★
+        </span>
+        <span className="text-base font-extrabold truncate" style={{ color: "#fff" }}>
+          {name}
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-20 w-full items-center justify-center rounded-lg bg-gradient-to-br from-[#5865f2] to-[#a855f7]">
       <span className="text-3xl font-black text-white drop-shadow">{item.name[0]}</span>
