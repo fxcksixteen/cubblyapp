@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useActivity } from "@/contexts/ActivityContext";
+import { suggestDisplayName } from "@/lib/knownGames";
 import { Gamepad2, FileText, FolderOpen, RefreshCw, Search } from "lucide-react";
 import { toast } from "sonner";
 
@@ -29,7 +30,7 @@ const isElectron = typeof window !== "undefined" && (window as any).electronAPI?
  * Electron — web users will only see Manual Entry.
  */
 const AddGameModal = ({ isOpen, onClose }: AddGameModalProps) => {
-  const { addMyGame } = useActivity();
+  const { addMyGame, myGames } = useActivity();
   const [tab, setTab] = useState<"running" | "manual">(isElectron ? "running" : "manual");
   const [windows, setWindows] = useState<OpenWindow[]>([]);
   const [processes, setProcesses] = useState<string[]>([]);
@@ -71,12 +72,10 @@ const AddGameModal = ({ isOpen, onClose }: AddGameModalProps) => {
     }
   }, [isOpen, tab]);
 
-  const prettify = (raw: string) =>
-    raw
-      .replace(/\.exe$/i, "")
-      .replace(/[-_]+/g, " ")
-      .replace(/\b\w/g, (c) => c.toUpperCase())
-      .trim();
+  const prettify = (raw: string) => suggestDisplayName(raw);
+
+  const isDuplicate = (proc: string) =>
+    myGames.some((g) => g.process_name.toLowerCase() === proc.toLowerCase().replace(/\.exe$/, ""));
 
   const stripWindowSuffix = (title: string) =>
     title
@@ -109,13 +108,22 @@ const AddGameModal = ({ isOpen, onClose }: AddGameModalProps) => {
 
   const handleConfirmRunning = async () => {
     if (!pickedItem || !displayNameDraft.trim()) return;
+    const proc = pickedItem.processName.toLowerCase().replace(/\.exe$/, "");
+    if (!proc) {
+      toast.error("Invalid process name");
+      return;
+    }
+    if (isDuplicate(proc)) {
+      toast.error(`"${displayNameDraft.trim()}" is already in your list`);
+      return;
+    }
     setSubmitting(true);
     try {
-      await addMyGame(pickedItem.processName, displayNameDraft.trim());
+      await addMyGame(proc, displayNameDraft.trim());
       toast.success(`Added ${displayNameDraft.trim()} to your games`);
       onClose();
-    } catch {
-      toast.error("Failed to add game");
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to add game");
     }
     setSubmitting(false);
   };
@@ -135,8 +143,24 @@ const AddGameModal = ({ isOpen, onClose }: AddGameModalProps) => {
   const handleConfirmManual = async () => {
     const proc = manualProcess.trim().toLowerCase().replace(/\.exe$/, "");
     const name = manualName.trim();
-    if (!proc || !name) {
-      toast.error("Please fill in both the process name and display name.");
+    if (!proc) {
+      toast.error("Process name is required (e.g. valorant)");
+      return;
+    }
+    if (!/^[a-z0-9._\-+ ]{1,64}$/.test(proc)) {
+      toast.error("Process name has invalid characters");
+      return;
+    }
+    if (!name) {
+      toast.error("Display name is required");
+      return;
+    }
+    if (name.length > 50) {
+      toast.error("Display name is too long (max 50)");
+      return;
+    }
+    if (isDuplicate(proc)) {
+      toast.error(`"${proc}" is already in your list`);
       return;
     }
     setSubmitting(true);
@@ -144,8 +168,8 @@ const AddGameModal = ({ isOpen, onClose }: AddGameModalProps) => {
       await addMyGame(proc, name);
       toast.success(`Added ${name} to your games`);
       onClose();
-    } catch {
-      toast.error("Failed to add game");
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to add game");
     }
     setSubmitting(false);
   };
