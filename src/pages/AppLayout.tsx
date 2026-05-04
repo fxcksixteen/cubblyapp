@@ -24,6 +24,7 @@ import FriendsView from "@/components/app/FriendsView";
 import ChatView from "@/components/app/ChatView";
 import ShopView from "@/components/app/ShopView";
 import NotesView from "@/components/app/NotesView";
+import ServerView from "@/components/app/ServerView";
 import VoiceCallOverlay from "@/components/app/VoiceCallOverlay";
 import TitleBar from "@/components/app/TitleBar";
 import CreateGroupModal from "@/components/app/CreateGroupModal";
