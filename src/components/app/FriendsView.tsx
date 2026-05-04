@@ -298,7 +298,10 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
                       </div>
                     </div>
                     <div className="flex-1 overflow-hidden">
-                      <p className="text-sm font-semibold leading-tight text-white">{friendship.profile.display_name}</p>
+                      <p className="text-sm font-semibold leading-tight text-white flex items-center gap-1.5">
+                        <UserDisplayName userId={friendship.profile.user_id} name={friendship.profile.display_name} fallbackColor="#ffffff" className="truncate" />
+                        <UserBadges userId={friendship.profile.user_id} size={13} />
+                      </p>
                       {(() => {
                         const act = getActivity(friendship.profile.user_id);
                         const friendOnline = friendship.profile.user_id === CUBBLY_BOT_ID || onlineUserIds.has(friendship.profile.user_id);
