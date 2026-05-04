@@ -24,6 +24,7 @@ import FriendsView from "@/components/app/FriendsView";
 import ChatView from "@/components/app/ChatView";
 import ShopView from "@/components/app/ShopView";
 import NotesView from "@/components/app/NotesView";
+import ServerView from "@/components/app/ServerView";
 import VoiceCallOverlay from "@/components/app/VoiceCallOverlay";
 import TitleBar from "@/components/app/TitleBar";
 import CreateGroupModal from "@/components/app/CreateGroupModal";
@@ -56,6 +57,8 @@ const AppLayout = () => {
   const isChatRoute = pathParts[1] === "chat" && pathParts[2];
   const chatIdFromUrl = isChatRoute ? pathParts[2] : null;
   const isYouRoute = pathParts[1] === "you";
+  const isServerRoute = pathParts[1] === "server" && !!pathParts[2];
+  const serverIdFromUrl = isServerRoute ? pathParts[2] : null;
   const urlTab = pathParts[1] as FriendTab | undefined;
   const validTabs: FriendTab[] = ["online", "all", "pending", "blocked", "add"];
   const friendTab: FriendTab = urlTab && validTabs.includes(urlTab) ? urlTab : "online";
@@ -94,6 +97,7 @@ const AppLayout = () => {
 
   const activeView = chatIdFromUrl
     ? `dm:${chatIdFromUrl}`
+    : isServerRoute ? "server"
     : pathParts[1] === "shop" ? "shop"
     : pathParts[1] === "notes" ? "notes"
     : isYouRoute ? "you"
@@ -350,6 +354,9 @@ const AppLayout = () => {
     }
     if (isNotes) {
       return <NotesView />;
+    }
+    if (isServerRoute) {
+      return <ServerView />;
     }
     return <FriendsView activeTab={friendTab} setActiveTab={setFriendTab} onOpenDM={handleOpenDM} activeNowOpen={activeNowOpen} setActiveNowOpen={setActiveNowOpen} />;
   };

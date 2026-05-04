@@ -232,6 +232,8 @@ export type Database = {
           name: string | null
           owner_id: string | null
           picture_url: string | null
+          server_channel_id: string | null
+          server_id: string | null
           updated_at: string
         }
         Insert: {
@@ -241,6 +243,8 @@ export type Database = {
           name?: string | null
           owner_id?: string | null
           picture_url?: string | null
+          server_channel_id?: string | null
+          server_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -250,9 +254,26 @@ export type Database = {
           name?: string | null
           owner_id?: string | null
           picture_url?: string | null
+          server_channel_id?: string | null
+          server_id?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "conversations_server_channel_id_fkey"
+            columns: ["server_channel_id"]
+            isOneToOne: false
+            referencedRelation: "server_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversations_server_id_fkey"
+            columns: ["server_id"]
+            isOneToOne: false
+            referencedRelation: "servers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       friendships: {
         Row: {
@@ -529,6 +550,147 @@ export type Database = {
         }
         Relationships: []
       }
+      server_channels: {
+        Row: {
+          category: string | null
+          conversation_id: string | null
+          created_at: string
+          id: string
+          kind: string
+          name: string
+          position: number
+          server_id: string
+        }
+        Insert: {
+          category?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          id?: string
+          kind?: string
+          name: string
+          position?: number
+          server_id: string
+        }
+        Update: {
+          category?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          id?: string
+          kind?: string
+          name?: string
+          position?: number
+          server_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "server_channels_server_id_fkey"
+            columns: ["server_id"]
+            isOneToOne: false
+            referencedRelation: "servers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      server_invites: {
+        Row: {
+          code: string
+          created_at: string
+          created_by: string
+          expires_at: string | null
+          id: string
+          max_uses: number | null
+          server_id: string
+          uses: number
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          created_by: string
+          expires_at?: string | null
+          id?: string
+          max_uses?: number | null
+          server_id: string
+          uses?: number
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          created_by?: string
+          expires_at?: string | null
+          id?: string
+          max_uses?: number | null
+          server_id?: string
+          uses?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "server_invites_server_id_fkey"
+            columns: ["server_id"]
+            isOneToOne: false
+            referencedRelation: "servers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      server_members: {
+        Row: {
+          id: string
+          joined_at: string
+          role: string
+          server_id: string
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          joined_at?: string
+          role?: string
+          server_id: string
+          user_id: string
+        }
+        Update: {
+          id?: string
+          joined_at?: string
+          role?: string
+          server_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "server_members_server_id_fkey"
+            columns: ["server_id"]
+            isOneToOne: false
+            referencedRelation: "servers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      servers: {
+        Row: {
+          created_at: string
+          icon_url: string | null
+          id: string
+          name: string
+          owner_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          icon_url?: string | null
+          id?: string
+          name: string
+          owner_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          icon_url?: string | null
+          id?: string
+          name?: string
+          owner_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       shop_items: {
         Row: {
           category: string
@@ -751,6 +913,27 @@ export type Database = {
         Args: { _member_ids: string[]; _name: string }
         Returns: string
       }
+      create_server: {
+        Args: { _icon_url?: string; _name: string }
+        Returns: string
+      }
+      create_server_channel: {
+        Args: {
+          _category?: string
+          _kind?: string
+          _name: string
+          _server_id: string
+        }
+        Returns: string
+      }
+      create_server_invite: {
+        Args: {
+          _expires_in_seconds?: number
+          _max_uses?: number
+          _server_id: string
+        }
+        Returns: string
+      }
       end_call_event_if_stale: {
         Args: { _call_event_id: string; _stale_seconds?: number }
         Returns: boolean
@@ -770,6 +953,16 @@ export type Database = {
         Args: { _conversation_id: string; _user_id: string }
         Returns: boolean
       }
+      is_server_member: {
+        Args: { _server_id: string; _user_id: string }
+        Returns: boolean
+      }
+      is_server_owner: {
+        Args: { _server_id: string; _user_id: string }
+        Returns: boolean
+      }
+      join_server_by_code: { Args: { _code: string }; Returns: string }
+      lookup_server_invite: { Args: { _code: string }; Returns: Json }
       mark_conversation_read: {
         Args: { _conversation_id: string }
         Returns: undefined
