@@ -20,34 +20,36 @@ interface ShopItem {
   sort_order: number;
 }
 
-const TABS: { id: Category; label: string }[] = [
+const TABS: { id: Category | "all"; label: string }[] = [
+  { id: "all", label: "All" },
   { id: "name_color", label: "Name Colors" },
   { id: "theme", label: "Themes" },
   { id: "badge", label: "Badges" },
 ];
 
 /** Renders a small visual preview matching the item type. */
-function ItemPreview({ item }: { item: ShopItem }) {
+function ItemPreview({ item, displayName }: { item: ShopItem; displayName: string }) {
+  const name = displayName || "YourName";
   if (item.category === "name_color") {
     if (item.subcategory === "static") {
       return (
-        <div className="flex h-20 w-full items-center justify-center rounded-lg bg-[#1e1f22]">
-          <span className="text-lg font-extrabold" style={{ color: item.config?.color }}>
-            YourName
+        <div className="flex h-20 w-full items-center justify-center rounded-lg bg-[#1e1f22] px-3">
+          <span className="text-lg font-extrabold truncate" style={{ color: item.config?.color }}>
+            {name}
           </span>
         </div>
       );
     }
     if (item.subcategory === "gradient") {
       return (
-        <div className="flex h-20 w-full items-center justify-center rounded-lg bg-[#1e1f22]">
+        <div className="flex h-20 w-full items-center justify-center rounded-lg bg-[#1e1f22] px-3">
           <span
-            className="text-lg font-extrabold bg-clip-text text-transparent"
+            className="text-lg font-extrabold bg-clip-text text-transparent truncate"
             style={{
               backgroundImage: `linear-gradient(90deg, ${item.config?.from}, ${item.config?.to})`,
             }}
           >
-            YourName
+            {name}
           </span>
         </div>
       );
@@ -55,15 +57,15 @@ function ItemPreview({ item }: { item: ShopItem }) {
     if (item.subcategory === "animated") {
       const stops = (item.config?.stops as string[]) ?? ["#22d3ee", "#a855f7", "#ec4899", "#22d3ee"];
       return (
-        <div className="flex h-20 w-full items-center justify-center rounded-lg bg-[#1e1f22]">
+        <div className="flex h-20 w-full items-center justify-center rounded-lg bg-[#1e1f22] px-3">
           <span
-            className="text-lg font-extrabold bg-clip-text text-transparent shop-animated-name"
+            className="text-lg font-extrabold bg-clip-text text-transparent shop-animated-name truncate"
             style={{
               backgroundImage: `linear-gradient(90deg, ${stops.join(",")})`,
               backgroundSize: "300% 100%",
             }}
           >
-            YourName
+            {name}
           </span>
         </div>
       );
@@ -85,7 +87,6 @@ function ItemPreview({ item }: { item: ShopItem }) {
     );
   }
 
-  // Badge — placeholder square with first letter
   return (
     <div className="flex h-20 w-full items-center justify-center rounded-lg bg-gradient-to-br from-[#5865f2] to-[#a855f7]">
       <span className="text-3xl font-black text-white drop-shadow">{item.name[0]}</span>
