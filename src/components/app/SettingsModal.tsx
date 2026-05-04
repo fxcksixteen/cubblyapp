@@ -20,6 +20,7 @@ import DevicesSettings from "./settings/DevicesSettings";
 import ContentSocialSettings from "./settings/ContentSocialSettings";
 import AccessibilitySettings from "./settings/AccessibilitySettings";
 import KeybindsSettings from "./settings/KeybindsSettings";
+import ShopItemsGrid from "./settings/ShopItemsGrid";
 import { CURRENT_VERSION } from "@/lib/changelog";
 
 const APP_VERSION = CURRENT_VERSION;
@@ -423,6 +424,28 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
                 </div>
               </div>
             </div>
+
+            {/* Name Colors — every shop name color, owned ones equippable, locked ones routed to Shop. */}
+            <div className="rounded-[24px] border p-5" style={cardStyle}>
+              <div className="mb-4">
+                <h3 className="text-base font-bold" style={{ color: "var(--app-text-primary)" }}>Name Colors</h3>
+                <p className="mt-1 text-xs" style={{ color: "var(--app-text-secondary)" }}>
+                  Equip any color you've unlocked. Locked colors take you to the Shop.
+                </p>
+              </div>
+              <ShopItemsGrid category="name_color" />
+            </div>
+
+            {/* Badges */}
+            <div className="rounded-[24px] border p-5" style={cardStyle}>
+              <div className="mb-4">
+                <h3 className="text-base font-bold" style={{ color: "var(--app-text-primary)" }}>Badges</h3>
+                <p className="mt-1 text-xs" style={{ color: "var(--app-text-secondary)" }}>
+                  Equip up to 3 badges. Locked ones take you to the Shop.
+                </p>
+              </div>
+              <ShopItemsGrid category="badge" />
+            </div>
           </div>
         );
 
@@ -501,6 +524,17 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* Full shop themes catalog — owned themes equip on click, locked ones blur and route to Shop. */}
+            <div className="rounded-[24px] border p-5" style={cardStyle}>
+              <div className="mb-4">
+                <h3 className="text-base font-bold" style={{ color: "var(--app-text-primary)" }}>Shop Themes</h3>
+                <p className="mt-1 text-xs" style={{ color: "var(--app-text-secondary)" }}>
+                  Browse every theme. Equip the ones you own, or tap a locked one to unlock it in the Shop.
+                </p>
+              </div>
+              <ShopItemsGrid category="theme" />
             </div>
           </div>
         );
