@@ -1881,6 +1881,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
       setScreenStream(stream);
       setIsScreenSharing(true);
+      playSound("screenshareStart", { volume: 0.4 });
 
       // Apply Optimization preset to the actual video track. Bumped bitrates
       // so "ultra" actually delivers a crisp stream to the *peer* (encoder
