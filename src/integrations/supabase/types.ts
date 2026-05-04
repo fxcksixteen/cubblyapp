@@ -686,6 +686,7 @@ export type Database = {
         Args: { _call_event_id: string; _stale_seconds?: number }
         Returns: boolean
       }
+      equip_shop_item: { Args: { _item_id: string }; Returns: undefined }
       heartbeat_call_participant: {
         Args: {
           _call_event_id: string
@@ -732,6 +733,7 @@ export type Database = {
         }
         Returns: number
       }
+      unequip_shop_item: { Args: { _item_id: string }; Returns: undefined }
     }
     Enums: {
       [_ in never]: never
