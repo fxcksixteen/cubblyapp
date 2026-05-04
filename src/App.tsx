@@ -73,6 +73,7 @@ const App = () => (
               <GlobalCallIndicator />
               <GroupIncomingCallOverlay />
               <SpaceBackground />
+              </ServersProvider>
               </NotesProvider>
               </UserBadgesProvider>
               </NameColorsProvider>
