@@ -57,6 +57,8 @@ const AppLayout = () => {
   const isChatRoute = pathParts[1] === "chat" && pathParts[2];
   const chatIdFromUrl = isChatRoute ? pathParts[2] : null;
   const isYouRoute = pathParts[1] === "you";
+  const isServerRoute = pathParts[1] === "server" && !!pathParts[2];
+  const serverIdFromUrl = isServerRoute ? pathParts[2] : null;
   const urlTab = pathParts[1] as FriendTab | undefined;
   const validTabs: FriendTab[] = ["online", "all", "pending", "blocked", "add"];
   const friendTab: FriendTab = urlTab && validTabs.includes(urlTab) ? urlTab : "online";
