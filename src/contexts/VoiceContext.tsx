@@ -1431,15 +1431,19 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         conversationId,
         peerId,
         peerName,
-        state: isBotCall ? "calling" : "calling",
-        startedAt: undefined,
+        // When rejoining an existing live call, jump straight to "connected"
+        // so the UI doesn't pretend we're ringing a fresh call. The other
+        // peer is already there waiting for our ready-for-offer.
+        state: isJoiningExisting ? "connected" : "calling",
+        startedAt: isJoiningExisting ? Date.now() : undefined,
         isMuted: false,
         isDeafened: false,
         isVideoOn: false,
       });
       peerIdRef.current = peerId;
 
-      if (!isBotCall) {
+      // Only play the outgoing ring when actually starting a brand new call.
+      if (!isBotCall && !isJoiningExisting) {
         playLooping("outgoingRing", { volume: 0.4 });
       }
 
