@@ -717,7 +717,14 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       console.log("[Voice] ICE state:", pc.iceConnectionState);
       if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
         // Mark call as truly connected only when ICE transport is up
-        setActiveCall(prev => prev && prev.state !== "connected" ? { ...prev, state: "connected", ringTimedOut: false, peerLeftAt: undefined, startedAt: prev.startedAt || Date.now() } : prev);
+        setActiveCall(prev => {
+          if (!prev) return prev;
+          if (prev.state !== "connected") {
+            playSound("joinCall", { volume: 0.4 });
+            return { ...prev, state: "connected", ringTimedOut: false, peerLeftAt: undefined, startedAt: prev.startedAt || Date.now() };
+          }
+          return prev;
+        });
         // Ensure ALL local audio tracks are enabled when connected
         const senders = pc.getSenders();
         senders.forEach(s => {
@@ -1874,6 +1881,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
       setScreenStream(stream);
       setIsScreenSharing(true);
+      playSound("screenshareStart", { volume: 0.4 });
 
       // Apply Optimization preset to the actual video track. Bumped bitrates
       // so "ultra" actually delivers a crisp stream to the *peer* (encoder
@@ -2013,10 +2021,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
 
   const stopScreenShare = useCallback(() => {
+    const wasSharing = screenStream !== null || isScreenSharing;
     screenStream?.getTracks().forEach(t => t.stop());
     setScreenStream(null);
     setIsScreenSharing(false);
     setRemoteScreenStream(null);
+    if (wasSharing) playSound("screenshareStop", { volume: 0.4 });
 
     // Tear down native per-window audio if it was active
     if (nativeWindowAudioStopRef.current) {
@@ -2287,6 +2297,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       if (!prev) return null;
       const newMuted = !prev.isMuted;
       void applyLocalMicMute(newMuted);
+      playSound(newMuted ? "mute" : "unmute", { volume: 0.4 });
       try {
         channelRef.current?.send({
           type: "broadcast",
@@ -2312,6 +2323,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       // toggling. setLocalDeafened consults state inside applyPeerGain so
       // both graph- and element-driven peers stay coherent.
       setLocalDeafened(newDeafened);
+      playSound(newDeafened ? "deafen" : "undeafen", { volume: 0.4 });
 
       let nextMuted: boolean;
       if (newDeafened) {

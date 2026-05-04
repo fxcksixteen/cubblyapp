@@ -134,7 +134,21 @@ const ShopView = () => {
   const [items, setItems] = useState<ShopItem[]>([]);
   const [owned, setOwned] = useState<Set<string>>(new Set());
   const [equipped, setEquipped] = useState<Set<string>>(new Set());
-  const [activeTab, setActiveTab] = useState<Category | "all">("all");
+  const [activeTab, setActiveTab] = useState<Category | "all">(() => {
+    if (typeof window === "undefined") return "all";
+    const m = window.location.hash.match(/tab=(name_color|theme|badge|all)/);
+    return (m?.[1] as any) || "all";
+  });
+
+  // React to hash changes (deep-links from Settings)
+  useEffect(() => {
+    const onHash = () => {
+      const m = window.location.hash.match(/tab=(name_color|theme|badge|all)/);
+      if (m?.[1]) setActiveTab(m[1] as any);
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
   const [displayName, setDisplayName] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState<string | null>(null);

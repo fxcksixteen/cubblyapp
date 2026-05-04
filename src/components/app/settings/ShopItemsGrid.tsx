@@ -225,13 +225,22 @@ const ShopItemsGrid = ({ category, emptyLabel = "No items yet" }: Props) => {
 
   const toggleEquip = async (item: ShopItem) => {
     const isEq = equipped.has(item.id);
+    // Client-side guard for the 3-badge cap so users get a clear toast
+    // instead of a silent unique-constraint failure on slot 0.
+    if (!isEq && item.category === "badge") {
+      const equippedBadges = items.filter((i) => i.category === "badge" && equipped.has(i.id)).length;
+      if (equippedBadges >= 3) {
+        toast.error("You can only equip 3 badges. Unequip one first.");
+        return;
+      }
+    }
     const { error } = await supabase.rpc(isEq ? "unequip_shop_item" : "equip_shop_item", { _item_id: item.id });
     if (error) { toast.error("Couldn't update equipped item"); return; }
     toast.success(isEq ? `Unequipped ${item.name}` : `Equipped ${item.name}`);
   };
 
   const goToShop = () => {
-    navigate("/@me/shop");
+    navigate(`/@me/shop#tab=${category}`);
   };
 
   if (loading) {

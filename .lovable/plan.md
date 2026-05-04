@@ -1,80 +1,108 @@
+## v0.3.0 inspection — what's fine, what's missing
 
-# Fix calls cross-platform + Not-in-call indicator
-
-## What's actually broken
-
-### Issue 1 — iOS-initiated call never rings the peer; pill flickers and disappears
-
-Root cause is in `ios-native/Sources/Cubbly/Core/Services/CallStore.swift::startCall`:
-
-1. We call `await signaling.joinCallChannel(conversationId:)` and **immediately** call `signaling.ringUser(...)`. But `ringUser` builds a **brand-new** `voice-global:{peerId}` channel, calls `await channel.subscribe()`, fires the `incoming-call` broadcast, then schedules removal 5s later. With supabase-swift 2.24, `subscribe()` returns before the channel is actually JOINED — the broadcast is sent into a half-open channel and dropped on the floor for the peer. That is why "her app showed ringing but mine never rang."
-2. Right after that, we call `signaling.broadcast("peer-leave"/"hangup"...)` indirectly: when the peer never picks up and the user taps end, our `endCall` broadcasts `peer-leave`. But the bigger flicker bug is that `currentCallEventId` gets inserted, the realtime INSERT fires the `Ongoing call` pill on her end, then the iOS endCall path runs the cleanup that updates `state=ended` because `live.isEmpty` (the peer never joined → no other participant rows → call ended). On rapid hang-ups that whole sequence happens in <1s, which is exactly the "appeared for a split second then immediately removed" symptom.
-3. Also: the global ring channel uses a fresh channel per ring instead of reusing one we know is JOINED. The signaling channel (`voice-call:{conv}`) is joined first with `await channel.subscribe()`, but the same race applies on supabase-swift — broadcasts before the JOIN ack are dropped silently.
-
-### Issue 2 — Web "Not in call" indicator stuck when peer leaves
-
-`useCallParticipants` listens to `postgres_changes` on `call_participants` filtered by `call_event_id=eq.X`. That works fine for the **leaver's** UPDATE (their `left_at` flips non-null), but the realtime row payload only includes the changed row. The peer's `useCallParticipants` runs `fetchParticipants()` which re-queries `.is("left_at", null)` — so the leaver should disappear. The actual gap is in `VoiceContext.tsx::handlePeerLeave` (lines 1131–1165): when the **remaining** peer receives `peer-leave`, it tears down the PC and clears `peerInstantState`, but it does **not** re-fetch `call_participants`. The DM `VoiceCallOverlay` uses `peerState` from `useCallParticipants(currentCallEventId)` which won't update until the leaver's UPDATE is broadcast — and the leaver only writes `left_at` *after* the `peer-leave` broadcast. There's a 200–800ms gap where the remaining peer's overlay shows the old peer state, and if the realtime UPDATE drops, it never recovers.
-
-The fix: when receiving `peer-leave`/`hangup`, immediately re-call `useCallParticipants.refetch()` (and add a 1s safety retry). Also flip the local overlay to "Not in call" by introducing a `peerLeftAt` timestamp on `activeCall` so the overlay does not depend solely on `useCallParticipants` for that label.
+I went through every piece you shipped for v0.3.0 (coins, shop, name colors, themes incl. Space, 3D badges, notes vault, settings expansion, sounds, status/voice/rejoin fixes, locked-shop grid). Most of it is wired correctly. Below are the real gaps I want to fix before calling v0.3.0 done — then I'll do a focused iOS-PWA pass.
 
 ---
 
-## Plan
+## Part 1 — v0.3.0 functionality fixes
 
-### A. iOS `v0.1.5` — calls actually work
+### A. Personal Notes (highest-priority, you called these out)
 
-1. **`CallSignaling.swift`**
-   - In `subscribeToIncomingCalls()`, `joinCallChannel()`, and `ringUser()`, add a **JOINED-status wait** helper that polls `channel.status` (or uses `RealtimeChannelV2.status` callback) and only resolves once `status == .subscribed`. supabase-swift 2.24 exposes `channel.statusChange` async sequence — await it.
-   - Helper signature: `private func awaitJoined(_ channel: RealtimeChannelV2, timeoutMs: Int = 5000) async`.
-   - Use it in `ringUser` BEFORE the `broadcast(event: "incoming-call", ...)` call so the ring is never dropped. Keep the channel alive 8s (not 5s) to receive any ack.
-   - Also use it in `joinCallChannel` so the very first `broadcast(...)` after join (the `ready-for-offer` from the callee, the offer from the caller) actually lands. This also fixes the "split-second pill" symptom — the call_event INSERT was happening before our presence on the per-call channel, so any peer-side reaction was racing.
+1. **Wire the 7 new sounds you just dropped into `/public/sounds/`.** Right now `src/lib/sounds.ts` only knows about `message`, `outgoingRing`, `incomingCall`, `leaveCall`, `coinsReceive`, `coinsSpend`. The new files exist on disk but nothing plays them. I'll:
+   - Add `mute`, `unmute`, `deafen`, `undeafen`, `joinCall`, `screenshareStart`, `screenshareStop` to `SoundKey` + `SOUND_PATHS`.
+   - Trigger them at the right call sites in `VoiceContext.tsx` and `GroupCallContext.tsx` (toggleMute, toggleDeafen, on connect, on screenshare start/stop). The existing `leaveCall` stays where it is.
+   - Respect DND + gaming suppression like the others.
 
-2. **`CallStore.swift::startCall`**
-   - Reorder so we (a) `joinCallChannel` and `awaitJoined`, (b) insert `call_events` row, (c) `ensureOwnParticipantRow` + `startHeartbeat()`, (d) **then** `ringUser`. This guarantees that by the time the peer's `incoming-call` arrives, our participant row is live, so when she taps Accept her client's "is anyone in this event?" check sees us and joins the same event.
-   - On `endCall` when the call_event was created but never had a peer join, **delete** the `call_events` row instead of marking it `state=ended` (or insert it with `state='missed'`). Today we mark `ended`, which still flashes a "Call ended" pill in chat. New behavior: if `live.isEmpty` AND `currentCallEventId` was just created within the last 35s AND nobody else ever joined, set `state='missed'` so chat shows the proper red "Missed call" pill instead of the flicker.
+2. **Notes editor bugs found while reading the code:**
+   - The "is this note dirty" check uses a `useRef`, but the autosave `useEffect` returns early when `dirty.current === false` — it still runs on every keystroke and starts a 700ms timer that immediately gets cleared next keystroke. That's fine, but `dirty.current` is never reset to `true` from the contentEditable `onInput` reliably (it is, but only inside `setBody`). I'll make the dirty flag deterministic and add a `beforeunload` flush so a fast tab close doesn't lose the last 700ms of typing.
+   - Switching between notes calls `useEffect([note.id])` to load HTML into the contentEditable — but it does NOT reset local `title`/`body`/`attachments` state, so opening note B briefly shows note A's title until rerender. Fix: reset all three states on note id change.
+   - `confirm("Delete this note?")` is blocked by Safari in standalone PWA mode and looks bad on iOS. Replace with a small custom AlertDialog.
+   - Lock button only locks until refresh — there's no actual "this device" toggle visible after setup. I'll add a "Forget this device" button inside the editor footer (calls existing `forgetDevice()`).
+   - `byte_size` is set on insert but not on update — fix so the column stays accurate.
 
-3. **`CallStore.swift::tryJoinExisting`** — already correct; no change.
+3. **Notes mobile/PWA layout:** The two-pane layout (`w-72` list + editor) doesn't collapse on mobile; on iPhone widths the editor becomes ~30px wide. I'll switch to a stacked layout at `< md`: list view → tap note → full-screen editor with back arrow.
 
-4. **`CubblyConfig.swift`** — bump `appVersion` to `"0.1.5"`.
+4. **Notes attachment download in iOS PWA:** `a.download` is ignored in standalone iOS. I'll fall back to opening the decrypted blob in a new tab when standalone iOS is detected, so files actually become accessible.
 
-5. **`ios-native/project.yml`** — bump `MARKETING_VERSION` to `"0.1.5"`, `CURRENT_PROJECT_VERSION` +1.
+5. **Notes sidebar entry on mobile:** `MobileBottomNav` has Home/Friends/Shop/You — no Notes entry. I'll either replace "You" placement with Notes or add a Notes shortcut at the top of the mobile DM panel (cleaner). Going with the second option to keep the bottom nav stable.
 
-### B. Web/Desktop `v0.2.31` — Not-in-call updates instantly + caller-side missed-call sweeping
+### B. Other v0.3.0 polish
 
-1. **`src/contexts/VoiceContext.tsx`** (around lines 1131–1165, the `peer-leave`/`hangup` handler):
-   - Add a `setActiveCall(prev => prev ? { ...prev, peerLeftAt: Date.now() } : prev)` so we have a deterministic local signal.
-   - Fire a new custom event `window.dispatchEvent(new CustomEvent("cubbly:peer-left", { detail: { callEventId: currentCallEventId } }))` so any listening component refetches.
+6. **Bump `CURRENT_VERSION` to `0.3.0`** in `src/lib/changelog.ts` and `package.json`, and prepend a v0.3.0 entry to `CHANGELOG` summarizing: shop + economy, encrypted notes, themes (incl. Space), 3D badges, expanded settings, new sound effects, status/mute/rejoin fixes. (Per your earlier rule: don't overcrowd with shop economics; just mention the shop is live and point to the in-shop "How coins work" modal.)
 
-2. **`src/hooks/useCallParticipants.ts`**:
-   - Listen to `window` `cubbly:peer-left` and call `fetchParticipants()`.
-   - Add a 1.5s safety re-fetch after any postgres_changes event (covers dropped UPDATEs).
+7. **`ShopItemsGrid` realtime channel name collision** — the channel id is `settings-shop:${category}:${user.id}`. If both a Name Colors AND Badges section render in My Account, that's two different channels (different category) so it's fine. Verified, no fix needed. Noted for myself.
 
-3. **`src/components/app/VoiceCallOverlay.tsx`** + **`src/components/app/mobile/MobileCallOverlay.tsx`**:
-   - Treat `activeCall.peerLeftAt` as the same condition as `ringTimedOut` for showing "Not in call" under the peer's avatar. Clear it whenever `peerState` becomes defined again (peer rejoined) or when ICE reconnects.
+8. **Locked-shop grid: clicking a locked theme should open the shop on the THEMES tab.** Right now it just does `navigate("/@me/shop")` and lands on whatever the last open tab was. Same for name colors and badges. I'll pass a hash like `/@me/shop#tab=theme` and have ShopView read it.
 
-4. **`src/contexts/VoiceContext.tsx`** types: add `peerLeftAt?: number` to `ActiveCall`.
+9. **`equip_shop_item` for badges silently fails when 3 are already equipped** — the `gaps` CTE returns no rows, so `_next_slot = 0` and the insert collides with an existing slot-0 badge unique constraint (or just overwrites). I'll either add a clear error toast ("Unequip a badge first — max 3 equipped") in the client, or change the RPC to swap out the oldest. Going with the client-side guard; safer.
 
-5. **Bump version**:
-   - `package.json` + `package-lock.json` → `0.2.31`
-   - `src/lib/changelog.ts`: prepend `0.2.31` entry titled "Calls actually reach the other side":
-     - "When iOS rings you, your phone now actually rings — fixed a race in the realtime channel that was dropping the call notification before it left the device."
-     - "When the person you're in a call with leaves, their avatar in your call panel now updates to 'Not in call' the instant they hang up, even if their realtime update was missed."
+### C. Verified working (no changes needed)
 
-### C. Native iOS zip
-- After the iOS edits + version bump, rebuild the prebuilt zip via the existing `.github/workflows/prebuild-native.yml` flow (or local zip of `ios-native/`) and surface it in `/mnt/documents/`.
+- Coins backbone, message/voice/gaming accrual, reward toast + sound, balance pill.
+- Shop catalog + purchase flow + "not enough coins" modal + banners.
+- Themes (Space + Ocean/Blossom/Evergreen/Synthwave/Lava/Borealis) + EquippedThemeBridge.
+- Name colors (static / gradient / animated) rendering globally via UserDisplayName.
+- 3D badges across DM list, profile popups, members panel, friends list.
+- Status presence (per-connection key fix), deafen via gain pipeline, rejoin auto-accept branch.
+- Settings expansion: Devices, Data & Privacy, Chat, Language & Time, Content & Social, Accessibility, Keybinds, Update Logs.
 
 ---
 
-## Files touched
+## Part 2 — iOS PWA hardening pass
 
-- `ios-native/Sources/Cubbly/Core/Services/CallSignaling.swift`
-- `ios-native/Sources/Cubbly/Core/Services/CallStore.swift`
-- `ios-native/Sources/Cubbly/App/CubblyConfig.swift`
-- `ios-native/project.yml`
-- `src/contexts/VoiceContext.tsx`
-- `src/hooks/useCallParticipants.ts`
-- `src/components/app/VoiceCallOverlay.tsx`
-- `src/components/app/mobile/MobileCallOverlay.tsx`
-- `src/lib/changelog.ts`
-- `package.json`, `package-lock.json`
-- New iOS zip in `/mnt/documents/cubbly-ios-native-v0.1.5.zip`
+10. **Manifest icons are wrong.** `manifest.webmanifest` only has `favicon.ico` (32×32 ICO) listed as the only icon, marked `"any maskable"`. iOS will show a low-res blurry icon when added to home screen, and Android requires a proper maskable PNG to avoid the white-square fallback. I'll:
+    - Generate proper PNG icons at 192×192, 512×512, and 180×180 (Apple touch) from the existing favicon/source art.
+    - Add them to `/public/icons/`.
+    - Update the manifest with separate `"any"` and `"maskable"` icon entries.
+    - Add `<link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">` in `index.html` (currently points to `/favicon.ico`).
+    - Add `<link rel="apple-touch-startup-image">` for the splash so iPhones don't show a blank white card while booting.
+
+11. **iOS PWA viewport / safe areas.** Spot-check confirmed `safe-area-inset-top/bottom` is honored in `AppLayout` and `MobileBottomNav`, but the Notes screen uses `flex-1 p-8` with no safe-area handling — on a notched iPhone the lock-screen icon clips into the status bar. I'll add `padding-top: env(safe-area-inset-top)` to the Notes lock screen and editor header.
+
+12. **Notes contentEditable on iOS Safari:** iOS aggressively shows the "AutoFill / Suggestions" bar over the contentEditable, and `document.execCommand("bold"/"italic"/"underline")` is partially deprecated. The current toolbar still works on iOS 17/18 but is brittle. Short-term: add `autocapitalize="sentences"`, `autocorrect="on"`, `spellcheck` and `inputmode="text"` to the contentEditable, and switch text formatting to wrap selected ranges with the proper inline styles using `document.execCommand` with a fallback to manual `Range` wrapping when execCommand reports false. Long-term replacement (Tiptap/ProseMirror) is out of scope for v0.3.0.
+
+13. **Sound playback on iOS PWA.** `iosAudioUnlock.ts` already exists. I'll verify it's primed for ALL the new sounds (mute/unmute/deafen/etc.) by extending the unlock list, otherwise the first mute/deafen tap on iPhone is silent.
+
+14. **Service worker:** `src/sw.ts` is push-only — fine. But the manifest `start_url: "/"` means a freshly installed iPhone PWA opens at `/` and does a client-side redirect to `/@me/online`, which adds a flash. I'll change `start_url` to `/@me/online` (still safe — auth gate redirects to `/login` if no session). Note: per the docs, installed PWAs cache `start_url` at install time, so this only helps fresh installs.
+
+15. **PWA install affordance:** Already handled via `MobileNotificationPrompt`. No change needed.
+
+16. **Verify chat input + emoji picker keyboard behavior on iOS.** Already known-good per recent patches; no scoped change unless I spot a regression while testing.
+
+---
+
+## Files I expect to touch
+
+```text
+src/lib/sounds.ts                              (add 7 new sound keys)
+src/contexts/VoiceContext.tsx                  (trigger new sounds at toggles + connect)
+src/contexts/GroupCallContext.tsx              (same)
+src/lib/iosAudioUnlock.ts                      (extend unlock list)
+src/components/app/NotesView.tsx               (mobile layout, dirty flag, dialog, attachments fallback, safe areas)
+src/contexts/NotesContext.tsx                  (byte_size on update, beforeunload flush helper)
+src/components/app/settings/ShopItemsGrid.tsx  (deep-link to shop tab)
+src/components/app/ShopView.tsx                (read tab hash, handle 3-badge cap toast)
+src/components/app/DMSidebar.tsx               (mobile Notes shortcut at top of mobile panel)
+src/lib/changelog.ts                           (CURRENT_VERSION = "0.3.0" + new entry)
+package.json                                   (version bump)
+public/manifest.webmanifest                    (proper icons, start_url)
+public/icons/*.png                             (generate 192/512/180)
+index.html                                     (apple-touch-icon link, startup image)
+```
+
+No database migrations needed for any of this.
+
+---
+
+## Order of operations
+
+```text
+1. Notes fixes (most-requested)
+2. New sound effects wired to call/screenshare events
+3. Locked-shop deep-link + 3-badge cap toast
+4. Version bump + changelog entry
+5. iOS PWA: manifest icons, apple-touch-icon, start_url, safe areas on Notes
+6. Final smoke pass + summary
+```
+
+Approve and I'll execute the whole thing in one focused pass.

@@ -499,7 +499,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     });
 
     setActiveCall({ conversationId, conversationName, joinedAt: Date.now(), isMuted: false, isDeafened: false, isVideoOn: false, isScreenSharing: false });
-    playSound("message", { volume: 0.4 });
+    playSound("joinCall", { volume: 0.4 });
 
     // Subscribe to call channel
     await joinCallChannel(conversationId);
@@ -705,7 +705,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       isVideoOn: false,
       isScreenSharing: false,
     });
-    playSound("message", { volume: 0.4 });
+    playSound("joinCall", { volume: 0.4 });
 
     // Insert participant row via the heartbeat RPC so a previously-left
     // row is REVIVED (left_at cleared) instead of failing the unique
@@ -794,6 +794,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       if (!prev) return null;
       const newMuted = !prev.isMuted;
       localStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = !newMuted; });
+      playSound(newMuted ? "mute" : "unmute", { volume: 0.4 });
       // Broadcast to peers
       if (channelRef.current && user) {
         channelRef.current.send({
@@ -825,6 +826,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       // element start playing IN ADDITION to the graph → garbled audio that
       // didn't recover until the call was rebuilt.
       setLocalDeafened(newDeafened);
+      playSound(newDeafened ? "deafen" : "undeafen", { volume: 0.4 });
       let nextMuted: boolean;
       if (newDeafened) {
         preMuteRef.current = prev.isMuted;
@@ -1033,6 +1035,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       track.onended = () => { toggleScreenShare(); };
 
       setActiveCall(prev => prev ? { ...prev, isScreenSharing: true } : null);
+      playSound("screenshareStart", { volume: 0.4 });
       channelRef.current?.send({
         type: "broadcast",
         event: "group-signal",
@@ -1055,6 +1058,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       }
       screenSendersRef.current.clear();
       setActiveCall(prev => prev ? { ...prev, isScreenSharing: false } : null);
+      playSound("screenshareStop", { volume: 0.4 });
       channelRef.current?.send({
         type: "broadcast",
         event: "group-signal",
