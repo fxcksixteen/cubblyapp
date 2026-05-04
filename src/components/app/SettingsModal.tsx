@@ -424,6 +424,28 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
                 </div>
               </div>
             </div>
+
+            {/* Name Colors — every shop name color, owned ones equippable, locked ones routed to Shop. */}
+            <div className="rounded-[24px] border p-5" style={cardStyle}>
+              <div className="mb-4">
+                <h3 className="text-base font-bold" style={{ color: "var(--app-text-primary)" }}>Name Colors</h3>
+                <p className="mt-1 text-xs" style={{ color: "var(--app-text-secondary)" }}>
+                  Equip any color you've unlocked. Locked colors take you to the Shop.
+                </p>
+              </div>
+              <ShopItemsGrid category="name_color" />
+            </div>
+
+            {/* Badges */}
+            <div className="rounded-[24px] border p-5" style={cardStyle}>
+              <div className="mb-4">
+                <h3 className="text-base font-bold" style={{ color: "var(--app-text-primary)" }}>Badges</h3>
+                <p className="mt-1 text-xs" style={{ color: "var(--app-text-secondary)" }}>
+                  Equip up to 3 badges. Locked ones take you to the Shop.
+                </p>
+              </div>
+              <ShopItemsGrid category="badge" />
+            </div>
           </div>
         );
 
