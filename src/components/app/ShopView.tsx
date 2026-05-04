@@ -81,15 +81,15 @@ function ItemPreview({ item, displayName }: { item: ShopItem; displayName: strin
         </div>
       );
     }
-    const isAurora = item.id.includes("aurora");
+    const cfg = item.config || {};
+    const bg: string = cfg.preview || "linear-gradient(135deg, #f59e0b, #ef4444, #ec4899)";
+    const animated: boolean = !!cfg.animated;
     return (
       <div
-        className={`h-20 w-full rounded-lg ${isAurora ? "shop-theme-aurora" : ""}`}
+        className={`h-20 w-full rounded-lg ${animated ? "shop-theme-aurora" : ""}`}
         style={{
-          background: isAurora
-            ? "linear-gradient(120deg, #0f172a, #1e1b4b, #312e81, #0f172a)"
-            : "linear-gradient(135deg, #f59e0b, #ef4444, #ec4899)",
-          backgroundSize: isAurora ? "300% 300%" : undefined,
+          backgroundImage: bg,
+          backgroundSize: animated ? "300% 300%" : undefined,
         }}
       />
     );
