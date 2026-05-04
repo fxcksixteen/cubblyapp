@@ -272,7 +272,10 @@ const NotesEditor = () => {
   const n = useNotes();
   const isMobile = useIsMobile();
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const active = n.notes.find((x) => x.id === activeId) || null;
+  const pendingDeleteNote = n.notes.find((x) => x.id === pendingDeleteId) || null;
+  const pendingDeleteTitle = pendingDeleteNote?.decrypted?.title || "Untitled";
 
   // On desktop, default to the first note. On mobile, start with the list.
   useEffect(() => {
@@ -282,6 +285,34 @@ const NotesEditor = () => {
   const create = async () => {
     const note = await n.createNote({ title: "Untitled", body: "" });
     if (note) setActiveId(note.id);
+  };
+
+  const handleDuplicate = async (note: NoteRow) => {
+    if (!note.decrypted) return;
+    const copy = await n.createNote({
+      title: (note.decrypted.title || "Untitled") + " (copy)",
+      body: note.decrypted.body || "",
+    });
+    if (copy) toast.success("Note duplicated");
+  };
+
+  const handleCopyText = async (note: NoteRow) => {
+    if (!note.decrypted) return;
+    const text = stripHtml(note.decrypted.body || "");
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success("Copied note text");
+    } catch {
+      toast.error("Copy failed");
+    }
+  };
+
+  const confirmDeleteFromList = async () => {
+    if (!pendingDeleteId) return;
+    const id = pendingDeleteId;
+    setPendingDeleteId(null);
+    if (activeId === id) setActiveId(null);
+    await n.deleteNote(id);
   };
 
   const NotesList = (
