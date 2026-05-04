@@ -313,6 +313,13 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                     </ContextMenuItem>
                   )}
                   <ContextMenuItem
+                    onClick={() => handleMarkAsRead(conv.id)}
+                    className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer"
+                  >
+                    <CheckCheck className="h-4 w-4" />
+                    Mark As Read
+                  </ContextMenuItem>
+                  <ContextMenuItem
                     onClick={() => onCloseConversation(conv.id)}
                     className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer"
                   >
