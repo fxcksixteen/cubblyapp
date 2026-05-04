@@ -64,6 +64,7 @@ const App = () => (
               <WhatsNewModal />
               <GlobalCallIndicator />
               <GroupIncomingCallOverlay />
+              <SpaceBackground />
               </NameColorsProvider>
               </CoinsProvider>
               </GamingModeProvider>
