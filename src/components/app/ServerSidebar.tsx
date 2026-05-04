@@ -1,15 +1,17 @@
 import { Plus } from "lucide-react";
+import { useState } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import cubblyWordmark from "@/assets/cubbly-wordmark-white.png";
 import cubblyLogo from "@/assets/cubbly-logo.png";
 import { UnreadInfo } from "@/hooks/useUnreadCounts";
 import { getProfileColor } from "@/lib/profileColors";
+import { useServers } from "@/contexts/ServersContext";
+import CreateServerModal from "./CreateServerModal";
 
 interface ServerSidebarProps {
   isActive?: boolean;
   onHomeClick: () => void;
-  /** Per-conversation unread info (most recent first). Each shown as a stacked pill under the logo. */
   unreadConversations?: { conversationId: string; info: UnreadInfo }[];
-  /** Called when a user clicks an unread pill */
   onJumpToConversation?: (conversationId: string) => void;
 }
 
@@ -19,6 +21,13 @@ const ServerSidebar = ({
   unreadConversations = [],
   onJumpToConversation,
 }: ServerSidebarProps) => {
+  const { servers } = useServers();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [createOpen, setCreateOpen] = useState(false);
+  const parts = location.pathname.split("/").filter(Boolean);
+  const activeServerId = parts[1] === "server" ? parts[2] : null;
+  const homeActive = isActive && parts[1] !== "server";
   return (
     <div
       className="flex w-[84px] flex-shrink-0 flex-col items-center gap-3 py-4 sidebar-tertiary overflow-y-auto"
