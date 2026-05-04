@@ -1156,6 +1156,18 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           // Drop instant peer state so the UI doesn't keep showing their
           // mute icon etc. Don't reset activeCall — user is still in the call.
           setPeerInstantState({});
+          // Stamp peerLeftAt so the call overlay flips the peer's avatar
+          // label to "Not in call" IMMEDIATELY, without waiting for the
+          // realtime postgres UPDATE on call_participants (which can be
+          // delayed up to ~1s and is occasionally dropped under load).
+          setActiveCall(prev => prev ? { ...prev, peerLeftAt: Date.now() } : prev);
+          // Tell useCallParticipants to re-fetch right now (covers dropped
+          // realtime UPDATEs).
+          try {
+            window.dispatchEvent(new CustomEvent("cubbly:peer-left", {
+              detail: { callEventId: currentCallEventId },
+            }));
+          } catch {}
           // Fire an immediate heartbeat so our last_seen_at is fresh — the
           // leaver's rejoin liveness check (30s window) will then see us and
           // join the SAME call_event instead of starting a fresh one.
