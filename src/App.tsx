@@ -50,6 +50,7 @@ const App = () => (
               <NameColorsProvider>
               <UserBadgesProvider>
               <NotesProvider>
+              <ServersProvider>
               <NameColorsStyles />
               <CoinTrackingBridge />
               <EquippedThemeBridge />
