@@ -13,6 +13,7 @@ import { CoinsProvider } from "@/contexts/CoinsContext";
 import { NameColorsProvider } from "@/contexts/NameColorsContext";
 import { NameColorsStyles } from "@/components/app/UserDisplayName";
 import CoinTrackingBridge from "@/components/app/CoinTrackingBridge";
+import EquippedThemeBridge from "@/components/app/EquippedThemeBridge";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Index from "./pages/Index.tsx";
 import Login from "./pages/Login.tsx";
@@ -46,6 +47,7 @@ const App = () => (
               <NameColorsProvider>
               <NameColorsStyles />
               <CoinTrackingBridge />
+              <EquippedThemeBridge />
               <Routes>
                 <Route path="/" element={<Index />} />
                 <Route path="/login" element={<Login />} />
