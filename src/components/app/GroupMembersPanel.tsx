@@ -8,6 +8,8 @@ import { getEffectivePresenceStatus } from "@/lib/presence";
 import { activityLabel } from "@/lib/activityLabel";
 import StatusIndicator from "./StatusIndicator";
 import GroupAvatar from "./GroupAvatar";
+import UserDisplayName from "./UserDisplayName";
+import UserBadges from "./UserBadges";
 import { Crown, UserMinus, LogOut, Pencil, Image as ImageIcon, Check, X } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -243,9 +245,10 @@ const GroupMembersPanel = ({ conversation, onClose, onLeftGroup }: GroupMembersP
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1">
-                  <p className="truncate text-sm font-medium text-white">
-                    {m.display_name}
-                    {m.isYou && <span className="ml-1 text-[10px] opacity-60">(you)</span>}
+                  <p className="truncate text-sm font-medium text-white flex items-center gap-1.5">
+                    <UserDisplayName userId={m.user_id} name={m.display_name} fallbackColor="#ffffff" className="truncate" />
+                    {m.isYou && <span className="ml-0.5 text-[10px] opacity-60">(you)</span>}
+                    <UserBadges userId={m.user_id} size={12} />
                   </p>
                   {memberIsOwner && <Crown className="h-3 w-3 shrink-0" style={{ color: "#faa61a" }} />}
                 </div>

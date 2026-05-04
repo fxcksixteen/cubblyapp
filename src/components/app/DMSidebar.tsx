@@ -25,6 +25,8 @@ import SearchBar from "./SearchBar";
 import UserProfileCard from "./chat/UserProfileCard";
 import SidebarActivityCard from "./SidebarActivityCard";
 import SidebarVoiceCard from "./SidebarVoiceCard";
+import UserDisplayName from "./UserDisplayName";
+import UserBadges from "./UserBadges";
 import friendsIcon from "@/assets/icons/friends.svg";
 import shopIcon from "@/assets/icons/shop.svg";
 import micIcon from "@/assets/icons/microphone.svg";
@@ -212,7 +214,21 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                       )}
                     </div>
                     <div className="flex-1 min-w-0 text-left">
-                      <p className="truncate text-sm font-medium leading-tight">{displayName}</p>
+                      <p className="truncate text-sm font-medium leading-tight flex items-center gap-1.5">
+                        {conv.is_group ? (
+                          <span className="truncate">{displayName}</span>
+                        ) : (
+                          <>
+                            <UserDisplayName
+                              userId={conv.participant.user_id}
+                              name={displayName}
+                              fallbackColor="currentColor"
+                              className="truncate"
+                            />
+                            <UserBadges userId={conv.participant.user_id} size={12} />
+                          </>
+                        )}
+                      </p>
                       {subtitle && (
                         <p
                           className="truncate text-[11px] leading-tight"
@@ -329,7 +345,10 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
           onOpenSettings={() => setSettingsOpen(true)}
         />
         <div className="flex-1 overflow-hidden min-w-0">
-          <p className="truncate text-[15px] font-bold text-white leading-snug">{displayName}</p>
+          <p className="truncate text-[15px] font-bold text-white leading-snug flex items-center gap-1.5">
+            <UserDisplayName userId={user?.id} name={displayName} fallbackColor="#ffffff" className="truncate" />
+            <UserBadges userId={user?.id} size={13} />
+          </p>
           <p className="truncate text-[11px] leading-snug" style={{ color: "var(--app-text-secondary, #949ba4)" }}>{username}</p>
         </div>
         <div className="flex items-center gap-0.5 shrink-0">

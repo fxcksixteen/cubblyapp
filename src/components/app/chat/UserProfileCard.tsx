@@ -13,6 +13,8 @@ import removeUserIcon from "@/assets/icons/remove-user.svg";
 import blockUserIcon from "@/assets/icons/block-user.svg";
 import StatusIndicator from "@/components/app/StatusIndicator";
 import ActivityCard from "@/components/app/ActivityCard";
+import UserDisplayName from "@/components/app/UserDisplayName";
+import UserBadges from "@/components/app/UserBadges";
 
 interface UserProfileCardProps {
   userId: string;
@@ -181,7 +183,10 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
 
           {/* Info */}
           <div className="px-5 pt-3 pb-4">
-            <p className="text-xl font-bold text-white">{displayName}</p>
+            <p className="text-xl font-bold text-white flex items-center gap-2">
+              <UserDisplayName userId={userId} name={displayName} fallbackColor="#ffffff" />
+              <UserBadges userId={userId} size={16} />
+            </p>
             <p className="text-sm text-[#949ba4]">@{profile?.username || displayName.toLowerCase()}</p>
 
             {userActivity?.name && isUserOnline && (
@@ -272,7 +277,10 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
 
       {/* Info */}
       <div className="px-4 pt-1.5 pb-2">
-        <p className="text-lg font-bold text-white">{displayName}</p>
+        <p className="text-lg font-bold text-white flex items-center gap-2">
+          <UserDisplayName userId={userId} name={displayName} fallbackColor="#ffffff" />
+          <UserBadges userId={userId} size={14} />
+        </p>
         <p className="text-sm text-[#949ba4]">@{profile?.username || displayName.toLowerCase()}</p>
         {userActivity?.name && isUserOnline && (
           <div className="mt-2">

@@ -5,6 +5,8 @@ import { Copy, Pencil, User, Check } from "lucide-react";
 import { toast } from "sonner";
 import { defaultProfileColor } from "@/lib/profileColors";
 import StatusIndicator from "@/components/app/StatusIndicator";
+import UserDisplayName from "@/components/app/UserDisplayName";
+import UserBadges from "@/components/app/UserBadges";
 
 const statuses = [
   { value: "online", label: "Online" },
@@ -108,7 +110,10 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
 
           {/* Info */}
           <div className="px-4 pt-1.5 pb-3">
-            <p className="text-lg font-bold text-white">{displayName}</p>
+            <p className="text-lg font-bold text-white flex items-center gap-2">
+              <UserDisplayName userId={user?.id} name={displayName} fallbackColor="#ffffff" />
+              <UserBadges userId={user?.id} size={14} />
+            </p>
             <p className="text-sm" style={{ color: "var(--app-text-secondary, #949ba4)" }}>{username}</p>
           </div>
 

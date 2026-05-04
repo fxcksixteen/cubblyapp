@@ -16,6 +16,8 @@ import activityIcon from "@/assets/icons/activity.svg";
 import StatusIndicator from "@/components/app/StatusIndicator";
 import UserProfileCard from "@/components/app/chat/UserProfileCard";
 import ActivityIcon from "@/components/app/ActivityIcon";
+import UserDisplayName from "@/components/app/UserDisplayName";
+import UserBadges from "@/components/app/UserBadges";
 
 type FriendTab = "online" | "all" | "pending" | "blocked" | "add";
 
@@ -296,7 +298,10 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
                       </div>
                     </div>
                     <div className="flex-1 overflow-hidden">
-                      <p className="text-sm font-semibold leading-tight text-white">{friendship.profile.display_name}</p>
+                      <p className="text-sm font-semibold leading-tight text-white flex items-center gap-1.5">
+                        <UserDisplayName userId={friendship.profile.user_id} name={friendship.profile.display_name} fallbackColor="#ffffff" className="truncate" />
+                        <UserBadges userId={friendship.profile.user_id} size={13} />
+                      </p>
                       {(() => {
                         const act = getActivity(friendship.profile.user_id);
                         const friendOnline = friendship.profile.user_id === CUBBLY_BOT_ID || onlineUserIds.has(friendship.profile.user_id);
@@ -393,7 +398,10 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
                         </div>
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-white leading-tight">{f.profile.display_name}</p>
+                        <p className="truncate text-sm font-semibold text-white leading-tight flex items-center gap-1.5">
+                          <UserDisplayName userId={f.profile.user_id} name={f.profile.display_name} fallbackColor="#ffffff" className="truncate" />
+                          <UserBadges userId={f.profile.user_id} size={12} />
+                        </p>
                         <div className="mt-1.5 flex items-center gap-2">
                           <ActivityIcon name={act.name} size={28} rounded={6} />
                           <div className="min-w-0 flex-1">
