@@ -20,34 +20,36 @@ interface ShopItem {
   sort_order: number;
 }
 
-const TABS: { id: Category; label: string }[] = [
+const TABS: { id: Category | "all"; label: string }[] = [
+  { id: "all", label: "All" },
   { id: "name_color", label: "Name Colors" },
   { id: "theme", label: "Themes" },
   { id: "badge", label: "Badges" },
 ];
 
 /** Renders a small visual preview matching the item type. */
-function ItemPreview({ item }: { item: ShopItem }) {
+function ItemPreview({ item, displayName }: { item: ShopItem; displayName: string }) {
+  const name = displayName || "YourName";
   if (item.category === "name_color") {
     if (item.subcategory === "static") {
       return (
-        <div className="flex h-20 w-full items-center justify-center rounded-lg bg-[#1e1f22]">
-          <span className="text-lg font-extrabold" style={{ color: item.config?.color }}>
-            YourName
+        <div className="flex h-20 w-full items-center justify-center rounded-lg bg-[#1e1f22] px-3">
+          <span className="text-lg font-extrabold truncate" style={{ color: item.config?.color }}>
+            {name}
           </span>
         </div>
       );
     }
     if (item.subcategory === "gradient") {
       return (
-        <div className="flex h-20 w-full items-center justify-center rounded-lg bg-[#1e1f22]">
+        <div className="flex h-20 w-full items-center justify-center rounded-lg bg-[#1e1f22] px-3">
           <span
-            className="text-lg font-extrabold bg-clip-text text-transparent"
+            className="text-lg font-extrabold bg-clip-text text-transparent truncate"
             style={{
               backgroundImage: `linear-gradient(90deg, ${item.config?.from}, ${item.config?.to})`,
             }}
           >
-            YourName
+            {name}
           </span>
         </div>
       );
@@ -55,15 +57,15 @@ function ItemPreview({ item }: { item: ShopItem }) {
     if (item.subcategory === "animated") {
       const stops = (item.config?.stops as string[]) ?? ["#22d3ee", "#a855f7", "#ec4899", "#22d3ee"];
       return (
-        <div className="flex h-20 w-full items-center justify-center rounded-lg bg-[#1e1f22]">
+        <div className="flex h-20 w-full items-center justify-center rounded-lg bg-[#1e1f22] px-3">
           <span
-            className="text-lg font-extrabold bg-clip-text text-transparent shop-animated-name"
+            className="text-lg font-extrabold bg-clip-text text-transparent shop-animated-name truncate"
             style={{
               backgroundImage: `linear-gradient(90deg, ${stops.join(",")})`,
               backgroundSize: "300% 100%",
             }}
           >
-            YourName
+            {name}
           </span>
         </div>
       );
@@ -85,7 +87,6 @@ function ItemPreview({ item }: { item: ShopItem }) {
     );
   }
 
-  // Badge — placeholder square with first letter
   return (
     <div className="flex h-20 w-full items-center justify-center rounded-lg bg-gradient-to-br from-[#5865f2] to-[#a855f7]">
       <span className="text-3xl font-black text-white drop-shadow">{item.name[0]}</span>
@@ -98,7 +99,8 @@ const ShopView = () => {
   const { balance } = useCoins();
   const [items, setItems] = useState<ShopItem[]>([]);
   const [owned, setOwned] = useState<Set<string>>(new Set());
-  const [activeTab, setActiveTab] = useState<Category>("name_color");
+  const [activeTab, setActiveTab] = useState<Category | "all">("all");
+  const [displayName, setDisplayName] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState<string | null>(null);
 
@@ -142,7 +144,21 @@ const ShopView = () => {
     };
   }, [user]);
 
-  const visible = useMemo(() => items.filter((i) => i.category === activeTab), [items, activeTab]);
+  // Load current user's display name for previews
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("profiles")
+      .select("display_name")
+      .eq("user_id", user.id)
+      .maybeSingle()
+      .then(({ data }) => setDisplayName(data?.display_name || ""));
+  }, [user]);
+
+  const visible = useMemo(
+    () => (activeTab === "all" ? items : items.filter((i) => i.category === activeTab)),
+    [items, activeTab]
+  );
 
   const buy = async (item: ShopItem) => {
     if (purchasing) return;
@@ -153,9 +169,9 @@ const ShopView = () => {
     if (balance < item.price) {
       toast.custom(
         () => (
-          <div className="flex items-center gap-3 rounded-xl bg-[#2b2d31] border border-[#3f4147] px-3 py-2.5 shadow-2xl">
-            <img src={coinNotEnough} alt="" className="h-11 w-11" />
-            <div>
+          <div className="flex items-center gap-3 rounded-xl bg-[#2b2d31] border border-[#3f4147] px-3 py-2.5 shadow-2xl shadow-black/40 min-w-[260px]">
+            <img src={coinNotEnough} alt="" className="h-11 w-11 shrink-0" />
+            <div className="flex-1 min-w-0">
               <div className="text-[13px] font-bold text-white">Not enough coins</div>
               <div className="text-[11px] text-[#b5bac1] mt-0.5">
                 You need {(item.price - balance).toLocaleString()} more.
@@ -163,7 +179,7 @@ const ShopView = () => {
             </div>
           </div>
         ),
-        { duration: 3500 }
+        { duration: 3500, position: "bottom-right" }
       );
       return;
     }
@@ -262,7 +278,7 @@ const ShopView = () => {
                     border: "1px solid var(--app-border, #3f4147)",
                   }}
                 >
-                  <ItemPreview item={item} />
+                  <ItemPreview item={item} displayName={displayName} />
                   <div className="mt-3 flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <div className="font-bold text-sm truncate" style={{ color: "var(--app-text-primary)" }}>
@@ -292,7 +308,7 @@ const ShopView = () => {
                       "Owned"
                     ) : (
                       <>
-                        <img src={canAfford ? coinStack : coinNotEnough} alt="" className="h-4 w-4" />
+                        <img src={canAfford ? coinStack : coinNotEnough} alt="" className="h-6 w-6 -my-1 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]" />
                         <span>{item.price.toLocaleString()}</span>
                       </>
                     )}
