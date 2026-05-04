@@ -8,6 +8,8 @@ import { getEffectivePresenceStatus } from "@/lib/presence";
 import { activityLabel } from "@/lib/activityLabel";
 import StatusIndicator from "./StatusIndicator";
 import GroupAvatar from "./GroupAvatar";
+import UserDisplayName from "./UserDisplayName";
+import UserBadges from "./UserBadges";
 import { Crown, UserMinus, LogOut, Pencil, Image as ImageIcon, Check, X } from "lucide-react";
 import { toast } from "sonner";
 import {
