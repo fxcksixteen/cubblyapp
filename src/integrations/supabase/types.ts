@@ -135,6 +135,30 @@ export type Database = {
           },
         ]
       }
+      coin_earning_progress: {
+        Row: {
+          gaming_seconds_unclaimed: number
+          message_count_unclaimed: number
+          updated_at: string
+          user_id: string
+          voice_seconds_unclaimed: number
+        }
+        Insert: {
+          gaming_seconds_unclaimed?: number
+          message_count_unclaimed?: number
+          updated_at?: string
+          user_id: string
+          voice_seconds_unclaimed?: number
+        }
+        Update: {
+          gaming_seconds_unclaimed?: number
+          message_count_unclaimed?: number
+          updated_at?: string
+          user_id?: string
+          voice_seconds_unclaimed?: number
+        }
+        Relationships: []
+      }
       coin_transactions: {
         Row: {
           amount: number
@@ -522,6 +546,20 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      _internal_award_coins: {
+        Args: {
+          _amount: number
+          _metadata?: Json
+          _reason: string
+          _source_ref?: string
+          _user_id: string
+        }
+        Returns: number
+      }
+      accrue_activity_coins: {
+        Args: { _gaming_seconds?: number; _voice_seconds?: number }
+        Returns: Json
+      }
       award_coins: {
         Args: {
           _amount: number
