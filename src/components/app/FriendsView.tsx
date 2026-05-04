@@ -398,7 +398,10 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
                         </div>
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-white leading-tight">{f.profile.display_name}</p>
+                        <p className="truncate text-sm font-semibold text-white leading-tight flex items-center gap-1.5">
+                          <UserDisplayName userId={f.profile.user_id} name={f.profile.display_name} fallbackColor="#ffffff" className="truncate" />
+                          <UserBadges userId={f.profile.user_id} size={12} />
+                        </p>
                         <div className="mt-1.5 flex items-center gap-2">
                           <ActivityIcon name={act.name} size={28} rounded={6} />
                           <div className="min-w-0 flex-1">
