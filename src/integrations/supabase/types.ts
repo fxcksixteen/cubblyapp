@@ -388,6 +388,75 @@ export type Database = {
           },
         ]
       }
+      notes: {
+        Row: {
+          byte_size: number
+          ciphertext: string
+          created_at: string
+          id: string
+          iv: string
+          pinned: boolean
+          sort_order: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          byte_size?: number
+          ciphertext: string
+          created_at?: string
+          id?: string
+          iv: string
+          pinned?: boolean
+          sort_order?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          byte_size?: number
+          ciphertext?: string
+          created_at?: string
+          id?: string
+          iv?: string
+          pinned?: boolean
+          sort_order?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      notes_keys: {
+        Row: {
+          created_at: string
+          iterations: number
+          kdf: string
+          salt: string
+          updated_at: string
+          user_id: string
+          verifier_ciphertext: string
+          verifier_iv: string
+        }
+        Insert: {
+          created_at?: string
+          iterations?: number
+          kdf?: string
+          salt: string
+          updated_at?: string
+          user_id: string
+          verifier_ciphertext: string
+          verifier_iv: string
+        }
+        Update: {
+          created_at?: string
+          iterations?: number
+          kdf?: string
+          salt?: string
+          updated_at?: string
+          user_id?: string
+          verifier_ciphertext?: string
+          verifier_iv?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
