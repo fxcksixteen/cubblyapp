@@ -24,6 +24,11 @@ interface ServersContextValue {
   loading: boolean;
   refresh: () => Promise<void>;
   createServer: (name: string, iconUrl?: string | null) => Promise<string | null>;
+  createServerFromTemplate: (
+    name: string,
+    iconUrl: string | null,
+    channels: Array<{ name: string; kind: "text" | "voice"; category: string | null }>,
+  ) => Promise<string | null>;
   joinByCode: (code: string) => Promise<string | null>;
   lookupInvite: (code: string) => Promise<{ server_id: string; name: string; icon_url: string | null; member_count: number } | null>;
 }
