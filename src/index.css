@@ -142,7 +142,8 @@
 [data-theme="space"] .app-themed { --app-bg-primary: #07080c; --app-bg-secondary: #0c0e14; --app-bg-tertiary: #050609; --app-bg-accent: #10131c; --app-text-primary: #e8ecf5; --app-text-secondary: #8a93a8; --app-text-muted: #565d70; --app-border: #1a1e2a; --app-hover: #141826; --app-active: #1d2333; --app-input: #141826; --scrollbar-thumb: rgba(255,255,255,0.10); --scrollbar-thumb-hover: rgba(255,255,255,0.22); }
 
 /* Space theme — animated star field + shooting stars */
-[data-theme="space"] .app-themed { position: relative; }
+[data-theme="space"] .app-themed { position: relative; background-color: transparent; }
+[data-theme="space"] .app-themed .sidebar-primary, [data-theme="space"] .app-themed .sidebar-tertiary, [data-theme="space"] .app-themed .user-panel { background-color: rgba(12, 14, 20, 0.72); backdrop-filter: blur(8px); }
 [data-theme="space"] .app-themed > * { position: relative; z-index: 1; }
 .cb-space-bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; background: radial-gradient(ellipse at 20% 0%, #0d1224 0%, #07080c 55%, #04050a 100%); }
 .cb-space-stars, .cb-space-stars-2, .cb-space-stars-3 { position: absolute; inset: -50%; background-repeat: repeat; opacity: 0.85; }
