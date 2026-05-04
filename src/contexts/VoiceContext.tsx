@@ -717,7 +717,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       console.log("[Voice] ICE state:", pc.iceConnectionState);
       if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
         // Mark call as truly connected only when ICE transport is up
-        setActiveCall(prev => prev && prev.state !== "connected" ? { ...prev, state: "connected", ringTimedOut: false, startedAt: prev.startedAt || Date.now() } : prev);
+        setActiveCall(prev => prev && prev.state !== "connected" ? { ...prev, state: "connected", ringTimedOut: false, peerLeftAt: undefined, startedAt: prev.startedAt || Date.now() } : prev);
         // Ensure ALL local audio tracks are enabled when connected
         const senders = pc.getSenders();
         senders.forEach(s => {
