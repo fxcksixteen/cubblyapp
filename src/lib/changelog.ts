@@ -23,9 +23,21 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.30";
+export const CURRENT_VERSION = "0.2.31";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.2.31",
+    title: "Calls actually reach the other side",
+    date: "2026-05-04",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "iOS-initiated calls now actually ring you on web and desktop — fixed a realtime channel race that was dropping the incoming call notification before it left the phone, which is why your friend looked like she was ringing you but no call ever came through.",
+      "When the person you're in a call with leaves, their avatar in your call panel now flips to 'Not in call' the instant they hang up, even if the realtime update behind the scenes was delayed or dropped.",
+      "Hanging up a call the other person never picked up no longer flashes a confusing 'Ongoing → Call ended' pill in the chat — it now correctly shows as a missed call.",
+    ],
+  },
   {
     version: "0.2.30",
     title: "Rejoin actually rejoins",
