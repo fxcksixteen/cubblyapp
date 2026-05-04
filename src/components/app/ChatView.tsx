@@ -25,6 +25,7 @@ import gifIcon from "@/assets/icons/gif.svg";
 import GifPicker from "./GifPicker";
 import { useMessageReactions } from "@/hooks/useMessageReactions";
 import MessageReactionsBar from "./chat/MessageReactionsBar";
+import UserDisplayName from "./UserDisplayName";
 
 const BOT_USER_ID = "00000000-0000-0000-0000-000000000001";
 
