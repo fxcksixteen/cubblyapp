@@ -214,7 +214,21 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                       )}
                     </div>
                     <div className="flex-1 min-w-0 text-left">
-                      <p className="truncate text-sm font-medium leading-tight">{displayName}</p>
+                      <p className="truncate text-sm font-medium leading-tight flex items-center gap-1.5">
+                        {conv.is_group ? (
+                          <span className="truncate">{displayName}</span>
+                        ) : (
+                          <>
+                            <UserDisplayName
+                              userId={conv.participant.user_id}
+                              name={displayName}
+                              fallbackColor="currentColor"
+                              className="truncate"
+                            />
+                            <UserBadges userId={conv.participant.user_id} size={12} />
+                          </>
+                        )}
+                      </p>
                       {subtitle && (
                         <p
                           className="truncate text-[11px] leading-tight"
