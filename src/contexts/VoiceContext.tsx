@@ -1605,16 +1605,30 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       };
 
       if (isJoiningExisting) {
-        console.log("[Voice] 📡 Rejoin requested — asking active peer for an offer without re-ringing them");
-        channel.send({
-          type: "broadcast",
-          event: "voice-signal",
-          payload: {
-            type: "ready-for-offer",
-            senderId: user.id,
-            senderName: user.user_metadata?.display_name || "User",
-            callEventId,
-          },
+        console.log("[Voice] 📡 Rejoin requested — asking active peer for an offer (with retries)");
+        const sendReady = () => {
+          channel.send({
+            type: "broadcast",
+            event: "voice-signal",
+            payload: {
+              type: "ready-for-offer",
+              senderId: user.id,
+              senderName: user.user_metadata?.display_name || "User",
+              callEventId,
+            },
+          });
+        };
+        sendReady();
+        // Retry: broadcast is best-effort; if the staying peer's signaling
+        // channel is mid-resubscribe (post tab-wake) the first ready-for-offer
+        // gets dropped. Retry a few times, cancel as soon as we have a PC.
+        const retryDelays = [800, 1600, 3000, 5000];
+        retryDelays.forEach((ms) => {
+          setTimeout(() => {
+            if (pcRef.current) return;
+            console.log(`[Voice] 🔁 Re-sending ready-for-offer (no PC yet, +${ms}ms)`);
+            try { sendReady(); } catch {}
+          }, ms);
         });
         return;
       }
