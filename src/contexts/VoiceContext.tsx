@@ -83,6 +83,13 @@ export interface ActiveCall {
    * Reset back to false the moment a peer actually connects.
    */
   ringTimedOut?: boolean;
+  /**
+   * Timestamp (ms) the moment we received `peer-leave`/`hangup` from the
+   * other side. Used by the call overlay to flip the peer's avatar label to
+   * "Not in call" instantly — without waiting on a postgres_changes UPDATE
+   * that may be delayed or dropped. Cleared when the peer rejoins.
+   */
+  peerLeftAt?: number;
 }
 
 export interface CallEvent {
