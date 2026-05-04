@@ -672,7 +672,7 @@ const AppLayout = () => {
               <>
                 <div className="flex items-center gap-4">{renderHeader()}</div>
                 <div className="flex items-center gap-3" style={{ color: "var(--app-text-secondary)" }}>
-                  {!activeNowOpen && !isDM && !isShop && (
+                  {!activeNowOpen && !isDM && !isShop && !isNotes && (
                     <button
                       onClick={() => setActiveNowOpen(true)}
                       className="transition-opacity duration-200 animate-fade-in"
