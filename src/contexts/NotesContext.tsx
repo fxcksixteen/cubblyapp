@@ -202,7 +202,7 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
       .update({ iv, ciphertext, byte_size: ciphertext.length, updated_at: new Date().toISOString() })
       .eq("id", id);
     if (error) throw error;
-    setNotes((prev) => prev.map((n) => (n.id === id ? { ...n, iv, ciphertext, decrypted: plain, updated_at: new Date().toISOString() } : n)));
+    setNotes((prev) => prev.map((n) => (n.id === id ? { ...n, iv, ciphertext, byte_size: ciphertext.length, decrypted: plain, updated_at: new Date().toISOString() } : n)));
   }, [user, key]);
 
   const deleteNote = useCallback(async (id: string) => {
