@@ -1,8 +1,31 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 
-export type ThemeName = "default" | "onyx" | "white" | "cubbly" | "space";
+export type ThemeName =
+  | "default"
+  | "onyx"
+  | "white"
+  | "cubbly"
+  | "space"
+  | "ocean"
+  | "blossom"
+  | "forest"
+  | "synthwave"
+  | "lava"
+  | "borealis";
 
-const VALID_THEMES: ThemeName[] = ["default", "onyx", "white", "cubbly", "space"];
+const VALID_THEMES: ThemeName[] = [
+  "default",
+  "onyx",
+  "white",
+  "cubbly",
+  "space",
+  "ocean",
+  "blossom",
+  "forest",
+  "synthwave",
+  "lava",
+  "borealis",
+];
 
 interface ThemeContextType {
   theme: ThemeName;
