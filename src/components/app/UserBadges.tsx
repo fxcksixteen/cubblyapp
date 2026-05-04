@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Sparkles, Mic, Crown, MessageCircle, Gamepad2, Moon, Heart, Star } from "lucide-react";
+import { Sparkles, Mic, Crown, MessageCircle, Gamepad2, Moon, Heart, Star, Flower2 } from "lucide-react";
 import { BadgeData, useUserBadges } from "@/contexts/UserBadgesContext";
 
 const ICONS: Record<string, any> = {
@@ -11,6 +11,7 @@ const ICONS: Record<string, any> = {
   moon: Moon,
   heart: Heart,
   star: Star,
+  flower: Flower2,
 };
 
 interface SingleProps {
