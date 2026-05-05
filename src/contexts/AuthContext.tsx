@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { setDndActive } from "@/lib/sounds";
 import { setNotificationDnd } from "@/lib/notifications";
 import { subscribeWithReconnect, removeChannelByTopic } from "@/lib/realtimeReconnect";
+import { registerSession, unregisterSession } from "@/lib/sessionTracker";
 
 const syncDnd = (isDnd: boolean) => {
   setDndActive(isDnd);
