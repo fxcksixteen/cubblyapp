@@ -16,9 +16,25 @@ const THEME_MAP: Record<string, ThemeName> = {
   theme_borealis: "borealis",
 };
 
+const VALID_LOCAL_THEMES: ThemeName[] = ["default", "onyx", "white", "cubbly"];
+
+function readLocalTheme(): ThemeName {
+  try {
+    const saved = localStorage.getItem("cubbly-theme");
+    if (saved && VALID_LOCAL_THEMES.includes(saved as ThemeName)) {
+      return saved as ThemeName;
+    }
+  } catch {}
+  return "default";
+}
+
 /**
- * Watches the current user's equipped theme item and applies it to the live
- * ThemeContext. Unequipping resets to the default theme.
+ * Watches the current user's equipped *shop* theme and applies it.
+ *
+ * IMPORTANT: when the user has NO shop theme equipped, we must NOT overwrite
+ * their locally-selected built-in theme (default / onyx / white / cubbly).
+ * Falling through to setTheme("default") here was clobbering "cubbly" on every
+ * login.
  */
 const EquippedThemeBridge = () => {
   const { user } = useAuth();
@@ -37,8 +53,13 @@ const EquippedThemeBridge = () => {
         .maybeSingle();
       if (!alive) return;
       const id = data?.item_id;
-      const theme = (id && THEME_MAP[id]) || "default";
-      setTheme(theme);
+      const mapped = id ? THEME_MAP[id] : null;
+      if (mapped) {
+        setTheme(mapped);
+      } else {
+        // No shop theme equipped — keep whatever the user picked locally.
+        setTheme(readLocalTheme());
+      }
     };
 
     apply();
