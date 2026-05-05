@@ -1,71 +1,80 @@
+## v0.3.1 hotfix plan
 
-## Goal
+Five distinct bugs, all addressed below.
 
-Two related v0.3.0 stability bugs:
+---
 
-1. **Rejoin call** sometimes lands the rejoiner in a "connected" UI but with no real WebRTC stream (the staying peer never (re)negotiates).
-2. **Online dot** flickers offline → online for users who are clearly online, especially when the other person is on iOS native + web at the same time.
+### 1. Badge 3D artwork missing in the Shop
 
-## Findings
+**Cause:** `ShopView.ItemPreview` for `category === "badge"` renders a generic colored chip with a `★`. The actual artwork map (`BADGE_ART`) lives in `src/components/app/UserBadges.tsx` and is only used in profile rows.
 
-### Rejoin handshake
-`src/contexts/VoiceContext.tsx`
+**Fix:**
+- Extract `BADGE_ART` + `<Badge />` into a shared module (`src/components/app/badgeArt.ts` re-exporting from `UserBadges.tsx`, or just import the map directly from `UserBadges.tsx`).
+- In `ShopView.ItemPreview` badge branch, render the matching SVG/PNG (e.g. `imgChatChampion`, `imgPetite`, etc.) at ~64px next to the user's display name instead of the chip+star.
+- Also update `src/components/app/settings/ShopItemsGrid.tsx` (badge previews) the same way so My Account → Badges shows the real artwork.
 
-- Rejoiner side (`startCall` w/ `isJoiningExisting=true`, lines 1521‑1593) sets `state: "connected"` immediately and sends a single `ready-for-offer` broadcast — never retried.
-- Staying peer side (`setupSignaling` `ready-for-offer` handler, lines 992‑1005) calls `initializeOutgoingConnection`, which **bails silently** if `pcRef.current || pendingOfferRef.current` is truthy (lines 904‑906). After `peer-leave` we close `pcRef` and null it, but **do not clear** `pendingOfferRef`, `outgoingCandidateBuffer`, `incomingCandidateQueue`, `remoteDescriptionSet`, or `acceptedIncomingCallRef`. If the previous call left a stale `pendingOfferRef`, the new `ready-for-offer` is dropped and the rejoiner sits forever in fake "connected".
-- We also leave `localStreamRef` running on the staying peer; `initializeOutgoingConnection` then calls `getUserMedia()` again and stacks a second mic stream / audio-level monitor — this is what produces the "voice volume is messed up" symptom after a mute/deafen toggle racing with rejoin.
-- `ready-for-offer` is fired exactly once and uses broadcast (best-effort). If the staying peer's `voice-call:<conversationId>` channel hasn't resubscribed yet (post tab-wake), it's lost. There is no retry.
-- Rejoiner sets `state: "connected"` before ICE actually connects → if handshake fails, UI lies. Should be `"calling"` until `oniceconnectionstatechange` flips it (line 718‑727 already handles the real flip).
+---
 
-### Presence flicker
-`src/contexts/AuthContext.tsx` (lines 119‑183)
+### 2. Mute & deafen still kills the call
 
-- Per-connection presence key + union of `user_id` payload + key prefix is correct.
-- Two separate `on("presence", { event: "sync" }, …)` handlers are registered (lines 167 and 172). The second one re-`track()`s on every sync; that's fine, but the iOS native client emits its own bursty join/leave during background/foreground transitions and momentarily drops to an empty `presenceState`. `setOnlineUserIds(ids)` then publishes an empty set for one render before the next sync repopulates → green dot blinks.
-- We never debounce the "offline" transition. Going *online* should be instant; going *offline* should require ~10s of continuous absence. The web client already does this in spirit (each device has its own key), but a momentary realtime reconnect drops every key at once.
+**Cause:** `applyLocalMicMute` in `VoiceContext.tsx` always calls `sender.replaceTrack(null)` then `replaceTrack(originalMicTrackRef.current)`. On undeafen the original track is sometimes ended/stale (e.g. after device-change or an iOS background trip), so `replaceTrack` succeeds locally but the peer never receives audio again — the call is "broken" until reconnect.
 
-## Plan
+**Fix:**
+- Default mute path = `track.enabled = false/true` only (lightweight, never breaks the SRTP stream).
+- Keep the `replaceTrack(null)` belt-and-suspenders behavior **only on iOS PWA** (where the original leak occurred), gated by a `isIOSPWA()` check that already exists in `iosAudioUnlock.ts`.
+- On undeafen, if `originalMicTrackRef.current.readyState === "ended"`, reacquire a fresh mic stream via `getUserMedia` and `replaceTrack` with the new track before broadcasting `peer-mute: false`.
+- Add a guard so deafen always restores the prior mute state regardless of whether the deafen→mute path actually swapped the track.
 
-### A. Fix rejoin handshake
+---
 
-In `src/contexts/VoiceContext.tsx`:
+### 3. Existing themes (Cubbly, Onyx, etc.) no longer apply
 
-1. **Hard reset signaling refs on `peer-leave`/`hangup`** (around lines 1210‑1255):
-   - Null out `pendingOfferRef.current`, `acceptedIncomingCallRef.current`, `outgoingCallMetaRef.current` (will be re-derived from `activeCall`+`currentCallEventId`).
-   - Clear `outgoingCandidateBuffer.current`, `incomingCandidateQueue.current`, `remoteDescriptionSet.current = false`.
-   - Stop and null `localStreamRef.current` + tracks, call `stopAudioLevelMonitor()`, clear `originalMicTrackRef.current`. (We're alone in the call — no need to keep mic hot. It will be re-acquired when we (re)negotiate with the rejoiner.)
-   - This is the root fix for the "mic/deafen breaks the whole call after rejoin" report.
+**Cause:** `EquippedThemeBridge` runs on every login. When the user has **no shop-theme equipped** (the 4 built-in themes are local-only, never written to `user_equipped`), it falls through to `setTheme("default")`, which overwrites the locally saved "cubbly" preference.
 
-2. **Rejoin retry on the rejoiner** (`startCall` `isJoiningExisting` branch, lines 1580‑1593):
-   - Send `ready-for-offer` immediately, then schedule up to 4 retries at 800ms / 1.6s / 3s / 5s, cancelled as soon as `pcRef.current` exists OR `activeCall.state === "connected"` via `oniceconnectionstatechange`.
-   - Also set `state: "calling"` (not `"connected"`) so the UI is honest until ICE actually completes; the existing ICE handler already promotes to `"connected"`.
+**Fix:**
+- In `EquippedThemeBridge`, only call `setTheme(THEME_MAP[id])` when there *is* an equipped row.
+- When no equipped theme row exists, **do nothing** — let the user's localStorage choice (loaded by `ThemeContext`) stay in effect.
+- When the user explicitly *unequips* a shop theme via realtime DELETE, fall back to whatever is in localStorage (re-read it), not hard-coded "default".
 
-3. **Resilient `initializeOutgoingConnection` guard** (lines 902‑907): if `pendingOfferRef.current` exists but `pcRef.current` is null, treat the pending offer as stale, clear it, and proceed.
+---
 
-4. **`peer-leave` heartbeat already present** (line 1247) — keep, since that's what makes the rejoiner's pre-join freshness check pick the existing event.
+### 4. Settings tabs — double titles, inconsistent buttons, ugly cards
 
-### B. Eliminate presence flicker
+**Causes:**
+- `SettingsModal` already renders a header row (`User Settings` eyebrow + `<h1>{activeLabel}</h1>`).
+- Each tab component (`DataPrivacySettings`, `AccessibilitySettings`, `ContentSocialSettings`, `DevicesSettings`, etc.) *also* renders its own `<h2>{title}</h2>` + description block → the "two titles" the user is seeing.
+- The `Switch` in `DataPrivacySettings` uses shadcn's default `bg-primary`, which is the global orange `--primary` token — that's why the toggles look "Cubbly orange" even on the default theme. The custom toggle in `AccessibilitySettings`/`ContentSocialSettings` uses `#3ba55c` (green) — different color, different shape → inconsistent.
 
-In `src/contexts/AuthContext.tsx`:
+**Fix:**
+- Remove the inner `<h2>` + description block from every settings sub-component (`DataPrivacySettings`, `AccessibilitySettings`, `ContentSocialSettings`, `DevicesSettings`, `ChatSettings`, `LanguageTimeSettings`, `KeybindsSettings`, `AdvancedSettings`, `NotificationSettings`, `ActivityPrivacySettings`, `GamingModeSettings`, `UpdateLogsSettings`).
+- Move the per-tab description into the `SettingsModal` header itself (under the `<h1>`), driven by a `descriptions` map keyed by `SettingsCategory` so the header shows: eyebrow → title → optional one-line description. Single source of truth, no duplication.
+- Replace shadcn `Switch` usage in `DataPrivacySettings` with the same custom toggle used by `AccessibilitySettings` / `ContentSocialSettings`. Lift it into `src/components/app/settings/SettingsToggle.tsx` and import everywhere so all toggles look identical (green when on, neutral when off).
+- Standardise primary action buttons across all settings tabs to the Discord blurple (`#5865f2`) — no more orange leakage.
+- Standardise card padding/radius (`rounded-[24px] border p-5`) and section eyebrows (`text-[11px] uppercase tracking-[0.18em]`) by introducing a tiny `SettingsCard` + `SettingsSectionLabel` helper in `src/components/app/settings/_shared.tsx`.
 
-1. Collapse the two `on("presence", { event: "sync" }, …)` handlers into one (call `track()` and `syncPresence()` together) — removes a class of double-fire races.
-2. **Asymmetric apply**:
-   - Compute `nextIds` from presenceState as today.
-   - For every uid in `nextIds` not in current state → add immediately.
-   - For every uid in current state not in `nextIds` → mark "pending offline" with timestamp; only actually remove after 8s of continuous absence. A subsequent sync that re-includes the uid cancels its pending-offline timer.
-3. Persist `pendingOffline` map across renders via `useRef` so it survives the rapid sync churn during reconnects.
-4. On `cubbly:realtime-wake` (already dispatched by `realtimeReconnect.ts`), force a full re-`track()` and clear all pending-offline timers — anyone who's still actually online will reappear in the next sync.
+---
 
-### C. Smoke-test path
+### 5. Devices tab — wrong purpose & wrong location
 
-After the changes, manual checklist:
-- A and B in a 1‑1 call. B clicks Hang Up → A sees "Not in call" (peer-leave path). B clicks Rejoin in the chat pill → both arrive at "connected" with working bidirectional audio. Repeat 3×.
-- Mid-call on the staying side, toggle mute/deafen during the rejoin window. Audio must continue working both ways after rejoin completes.
-- A on web, A on iOS native, B on web. B should see A as online. Background iOS app for 60s, foreground it. A's dot on B's side must never flicker offline.
-- Network blip (DevTools → Offline for 5s → Online). Presence dots reappear within ~3s and never blank in between.
+The current "Devices" tab lists local mics/speakers/cameras. The user wants it to be a **security panel** showing currently signed-in sessions with the option to revoke them — and moved under **User Settings**.
 
-## Out of scope
+**Plan:**
+- Rename current local-hardware listing → fold the mic/speaker/camera enumeration into the existing **Voice & Video** tab as a "Detected hardware" subsection (it already covers input/output device choice).
+- Replace the "Devices" tab content with a real **Active Sessions** panel:
+  - New table `public.user_sessions(id uuid PK, user_id uuid, device_label text, user_agent text, platform text, ip_inet inet, last_seen_at timestamptz, created_at timestamptz, current_session_id text)` with RLS allowing a user to `select`/`delete` only their own rows.
+  - On every successful auth state change in `AuthContext`, upsert a row keyed by a stable `session_id` stored in `localStorage` (`cubbly:session-id`, generated once per install), updating `last_seen_at` and `device_label` (e.g. `Cubbly Desktop · Windows 11`, `Chrome on macOS`, `iPhone PWA`).
+  - On `signOut`, delete the row for the current `session_id`.
+  - New `DevicesSettings` UI: lists rows ordered by `last_seen_at DESC`, with the current device pinned at top and badged "This device". Each other row has a **Sign out** button that deletes the row (the next time that client polls/refreshes it gets a 401 from `auth.refreshSession`, which we already handle by routing to `/login`). Add a **"Sign out everywhere else"** button.
+- Move `Devices` from the **App Settings** section to the **User Settings** section in `settingsSections` inside `SettingsModal`, right after `Notifications`.
 
-- Group call (`GroupCallContext`) rejoin — separate code path; this plan only touches the 1‑1 voice path.
-- iOS native presence client itself (we adapt to its behavior on the web side).
+---
 
+### Technical notes
+
+- New file: `src/components/app/settings/_shared.tsx` (SettingsCard, SettingsSectionLabel, SettingsToggle).
+- Migration: `create table public.user_sessions ...` + RLS + index on `(user_id, last_seen_at desc)`.
+- `EquippedThemeBridge` change is a 4-line tweak; `ThemeContext` exposes a small `getSavedTheme()` helper.
+- Voice fix needs a feature-detect helper for ended tracks + a tiny `acquireFreshMic()` utility added next to `applyLocalMicMute`.
+- `BADGE_ART` map will be moved/exported from `UserBadges.tsx` so `ShopView` and `ShopItemsGrid` can import it without duplication.
+
+After these changes I'll bump the changelog with v0.3.1 entries covering the badge artwork, mute/deafen stability fix, theme persistence fix, settings UI overhaul, and the new sessions panel.

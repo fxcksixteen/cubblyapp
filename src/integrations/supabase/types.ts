@@ -875,6 +875,48 @@ export type Database = {
           },
         ]
       }
+      user_sessions: {
+        Row: {
+          created_at: string
+          device_label: string
+          id: string
+          is_desktop_app: boolean
+          is_mobile: boolean
+          last_seen_at: string
+          platform: string | null
+          revoked_at: string | null
+          session_key: string
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          device_label?: string
+          id?: string
+          is_desktop_app?: boolean
+          is_mobile?: boolean
+          last_seen_at?: string
+          platform?: string | null
+          revoked_at?: string | null
+          session_key: string
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          device_label?: string
+          id?: string
+          is_desktop_app?: boolean
+          is_mobile?: boolean
+          last_seen_at?: string
+          platform?: string | null
+          revoked_at?: string | null
+          session_key?: string
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
