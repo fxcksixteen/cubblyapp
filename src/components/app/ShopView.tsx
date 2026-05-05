@@ -119,22 +119,29 @@ function ItemPreview({ item, displayName }: { item: ShopItem; displayName: strin
 
   if (item.category === "badge") {
     const cfg = item.config || {};
+    const art = BADGE_ART[item.id];
     return (
-      <div className="flex h-20 w-full items-center justify-center gap-2 rounded-lg bg-[#1e1f22] px-3">
-        <span
-          className="inline-flex items-center justify-center rounded-md shrink-0"
-          style={{
-            width: 26,
-            height: 26,
-            backgroundColor: cfg.bg ?? "#3f4147",
-            color: cfg.fg ?? "#fff",
-            boxShadow: cfg.glow ? `0 0 10px ${cfg.glow}66` : undefined,
-            fontWeight: 800,
-            fontSize: 14,
-          }}
-        >
-          ★
-        </span>
+      <div className="flex h-20 w-full items-center justify-center gap-3 rounded-lg bg-[#1e1f22] px-3">
+        {art ? (
+          <img
+            src={art}
+            alt={item.name}
+            draggable={false}
+            className="h-14 w-14 object-contain shrink-0"
+            style={{ filter: "drop-shadow(0 2px 3px rgba(0,0,0,0.4))" }}
+          />
+        ) : (
+          <span
+            className="inline-flex items-center justify-center rounded-md shrink-0"
+            style={{
+              width: 30, height: 30,
+              backgroundColor: cfg.bg ?? "#3f4147",
+              color: cfg.fg ?? "#fff",
+              boxShadow: cfg.glow ? `0 0 10px ${cfg.glow}66` : undefined,
+              fontWeight: 800, fontSize: 16,
+            }}
+          >★</span>
+        )}
         <span className="text-base font-extrabold truncate" style={{ color: "#fff" }}>
           {name}
         </span>
