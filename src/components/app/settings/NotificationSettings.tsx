@@ -10,6 +10,7 @@ import {
   updateNotificationPreferences,
   type NotificationPreferences,
 } from "@/lib/notificationSettings";
+import { SettingsToggle } from "./_shared";
 
 interface NotificationSettingsProps {
   cardStyle: CSSProperties;
@@ -143,25 +144,12 @@ const NotificationSettings = ({ cardStyle }: NotificationSettingsProps) => {
                   {row.description}
                 </p>
               </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={prefs[row.key]}
-                onClick={() => toggle(row.key)}
-                className="relative h-7 w-12 rounded-full border transition-colors"
-                style={{
-                  backgroundColor: prefs[row.key] ? "var(--app-active)" : "var(--app-bg-tertiary)",
-                  borderColor: "var(--app-border)",
-                }}
-              >
-                <span
-                  className="absolute top-1 h-5 w-5 rounded-full transition-transform"
-                  style={{
-                    left: prefs[row.key] ? "calc(100% - 1.5rem)" : "0.25rem",
-                    backgroundColor: "var(--app-text-primary)",
-                  }}
-                />
-              </button>
+              <SettingsToggle
+                checked={prefs[row.key]}
+                onChange={() => toggle(row.key)}
+                ariaLabel={row.title}
+              />
+
             </div>
           ))}
         </div>

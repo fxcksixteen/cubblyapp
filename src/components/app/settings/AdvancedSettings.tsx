@@ -58,7 +58,7 @@ const AdvancedSettings = ({ cardStyle }: Props) => {
               role="switch"
               aria-checked={openAtLogin}
               className="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50"
-              style={{ backgroundColor: openAtLogin ? "#3ba55c" : "var(--app-border)" }}
+              style={{ backgroundColor: openAtLogin ? "var(--app-toggle-on, #3ba55c)" : "var(--app-toggle-off, #3f4147)" }}
             >
               <span
                 className="inline-block h-5 w-5 transform rounded-full bg-white transition-transform"
