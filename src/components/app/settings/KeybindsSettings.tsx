@@ -87,11 +87,7 @@ export default function KeybindsSettings({ cardStyle }: Props) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold" style={{ color: "var(--app-text-primary)" }}>Keybinds</h2>
-          <p className="mt-2 text-sm" style={{ color: "var(--app-text-secondary)" }}>Customise shortcuts. Click a binding to record a new key combo. Esc to cancel.</p>
-        </div>
+      <div className="flex items-center justify-end">
         <button
           onClick={resetAll}
           className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold border hover:bg-white/5"

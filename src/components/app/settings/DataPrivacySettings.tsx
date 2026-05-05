@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useLocalSetting } from "@/hooks/useLocalSetting";
-import { Switch } from "@/components/ui/switch";
 import { Download, Trash2, Shield, Lock, BarChart, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
+import { SettingsCard, SettingsToggleRow, SettingsPrimaryButton } from "./_shared";
 
 interface DataPrivacySettingsProps {
   cardStyle: React.CSSProperties;
@@ -40,24 +40,18 @@ const DataPrivacySettings = ({ cardStyle }: DataPrivacySettingsProps) => {
       ]);
 
       const blob = new Blob(
-        [
-          JSON.stringify(
-            {
-              exported_at: new Date().toISOString(),
-              account: { id: user.id, email: user.email, created_at: user.created_at },
-              profile: profile.data,
-              friendships: friendships.data,
-              messages: messages.data,
-              conversations: conversations.data,
-              inventory: inventory.data,
-              equipped: equipped.data,
-              transactions: transactions.data,
-              games: games.data,
-            },
-            null,
-            2
-          ),
-        ],
+        [JSON.stringify({
+          exported_at: new Date().toISOString(),
+          account: { id: user.id, email: user.email, created_at: user.created_at },
+          profile: profile.data,
+          friendships: friendships.data,
+          messages: messages.data,
+          conversations: conversations.data,
+          inventory: inventory.data,
+          equipped: equipped.data,
+          transactions: transactions.data,
+          games: games.data,
+        }, null, 2)],
         { type: "application/json" }
       );
       const url = URL.createObjectURL(blob);
@@ -82,8 +76,6 @@ const DataPrivacySettings = ({ cardStyle }: DataPrivacySettingsProps) => {
     }
     setDeleting(true);
     try {
-      // Best-effort wipe of user-owned content (RLS allows these). Auth row
-      // requires admin privileges, so we sign out and instruct support contact.
       await Promise.all([
         supabase.from("user_games").delete().eq("user_id", user.id),
         supabase.from("user_activities").delete().eq("user_id", user.id),
@@ -103,56 +95,21 @@ const DataPrivacySettings = ({ cardStyle }: DataPrivacySettingsProps) => {
     }
   };
 
-  const Row = ({
-    icon: Icon,
-    title,
-    desc,
-    value,
-    onChange,
-  }: {
-    icon: React.ComponentType<{ className?: string }>;
-    title: string;
-    desc: string;
-    value: boolean;
-    onChange: (v: boolean) => void;
-  }) => (
-    <div className="flex items-start justify-between gap-4">
-      <div className="flex items-start gap-3 min-w-0 flex-1">
-        <Icon className="h-5 w-5 shrink-0 mt-0.5" />
-        <div className="min-w-0">
-          <p className="text-sm font-semibold" style={{ color: "var(--app-text-primary)" }}>{title}</p>
-          <p className="mt-0.5 text-xs" style={{ color: "var(--app-text-secondary)" }}>{desc}</p>
-        </div>
-      </div>
-      <Switch checked={value} onCheckedChange={onChange} />
-    </div>
-  );
-
   return (
     <div className="space-y-5">
-      <div>
-        <h2 className="text-2xl font-bold" style={{ color: "var(--app-text-primary)" }}>Data & Privacy</h2>
-        <p className="mt-2 text-sm" style={{ color: "var(--app-text-secondary)" }}>
-          Control who can reach you, how Cubbly uses your data, and what to do with your account.
-        </p>
-      </div>
+      <SettingsCard cardStyle={cardStyle}>
+        <SettingsToggleRow icon={<Shield className="h-5 w-5" />} title="Allow friend requests" description="Let other users send you friend requests." checked={allowFriendRequests} onChange={setAllowFriendRequests} />
+        <SettingsToggleRow icon={<Lock className="h-5 w-5" />} title="Friends-only DMs" description="Only friends can start a direct message with you." checked={dmFromFriendsOnly} onChange={setDmFromFriendsOnly} />
+        <SettingsToggleRow icon={<Shield className="h-5 w-5" />} title="Show my online status" description="When off, you appear offline to everyone." checked={showOnlineStatus} onChange={setShowOnlineStatus} />
+      </SettingsCard>
 
-      {/* Privacy toggles */}
-      <div className="rounded-[24px] border p-5 space-y-5" style={cardStyle}>
-        <Row icon={Shield} title="Allow friend requests" desc="Let other users send you friend requests." value={allowFriendRequests} onChange={setAllowFriendRequests} />
-        <Row icon={Lock} title="Friends-only DMs" desc="Only friends can start a direct message with you." value={dmFromFriendsOnly} onChange={setDmFromFriendsOnly} />
-        <Row icon={Shield} title="Show my online status" desc="When off, you appear offline to everyone." value={showOnlineStatus} onChange={setShowOnlineStatus} />
-      </div>
+      <SettingsCard cardStyle={cardStyle}>
+        <SettingsToggleRow icon={<BarChart className="h-5 w-5" />} title="Anonymous usage analytics" description="Helps us understand which features people use. No message content ever." checked={usageAnalytics} onChange={setUsageAnalytics} />
+        <SettingsToggleRow icon={<BarChart className="h-5 w-5" />} title="Crash reports" description="Send anonymized crash data so we can fix bugs faster." checked={crashReports} onChange={setCrashReports} />
+        <SettingsToggleRow icon={<BarChart className="h-5 w-5" />} title="Personalized recommendations" description="Use your activity to suggest games, themes, and friends." checked={personalizedRec} onChange={setPersonalizedRec} />
+      </SettingsCard>
 
-      {/* Telemetry */}
-      <div className="rounded-[24px] border p-5 space-y-5" style={cardStyle}>
-        <Row icon={BarChart} title="Anonymous usage analytics" desc="Helps us understand which features people use. No message content ever." value={usageAnalytics} onChange={setUsageAnalytics} />
-        <Row icon={BarChart} title="Crash reports" desc="Send anonymized crash data so we can fix bugs faster." value={crashReports} onChange={setCrashReports} />
-        <Row icon={BarChart} title="Personalized recommendations" desc="Use your activity to suggest games, themes, and friends." value={personalizedRec} onChange={setPersonalizedRec} />
-      </div>
-
-      {/* Data export */}
-      <div className="rounded-[24px] border p-5" style={cardStyle}>
+      <SettingsCard cardStyle={cardStyle}>
         <div className="flex items-start gap-3">
           <Download className="h-5 w-5 mt-0.5 shrink-0" style={{ color: "var(--app-text-secondary)" }} />
           <div className="flex-1">
@@ -161,22 +118,16 @@ const DataPrivacySettings = ({ cardStyle }: DataPrivacySettingsProps) => {
               A JSON archive with your profile, messages you've sent, friendships, inventory, and coin history.
               Personal Notes are encrypted and excluded — export them from the Notes tab instead.
             </p>
-            <button
-              onClick={handleExport}
-              disabled={exporting}
-              className="mt-3 rounded-full bg-[#5865f2] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#4752c4] disabled:opacity-50"
-            >
-              {exporting ? "Preparing…" : "Request data export"}
-            </button>
+            <div className="mt-3">
+              <SettingsPrimaryButton onClick={handleExport} disabled={exporting}>
+                {exporting ? "Preparing…" : "Request data export"}
+              </SettingsPrimaryButton>
+            </div>
           </div>
         </div>
-      </div>
+      </SettingsCard>
 
-      {/* Danger zone */}
-      <div
-        className="rounded-[24px] border p-5"
-        style={{ ...cardStyle, borderColor: "rgba(237, 66, 69, 0.4)" }}
-      >
+      <SettingsCard cardStyle={{ ...cardStyle, borderColor: "rgba(237, 66, 69, 0.4)" }}>
         <div className="flex items-start gap-3">
           <AlertTriangle className="h-5 w-5 mt-0.5 shrink-0" style={{ color: "#ed4245" }} />
           <div className="flex-1">
@@ -224,7 +175,7 @@ const DataPrivacySettings = ({ cardStyle }: DataPrivacySettingsProps) => {
             )}
           </div>
         </div>
-      </div>
+      </SettingsCard>
     </div>
   );
 };

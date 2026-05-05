@@ -72,13 +72,6 @@ const VoiceVideoSettings = ({ panelStyle, cardStyle }: Props) => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold" style={{ color: "var(--app-text-primary)" }}>Voice & Video</h2>
-        <p className="mt-2 text-sm" style={{ color: "var(--app-text-secondary)" }}>
-          Configure your audio devices, video, and screen sharing settings.
-        </p>
-      </div>
-
       <div className="flex gap-1 rounded-2xl p-1" style={{ backgroundColor: "var(--app-bg-tertiary)" }}>
         <button
           onClick={() => setActiveTab("voice")}
