@@ -51,13 +51,6 @@ const LanguageTimeSettings = ({ cardStyle }: LanguageTimeSettingsProps) => {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h2 className="text-2xl font-bold" style={{ color: "var(--app-text-primary)" }}>Language & Time</h2>
-        <p className="mt-2 text-sm" style={{ color: "var(--app-text-secondary)" }}>
-          Pick how Cubbly displays text, timestamps, and dates.
-        </p>
-      </div>
-
       <div className="rounded-[24px] border p-5 space-y-4" style={cardStyle}>
         <div className="flex items-start gap-3">
           <Globe className="h-5 w-5 mt-0.5 shrink-0" style={{ color: "var(--app-text-secondary)" }} />

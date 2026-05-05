@@ -45,13 +45,6 @@ const ChatSettings = ({ cardStyle }: ChatSettingsProps) => {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h2 className="text-2xl font-bold" style={{ color: "var(--app-text-primary)" }}>Chat</h2>
-        <p className="mt-2 text-sm" style={{ color: "var(--app-text-secondary)" }}>
-          How messages, media, and reactions appear in conversations.
-        </p>
-      </div>
-
       <div className="rounded-[24px] border p-5 space-y-5" style={cardStyle}>
         <Row icon={MessageCircle} title="Show timestamps" desc="Display the send time next to each message." value={showTimestamps} onChange={setShowTimestamps} />
         <Row icon={Type} title="Compact mode" desc="Tighter spacing — fits more messages on screen." value={compact} onChange={setCompact} />

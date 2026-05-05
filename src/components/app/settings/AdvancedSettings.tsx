@@ -33,13 +33,6 @@ const AdvancedSettings = ({ cardStyle }: Props) => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold" style={{ color: "var(--app-text-primary)" }}>Advanced</h2>
-        <p className="mt-2 text-sm" style={{ color: "var(--app-text-secondary)" }}>
-          System integration and power-user settings.
-        </p>
-      </div>
-
       {!isElectron && (
         <div className="rounded-[22px] border p-5" style={cardStyle}>
           <p className="text-sm" style={{ color: "var(--app-text-secondary)" }}>

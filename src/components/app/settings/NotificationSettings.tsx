@@ -104,15 +104,6 @@ const NotificationSettings = ({ cardStyle }: NotificationSettingsProps) => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold" style={{ color: "var(--app-text-primary)" }}>
-          Notifications
-        </h2>
-        <p className="mt-2 text-sm" style={{ color: "var(--app-text-secondary)" }}>
-          Desktop app notifications work natively — no browser popup permission nonsense required.
-        </p>
-      </div>
-
       <div className="rounded-[24px] border p-5" style={cardStyle}>
         <div className="flex items-center justify-between gap-4 rounded-[20px] border px-4 py-3" style={rowStyle}>
           <div>
