@@ -35,6 +35,7 @@ const settingsSections = [
       { id: "content-social" as SettingsCategory, label: "Content & Social" },
       { id: "data-privacy" as SettingsCategory, label: "Data & Privacy" },
       { id: "notifications" as SettingsCategory, label: "Notifications" },
+      { id: "devices" as SettingsCategory, label: "Devices" },
     ],
   },
   {
@@ -43,7 +44,6 @@ const settingsSections = [
       { id: "appearance" as SettingsCategory, label: "Appearance" },
       { id: "accessibility" as SettingsCategory, label: "Accessibility" },
       { id: "voice-video" as SettingsCategory, label: "Voice & Video" },
-      { id: "devices" as SettingsCategory, label: "Devices" },
       { id: "chat" as SettingsCategory, label: "Chat" },
       { id: "keybinds" as SettingsCategory, label: "Keybinds" },
       { id: "language-time" as SettingsCategory, label: "Language & Time" },

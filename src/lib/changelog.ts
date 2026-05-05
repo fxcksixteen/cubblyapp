@@ -23,9 +23,26 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.3.0";
+export const CURRENT_VERSION = "0.3.1";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.3.1",
+    title: "Settings overhaul, themes restored & call stability",
+    date: "2026-05-05",
+    hero: bearImage,
+    newFeatures: [
+      "Devices tab now lives under User Settings and shows every signed-in device with its platform, last-seen time, and a one-tap 'Sign out' button — plus 'Sign out everywhere else' to nuke every session except this one.",
+      "Settings tabs got a full visual pass: consistent cards, single titles, unified toggles, and proper descriptions across Data & Privacy, Accessibility, Content & Social, Chat, Notifications, Voice & Video, Keybinds, Language & Time, Activity Privacy, Gaming Mode, and Advanced.",
+      "Shop badges now show the actual 3D badge artwork (Chat Champ, Gamer, Night Owl, etc.) in both the Shop grid and your My Account badges section, instead of placeholder icons.",
+    ],
+    bugFixes: [
+      "Built-in themes (Cubbly, Onyx, Light) apply correctly again — fixed a regression where the new shop-theme bridge was overwriting your equipped local theme with the default on every login.",
+      "Muting and deafening yourself in a voice call no longer kills the call audio. Switched to clean track.enabled toggling so unmuting/undeafening is instant and never requires a rejoin.",
+      "Settings tabs no longer show two stacked titles — the modal header is the single source of truth for tab name + description.",
+      "Data & Privacy and Accessibility tabs no longer render their toggles in the Cubbly accent color when those toggles are off.",
+    ],
+  },
   {
     version: "0.3.0",
     title: "Shop, encrypted notes, themes & badges",
