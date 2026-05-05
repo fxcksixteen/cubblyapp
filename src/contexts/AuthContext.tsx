@@ -46,12 +46,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       (_event, session) => {
         setSession(session);
         setLoading(false);
+        if (session?.user) {
+          registerSession(session.user.id).catch(() => {});
+        }
       }
     );
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setLoading(false);
+      if (session?.user) {
+        registerSession(session.user.id).catch(() => {});
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -226,6 +232,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [session?.user?.id]);
 
   const signOut = async () => {
+    const uid = session?.user?.id;
+    if (uid) {
+      try { await unregisterSession(uid); } catch {}
+    }
     await supabase.auth.signOut();
   };
 
