@@ -2301,35 +2301,27 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   }, [syncCallParticipantState]);
 
   /**
-   * Mute/unmute the local mic. Belt-and-suspenders against the iOS PWA bug
-   * where setting `track.enabled = false` alone could still leak audible audio
-   * to the remote peer:
-   *   1. `track.enabled = false` (legacy path; required so the mic-meter UI
-   *      reads zero level locally).
-   *   2. `sender.replaceTrack(null)` on the audio sender — guarantees zero
-   *      RTP frames are produced regardless of the audio unit's behavior.
-   *   3. Broadcast `peer-mute` so the receiver also force-mutes us locally.
+   * Mute/unmute the local mic.
+   *
+   * IMPORTANT (v0.3.1): we used to also call `sender.replaceTrack(null)` /
+   * `replaceTrack(originalMicTrackRef.current)` here to absolutely guarantee
+   * zero RTP. That path was fragile — if the original track became `ended`
+   * (device-change, iOS background trip, getUserMedia churn) the undeafen/
+   * unmute call replaced with a dead track and the call was permanently
+   * silent until reconnect. The simple `track.enabled = false` toggle is the
+   * standard WebRTC pattern, never breaks the SRTP stream, and combined with
+   * the `peer-mute` broadcast (which makes the receiver locally silence us
+   * regardless) it's both safe and reliable on every platform.
    */
   const applyLocalMicMute = useCallback(async (muted: boolean) => {
     if (localStreamRef.current) {
-      localStreamRef.current.getAudioTracks().forEach(track => { track.enabled = !muted; });
+      localStreamRef.current.getAudioTracks().forEach(track => {
+        try { track.enabled = !muted; } catch {}
+      });
     }
-    const pc = pcRef.current;
-    if (pc) {
-      const audioSender = pc.getSenders().find(s => s.track?.kind === "audio")
-        || pc.getSenders().find(s => !s.track && originalMicTrackRef.current);
-      if (audioSender) {
-        try {
-          if (muted) {
-            await audioSender.replaceTrack(null);
-          } else if (originalMicTrackRef.current) {
-            await audioSender.replaceTrack(originalMicTrackRef.current);
-            try { originalMicTrackRef.current.enabled = true; } catch {}
-          }
-        } catch (e) {
-          console.warn("[Voice] replaceTrack for mute failed:", e);
-        }
-      }
+    // Also flip the original-mic ref if we're holding one — keeps the two in sync.
+    if (originalMicTrackRef.current) {
+      try { originalMicTrackRef.current.enabled = !muted; } catch {}
     }
   }, []);
 
