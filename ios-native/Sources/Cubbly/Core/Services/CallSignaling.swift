@@ -85,10 +85,11 @@ final class CallSignaling {
     private func handleIncomingCall(message: [String: AnyJSON]) {
         // Web/desktop sends { targetId, callerId, ... }. Older iOS builds sent
         // { userId, ... }. Accept both shapes so cross-platform rings and the
-        // associated call_event pill stay in sync.
+        // associated call_event pill stay in sync. Compare on lowercase UUID
+        // strings so case differences between platforms never reject a ring.
+        let myKey = userId.uuidString.lowercased()
         if let targetStr = message["targetId"]?.stringValue,
-           let targetId = UUID(uuidString: targetStr),
-           targetId != userId {
+           targetStr.lowercased() != myKey {
             return
         }
         guard
