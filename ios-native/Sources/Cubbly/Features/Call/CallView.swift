@@ -20,6 +20,29 @@ struct CallView: View {
         ZStack {
             Theme.Colors.bgTertiary.ignoresSafeArea()
 
+            // Drag-to-minimize gesture lives on a transparent backdrop layer
+            // so it can't steal taps from the speaker / minimize buttons in
+            // the top bar (the previous full-ZStack gesture is what made
+            // tapping the speaker register as a different control).
+            Color.clear
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture()
+                        .onChanged { v in
+                            dragOffsetY = max(0, v.translation.height)
+                        }
+                        .onEnded { v in
+                            if v.translation.height > 120 {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    store.minimize()
+                                    dragOffsetY = 0
+                                }
+                            } else {
+                                withAnimation(.spring(response: 0.3)) { dragOffsetY = 0 }
+                            }
+                        }
+                )
+
             VStack(spacing: 0) {
                 topBar
 
@@ -38,23 +61,6 @@ struct CallView: View {
             }
         }
         .offset(y: max(0, dragOffsetY))
-        .gesture(
-            DragGesture()
-                .onChanged { v in
-                    // Only allow downward drags
-                    dragOffsetY = max(0, v.translation.height)
-                }
-                .onEnded { v in
-                    if v.translation.height > 120 {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                            store.minimize()
-                            dragOffsetY = 0
-                        }
-                    } else {
-                        withAnimation(.spring(response: 0.3)) { dragOffsetY = 0 }
-                    }
-                }
-        )
         .fullScreenCover(isPresented: $showFullScreenShare) {
             FullScreenScreenShareView(track: store.remoteScreenTrack)
         }
