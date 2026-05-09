@@ -108,7 +108,10 @@ final class CallSignaling {
 
     func joinCallChannel(conversationId: UUID) async {
         await leaveCallChannel()
-        let channel = await RealtimeChannelFactory.make("voice-call:\(conversationId.uuidString)", client: client)
+        // Lowercase the conversation id in the topic too — web uses
+        // `voice-call:<lowercase-uuid>` and a case mismatch silently splits
+        // the call across two different Realtime topics.
+        let channel = await RealtimeChannelFactory.make("voice-call:\(conversationId.uuidString.lowercased())", client: client)
         currentConversationId = conversationId
 
         let stream = channel.broadcastStream(event: "voice-signal")
