@@ -969,13 +969,42 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
       return m;
     };
 
-    // Compute insertion target: returns { parent, refNode } where the dragged
-    // node should be inserted before refNode (or at end if refNode is null).
-    const computeInsertion = (x: number, y: number): { parent: Node; refNode: Node | null; markerRect: DOMRect } | null => {
+    const rangeFromPoint = (x: number, y: number): Range | null => {
+      const doc: any = document;
+      const range: Range | null = typeof doc.caretRangeFromPoint === "function"
+        ? doc.caretRangeFromPoint(x, y)
+        : typeof doc.caretPositionFromPoint === "function"
+          ? (() => {
+              const pos = doc.caretPositionFromPoint(x, y);
+              if (!pos) return null;
+              const r = document.createRange();
+              r.setStart(pos.offsetNode, pos.offset);
+              r.collapse(true);
+              return r;
+            })()
+          : null;
+      if (!range || !root.contains(range.startContainer) || (dragging && dragging.contains(range.startContainer))) return null;
+      return range;
+    };
+
+    // Compute insertion target: prefer the exact text caret under the pointer,
+    // then fall back to block before/after placement for empty space.
+    const computeInsertion = (x: number, y: number): { parent: Node; refNode: Node | null; markerRect: DOMRect; range?: Range } | null => {
       if (!root) return null;
       const rootRect = root.getBoundingClientRect();
       const cx = Math.min(Math.max(x, rootRect.left + 4), rootRect.right - 4);
       const cy = Math.min(Math.max(y, rootRect.top + 4), rootRect.bottom - 4);
+
+      const caret = rangeFromPoint(cx, cy);
+      if (caret) {
+        const probe = caret.cloneRange();
+        probe.collapse(true);
+        const rect = probe.getBoundingClientRect();
+        const markerRect = rect.width || rect.height
+          ? new DOMRect(rect.left, rect.top, 3, Math.max(rect.height, 18))
+          : new DOMRect(cx, cy - 9, 3, 18);
+        return { parent: caret.startContainer, refNode: null, markerRect, range: caret };
+      }
 
       // Find the direct child of root that the pointer is over (block-level).
       const children = Array.from(root.childNodes).filter((c) => {
@@ -1061,6 +1090,7 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
         marker.style.left = `${ins.markerRect.left}px`;
         marker.style.top = `${ins.markerRect.top}px`;
         marker.style.width = `${ins.markerRect.width}px`;
+        marker.style.height = `${ins.markerRect.height || 3}px`;
         marker.style.display = "block";
       } else if (marker) {
         marker.style.display = "none";
@@ -1074,7 +1104,17 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
       const ins = computeInsertion(e.clientX, e.clientY);
       if (ins) {
         try {
-          ins.parent.insertBefore(dragging, ins.refNode);
+          if (ins.range) {
+            ins.range.insertNode(dragging);
+          } else {
+            ins.parent.insertBefore(dragging, ins.refNode);
+          }
+          const after = document.createRange();
+          after.setStartAfter(dragging);
+          after.collapse(true);
+          const sel = window.getSelection();
+          sel?.removeAllRanges();
+          sel?.addRange(after);
           setBody(root.innerHTML);
           dirty.current = true;
         } catch {}
