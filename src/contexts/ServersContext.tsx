@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { removeChannelByTopic } from "@/lib/realtimeReconnect";
 
 export interface Server {
   id: string;
@@ -63,6 +64,7 @@ export const ServersProvider = ({ children }: { children: React.ReactNode }) => 
   // Realtime: refetch on membership changes
   useEffect(() => {
     if (!user) return;
+    removeChannelByTopic(`servers:${user.id}`);
     const ch = supabase
       .channel(`servers:${user.id}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "server_members", filter: `user_id=eq.${user.id}` }, () => refresh())

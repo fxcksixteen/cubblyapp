@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme, ThemeName } from "@/contexts/ThemeContext";
+import { removeChannelByTopic } from "@/lib/realtimeReconnect";
 
 /** Maps a shop theme item id → theme key in ThemeContext. */
 const THEME_MAP: Record<string, ThemeName> = {
@@ -64,6 +65,9 @@ const EquippedThemeBridge = () => {
 
     apply();
 
+    // Drop any cached channel for this topic — supabase-js otherwise returns
+    // an already-subscribed instance and rejects new .on() handlers.
+    removeChannelByTopic(`equipped-theme:${user.id}`);
     const ch = supabase
       .channel(`equipped-theme:${user.id}`)
       .on(
