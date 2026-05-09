@@ -1924,15 +1924,29 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       setIsScreenSharing(true);
       playSound("screenshareStart", { volume: 0.4 });
 
-      // Apply Optimization preset to the actual video track. Bumped bitrates
-      // so "ultra" actually delivers a crisp stream to the *peer* (encoder
-      // adaptive degradation was crushing 8 Mbps targets).
+      // Apply Optimization preset to the actual video track. Bitrates are
+      // now scaled BY the user's chosen resolution AND optimization mode —
+      // the previous "ultra=12 Mbps" cap was tanking both clients' calls
+      // (encoder/decoder CPU + jitter buffer underruns) and "low quality"
+      // didn't actually lower bitrate. Discord-style caps used here.
       const opt = screenShareSettings.optimizeFor;
       const hint = opt === "motion" ? "motion" : "detail";
-      const maxBitrate =
-        opt === "ultra" ? 12_000_000 : // 12 Mbps — premium
-        opt === "motion" ? 8_000_000 : // 8 Mbps — smoothness
-        6_000_000;                     // 6 Mbps — clarity
+      const resBitrateBase: Record<string, number> = {
+        "480p":  900_000,
+        "720p":  1_800_000,
+        "1080p": 2_500_000,
+        "1440p": 3_500_000,
+      };
+      const baseFor = resBitrateBase[effectiveQuality] ?? 1_800_000;
+      // "ultra" gets a modest +50%, "motion" shaves quality for smoothness,
+      // "detail" stays at base. Hard ceiling at 4 Mbps so a single screen-
+      // share never starves the voice transceiver.
+      const maxBitrate = Math.min(
+        4_000_000,
+        opt === "ultra"  ? Math.round(baseFor * 1.5) :
+        opt === "motion" ? Math.round(baseFor * 0.85) :
+        baseFor
+      );
 
       // Force resolution / FPS via applyConstraints on the actual track —
       // Electron's desktopCapturer ignores constraints at getDisplayMedia time
