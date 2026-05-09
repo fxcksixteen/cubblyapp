@@ -695,25 +695,33 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
   const buildInlineImg = (attId: string, blobUrl: string, alt: string) => {
     const img = document.createElement("img");
     img.setAttribute("data-att-id", attId);
+    img.setAttribute("data-cubbly-movable", "1");
     img.src = blobUrl;
     img.alt = alt;
-    img.draggable = true;
+    // Disable native drag — we use pointer events for reliable movement inside contenteditable.
+    img.draggable = false;
     img.style.maxWidth = "100%";
     img.style.height = "auto";
     img.style.borderRadius = "8px";
     img.style.display = "block";
     img.style.margin = "8px 0";
+    img.style.cursor = "grab";
+    img.style.userSelect = "none";
+    (img.style as any).webkitUserDrag = "none";
     return img;
   };
   const buildInlineVideo = (attId: string, blobUrl: string) => {
     const v = document.createElement("video");
     v.setAttribute("data-att-id", attId);
+    v.setAttribute("data-cubbly-movable", "1");
     v.src = blobUrl;
     v.controls = true;
+    v.draggable = false;
     v.style.maxWidth = "100%";
     v.style.borderRadius = "8px";
     v.style.display = "block";
     v.style.margin = "8px 0";
+    v.style.userSelect = "none";
     return v;
   };
 
