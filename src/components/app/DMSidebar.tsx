@@ -12,6 +12,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { getProfileColor } from "@/lib/profileColors";
 import { activityLabel } from "@/lib/activityLabel";
 import { toast } from "sonner";
+import { playSound } from "@/lib/sounds";
 import {
   ContextMenu,
   ContextMenuContent,
