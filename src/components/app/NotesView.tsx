@@ -819,6 +819,15 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     dirty.current = true;
   };
 
+  // Remove an attachment's inline references from the body but keep it
+  // in the attachment list so the user can re-insert it later.
+  const uninsertAtt = (id: string) => {
+    if (!bodyRef.current) return;
+    bodyRef.current.querySelectorAll(`[data-att-id="${id}"]`).forEach((el) => el.remove());
+    setBody(bodyRef.current.innerHTML);
+    dirty.current = true;
+  };
+
   // Insert an existing attachment at the end of the body (used by the
   // "Insert into note" button on attachment cards).
   const insertExistingAttIntoBody = async (att: typeof attachments[0]) => {
