@@ -966,6 +966,7 @@ const InlineAttachment = ({
           <img
             src={url}
             alt={att.name}
+            draggable={false}
             onClick={() => setFullscreen(true)}
             className="cursor-zoom-in w-full h-auto block"
             style={{ maxHeight: 360, objectFit: "contain" }}
