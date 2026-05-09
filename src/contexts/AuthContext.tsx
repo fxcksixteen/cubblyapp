@@ -1,10 +1,10 @@
-import { createContext, useContext, useEffect, useState, ReactNode, useRef } from "react";
+import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { setDndActive } from "@/lib/sounds";
 import { setNotificationDnd } from "@/lib/notifications";
 import { subscribeWithReconnect, removeChannelByTopic } from "@/lib/realtimeReconnect";
-import { registerSession, unregisterSession } from "@/lib/sessionTracker";
+import { registerSession, unregisterSession, getSessionKey } from "@/lib/sessionTracker";
 
 const syncDnd = (isDnd: boolean) => {
   setDndActive(isDnd);
@@ -120,91 +120,49 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   // ─────────────────────────────────────────────────────────────────────
-  // Presence — server-side heartbeat model.
-  // Every authenticated client calls `presence_heartbeat` every 30s. The DB
-  // stores `profiles.last_seen_at`. "Online" = last_seen_at within ~75s AND
-  // status != 'invisible'. This is the source of truth — flicker on the
-  // realtime presence channel can no longer mark someone offline.
-  // We additionally subscribe to a global presence channel as a *bonus*
-  // signal, and union it with the DB result so old clients (pre-DB-heartbeat)
-  // still appear online via the channel.
+  // Presence — fully database-driven.
+  // Every client (this version OR older builds that just write user_sessions)
+  // is counted as online by the `online_user_ids` RPC, which unions
+  // profiles.last_seen_at and user_sessions.last_seen_at. We poll that RPC
+  // every 20s and call presence_heartbeat every 30s. The realtime channel
+  // is no longer used for the authoritative online set — it was the source
+  // of the flicker. We keep no socket-based presence at all here.
   // ─────────────────────────────────────────────────────────────────────
-  const dbOnlineRef = useRef<Set<string>>(new Set());
-  const channelOnlineRef = useRef<Set<string>>(new Set());
-
-  const recomputeOnline = () => {
-    const merged = new Set<string>();
-    dbOnlineRef.current.forEach((u) => merged.add(u));
-    channelOnlineRef.current.forEach((u) => merged.add(u));
-    setOnlineUserIds(merged);
-  };
-
   useEffect(() => {
     const user = session?.user;
     if (!user) {
-      dbOnlineRef.current = new Set();
-      channelOnlineRef.current = new Set();
       setOnlineUserIds(new Set());
       return;
     }
 
     let cancelled = false;
+    const sessionKey = getSessionKey();
 
-    // ── Heartbeat the DB so we count as online server-side.
     const heartbeat = async () => {
-      try { await (supabase as any).rpc("presence_heartbeat"); } catch {}
+      try {
+        await (supabase as any).rpc("presence_heartbeat", { _session_key: sessionKey });
+      } catch {}
     };
-    heartbeat();
-    const heartbeatInterval = window.setInterval(heartbeat, 30_000);
-    const onWake = () => { heartbeat(); };
-    window.addEventListener("focus", onWake);
-    window.addEventListener("online", onWake);
-    document.addEventListener("visibilitychange", onWake);
-    window.addEventListener("cubbly:realtime-wake", onWake);
-
-    // ── Poll DB for the authoritative online list every 20s.
     const fetchOnline = async () => {
       try {
         const { data } = await (supabase as any).rpc("online_user_ids", { _window_seconds: 75 });
         if (cancelled) return;
         const ids = new Set<string>(((data ?? []) as Array<{ user_id: string }>).map((r) => r.user_id));
-        // Always include self while authenticated.
-        ids.add(user.id);
-        dbOnlineRef.current = ids;
-        recomputeOnline();
+        ids.add(user.id); // always include self
+        setOnlineUserIds(ids);
       } catch {}
     };
+
+    heartbeat();
     fetchOnline();
+    const heartbeatInterval = window.setInterval(heartbeat, 30_000);
     const pollInterval = window.setInterval(fetchOnline, 20_000);
 
-    // ── Bonus signal: realtime presence channel (helps users on older clients).
-    const topic = "global:online";
-    const presenceKey = `${user.id}:${crypto.randomUUID()}`;
-    const cleanup = subscribeWithReconnect(topic, () => {
-      removeChannelByTopic(topic);
-      const channel = supabase.channel(topic, {
-        config: { presence: { key: presenceKey } },
-      });
-      const onSync = () => {
-        const state = channel.presenceState() as Record<string, Array<{ user_id?: string }>>;
-        const ids = new Set<string>();
-        for (const [key, entries] of Object.entries(state)) {
-          for (const entry of entries) {
-            const uid = entry?.user_id ?? key.split(":")[0];
-            if (uid) ids.add(uid);
-          }
-          ids.add(key.split(":")[0]);
-        }
-        channelOnlineRef.current = ids;
-        recomputeOnline();
-        channel.track({ user_id: user.id, online_at: new Date().toISOString() }).catch(() => {});
-      };
-      channel
-        .on("presence", { event: "sync" }, onSync)
-        .on("presence", { event: "join" }, onSync)
-        .on("presence", { event: "leave" }, onSync);
-      return channel;
-    });
+    const onWake = () => { heartbeat(); fetchOnline(); };
+    window.addEventListener("focus", onWake);
+    window.addEventListener("online", onWake);
+    document.addEventListener("visibilitychange", onWake);
+    window.addEventListener("cubbly:realtime-wake", onWake);
 
     return () => {
       cancelled = true;
@@ -214,9 +172,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       window.removeEventListener("online", onWake);
       document.removeEventListener("visibilitychange", onWake);
       window.removeEventListener("cubbly:realtime-wake", onWake);
-      cleanup();
-      dbOnlineRef.current = new Set();
-      channelOnlineRef.current = new Set();
       setOnlineUserIds(new Set());
     };
   }, [session?.user?.id]);

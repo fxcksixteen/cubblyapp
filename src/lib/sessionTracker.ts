@@ -37,6 +37,7 @@ function detectLabel(): { label: string; platform: string; isDesktop: boolean; i
 export async function registerSession(userId: string) {
   const session_key = getSessionKey();
   const { label, platform, isDesktop, isMobile } = detectLabel();
+  const nowIso = new Date().toISOString();
   try {
     await supabase.from("user_sessions").upsert(
       {
@@ -47,11 +48,16 @@ export async function registerSession(userId: string) {
         platform,
         is_desktop_app: isDesktop,
         is_mobile: isMobile,
-        last_seen_at: new Date().toISOString(),
+        last_seen_at: nowIso,
         revoked_at: null,
       },
       { onConflict: "user_id,session_key" }
     );
+  } catch {}
+  // Bump profiles.last_seen_at right away so we count as online immediately,
+  // even before the periodic heartbeat fires.
+  try {
+    await (supabase as any).rpc("presence_heartbeat", { _session_key: session_key });
   } catch {}
 }
 
