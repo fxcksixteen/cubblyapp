@@ -361,6 +361,11 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       if (event.track.kind === "video") {
         // Decide camera vs screen by stream id label.
         const isScreen = stream?.id?.startsWith("cubbly-screen-");
+        // Lower video jitter buffer so screen-share / game streams play in
+        // near-real-time instead of buffering 200-400ms — that's what made
+        // streams feel "laggy" even on fast networks.
+        try { (event.receiver as any).playoutDelayHint = isScreen ? 0.05 : 0.08; } catch {}
+        try { (event.receiver as any).jitterBufferTarget = isScreen ? 50 : 80; } catch {}
         const applyLiveVideoState = () => {
           setPeers(prev => prev.map(p => p.userId === peerId
             ? (isScreen

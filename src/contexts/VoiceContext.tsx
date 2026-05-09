@@ -1290,6 +1290,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           const screenPc = new RTCPeerConnection({ iceServers: iceServersRef.current });
           screenPc.ontrack = (event) => {
             const remoteScreen = event.streams[0];
+            // Lower the inbound video jitter buffer so game streaming feels
+            // real-time instead of delayed/laggy. Without this hint Chromium
+            // happily buffers 200-400ms which makes screenshares feel like
+            // they're running underwater.
+            try { (event.receiver as any).playoutDelayHint = 0.05; } catch {}
+            try { (event.receiver as any).jitterBufferTarget = 50; } catch {}
             setRemoteScreenStream(remoteScreen);
             // If this stream carries an audio track, route it through the
             // per-peer GainNode so the right-click "User Volume" slider AND
