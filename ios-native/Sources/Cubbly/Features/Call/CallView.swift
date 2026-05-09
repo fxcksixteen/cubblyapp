@@ -103,7 +103,9 @@ struct CallView: View {
                     .background(Circle().fill(settings.speakerOutput
                         ? Color.white.opacity(0.22)
                         : Color.white.opacity(0.08)))
+                    .contentShape(Circle())
             }
+            .buttonStyle(.plain)
             .accessibilityLabel(settings.speakerOutput ? "Speaker on" : "Speaker off")
 
             // Down-arrow → minimize. Mirrors the swipe-down gesture above.
