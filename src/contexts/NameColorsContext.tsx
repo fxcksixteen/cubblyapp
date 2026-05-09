@@ -80,6 +80,8 @@ export const NameColorsProvider = ({ children }: { children: ReactNode }) => {
 
   // Realtime: when anyone updates their equipped name color, drop & refetch
   useEffect(() => {
+    const existing = supabase.getChannels().find((c: any) => c.topic === "realtime:name-colors-global");
+    if (existing) supabase.removeChannel(existing);
     const ch = supabase
       .channel("name-colors-global")
       .on(
