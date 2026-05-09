@@ -669,7 +669,7 @@ final class CallStore: ObservableObject {
                 "sdp": .object(["type": .string("offer"), "sdp": .string(offer.sdp)]),
                 "callerAvatarUrl": peerAvatarUrl.map { .string($0) } ?? .null,
                 "senderName": myName.map { .string($0) } ?? .null,
-                "callEventId": currentCallEventId.map { .string($0.uuidString) } ?? .null
+                "callEventId": currentCallEventId.map { .string($0.uuidString.lowercased()) } ?? .null
             ])
             print("[Call] 📤 Offer sent in response to ready-for-offer")
         } catch {
