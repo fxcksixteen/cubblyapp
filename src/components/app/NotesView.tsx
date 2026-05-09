@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, lazy, Suspense } from "react";
 import { useNotes, NoteRow, NotePlaintext } from "@/contexts/NotesContext";
-import { Pin, PinOff, Trash2, Plus, Paperclip, ShieldCheck, Loader2, FileText, Download, X, EyeOff, ArrowLeft, KeyRound, Edit3, Copy, AlertTriangle } from "lucide-react";
+import { Pin, PinOff, Trash2, Plus, Paperclip, ShieldCheck, Loader2, FileText, Download, X, EyeOff, ArrowLeft, KeyRound, Edit3, Copy, AlertTriangle, Play, Maximize2 } from "lucide-react";
 import { toast } from "sonner";
 import notesIcon from "@/assets/password-lock.svg";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { isStandalonePWA } from "@/lib/pwa";
+const ImageLightbox = lazy(() => import("@/components/app/ImageLightbox"));
+const VideoLightbox = lazy(() => import("@/components/app/VideoLightbox"));
 import {
   ContextMenu,
   ContextMenuContent,
@@ -738,24 +740,42 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
         />
       </div>
 
-      <div
-        ref={bodyRef}
-        contentEditable
-        autoCapitalize="sentences"
-        autoCorrect="on"
-        spellCheck
-        onInput={(e) => { setBody((e.target as HTMLDivElement).innerHTML); dirty.current = true; }}
-        className="flex-1 overflow-y-auto px-6 py-4 outline-none prose prose-sm max-w-none"
-        style={{ color: "var(--app-text-primary)", minHeight: 0, WebkitUserSelect: "text" }}
-        suppressContentEditableWarning
-      />
+      <div className="flex-1 overflow-y-auto">
+        {/* Inline previews for image/video/PDF attachments */}
+        {attachments.length > 0 && (
+          <div className="px-6 pt-4 flex flex-col gap-3">
+            {attachments
+              .filter((a) => isPreviewable(a.mime))
+              .map((att) => (
+                <InlineAttachment
+                  key={att.id}
+                  att={att}
+                  onRemove={() => removeAtt(att.id)}
+                  onDownload={() => downloadAtt(att)}
+                />
+              ))}
+          </div>
+        )}
 
-      {attachments.length > 0 && (
+        <div
+          ref={bodyRef}
+          contentEditable
+          autoCapitalize="sentences"
+          autoCorrect="on"
+          spellCheck
+          onInput={(e) => { setBody((e.target as HTMLDivElement).innerHTML); dirty.current = true; }}
+          className="px-6 py-4 outline-none prose prose-sm max-w-none"
+          style={{ color: "var(--app-text-primary)", minHeight: "8rem", WebkitUserSelect: "text" }}
+          suppressContentEditableWarning
+        />
+      </div>
+
+      {attachments.filter((a) => !isPreviewable(a.mime)).length > 0 && (
         <div
           className="border-t px-4 py-2 flex flex-wrap gap-2"
           style={{ borderColor: "var(--app-border)", paddingBottom: "max(0.5rem, env(safe-area-inset-bottom, 0px))" }}
         >
-          {attachments.map((att) => (
+          {attachments.filter((a) => !isPreviewable(a.mime)).map((att) => (
             <div key={att.id} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs" style={{ backgroundColor: "var(--app-bg-secondary)", border: "1px solid var(--app-border)" }}>
               <FileText className="h-3.5 w-3.5" style={{ color: "var(--app-text-secondary)" }} />
               <span style={{ color: "var(--app-text-primary)" }}>{att.name}</span>
@@ -771,6 +791,116 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
         </div>
       )}
 
+    </div>
+  );
+};
+
+function isPreviewable(mime: string) {
+  if (!mime) return false;
+  return mime.startsWith("image/") || mime.startsWith("video/") || mime === "application/pdf";
+}
+
+const InlineAttachment = ({
+  att,
+  onRemove,
+  onDownload,
+}: {
+  att: { id: string; name: string; mime: string; size: number; storagePath: string; iv: string };
+  onRemove: () => void;
+  onDownload: () => void;
+}) => {
+  const n = useNotes();
+  const [url, setUrl] = useState<string | null>(null);
+  const [error, setError] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    let createdUrl: string | null = null;
+    (async () => {
+      try {
+        const blob = await n.downloadAttachment(att);
+        if (cancelled) return;
+        createdUrl = URL.createObjectURL(blob);
+        setUrl(createdUrl);
+      } catch {
+        if (!cancelled) setError(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (createdUrl) URL.revokeObjectURL(createdUrl);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [att.id, att.storagePath, att.iv]);
+
+  const isImage = att.mime.startsWith("image/");
+  const isVideo = att.mime.startsWith("video/");
+  const isPdf = att.mime === "application/pdf";
+
+  return (
+    <div
+      className="group relative rounded-lg overflow-hidden"
+      style={{ backgroundColor: "var(--app-bg-secondary)", border: "1px solid var(--app-border)", maxWidth: 520 }}
+    >
+      {/* Header strip */}
+      <div className="flex items-center gap-2 px-2.5 py-1.5 text-xs" style={{ borderBottom: "1px solid var(--app-border)" }}>
+        <span className="truncate flex-1" style={{ color: "var(--app-text-primary)" }}>{att.name}</span>
+        <span style={{ color: "var(--app-text-secondary)" }}>{formatSize(att.size)}</span>
+        {(isImage || isVideo) && url && (
+          <button onClick={() => setFullscreen(true)} title="Fullscreen" className="p-1 rounded hover:bg-[var(--app-hover)]">
+            <Maximize2 className="h-3.5 w-3.5" style={{ color: "var(--app-text-secondary)" }} />
+          </button>
+        )}
+        <button onClick={onDownload} title="Download" className="p-1 rounded hover:bg-[var(--app-hover)]">
+          <Download className="h-3.5 w-3.5" style={{ color: "var(--app-text-secondary)" }} />
+        </button>
+        <button onClick={onRemove} title="Remove" className="p-1 rounded hover:bg-[var(--app-hover)]">
+          <X className="h-3.5 w-3.5" style={{ color: "#ed4245" }} />
+        </button>
+      </div>
+
+      {/* Body preview */}
+      <div className="flex items-center justify-center" style={{ minHeight: 120, backgroundColor: "var(--app-bg-tertiary, #1e1f22)" }}>
+        {error ? (
+          <div className="p-4 text-xs" style={{ color: "var(--app-text-secondary)" }}>Failed to load preview</div>
+        ) : !url ? (
+          <Loader2 className="h-5 w-5 animate-spin my-6" style={{ color: "var(--app-text-secondary)" }} />
+        ) : isImage ? (
+          <img
+            src={url}
+            alt={att.name}
+            onClick={() => setFullscreen(true)}
+            className="cursor-zoom-in w-full h-auto block"
+            style={{ maxHeight: 360, objectFit: "contain" }}
+          />
+        ) : isVideo ? (
+          <video
+            src={url}
+            controls
+            className="w-full block"
+            style={{ maxHeight: 360 }}
+          />
+        ) : isPdf ? (
+          <iframe
+            src={url}
+            title={att.name}
+            className="w-full"
+            style={{ height: 480, border: 0, backgroundColor: "white" }}
+          />
+        ) : null}
+      </div>
+
+      {fullscreen && url && isImage && (
+        <Suspense fallback={null}>
+          <ImageLightbox url={url} name={att.name} onClose={() => setFullscreen(false)} />
+        </Suspense>
+      )}
+      {fullscreen && url && isVideo && (
+        <Suspense fallback={null}>
+          <VideoLightbox url={url} onClose={() => setFullscreen(false)} />
+        </Suspense>
+      )}
     </div>
   );
 };
