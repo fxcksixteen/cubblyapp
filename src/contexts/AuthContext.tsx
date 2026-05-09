@@ -119,38 +119,73 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // Presence tracking — broadcast that we're online + track who else is.
-  // Wrapped in subscribeWithReconnect so a closed/errored channel auto-rebuilds
-  // (presence is what powers the green status dots — if it drops we MUST recover
-  // automatically or every user looks offline forever).
-  // Pending-offline timers per user_id. We NEVER flip a user from online →
-  // offline immediately on a single empty/short presence sync — bursty iOS
-  // background/foreground transitions and brief socket reconnects routinely
-  // drop every key for one render. Instead we mark the uid as "maybe offline"
-  // and only commit the removal after PRESENCE_OFFLINE_GRACE_MS of continuous
-  // absence. Coming back ONLINE is always immediate.
-  const pendingOfflineRef = useRef<Map<string, number>>(new Map());
-  const PRESENCE_OFFLINE_GRACE_MS = 10_000;
+  // ─────────────────────────────────────────────────────────────────────
+  // Presence — server-side heartbeat model.
+  // Every authenticated client calls `presence_heartbeat` every 30s. The DB
+  // stores `profiles.last_seen_at`. "Online" = last_seen_at within ~75s AND
+  // status != 'invisible'. This is the source of truth — flicker on the
+  // realtime presence channel can no longer mark someone offline.
+  // We additionally subscribe to a global presence channel as a *bonus*
+  // signal, and union it with the DB result so old clients (pre-DB-heartbeat)
+  // still appear online via the channel.
+  // ─────────────────────────────────────────────────────────────────────
+  const dbOnlineRef = useRef<Set<string>>(new Set());
+  const channelOnlineRef = useRef<Set<string>>(new Set());
+
+  const recomputeOnline = () => {
+    const merged = new Set<string>();
+    dbOnlineRef.current.forEach((u) => merged.add(u));
+    channelOnlineRef.current.forEach((u) => merged.add(u));
+    setOnlineUserIds(merged);
+  };
 
   useEffect(() => {
     const user = session?.user;
     if (!user) {
+      dbOnlineRef.current = new Set();
+      channelOnlineRef.current = new Set();
       setOnlineUserIds(new Set());
-      pendingOfflineRef.current.forEach((t) => window.clearTimeout(t));
-      pendingOfflineRef.current.clear();
       return;
     }
 
+    let cancelled = false;
+
+    // ── Heartbeat the DB so we count as online server-side.
+    const heartbeat = async () => {
+      try { await (supabase as any).rpc("presence_heartbeat"); } catch {}
+    };
+    heartbeat();
+    const heartbeatInterval = window.setInterval(heartbeat, 30_000);
+    const onWake = () => { heartbeat(); };
+    window.addEventListener("focus", onWake);
+    window.addEventListener("online", onWake);
+    document.addEventListener("visibilitychange", onWake);
+    window.addEventListener("cubbly:realtime-wake", onWake);
+
+    // ── Poll DB for the authoritative online list every 20s.
+    const fetchOnline = async () => {
+      try {
+        const { data } = await (supabase as any).rpc("online_user_ids", { _window_seconds: 75 });
+        if (cancelled) return;
+        const ids = new Set<string>(((data ?? []) as Array<{ user_id: string }>).map((r) => r.user_id));
+        // Always include self while authenticated.
+        ids.add(user.id);
+        dbOnlineRef.current = ids;
+        recomputeOnline();
+      } catch {}
+    };
+    fetchOnline();
+    const pollInterval = window.setInterval(fetchOnline, 20_000);
+
+    // ── Bonus signal: realtime presence channel (helps users on older clients).
     const topic = "global:online";
     const presenceKey = `${user.id}:${crypto.randomUUID()}`;
-
     const cleanup = subscribeWithReconnect(topic, () => {
       removeChannelByTopic(topic);
       const channel = supabase.channel(topic, {
         config: { presence: { key: presenceKey } },
       });
-
-      const computeIdsFromState = (): Set<string> => {
+      const onSync = () => {
         const state = channel.presenceState() as Record<string, Array<{ user_id?: string }>>;
         const ids = new Set<string>();
         for (const [key, entries] of Object.entries(state)) {
@@ -158,75 +193,30 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             const uid = entry?.user_id ?? key.split(":")[0];
             if (uid) ids.add(uid);
           }
-          // Belt-and-suspenders: also union the key prefix.
           ids.add(key.split(":")[0]);
         }
-        return ids;
+        channelOnlineRef.current = ids;
+        recomputeOnline();
+        channel.track({ user_id: user.id, online_at: new Date().toISOString() }).catch(() => {});
       };
-
-      const applyIds = (nextIds: Set<string>) => {
-        setOnlineUserIds((prev) => {
-          const merged = new Set(prev);
-          // 1. Anyone newly present → add immediately + cancel pending offline.
-          for (const uid of nextIds) {
-            if (!merged.has(uid)) merged.add(uid);
-            const t = pendingOfflineRef.current.get(uid);
-            if (t) {
-              window.clearTimeout(t);
-              pendingOfflineRef.current.delete(uid);
-            }
-          }
-          // 2. Anyone in `prev` but missing from `nextIds` → schedule a
-          //    delayed removal (don't remove now). If they reappear in a
-          //    later sync the timer is cleared above.
-          for (const uid of prev) {
-            if (nextIds.has(uid)) continue;
-            if (pendingOfflineRef.current.has(uid)) continue;
-            const handle = window.setTimeout(() => {
-              pendingOfflineRef.current.delete(uid);
-              setOnlineUserIds((curr) => {
-                if (!curr.has(uid)) return curr;
-                const copy = new Set(curr);
-                copy.delete(uid);
-                return copy;
-              });
-            }, PRESENCE_OFFLINE_GRACE_MS);
-            pendingOfflineRef.current.set(uid, handle);
-          }
-          return merged;
-        });
-      };
-
-      const onSync = () => {
-        applyIds(computeIdsFromState());
-        // Re-track on every sync — cheap, idempotent, and ensures our
-        // presence entry survives any transient socket churn.
-        channel
-          .track({ user_id: user.id, online_at: new Date().toISOString() })
-          .catch(() => {});
-      };
-
       channel
         .on("presence", { event: "sync" }, onSync)
         .on("presence", { event: "join" }, onSync)
         .on("presence", { event: "leave" }, onSync);
-
       return channel;
     });
 
-    // On global wake, force-clear pending-offline timers — anyone still
-    // genuinely online will be confirmed by the next sync.
-    const onWake = () => {
-      pendingOfflineRef.current.forEach((t) => window.clearTimeout(t));
-      pendingOfflineRef.current.clear();
-    };
-    window.addEventListener("cubbly:realtime-wake", onWake);
-
     return () => {
-      cleanup();
+      cancelled = true;
+      window.clearInterval(heartbeatInterval);
+      window.clearInterval(pollInterval);
+      window.removeEventListener("focus", onWake);
+      window.removeEventListener("online", onWake);
+      document.removeEventListener("visibilitychange", onWake);
       window.removeEventListener("cubbly:realtime-wake", onWake);
-      pendingOfflineRef.current.forEach((t) => window.clearTimeout(t));
-      pendingOfflineRef.current.clear();
+      cleanup();
+      dbOnlineRef.current = new Set();
+      channelOnlineRef.current = new Set();
       setOnlineUserIds(new Set());
     };
   }, [session?.user?.id]);

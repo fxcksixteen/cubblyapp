@@ -23,9 +23,25 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.3.1";
+export const CURRENT_VERSION = "0.3.2";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.3.2",
+    title: "Rock-solid presence, rejoinable calls & screenshare polish",
+    date: "2026-05-09",
+    hero: bearImage,
+    newFeatures: [
+      "Online status indicators are now driven server-side by a database heartbeat — your friends' green/idle/dnd dots stay accurate even across socket reconnects, mobile sleep, and brief network drops. Anyone running an older build still appears online via the legacy presence channel.",
+      "Rejoining a call now reuses the existing call event instead of starting a new one — the call duration timer keeps counting from the original start, and you slide right back into the same WebRTC session.",
+    ],
+    bugFixes: [
+      "Status indicators no longer flap online ↔ offline. Removed the realtime reconnect loop that kept tearing down the global presence socket and added 2s debouncing on wake events.",
+      "Call pills no longer disappear after a 2-person call ends — they correctly stick around in the chat as a normal message.",
+      "Game streaming bitrate is now scaled and capped (≤4 Mbps) with degradation preference set to balanced, so a single screenshare can't starve voice for either user.",
+      "Fixed the 'cannot add postgres_changes after subscribe' errors on the badges and name-colors realtime channels that were spamming the console after HMR / fast page transitions.",
+    ],
+  },
   {
     version: "0.3.1",
     title: "Settings overhaul, themes restored & call stability",

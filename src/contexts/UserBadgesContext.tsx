@@ -89,6 +89,9 @@ export const UserBadgesProvider = ({ children }: { children: ReactNode }) => {
 
   // Realtime: any badge equip/unequip drops & refetches that user
   useEffect(() => {
+    // Drop any pre-existing channel with this topic (HMR / strict mode)
+    const existing = supabase.getChannels().find((c: any) => c.topic === "realtime:badges-global");
+    if (existing) supabase.removeChannel(existing);
     const ch = supabase
       .channel("badges-global")
       .on(
