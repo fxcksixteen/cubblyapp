@@ -1022,7 +1022,9 @@ export type Database = {
           user_id: string
         }[]
       }
-      presence_heartbeat: { Args: never; Returns: string }
+      presence_heartbeat:
+        | { Args: never; Returns: string }
+        | { Args: { _session_key?: string }; Returns: string }
       purchase_shop_item: { Args: { _item_id: string }; Returns: Json }
       send_test_bot_reply: {
         Args: { _conversation_id: string }
