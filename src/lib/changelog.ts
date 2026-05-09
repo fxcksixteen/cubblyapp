@@ -32,7 +32,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: "2026-05-09",
     hero: bearImage,
     newFeatures: [
-      "Online status indicators are now driven server-side by a database heartbeat — your friends' green/idle/dnd dots stay accurate even across socket reconnects, mobile sleep, and brief network drops. Anyone running an older build still appears online via the legacy presence channel.",
+      "Online status indicators are now 100% database-driven and version-tolerant — anyone with an active device (even on older builds) shows up online, because presence unions the new profile heartbeat with existing per-device session timestamps. No more friends stuck offline while they're literally typing.",
       "Rejoining a call now reuses the existing call event instead of starting a new one — the call duration timer keeps counting from the original start, and you slide right back into the same WebRTC session.",
     ],
     bugFixes: [
