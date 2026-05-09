@@ -567,6 +567,23 @@ final class CallStore: ObservableObject {
 
     func reapplyAudioSession() { configureAudioSession() }
 
+    /// Cheap route-only update — flips speaker vs. earpiece/Bluetooth without
+    /// tearing down the active `setCategory(...)` (which momentarily stalls
+    /// the mic input on some devices and produced the "speaker = mute"
+    /// symptom users reported). Use this for the in-call speaker toggle.
+    func applySpeakerRouteOnly() {
+        let session = AVAudioSession.sharedInstance()
+        do {
+            if CallSettings.shared.speakerOutput {
+                try session.overrideOutputAudioPort(.speaker)
+            } else {
+                try session.overrideOutputAudioPort(.none)
+            }
+        } catch {
+            print("[Call] applySpeakerRouteOnly failed:", error)
+        }
+    }
+
     // MARK: - Minimize / Restore
 
     func minimize() { isMinimized = true }
