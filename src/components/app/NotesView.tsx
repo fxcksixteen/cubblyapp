@@ -1226,7 +1226,7 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
           onDragLeave={onEditorDragLeave}
           onDrop={onEditorDrop}
           onPaste={onEditorPaste}
-          onDragStart={onEditorDragStart}
+          onDragStart={(e) => e.preventDefault()}
           className="px-6 py-4 outline-none prose prose-sm max-w-none"
           style={{
             color: "var(--app-text-primary)",
