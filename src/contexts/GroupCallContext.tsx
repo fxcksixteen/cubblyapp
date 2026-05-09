@@ -476,16 +476,45 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     localStreamRef.current = stream;
     startSelfMonitor(stream);
 
-    // Insert call event row
-    const callEventId = crypto.randomUUID();
+    // Reuse an existing ongoing call_event for this conversation if one
+    // exists — that's how "rejoin" works after everyone left or after a
+    // user dropped out and wants to come back. Without this we'd insert a
+    // brand-new event row and the rejoiner would sit in their own empty
+    // call while the original "ongoing" row continues to claim it's live.
+    let callEventId: string;
+    let callStartedAt: number = Date.now();
+    try {
+      const { data: existing } = await supabase
+        .from("call_events")
+        .select("id, started_at")
+        .eq("conversation_id", conversationId)
+        .eq("state", "ongoing")
+        .order("started_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (existing?.id) {
+        callEventId = existing.id;
+        if (existing.started_at) callStartedAt = new Date(existing.started_at).getTime();
+      } else {
+        callEventId = crypto.randomUUID();
+        await supabase.from("call_events").insert({
+          id: callEventId,
+          conversation_id: conversationId,
+          caller_id: user.id,
+          state: "ongoing",
+        } as any);
+      }
+    } catch {
+      callEventId = crypto.randomUUID();
+      await supabase.from("call_events").insert({
+        id: callEventId,
+        conversation_id: conversationId,
+        caller_id: user.id,
+        state: "ongoing",
+      } as any);
+    }
     callEventIdRef.current = callEventId;
     callConvIdRef.current = conversationId;
-    await supabase.from("call_events").insert({
-      id: callEventId,
-      conversation_id: conversationId,
-      caller_id: user.id,
-      state: "ongoing",
-    } as any);
 
     // Insert participant row for self via the heartbeat RPC so left_at is
     // cleared and last_seen_at is fresh (revives any prior row instead of
@@ -498,7 +527,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       _is_screen_sharing: false,
     });
 
-    setActiveCall({ conversationId, conversationName, joinedAt: Date.now(), isMuted: false, isDeafened: false, isVideoOn: false, isScreenSharing: false });
+    setActiveCall({ conversationId, conversationName, joinedAt: callStartedAt, isMuted: false, isDeafened: false, isVideoOn: false, isScreenSharing: false });
     playSound("joinCall", { volume: 0.4 });
 
     // Subscribe to call channel

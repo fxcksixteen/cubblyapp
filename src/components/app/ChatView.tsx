@@ -146,9 +146,14 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
     const newestLoadedTs = messages.length > 0 ? new Date(messages[messages.length - 1].created_at).getTime() : null;
     const inWindow = all.filter(e => {
       if (e.state === "ongoing") return true;
-      if (oldestLoadedTs == null || newestLoadedTs == null) return false;
+      if (oldestLoadedTs == null) return false;
       const ts = new Date(e.startedAt).getTime();
-      return ts >= oldestLoadedTs - 1000 && ts <= newestLoadedTs + 1000;
+      // Show any ended call that started AFTER the oldest loaded message.
+      // Previously we also clamped the upper bound to newestLoadedTs+1s,
+      // which silently dropped freshly-ended call pills whenever the call
+      // was started more than a second after the last visible message —
+      // that's exactly how the pill "disappeared" once both users left.
+      return ts >= oldestLoadedTs - 1000;
     });
     const ongoingByStart = inWindow
       .filter(e => e.state === "ongoing")
