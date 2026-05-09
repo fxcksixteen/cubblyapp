@@ -908,7 +908,7 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     const range = sel && sel.rangeCount ? sel.getRangeAt(0) : null;
     for (const it of imageItems) {
       const f = it.getAsFile();
-      if (f) await uploadAndInsert(f, range);
+      if (f) await uploadFile(f, { insertInline: true, range });
     }
   };
 
