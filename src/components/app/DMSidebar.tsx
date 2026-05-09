@@ -399,7 +399,11 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
           </button>
           <button
             onClick={() => {
-              if (activeCall) { toggleDeafen(); } else { setLocalDeafened(!localDeafened); }
+              if (activeCall) { toggleDeafen(); } else {
+                const next = !localDeafened;
+                setLocalDeafened(next);
+                playSound(next ? "deafen" : "undeafen", { volume: 0.4 });
+              }
             }}
             className="rounded p-1.5 transition-colors"
             style={{ backgroundColor: (activeCall ? activeCall.isDeafened : localDeafened) ? "rgba(237,66,69,0.2)" : undefined }}
