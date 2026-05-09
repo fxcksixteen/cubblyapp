@@ -894,7 +894,7 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     const range = caretRangeAt(e.clientX, e.clientY);
     for (const f of files) {
       // Use a fresh range each time so subsequent files insert just after the previous
-      await uploadAndInsert(f, range);
+      await uploadFile(f, { insertInline: true, range });
     }
   };
 
