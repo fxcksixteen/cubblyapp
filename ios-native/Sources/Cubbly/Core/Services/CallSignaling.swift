@@ -191,27 +191,31 @@ final class CallSignaling {
     func broadcast(type: String, payload: [String: AnyJSON] = [:]) async {
         guard let channel = callChannel else { return }
         var p = payload
-        p["senderId"] = .string(userId.uuidString)
+        // Lowercase senderId — web compares against `user.id` which is
+        // always lowercase.
+        p["senderId"] = .string(userId.uuidString.lowercased())
         p["type"] = .string(type)
         try? await channel.broadcast(event: "voice-signal", message: p)
     }
 
     /// Ring a remote user via their global channel.
     func ringUser(targetUserId: UUID, conversationId: UUID, callEventId: UUID, callerName: String?, callerAvatarUrl: String?) async {
-        let channel = await RealtimeChannelFactory.make("voice-global:\(targetUserId.uuidString)", client: client)
+        // Lowercase the target's UUID so we publish onto the SAME Realtime
+        // topic web/desktop subscribed to. Without this, the broadcast lands
+        // on a topic nobody listens to and the peer never rings.
+        let targetKey = targetUserId.uuidString.lowercased()
+        let channel = await RealtimeChannelFactory.make("voice-global:\(targetKey)", client: client)
         await channel.subscribe()
         // CRITICAL: supabase-swift's `subscribe()` returns BEFORE the JOIN ack
         // — broadcasting now would silently drop the ring on the floor and
-        // the peer would never see the incoming call (the bug that made
-        // iOS-initiated calls appear to ring on the caller but never reach
-        // the callee). Wait until the channel is actually subscribed.
+        // the peer would never see the incoming call. Wait for JOIN.
         await Self.awaitJoined(channel)
         var payload: [String: AnyJSON] = [
-            "targetId": .string(targetUserId.uuidString),
-            "conversationId": .string(conversationId.uuidString),
-            "callEventId": .string(callEventId.uuidString),
-            "callerId": .string(userId.uuidString),
-            "userId": .string(userId.uuidString),
+            "targetId": .string(targetKey),
+            "conversationId": .string(conversationId.uuidString.lowercased()),
+            "callEventId": .string(callEventId.uuidString.lowercased()),
+            "callerId": .string(userId.uuidString.lowercased()),
+            "userId": .string(userId.uuidString.lowercased()),
         ]
         if let n = callerName { payload["callerName"] = .string(n) }
         if let a = callerAvatarUrl { payload["callerAvatarUrl"] = .string(a) }
