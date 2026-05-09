@@ -378,7 +378,11 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
         <div className="flex items-center gap-0.5 shrink-0">
           <button
             onClick={() => {
-              if (activeCall) { toggleMute(); } else { setLocalMuted(!localMuted); }
+              if (activeCall) { toggleMute(); } else {
+                const next = !localMuted;
+                setLocalMuted(next);
+                playSound(next ? "mute" : "unmute", { volume: 0.4 });
+              }
             }}
             className="rounded p-1.5 transition-colors"
             style={{ backgroundColor: (activeCall ? activeCall.isMuted : localMuted) ? "rgba(237,66,69,0.2)" : undefined }}
