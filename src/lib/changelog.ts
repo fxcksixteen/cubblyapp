@@ -42,7 +42,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Game streaming feels real-time again: lowered the inbound video jitter buffer (playoutDelayHint 0.05s, jitterBufferTarget 50ms) on every screen-share receiver, so frames play out as they arrive instead of stockpiling 200-400 ms of delay.",
       "Game streaming bitrate is now scaled and capped (≤4 Mbps) with degradation preference set to balanced, so a single screenshare can't starve voice for either user.",
       "Mute / unmute / deafen / undeafen sound effects now play consistently — the mic and headphone buttons in the bottom of the DM sidebar trigger the same SFX whether you're in a call or not.",
-      "Personal notes: images can now be dropped, pasted, or inserted anywhere inside the note body — and dragged to reposition. They're stored end-to-end encrypted just like before.",
+      "Personal notes: attached images stay as files by default and only appear inline when you press Insert — every attachment lives in the bottom strip with quick Insert / Uninsert / Download / Delete actions. Inserted images can be dragged to reposition anywhere in the body, and a single click opens them fullscreen. Still end-to-end encrypted.",
       "Fixed the 'cannot add postgres_changes after subscribe' errors on the badges and name-colors realtime channels that were spamming the console after HMR / fast page transitions.",
     ],
   },

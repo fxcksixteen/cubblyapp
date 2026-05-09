@@ -563,6 +563,7 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [editorDragOver, setEditorDragOver] = useState(false);
+  const [lightbox, setLightbox] = useState<{ kind: "image" | "video"; url: string; name: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const dirty = useRef(false);
@@ -753,25 +754,29 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     sel?.addRange(after);
   };
 
-  // Upload + insert a file at a specific caret range. Images/videos go
-  // inline into the body; everything else falls back to the attachment list.
-  const uploadAndInsert = async (file: File, range: Range | null) => {
+  // Upload a file. By default we DO NOT insert it inline — attachments
+  // appear in the bottom strip and the user inserts them explicitly. The
+  // `insertInline` flag is only used when a file is dropped directly into
+  // the editor body (drag-drop or paste), where the user clearly intends
+  // for it to land at the drop point.
+  const uploadFile = async (file: File, opts: { insertInline?: boolean; range?: Range | null } = {}) => {
     if (file.size > 25 * 1024 * 1024) { toast.error("File too large (25MB max)"); return; }
     setUploading(true);
     try {
       const att = await n.uploadAttachment(file);
       setAttachments((prev) => [...prev, att]);
       dirty.current = true;
+      // Pre-cache blob URL from the original file (cheaper than redownloading).
       if (att.mime.startsWith("image/") || att.mime.startsWith("video/")) {
-        // Get a usable blob URL immediately from the original file (cheaper
-        // than re-downloading from storage).
         const url = URL.createObjectURL(file);
         blobUrlCacheRef.current.set(att.id, url);
-        const node = att.mime.startsWith("image/")
-          ? buildInlineImg(att.id, url, file.name)
-          : buildInlineVideo(att.id, url);
-        insertNodeAtCaret(node, range);
-        setBody(bodyRef.current?.innerHTML || "");
+        if (opts.insertInline) {
+          const node = att.mime.startsWith("image/")
+            ? buildInlineImg(att.id, url, file.name)
+            : buildInlineVideo(att.id, url);
+          insertNodeAtCaret(node, opts.range ?? null);
+          setBody(bodyRef.current?.innerHTML || "");
+        }
       }
     } catch (e: any) {
       toast.error(e?.message || "Upload failed");
@@ -780,16 +785,9 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     }
   };
 
-  // Toolbar Attach button — appends inline at end of body for images,
-  // adds to file list for everything else.
+  // Toolbar Attach button — never auto-inserts; just adds to attachments.
   const onUpload = async (file: File) => {
-    let range: Range | null = null;
-    if (bodyRef.current) {
-      range = document.createRange();
-      range.selectNodeContents(bodyRef.current);
-      range.collapse(false);
-    }
-    await uploadAndInsert(file, range);
+    await uploadFile(file, { insertInline: false });
   };
 
   const downloadAtt = async (att: typeof attachments[0]) => {
@@ -819,6 +817,15 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     }
     const cached = blobUrlCacheRef.current.get(id);
     if (cached) { try { URL.revokeObjectURL(cached); } catch {} blobUrlCacheRef.current.delete(id); }
+    dirty.current = true;
+  };
+
+  // Remove an attachment's inline references from the body but keep it
+  // in the attachment list so the user can re-insert it later.
+  const uninsertAtt = (id: string) => {
+    if (!bodyRef.current) return;
+    bodyRef.current.querySelectorAll(`[data-att-id="${id}"]`).forEach((el) => el.remove());
+    setBody(bodyRef.current.innerHTML);
     dirty.current = true;
   };
 
@@ -888,7 +895,7 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     const range = caretRangeAt(e.clientX, e.clientY);
     for (const f of files) {
       // Use a fresh range each time so subsequent files insert just after the previous
-      await uploadAndInsert(f, range);
+      await uploadFile(f, { insertInline: true, range });
     }
   };
 
@@ -902,7 +909,7 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     const range = sel && sel.rangeCount ? sel.getRangeAt(0) : null;
     for (const it of imageItems) {
       const f = it.getAsFile();
-      if (f) await uploadAndInsert(f, range);
+      if (f) await uploadFile(f, { insertInline: true, range });
     }
   };
 
@@ -1100,7 +1107,18 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     const onPointerUp = (e: PointerEvent) => {
       if (!dragging) return;
       try { dragging.releasePointerCapture(pointerId); } catch {}
-      if (!activated) { cleanup(); return; }
+      if (!activated) {
+        // Treat as a simple click: open inline images in a lightbox.
+        const clicked = dragging;
+        cleanup();
+        if (clicked && clicked.tagName.toLowerCase() === "img") {
+          const id = clicked.getAttribute("data-att-id");
+          const att = id ? latestRef.current.attachments.find((a) => a.id === id) : null;
+          const url = (clicked as HTMLImageElement).src;
+          if (url) setLightbox({ kind: "image", url, name: att?.name || "image" });
+        }
+        return;
+      }
       const ins = computeInsertion(e.clientX, e.clientY);
       if (ins) {
         try {
@@ -1157,8 +1175,6 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     });
     return ids;
   })();
-  const previewableNotInlined = attachments.filter((a) => isPreviewable(a.mime) && !inlinedIds.has(a.id));
-  const otherFiles = attachments.filter((a) => !isPreviewable(a.mime));
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -1235,26 +1251,6 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {/* Cards for previewable attachments NOT yet inlined — gives the user
-            a way to insert them anywhere into the body. */}
-        {previewableNotInlined.length > 0 && (
-          <div className="px-6 pt-4 flex flex-col gap-3">
-            {previewableNotInlined.map((att) => (
-              <InlineAttachment
-                key={att.id}
-                att={att}
-                onRemove={() => removeAtt(att.id)}
-                onDownload={() => downloadAtt(att)}
-                onInsertIntoBody={
-                  (att.mime.startsWith("image/") || att.mime.startsWith("video/"))
-                    ? () => insertExistingAttIntoBody(att)
-                    : undefined
-                }
-              />
-            ))}
-          </div>
-        )}
-
         <div
           ref={bodyRef}
           contentEditable
@@ -1280,27 +1276,68 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
         />
       </div>
 
-      {otherFiles.length > 0 && (
+      {/* Unified attachment strip — every attached file appears here with
+          quick actions (insert/uninsert for media, download, delete). */}
+      {attachments.length > 0 && (
         <div
           className="border-t px-4 py-2 flex flex-wrap gap-2"
           style={{ borderColor: "var(--app-border)", paddingBottom: "max(0.5rem, env(safe-area-inset-bottom, 0px))" }}
         >
-          {otherFiles.map((att) => (
-            <div key={att.id} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs" style={{ backgroundColor: "var(--app-bg-secondary)", border: "1px solid var(--app-border)" }}>
-              <FileText className="h-3.5 w-3.5" style={{ color: "var(--app-text-secondary)" }} />
-              <span style={{ color: "var(--app-text-primary)" }}>{att.name}</span>
-              <span style={{ color: "var(--app-text-secondary)" }}>({formatSize(att.size)})</span>
-              <button onClick={() => downloadAtt(att)} title="Download" className="ml-1">
-                <Download className="h-3.5 w-3.5" style={{ color: "var(--app-text-secondary)" }} />
-              </button>
-              <button onClick={() => removeAtt(att.id)} title="Remove">
-                <X className="h-3.5 w-3.5" style={{ color: "#ed4245" }} />
-              </button>
-            </div>
-          ))}
+          {attachments.map((att) => {
+            const isMedia = att.mime.startsWith("image/") || att.mime.startsWith("video/");
+            const isInlined = inlinedIds.has(att.id);
+            return (
+              <div
+                key={att.id}
+                className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs"
+                style={{ backgroundColor: "var(--app-bg-secondary)", border: "1px solid var(--app-border)" }}
+              >
+                <FileText className="h-3.5 w-3.5" style={{ color: "var(--app-text-secondary)" }} />
+                <span className="max-w-[160px] truncate" style={{ color: "var(--app-text-primary)" }}>{att.name}</span>
+                <span style={{ color: "var(--app-text-secondary)" }}>({formatSize(att.size)})</span>
+                {isMedia && (
+                  isInlined ? (
+                    <button
+                      onClick={() => uninsertAtt(att.id)}
+                      title="Remove from note body (keeps file attached)"
+                      className="ml-1 px-1.5 py-0.5 rounded text-[11px] hover:bg-[var(--app-hover)]"
+                      style={{ color: "var(--app-text-secondary)", border: "1px solid var(--app-border)" }}
+                    >
+                      Uninsert
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => insertExistingAttIntoBody(att)}
+                      title="Insert into note body"
+                      className="ml-1 px-1.5 py-0.5 rounded text-[11px] hover:bg-[var(--app-hover)]"
+                      style={{ color: "hsl(var(--primary))", border: "1px solid hsl(var(--primary) / 0.4)" }}
+                    >
+                      Insert
+                    </button>
+                  )
+                )}
+                <button onClick={() => downloadAtt(att)} title="Download" className="ml-0.5 p-0.5 rounded hover:bg-[var(--app-hover)]">
+                  <Download className="h-3.5 w-3.5" style={{ color: "var(--app-text-secondary)" }} />
+                </button>
+                <button onClick={() => removeAtt(att.id)} title="Delete attachment" className="p-0.5 rounded hover:bg-[var(--app-hover)]">
+                  <X className="h-3.5 w-3.5" style={{ color: "#ed4245" }} />
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
 
+      {lightbox && lightbox.kind === "image" && (
+        <Suspense fallback={null}>
+          <ImageLightbox url={lightbox.url} name={lightbox.name} onClose={() => setLightbox(null)} />
+        </Suspense>
+      )}
+      {lightbox && lightbox.kind === "video" && (
+        <Suspense fallback={null}>
+          <VideoLightbox url={lightbox.url} onClose={() => setLightbox(null)} />
+        </Suspense>
+      )}
     </div>
   );
 };
