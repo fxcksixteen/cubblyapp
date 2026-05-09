@@ -38,7 +38,11 @@ final class CallSettings: ObservableObject {
     @Published var speakerOutput: Bool {
         didSet {
             UserDefaults.standard.set(speakerOutput, forKey: "cubbly.voice.speaker")
-            CallStore.shared.reapplyAudioSession()
+            // ROUTE-ONLY update — do NOT reapply the full audio session here.
+            // `setCategory(.playAndRecord, …)` while the mic is hot stalls the
+            // input track on some devices, which is what made the in-call
+            // speaker button look like a mute toggle.
+            CallStore.shared.applySpeakerRouteOnly()
         }
     }
 
