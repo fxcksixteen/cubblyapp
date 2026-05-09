@@ -1251,26 +1251,6 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {/* Cards for previewable attachments NOT yet inlined — gives the user
-            a way to insert them anywhere into the body. */}
-        {previewableNotInlined.length > 0 && (
-          <div className="px-6 pt-4 flex flex-col gap-3">
-            {previewableNotInlined.map((att) => (
-              <InlineAttachment
-                key={att.id}
-                att={att}
-                onRemove={() => removeAtt(att.id)}
-                onDownload={() => downloadAtt(att)}
-                onInsertIntoBody={
-                  (att.mime.startsWith("image/") || att.mime.startsWith("video/"))
-                    ? () => insertExistingAttIntoBody(att)
-                    : undefined
-                }
-              />
-            ))}
-          </div>
-        )}
-
         <div
           ref={bodyRef}
           contentEditable
@@ -1296,27 +1276,68 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
         />
       </div>
 
-      {otherFiles.length > 0 && (
+      {/* Unified attachment strip — every attached file appears here with
+          quick actions (insert/uninsert for media, download, delete). */}
+      {attachments.length > 0 && (
         <div
           className="border-t px-4 py-2 flex flex-wrap gap-2"
           style={{ borderColor: "var(--app-border)", paddingBottom: "max(0.5rem, env(safe-area-inset-bottom, 0px))" }}
         >
-          {otherFiles.map((att) => (
-            <div key={att.id} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs" style={{ backgroundColor: "var(--app-bg-secondary)", border: "1px solid var(--app-border)" }}>
-              <FileText className="h-3.5 w-3.5" style={{ color: "var(--app-text-secondary)" }} />
-              <span style={{ color: "var(--app-text-primary)" }}>{att.name}</span>
-              <span style={{ color: "var(--app-text-secondary)" }}>({formatSize(att.size)})</span>
-              <button onClick={() => downloadAtt(att)} title="Download" className="ml-1">
-                <Download className="h-3.5 w-3.5" style={{ color: "var(--app-text-secondary)" }} />
-              </button>
-              <button onClick={() => removeAtt(att.id)} title="Remove">
-                <X className="h-3.5 w-3.5" style={{ color: "#ed4245" }} />
-              </button>
-            </div>
-          ))}
+          {attachments.map((att) => {
+            const isMedia = att.mime.startsWith("image/") || att.mime.startsWith("video/");
+            const isInlined = inlinedIds.has(att.id);
+            return (
+              <div
+                key={att.id}
+                className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs"
+                style={{ backgroundColor: "var(--app-bg-secondary)", border: "1px solid var(--app-border)" }}
+              >
+                <FileText className="h-3.5 w-3.5" style={{ color: "var(--app-text-secondary)" }} />
+                <span className="max-w-[160px] truncate" style={{ color: "var(--app-text-primary)" }}>{att.name}</span>
+                <span style={{ color: "var(--app-text-secondary)" }}>({formatSize(att.size)})</span>
+                {isMedia && (
+                  isInlined ? (
+                    <button
+                      onClick={() => uninsertAtt(att.id)}
+                      title="Remove from note body (keeps file attached)"
+                      className="ml-1 px-1.5 py-0.5 rounded text-[11px] hover:bg-[var(--app-hover)]"
+                      style={{ color: "var(--app-text-secondary)", border: "1px solid var(--app-border)" }}
+                    >
+                      Uninsert
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => insertExistingAttIntoBody(att)}
+                      title="Insert into note body"
+                      className="ml-1 px-1.5 py-0.5 rounded text-[11px] hover:bg-[var(--app-hover)]"
+                      style={{ color: "hsl(var(--primary))", border: "1px solid hsl(var(--primary) / 0.4)" }}
+                    >
+                      Insert
+                    </button>
+                  )
+                )}
+                <button onClick={() => downloadAtt(att)} title="Download" className="ml-0.5 p-0.5 rounded hover:bg-[var(--app-hover)]">
+                  <Download className="h-3.5 w-3.5" style={{ color: "var(--app-text-secondary)" }} />
+                </button>
+                <button onClick={() => removeAtt(att.id)} title="Delete attachment" className="p-0.5 rounded hover:bg-[var(--app-hover)]">
+                  <X className="h-3.5 w-3.5" style={{ color: "#ed4245" }} />
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
 
+      {lightbox && lightbox.kind === "image" && (
+        <Suspense fallback={null}>
+          <ImageLightbox url={lightbox.url} name={lightbox.name} onClose={() => setLightbox(null)} />
+        </Suspense>
+      )}
+      {lightbox && lightbox.kind === "video" && (
+        <Suspense fallback={null}>
+          <VideoLightbox url={lightbox.url} onClose={() => setLightbox(null)} />
+        </Suspense>
+      )}
     </div>
   );
 };
