@@ -52,7 +52,13 @@ final class CallSignaling {
     // MARK: - Global ring channel (always on)
 
     func subscribeToIncomingCalls() async {
-        let channel = await RealtimeChannelFactory.make("voice-global:\(userId.uuidString)", client: client)
+        // CRITICAL: web/desktop subscribe to `voice-global:<lowercase-uuid>`.
+        // Supabase auth user ids serialize as lowercase on those clients, while
+        // Swift's `UUID.uuidString` returns UPPERCASE. If we don't lowercase,
+        // iOS subscribes to a different Realtime topic entirely and rings
+        // never cross platforms. Same applies on every other channel/payload
+        // that embeds a user id below.
+        let channel = await RealtimeChannelFactory.make("voice-global:\(userId.uuidString.lowercased())", client: client)
         let stream = channel.broadcastStream(event: "incoming-call")
         Task { [weak self] in
             for await message in stream {
@@ -79,10 +85,11 @@ final class CallSignaling {
     private func handleIncomingCall(message: [String: AnyJSON]) {
         // Web/desktop sends { targetId, callerId, ... }. Older iOS builds sent
         // { userId, ... }. Accept both shapes so cross-platform rings and the
-        // associated call_event pill stay in sync.
+        // associated call_event pill stay in sync. Compare on lowercase UUID
+        // strings so case differences between platforms never reject a ring.
+        let myKey = userId.uuidString.lowercased()
         if let targetStr = message["targetId"]?.stringValue,
-           let targetId = UUID(uuidString: targetStr),
-           targetId != userId {
+           targetStr.lowercased() != myKey {
             return
         }
         guard
@@ -101,7 +108,10 @@ final class CallSignaling {
 
     func joinCallChannel(conversationId: UUID) async {
         await leaveCallChannel()
-        let channel = await RealtimeChannelFactory.make("voice-call:\(conversationId.uuidString)", client: client)
+        // Lowercase the conversation id in the topic too — web uses
+        // `voice-call:<lowercase-uuid>` and a case mismatch silently splits
+        // the call across two different Realtime topics.
+        let channel = await RealtimeChannelFactory.make("voice-call:\(conversationId.uuidString.lowercased())", client: client)
         currentConversationId = conversationId
 
         let stream = channel.broadcastStream(event: "voice-signal")
@@ -181,27 +191,31 @@ final class CallSignaling {
     func broadcast(type: String, payload: [String: AnyJSON] = [:]) async {
         guard let channel = callChannel else { return }
         var p = payload
-        p["senderId"] = .string(userId.uuidString)
+        // Lowercase senderId — web compares against `user.id` which is
+        // always lowercase.
+        p["senderId"] = .string(userId.uuidString.lowercased())
         p["type"] = .string(type)
         try? await channel.broadcast(event: "voice-signal", message: p)
     }
 
     /// Ring a remote user via their global channel.
     func ringUser(targetUserId: UUID, conversationId: UUID, callEventId: UUID, callerName: String?, callerAvatarUrl: String?) async {
-        let channel = await RealtimeChannelFactory.make("voice-global:\(targetUserId.uuidString)", client: client)
+        // Lowercase the target's UUID so we publish onto the SAME Realtime
+        // topic web/desktop subscribed to. Without this, the broadcast lands
+        // on a topic nobody listens to and the peer never rings.
+        let targetKey = targetUserId.uuidString.lowercased()
+        let channel = await RealtimeChannelFactory.make("voice-global:\(targetKey)", client: client)
         await channel.subscribe()
         // CRITICAL: supabase-swift's `subscribe()` returns BEFORE the JOIN ack
         // — broadcasting now would silently drop the ring on the floor and
-        // the peer would never see the incoming call (the bug that made
-        // iOS-initiated calls appear to ring on the caller but never reach
-        // the callee). Wait until the channel is actually subscribed.
+        // the peer would never see the incoming call. Wait for JOIN.
         await Self.awaitJoined(channel)
         var payload: [String: AnyJSON] = [
-            "targetId": .string(targetUserId.uuidString),
-            "conversationId": .string(conversationId.uuidString),
-            "callEventId": .string(callEventId.uuidString),
-            "callerId": .string(userId.uuidString),
-            "userId": .string(userId.uuidString),
+            "targetId": .string(targetKey),
+            "conversationId": .string(conversationId.uuidString.lowercased()),
+            "callEventId": .string(callEventId.uuidString.lowercased()),
+            "callerId": .string(userId.uuidString.lowercased()),
+            "userId": .string(userId.uuidString.lowercased()),
         ]
         if let n = callerName { payload["callerName"] = .string(n) }
         if let a = callerAvatarUrl { payload["callerAvatarUrl"] = .string(a) }

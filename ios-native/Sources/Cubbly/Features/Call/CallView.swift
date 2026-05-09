@@ -20,6 +20,29 @@ struct CallView: View {
         ZStack {
             Theme.Colors.bgTertiary.ignoresSafeArea()
 
+            // Drag-to-minimize gesture lives on a transparent backdrop layer
+            // so it can't steal taps from the speaker / minimize buttons in
+            // the top bar (the previous full-ZStack gesture is what made
+            // tapping the speaker register as a different control).
+            Color.clear
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture()
+                        .onChanged { v in
+                            dragOffsetY = max(0, v.translation.height)
+                        }
+                        .onEnded { v in
+                            if v.translation.height > 120 {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    store.minimize()
+                                    dragOffsetY = 0
+                                }
+                            } else {
+                                withAnimation(.spring(response: 0.3)) { dragOffsetY = 0 }
+                            }
+                        }
+                )
+
             VStack(spacing: 0) {
                 topBar
 
@@ -38,23 +61,6 @@ struct CallView: View {
             }
         }
         .offset(y: max(0, dragOffsetY))
-        .gesture(
-            DragGesture()
-                .onChanged { v in
-                    // Only allow downward drags
-                    dragOffsetY = max(0, v.translation.height)
-                }
-                .onEnded { v in
-                    if v.translation.height > 120 {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                            store.minimize()
-                            dragOffsetY = 0
-                        }
-                    } else {
-                        withAnimation(.spring(response: 0.3)) { dragOffsetY = 0 }
-                    }
-                }
-        )
         .fullScreenCover(isPresented: $showFullScreenShare) {
             FullScreenScreenShareView(track: store.remoteScreenTrack)
         }
@@ -97,7 +103,9 @@ struct CallView: View {
                     .background(Circle().fill(settings.speakerOutput
                         ? Color.white.opacity(0.22)
                         : Color.white.opacity(0.08)))
+                    .contentShape(Circle())
             }
+            .buttonStyle(.plain)
             .accessibilityLabel(settings.speakerOutput ? "Speaker on" : "Speaker off")
 
             // Down-arrow → minimize. Mirrors the swipe-down gesture above.
@@ -233,32 +241,127 @@ struct CallView: View {
     }
 }
 
-/// Pure full-screen viewer for an incoming screenshare (tap-to-dismiss).
+/// Pure full-screen viewer for an incoming screenshare.
+/// Supports pinch-zoom, double-tap zoom, drag panning when zoomed, landscape
+/// orientation and auto-hiding controls (tap once to toggle the chrome).
 struct FullScreenScreenShareView: View {
     let track: RTCVideoTrack?
     @Environment(\.dismiss) private var dismiss
+
+    @State private var scale: CGFloat = 1
+    @State private var lastScale: CGFloat = 1
+    @State private var offset: CGSize = .zero
+    @State private var lastOffset: CGSize = .zero
+    @State private var controlsVisible: Bool = true
+    @State private var hideTask: Task<Void, Never>?
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
             if let track = track {
-                WebRTCVideoView(track: track).ignoresSafeArea()
-            }
-            VStack {
-                HStack {
-                    Button { dismiss() } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "chevron.down")
-                            Text("Done").font(.cubbly(14, .semibold))
+                WebRTCVideoView(track: track)
+                    .scaleEffect(scale)
+                    .offset(offset)
+                    .ignoresSafeArea()
+                    .gesture(
+                        SimultaneousGesture(
+                            MagnificationGesture()
+                                .onChanged { v in
+                                    let next = max(1, min(6, lastScale * v))
+                                    scale = next
+                                }
+                                .onEnded { _ in
+                                    lastScale = scale
+                                    if scale < 1.02 { resetTransform() }
+                                },
+                            DragGesture()
+                                .onChanged { v in
+                                    guard scale > 1.05 else { return }
+                                    offset = CGSize(
+                                        width: lastOffset.width + v.translation.width,
+                                        height: lastOffset.height + v.translation.height
+                                    )
+                                }
+                                .onEnded { _ in lastOffset = offset }
+                        )
+                    )
+                    .onTapGesture(count: 2) {
+                        withAnimation(.spring(response: 0.3)) {
+                            if scale > 1.05 {
+                                resetTransform()
+                            } else {
+                                scale = 2.5
+                                lastScale = 2.5
+                            }
                         }
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 12).padding(.vertical, 8)
+                    }
+                    .onTapGesture(count: 1) {
+                        toggleControls()
+                    }
+            }
+
+            if controlsVisible {
+                VStack {
+                    HStack {
+                        Button { dismiss() } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "chevron.down")
+                                Text("Done").font(.cubbly(14, .semibold))
+                            }
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12).padding(.vertical, 8)
+                            .background(.ultraThinMaterial, in: Capsule())
+                        }
+                        Spacer()
+                        HStack(spacing: 6) {
+                            Circle().fill(Color.red).frame(width: 8, height: 8)
+                            Text("LIVE")
+                                .font(.cubbly(11, .bold))
+                                .foregroundStyle(.white)
+                        }
+                        .padding(.horizontal, 10).padding(.vertical, 6)
                         .background(.ultraThinMaterial, in: Capsule())
                     }
+                    .padding(.horizontal, 16).padding(.top, 50)
                     Spacer()
+                    HStack {
+                        Text(String(format: "%.1fx", scale))
+                            .font(.cubbly(11, .semibold))
+                            .foregroundStyle(.white.opacity(0.9))
+                            .padding(.horizontal, 10).padding(.vertical, 6)
+                            .background(.ultraThinMaterial, in: Capsule())
+                        Spacer()
+                        Text("Double-tap to zoom · pinch to scale")
+                            .font(.cubbly(11, .medium))
+                            .foregroundStyle(.white.opacity(0.7))
+                    }
+                    .padding(.horizontal, 16).padding(.bottom, 30)
                 }
-                .padding(.horizontal, 16).padding(.top, 50)
-                Spacer()
+                .transition(.opacity)
+            }
+        }
+        .statusBarHidden(true)
+        .persistentSystemOverlays(.hidden)
+        .onAppear { scheduleHide() }
+        .onDisappear { hideTask?.cancel() }
+    }
+
+    private func resetTransform() {
+        scale = 1; lastScale = 1
+        offset = .zero; lastOffset = .zero
+    }
+
+    private func toggleControls() {
+        withAnimation(.easeInOut(duration: 0.2)) { controlsVisible.toggle() }
+        if controlsVisible { scheduleHide() }
+    }
+
+    private func scheduleHide() {
+        hideTask?.cancel()
+        hideTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 3_500_000_000)
+            if !Task.isCancelled {
+                withAnimation(.easeInOut(duration: 0.25)) { controlsVisible = false }
             }
         }
     }

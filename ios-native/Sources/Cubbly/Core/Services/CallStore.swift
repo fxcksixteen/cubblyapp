@@ -393,7 +393,7 @@ final class CallStore: ObservableObject {
         // Without this, web/desktop callers (which now wait for ready-for-offer
         // before sending the SDP offer) hang forever and the call never forms.
         await signaling.broadcast(type: "ready-for-offer", payload: [
-            "callEventId": inc.callEventId.map { .string($0.uuidString) } ?? .null
+            "callEventId": inc.callEventId.map { .string($0.uuidString.lowercased()) } ?? .null
         ])
         print("[Call] 📡 Sent ready-for-offer to caller")
     }
@@ -567,6 +567,23 @@ final class CallStore: ObservableObject {
 
     func reapplyAudioSession() { configureAudioSession() }
 
+    /// Cheap route-only update — flips speaker vs. earpiece/Bluetooth without
+    /// tearing down the active `setCategory(...)` (which momentarily stalls
+    /// the mic input on some devices and produced the "speaker = mute"
+    /// symptom users reported). Use this for the in-call speaker toggle.
+    func applySpeakerRouteOnly() {
+        let session = AVAudioSession.sharedInstance()
+        do {
+            if CallSettings.shared.speakerOutput {
+                try session.overrideOutputAudioPort(.speaker)
+            } else {
+                try session.overrideOutputAudioPort(.none)
+            }
+        } catch {
+            print("[Call] applySpeakerRouteOnly failed:", error)
+        }
+    }
+
     // MARK: - Minimize / Restore
 
     func minimize() { isMinimized = true }
@@ -669,7 +686,7 @@ final class CallStore: ObservableObject {
                 "sdp": .object(["type": .string("offer"), "sdp": .string(offer.sdp)]),
                 "callerAvatarUrl": peerAvatarUrl.map { .string($0) } ?? .null,
                 "senderName": myName.map { .string($0) } ?? .null,
-                "callEventId": currentCallEventId.map { .string($0.uuidString) } ?? .null
+                "callEventId": currentCallEventId.map { .string($0.uuidString.lowercased()) } ?? .null
             ])
             print("[Call] 📤 Offer sent in response to ready-for-offer")
         } catch {

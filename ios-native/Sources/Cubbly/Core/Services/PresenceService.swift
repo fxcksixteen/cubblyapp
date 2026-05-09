@@ -85,14 +85,33 @@ final class PresenceService: ObservableObject {
         statusRefreshTask?.cancel()
         statusRefreshTask = Task { [weak self] in
             while !Task.isCancelled {
-                // Tighter poll (10s) so DND/Idle/Invisible flips on the
-                // web/desktop side reflect on iOS within seconds even if the
-                // postgres_changes subscription on profiles silently drops.
-                try? await Task.sleep(nanoseconds: 10_000_000_000)
+                // Bulk refresh as a safety net (60s is plenty — postgres_changes
+                // delivers UPDATE/INSERT in real time below).
+                try? await Task.sleep(nanoseconds: 60_000_000_000)
                 guard let self else { return }
                 await self.refreshProfileStatuses()
+                await self.reconcileOnlineFromDatabase()
             }
         }
+
+        // Server-side heartbeat — keeps `profiles.last_seen_at` fresh so
+        // OTHER clients (web/desktop) see iOS as online via the same
+        // `online_user_ids()` RPC they use. Without this, an iOS user on a
+        // flaky websocket can appear offline to peers even though presence
+        // is fine on this device.
+        Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                _ = try? await SupabaseManager.shared.client
+                    .rpc("presence_heartbeat")
+                    .execute()
+                try? await Task.sleep(nanoseconds: 30_000_000_000)
+            }
+        }
+
+        // One-shot DB reconcile: trust postgres over a possibly-half-dead
+        // socket. Runs immediately on start and again on every foreground.
+        await reconcileOnlineFromDatabase()
     }
 
     func stop() async {
@@ -199,13 +218,32 @@ final class PresenceService: ObservableObject {
     }
 
     /// Listen for live status changes on the profiles table so when a friend
-    /// flips to DND/Idle/Invisible we update instantly without a poll.
+    /// flips to DND/Idle/Invisible we update instantly without a poll. Now
+    /// also covers INSERT so newly-registered users light up immediately.
     private func subscribeProfileStatusUpdates() async {
         let ch = await RealtimeChannelFactory.make("profiles-status-global")
-        let stream = ch.postgresChange(
+        let updates = ch.postgresChange(
             UpdateAction.self, schema: "public", table: "profiles")
+        let inserts = ch.postgresChange(
+            InsertAction.self, schema: "public", table: "profiles")
         Task { [weak self] in
-            for await action in stream {
+            for await action in updates {
+                guard let self else { return }
+                let dict = action.record
+                guard
+                    let uidJSON = dict["user_id"], let uidStr = uidJSON.stringValue,
+                    let uid = UUID(uuidString: uidStr)
+                else { continue }
+                let status = dict["status"]?.stringValue ?? "online"
+                await MainActor.run {
+                    var d = self.profileStatuses
+                    d[uid.uuidString.lowercased()] = status
+                    self.profileStatuses = d
+                }
+            }
+        }
+        Task { [weak self] in
+            for await action in inserts {
                 guard let self else { return }
                 let dict = action.record
                 guard
@@ -223,6 +261,29 @@ final class PresenceService: ObservableObject {
         do { try await ch.subscribeWithError() }
         catch { print("[Presence] profile-status subscribe failed:", error) }
         profileStatusChannel = ch
+    }
+
+    /// Reconcile our `onlineUserIDs` set against the database's view of
+    /// who's online via the `online_user_ids` RPC. This is the same source
+    /// of truth web/desktop use, so iOS never disagrees with them by more
+    /// than ~1 minute regardless of how the websocket has been behaving.
+    private func reconcileOnlineFromDatabase() async {
+        struct Row: Decodable { let user_id: UUID }
+        do {
+            let rows: [Row] = try await SupabaseManager.shared.client
+                .rpc("online_user_ids")
+                .execute()
+                .value
+            let dbIds = Set(rows.map { $0.user_id })
+            // Union with the realtime set — realtime sees joins faster than
+            // a poll, but the DB is the safety net for stale entries we may
+            // have missed leaving.
+            await MainActor.run {
+                self.onlineUserIDs = dbIds.union(self.onlineUserIDs)
+            }
+        } catch {
+            // Silent — next tick will retry.
+        }
     }
 
     // MARK: - Helpers
