@@ -1077,22 +1077,17 @@ const InlineAttachment = ({
   att,
   onRemove,
   onDownload,
-  onMove,
+  onInsertIntoBody,
 }: {
   att: { id: string; name: string; mime: string; size: number; storagePath: string; iv: string };
   onRemove: () => void;
   onDownload: () => void;
-  onMove?: (fromId: string, toId: string) => void;
+  onInsertIntoBody?: () => void;
 }) => {
   const n = useNotes();
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
-  const [dragOver, setDragOver] = useState(false);
-  const [dragging, setDragging] = useState(false);
-  // Long-press to start drag on touch devices.
-  const touchHoldRef = useRef<number | null>(null);
-  const touchActiveRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -1118,92 +1113,29 @@ const InlineAttachment = ({
   const isVideo = att.mime.startsWith("video/");
   const isPdf = att.mime === "application/pdf";
 
-  // Find the closest InlineAttachment under a touch point and dispatch a move.
-  const findTargetIdAt = (clientX: number, clientY: number): string | null => {
-    const el = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
-    const card = el?.closest?.("[data-att-id]") as HTMLElement | null;
-    return card?.getAttribute("data-att-id") || null;
-  };
-
   return (
     <div
-      data-att-id={att.id}
-      draggable={!!onMove}
-      onDragStart={(e) => {
-        if (!onMove) return;
-        setDragging(true);
-        e.dataTransfer.setData("application/x-cubbly-att", att.id);
-        e.dataTransfer.effectAllowed = "move";
-      }}
-      onDragEnd={() => { setDragging(false); setDragOver(false); }}
-      onDragOver={(e) => {
-        if (!onMove) return;
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "move";
-        setDragOver(true);
-      }}
-      onDragLeave={() => setDragOver(false)}
-      onDrop={(e) => {
-        if (!onMove) return;
-        e.preventDefault();
-        const fromId = e.dataTransfer.getData("application/x-cubbly-att");
-        setDragOver(false);
-        if (fromId && fromId !== att.id) onMove(fromId, att.id);
-      }}
-      onTouchStart={(e) => {
-        if (!onMove) return;
-        const touch = e.touches[0];
-        const startX = touch.clientX;
-        const startY = touch.clientY;
-        touchHoldRef.current = window.setTimeout(() => {
-          touchActiveRef.current = true;
-          setDragging(true);
-          if (navigator.vibrate) try { navigator.vibrate(30); } catch {}
-        }, 350);
-        const move = (ev: TouchEvent) => {
-          const t = ev.touches[0];
-          if (!touchActiveRef.current) {
-            // If they moved before the long-press fired, cancel the press.
-            if (Math.abs(t.clientX - startX) > 8 || Math.abs(t.clientY - startY) > 8) {
-              if (touchHoldRef.current) { clearTimeout(touchHoldRef.current); touchHoldRef.current = null; }
-            }
-            return;
-          }
-          ev.preventDefault();
-          const overId = findTargetIdAt(t.clientX, t.clientY);
-          setDragOver(!!overId && overId !== att.id);
-        };
-        const end = (ev: TouchEvent) => {
-          window.removeEventListener("touchmove", move);
-          window.removeEventListener("touchend", end);
-          window.removeEventListener("touchcancel", end);
-          if (touchHoldRef.current) { clearTimeout(touchHoldRef.current); touchHoldRef.current = null; }
-          if (touchActiveRef.current) {
-            const t = ev.changedTouches[0];
-            const overId = findTargetIdAt(t.clientX, t.clientY);
-            if (overId && overId !== att.id && onMove) onMove(att.id, overId);
-          }
-          touchActiveRef.current = false;
-          setDragging(false);
-          setDragOver(false);
-        };
-        window.addEventListener("touchmove", move, { passive: false });
-        window.addEventListener("touchend", end);
-        window.addEventListener("touchcancel", end);
-      }}
-      className="group relative rounded-lg overflow-hidden transition-opacity"
+      className="group relative rounded-lg overflow-hidden"
       style={{
         backgroundColor: "var(--app-bg-secondary)",
-        border: dragOver ? "1px dashed hsl(var(--primary))" : "1px solid var(--app-border)",
+        border: "1px solid var(--app-border)",
         maxWidth: 520,
-        opacity: dragging ? 0.6 : 1,
-        cursor: onMove ? "grab" : undefined,
       }}
     >
       {/* Header strip */}
       <div className="flex items-center gap-2 px-2.5 py-1.5 text-xs" style={{ borderBottom: "1px solid var(--app-border)" }}>
         <span className="truncate flex-1" style={{ color: "var(--app-text-primary)" }}>{att.name}</span>
         <span style={{ color: "var(--app-text-secondary)" }}>{formatSize(att.size)}</span>
+        {onInsertIntoBody && (
+          <button
+            onClick={onInsertIntoBody}
+            title="Insert into note"
+            className="px-2 py-0.5 rounded text-[11px] hover:bg-[var(--app-hover)]"
+            style={{ color: "hsl(var(--primary))", border: "1px solid hsl(var(--primary) / 0.4)" }}
+          >
+            Insert
+          </button>
+        )}
         {(isImage || isVideo) && url && (
           <button onClick={() => setFullscreen(true)} title="Fullscreen" className="p-1 rounded hover:bg-[var(--app-hover)]">
             <Maximize2 className="h-3.5 w-3.5" style={{ color: "var(--app-text-secondary)" }} />
