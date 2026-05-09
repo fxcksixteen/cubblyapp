@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, lazy, Suspense } from "react";
 import { useNotes, NoteRow, NotePlaintext } from "@/contexts/NotesContext";
-import { Pin, PinOff, Trash2, Plus, Paperclip, ShieldCheck, Loader2, FileText, Download, X, EyeOff, ArrowLeft, KeyRound, Edit3, Copy, AlertTriangle } from "lucide-react";
+import { Pin, PinOff, Trash2, Plus, Paperclip, ShieldCheck, Loader2, FileText, Download, X, EyeOff, ArrowLeft, KeyRound, Edit3, Copy, AlertTriangle, Play, Maximize2 } from "lucide-react";
 import { toast } from "sonner";
 import notesIcon from "@/assets/password-lock.svg";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { isStandalonePWA } from "@/lib/pwa";
+const ImageLightbox = lazy(() => import("@/components/app/ImageLightbox"));
+const VideoLightbox = lazy(() => import("@/components/app/VideoLightbox"));
 import {
   ContextMenu,
   ContextMenuContent,
