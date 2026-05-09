@@ -36,9 +36,11 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Rejoining a call now reuses the existing call event instead of starting a new one — the call duration timer keeps counting from the original start, and you slide right back into the same WebRTC session.",
     ],
     bugFixes: [
-      "Status indicators no longer flap online ↔ offline. Removed the realtime reconnect loop that kept tearing down the global presence socket and added 2s debouncing on wake events.",
+      "Presence now converges instantly between desktop and web — any change to a friend's online state is pushed through realtime so both apps update at the same moment without needing a refresh.",
+      "Status indicators no longer flap online ↔ offline. Removed the realtime reconnect loop that kept tearing down the global presence socket and added debouncing on wake events.",
       "Call pills no longer disappear after a 2-person call ends — they correctly stick around in the chat as a normal message.",
       "Game streaming bitrate is now scaled and capped (≤4 Mbps) with degradation preference set to balanced, so a single screenshare can't starve voice for either user.",
+      "Personal notes: images can now be dropped, pasted, or inserted anywhere inside the note body — and dragged to reposition. They're stored end-to-end encrypted just like before.",
       "Fixed the 'cannot add postgres_changes after subscribe' errors on the badges and name-colors realtime channels that were spamming the console after HMR / fast page transitions.",
     ],
   },
