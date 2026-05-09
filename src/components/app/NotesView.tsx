@@ -562,11 +562,53 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
   const [attachments, setAttachments] = useState(note.decrypted?.attachments || []);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [editorDragOver, setEditorDragOver] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const dirty = useRef(false);
   const latestRef = useRef({ title, body, attachments });
   latestRef.current = { title, body, attachments };
+  // Cache of attachment id → blob URL so inline <img data-att-id> tags
+  // stay rendered after edits without re-downloading.
+  const blobUrlCacheRef = useRef<Map<string, string>>(new Map());
+
+  // Serialize body for storage: strip blob: URLs from inline images so
+  // we never persist a URL that gets revoked. The data-att-id is enough
+  // to re-hydrate the image on next load.
+  const serializeBody = (): string => {
+    const root = bodyRef.current;
+    if (!root) return latestRef.current.body || "";
+    const clone = root.cloneNode(true) as HTMLElement;
+    clone.querySelectorAll("img[data-att-id], video[data-att-id]").forEach((el) => {
+      el.removeAttribute("src");
+    });
+    return clone.innerHTML;
+  };
+
+  // Hydrate every <img data-att-id> / <video data-att-id> in the editor
+  // by downloading and decrypting the matching attachment.
+  const hydrateInlineMedia = async () => {
+    const root = bodyRef.current;
+    if (!root) return;
+    const els = Array.from(root.querySelectorAll<HTMLElement>("[data-att-id]"));
+    for (const el of els) {
+      const id = el.getAttribute("data-att-id");
+      if (!id) continue;
+      const cached = blobUrlCacheRef.current.get(id);
+      if (cached) {
+        (el as HTMLImageElement).src = cached;
+        continue;
+      }
+      const att = latestRef.current.attachments.find((a) => a.id === id);
+      if (!att) continue;
+      try {
+        const blob = await n.downloadAttachment(att);
+        const url = URL.createObjectURL(blob);
+        blobUrlCacheRef.current.set(id, url);
+        (el as HTMLImageElement).src = url;
+      } catch { /* ignore */ }
+    }
+  };
 
   // Initialize body HTML once per note
   useEffect(() => {
@@ -577,12 +619,26 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     setBody(note.decrypted?.body || "");
     setAttachments(note.decrypted?.attachments || []);
     dirty.current = false;
+    // Hydrate inline images for this note
+    void hydrateInlineMedia();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [note.id]);
 
+  // Revoke cached blob URLs on unmount
+  useEffect(() => {
+    return () => {
+      for (const url of blobUrlCacheRef.current.values()) {
+        try { URL.revokeObjectURL(url); } catch {}
+      }
+      blobUrlCacheRef.current.clear();
+    };
+  }, []);
+
   const flush = async () => {
     if (!dirty.current) return;
-    const { title: t, body: b, attachments: a } = latestRef.current;
+    const t = latestRef.current.title;
+    const a = latestRef.current.attachments;
+    const b = serializeBody();
     try {
       await n.updateNote(note.id, { title: t, body: b, attachments: a });
       dirty.current = false;
@@ -597,7 +653,7 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     const t = setTimeout(async () => {
       setSaving(true);
       try {
-        await n.updateNote(note.id, { title, body, attachments });
+        await n.updateNote(note.id, { title, body: serializeBody(), attachments });
         dirty.current = false;
       } catch {
         toast.error("Failed to save");
@@ -621,18 +677,103 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [note.id]);
 
-  const onUpload = async (file: File) => {
-    if (file.size > 25 * 1024 * 1024) return toast.error("File too large (25MB max)");
+  // Find a caret Range under (x, y) for inserting at the drop point.
+  const caretRangeAt = (x: number, y: number): Range | null => {
+    const doc: any = document;
+    if (typeof doc.caretRangeFromPoint === "function") return doc.caretRangeFromPoint(x, y);
+    if (typeof doc.caretPositionFromPoint === "function") {
+      const p = doc.caretPositionFromPoint(x, y);
+      if (!p) return null;
+      const r = document.createRange();
+      r.setStart(p.offsetNode, p.offset);
+      r.collapse(true);
+      return r;
+    }
+    return null;
+  };
+
+  const buildInlineImg = (attId: string, blobUrl: string, alt: string) => {
+    const img = document.createElement("img");
+    img.setAttribute("data-att-id", attId);
+    img.src = blobUrl;
+    img.alt = alt;
+    img.draggable = true;
+    img.style.maxWidth = "100%";
+    img.style.height = "auto";
+    img.style.borderRadius = "8px";
+    img.style.display = "block";
+    img.style.margin = "8px 0";
+    return img;
+  };
+  const buildInlineVideo = (attId: string, blobUrl: string) => {
+    const v = document.createElement("video");
+    v.setAttribute("data-att-id", attId);
+    v.src = blobUrl;
+    v.controls = true;
+    v.style.maxWidth = "100%";
+    v.style.borderRadius = "8px";
+    v.style.display = "block";
+    v.style.margin = "8px 0";
+    return v;
+  };
+
+  const insertNodeAtCaret = (node: Node, range: Range | null) => {
+    if (!bodyRef.current) return;
+    bodyRef.current.focus();
+    let r = range;
+    if (!r || !bodyRef.current.contains(r.startContainer)) {
+      r = document.createRange();
+      r.selectNodeContents(bodyRef.current);
+      r.collapse(false);
+    }
+    r.deleteContents();
+    r.insertNode(node);
+    // Caret after inserted node
+    const after = document.createRange();
+    after.setStartAfter(node);
+    after.collapse(true);
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(after);
+  };
+
+  // Upload + insert a file at a specific caret range. Images/videos go
+  // inline into the body; everything else falls back to the attachment list.
+  const uploadAndInsert = async (file: File, range: Range | null) => {
+    if (file.size > 25 * 1024 * 1024) { toast.error("File too large (25MB max)"); return; }
     setUploading(true);
     try {
       const att = await n.uploadAttachment(file);
       setAttachments((prev) => [...prev, att]);
       dirty.current = true;
+      if (att.mime.startsWith("image/") || att.mime.startsWith("video/")) {
+        // Get a usable blob URL immediately from the original file (cheaper
+        // than re-downloading from storage).
+        const url = URL.createObjectURL(file);
+        blobUrlCacheRef.current.set(att.id, url);
+        const node = att.mime.startsWith("image/")
+          ? buildInlineImg(att.id, url, file.name)
+          : buildInlineVideo(att.id, url);
+        insertNodeAtCaret(node, range);
+        setBody(bodyRef.current?.innerHTML || "");
+      }
     } catch (e: any) {
       toast.error(e?.message || "Upload failed");
     } finally {
       setUploading(false);
     }
+  };
+
+  // Toolbar Attach button — appends inline at end of body for images,
+  // adds to file list for everything else.
+  const onUpload = async (file: File) => {
+    let range: Range | null = null;
+    if (bodyRef.current) {
+      range = document.createRange();
+      range.selectNodeContents(bodyRef.current);
+      range.collapse(false);
+    }
+    await uploadAndInsert(file, range);
   };
 
   const downloadAtt = async (att: typeof attachments[0]) => {
@@ -655,7 +796,109 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
 
   const removeAtt = (id: string) => {
     setAttachments((prev) => prev.filter((a) => a.id !== id));
+    // Also remove any inline references in the body
+    if (bodyRef.current) {
+      bodyRef.current.querySelectorAll(`[data-att-id="${id}"]`).forEach((el) => el.remove());
+      setBody(bodyRef.current.innerHTML);
+    }
+    const cached = blobUrlCacheRef.current.get(id);
+    if (cached) { try { URL.revokeObjectURL(cached); } catch {} blobUrlCacheRef.current.delete(id); }
     dirty.current = true;
+  };
+
+  // Insert an existing attachment at the end of the body (used by the
+  // "Insert into note" button on attachment cards).
+  const insertExistingAttIntoBody = async (att: typeof attachments[0]) => {
+    if (!att.mime.startsWith("image/") && !att.mime.startsWith("video/")) return;
+    let url = blobUrlCacheRef.current.get(att.id);
+    if (!url) {
+      try {
+        const blob = await n.downloadAttachment(att);
+        url = URL.createObjectURL(blob);
+        blobUrlCacheRef.current.set(att.id, url);
+      } catch { toast.error("Couldn't load image"); return; }
+    }
+    const node = att.mime.startsWith("image/") ? buildInlineImg(att.id, url, att.name) : buildInlineVideo(att.id, url);
+    let range: Range | null = null;
+    if (bodyRef.current) {
+      range = document.createRange();
+      range.selectNodeContents(bodyRef.current);
+      range.collapse(false);
+    }
+    insertNodeAtCaret(node, range);
+    setBody(bodyRef.current?.innerHTML || "");
+    dirty.current = true;
+  };
+
+  // ---- Editor drag & drop / paste ----
+  const onEditorDragOver = (e: React.DragEvent) => {
+    if (!e.dataTransfer) return;
+    const hasFiles = Array.from(e.dataTransfer.types || []).includes("Files");
+    const hasInternal = Array.from(e.dataTransfer.types || []).includes("application/x-cubbly-att");
+    if (hasFiles || hasInternal) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+      setEditorDragOver(true);
+    }
+  };
+  const onEditorDragLeave = () => setEditorDragOver(false);
+
+  const onEditorDrop = async (e: React.DragEvent) => {
+    setEditorDragOver(false);
+    // Internal move: an existing inline image dragged within the body
+    const internalId = e.dataTransfer.getData("application/x-cubbly-att");
+    if (internalId) {
+      e.preventDefault();
+      const range = caretRangeAt(e.clientX, e.clientY);
+      const node = bodyRef.current?.querySelector(`[data-att-id="${internalId}"]`);
+      if (node && range) {
+        // Move the node to the drop point
+        range.insertNode(node);
+        const after = document.createRange();
+        after.setStartAfter(node);
+        after.collapse(true);
+        const sel = window.getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(after);
+        setBody(bodyRef.current?.innerHTML || "");
+        dirty.current = true;
+      }
+      return;
+    }
+    // External file(s)
+    const files = e.dataTransfer.files ? Array.from(e.dataTransfer.files) : [];
+    if (!files.length) return;
+    e.preventDefault();
+    const range = caretRangeAt(e.clientX, e.clientY);
+    for (const f of files) {
+      // Use a fresh range each time so subsequent files insert just after the previous
+      await uploadAndInsert(f, range);
+    }
+  };
+
+  const onEditorPaste = async (e: React.ClipboardEvent) => {
+    if (!e.clipboardData) return;
+    const items = Array.from(e.clipboardData.items || []);
+    const imageItems = items.filter((it) => it.kind === "file" && (it.type.startsWith("image/") || it.type.startsWith("video/")));
+    if (!imageItems.length) return;
+    e.preventDefault();
+    const sel = window.getSelection();
+    const range = sel && sel.rangeCount ? sel.getRangeAt(0) : null;
+    for (const it of imageItems) {
+      const f = it.getAsFile();
+      if (f) await uploadAndInsert(f, range);
+    }
+  };
+
+  // Track when the user starts dragging an inline image so onDrop can
+  // identify it and move (rather than duplicate) the node.
+  const onEditorDragStart = (e: React.DragEvent) => {
+    const target = e.target as HTMLElement;
+    const id = target?.getAttribute?.("data-att-id");
+    if (id && e.dataTransfer) {
+      e.dataTransfer.setData("application/x-cubbly-att", id);
+      e.dataTransfer.effectAllowed = "move";
+    }
   };
 
   const exec = (cmd: string) => {
@@ -665,6 +908,20 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
       dirty.current = true;
     }
   };
+
+  // Compute which attachments are NOT yet referenced inline.
+  const inlinedIds = (() => {
+    const root = bodyRef.current;
+    if (!root) return new Set<string>();
+    const ids = new Set<string>();
+    root.querySelectorAll("[data-att-id]").forEach((el) => {
+      const id = el.getAttribute("data-att-id");
+      if (id) ids.add(id);
+    });
+    return ids;
+  })();
+  const previewableNotInlined = attachments.filter((a) => isPreviewable(a.mime) && !inlinedIds.has(a.id));
+  const otherFiles = attachments.filter((a) => !isPreviewable(a.mime));
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -741,31 +998,23 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {/* Inline previews for image/video/PDF attachments — draggable to reorder */}
-        {attachments.length > 0 && (
+        {/* Cards for previewable attachments NOT yet inlined — gives the user
+            a way to insert them anywhere into the body. */}
+        {previewableNotInlined.length > 0 && (
           <div className="px-6 pt-4 flex flex-col gap-3">
-            {attachments
-              .filter((a) => isPreviewable(a.mime))
-              .map((att) => (
-                <InlineAttachment
-                  key={att.id}
-                  att={att}
-                  onRemove={() => removeAtt(att.id)}
-                  onDownload={() => downloadAtt(att)}
-                  onMove={(fromId, toId) => {
-                    setAttachments((prev) => {
-                      const fromIdx = prev.findIndex((p) => p.id === fromId);
-                      const toIdx = prev.findIndex((p) => p.id === toId);
-                      if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return prev;
-                      const next = prev.slice();
-                      const [moved] = next.splice(fromIdx, 1);
-                      next.splice(toIdx, 0, moved);
-                      dirty.current = true;
-                      return next;
-                    });
-                  }}
-                />
-              ))}
+            {previewableNotInlined.map((att) => (
+              <InlineAttachment
+                key={att.id}
+                att={att}
+                onRemove={() => removeAtt(att.id)}
+                onDownload={() => downloadAtt(att)}
+                onInsertIntoBody={
+                  (att.mime.startsWith("image/") || att.mime.startsWith("video/"))
+                    ? () => insertExistingAttIntoBody(att)
+                    : undefined
+                }
+              />
+            ))}
           </div>
         )}
 
@@ -776,18 +1025,30 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
           autoCorrect="on"
           spellCheck
           onInput={(e) => { setBody((e.target as HTMLDivElement).innerHTML); dirty.current = true; }}
+          onDragOver={onEditorDragOver}
+          onDragLeave={onEditorDragLeave}
+          onDrop={onEditorDrop}
+          onPaste={onEditorPaste}
+          onDragStart={onEditorDragStart}
           className="px-6 py-4 outline-none prose prose-sm max-w-none"
-          style={{ color: "var(--app-text-primary)", minHeight: "8rem", WebkitUserSelect: "text" }}
+          style={{
+            color: "var(--app-text-primary)",
+            minHeight: "8rem",
+            WebkitUserSelect: "text",
+            outline: editorDragOver ? "2px dashed hsl(var(--primary))" : undefined,
+            outlineOffset: editorDragOver ? "-4px" : undefined,
+            borderRadius: 6,
+          }}
           suppressContentEditableWarning
         />
       </div>
 
-      {attachments.filter((a) => !isPreviewable(a.mime)).length > 0 && (
+      {otherFiles.length > 0 && (
         <div
           className="border-t px-4 py-2 flex flex-wrap gap-2"
           style={{ borderColor: "var(--app-border)", paddingBottom: "max(0.5rem, env(safe-area-inset-bottom, 0px))" }}
         >
-          {attachments.filter((a) => !isPreviewable(a.mime)).map((att) => (
+          {otherFiles.map((att) => (
             <div key={att.id} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs" style={{ backgroundColor: "var(--app-bg-secondary)", border: "1px solid var(--app-border)" }}>
               <FileText className="h-3.5 w-3.5" style={{ color: "var(--app-text-secondary)" }} />
               <span style={{ color: "var(--app-text-primary)" }}>{att.name}</span>
@@ -816,22 +1077,17 @@ const InlineAttachment = ({
   att,
   onRemove,
   onDownload,
-  onMove,
+  onInsertIntoBody,
 }: {
   att: { id: string; name: string; mime: string; size: number; storagePath: string; iv: string };
   onRemove: () => void;
   onDownload: () => void;
-  onMove?: (fromId: string, toId: string) => void;
+  onInsertIntoBody?: () => void;
 }) => {
   const n = useNotes();
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
-  const [dragOver, setDragOver] = useState(false);
-  const [dragging, setDragging] = useState(false);
-  // Long-press to start drag on touch devices.
-  const touchHoldRef = useRef<number | null>(null);
-  const touchActiveRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -857,92 +1113,29 @@ const InlineAttachment = ({
   const isVideo = att.mime.startsWith("video/");
   const isPdf = att.mime === "application/pdf";
 
-  // Find the closest InlineAttachment under a touch point and dispatch a move.
-  const findTargetIdAt = (clientX: number, clientY: number): string | null => {
-    const el = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
-    const card = el?.closest?.("[data-att-id]") as HTMLElement | null;
-    return card?.getAttribute("data-att-id") || null;
-  };
-
   return (
     <div
-      data-att-id={att.id}
-      draggable={!!onMove}
-      onDragStart={(e) => {
-        if (!onMove) return;
-        setDragging(true);
-        e.dataTransfer.setData("application/x-cubbly-att", att.id);
-        e.dataTransfer.effectAllowed = "move";
-      }}
-      onDragEnd={() => { setDragging(false); setDragOver(false); }}
-      onDragOver={(e) => {
-        if (!onMove) return;
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "move";
-        setDragOver(true);
-      }}
-      onDragLeave={() => setDragOver(false)}
-      onDrop={(e) => {
-        if (!onMove) return;
-        e.preventDefault();
-        const fromId = e.dataTransfer.getData("application/x-cubbly-att");
-        setDragOver(false);
-        if (fromId && fromId !== att.id) onMove(fromId, att.id);
-      }}
-      onTouchStart={(e) => {
-        if (!onMove) return;
-        const touch = e.touches[0];
-        const startX = touch.clientX;
-        const startY = touch.clientY;
-        touchHoldRef.current = window.setTimeout(() => {
-          touchActiveRef.current = true;
-          setDragging(true);
-          if (navigator.vibrate) try { navigator.vibrate(30); } catch {}
-        }, 350);
-        const move = (ev: TouchEvent) => {
-          const t = ev.touches[0];
-          if (!touchActiveRef.current) {
-            // If they moved before the long-press fired, cancel the press.
-            if (Math.abs(t.clientX - startX) > 8 || Math.abs(t.clientY - startY) > 8) {
-              if (touchHoldRef.current) { clearTimeout(touchHoldRef.current); touchHoldRef.current = null; }
-            }
-            return;
-          }
-          ev.preventDefault();
-          const overId = findTargetIdAt(t.clientX, t.clientY);
-          setDragOver(!!overId && overId !== att.id);
-        };
-        const end = (ev: TouchEvent) => {
-          window.removeEventListener("touchmove", move);
-          window.removeEventListener("touchend", end);
-          window.removeEventListener("touchcancel", end);
-          if (touchHoldRef.current) { clearTimeout(touchHoldRef.current); touchHoldRef.current = null; }
-          if (touchActiveRef.current) {
-            const t = ev.changedTouches[0];
-            const overId = findTargetIdAt(t.clientX, t.clientY);
-            if (overId && overId !== att.id && onMove) onMove(att.id, overId);
-          }
-          touchActiveRef.current = false;
-          setDragging(false);
-          setDragOver(false);
-        };
-        window.addEventListener("touchmove", move, { passive: false });
-        window.addEventListener("touchend", end);
-        window.addEventListener("touchcancel", end);
-      }}
-      className="group relative rounded-lg overflow-hidden transition-opacity"
+      className="group relative rounded-lg overflow-hidden"
       style={{
         backgroundColor: "var(--app-bg-secondary)",
-        border: dragOver ? "1px dashed hsl(var(--primary))" : "1px solid var(--app-border)",
+        border: "1px solid var(--app-border)",
         maxWidth: 520,
-        opacity: dragging ? 0.6 : 1,
-        cursor: onMove ? "grab" : undefined,
       }}
     >
       {/* Header strip */}
       <div className="flex items-center gap-2 px-2.5 py-1.5 text-xs" style={{ borderBottom: "1px solid var(--app-border)" }}>
         <span className="truncate flex-1" style={{ color: "var(--app-text-primary)" }}>{att.name}</span>
         <span style={{ color: "var(--app-text-secondary)" }}>{formatSize(att.size)}</span>
+        {onInsertIntoBody && (
+          <button
+            onClick={onInsertIntoBody}
+            title="Insert into note"
+            className="px-2 py-0.5 rounded text-[11px] hover:bg-[var(--app-hover)]"
+            style={{ color: "hsl(var(--primary))", border: "1px solid hsl(var(--primary) / 0.4)" }}
+          >
+            Insert
+          </button>
+        )}
         {(isImage || isVideo) && url && (
           <button onClick={() => setFullscreen(true)} title="Fullscreen" className="p-1 rounded hover:bg-[var(--app-hover)]">
             <Maximize2 className="h-3.5 w-3.5" style={{ color: "var(--app-text-secondary)" }} />

@@ -136,6 +136,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
 
     let cancelled = false;
+    let inflight = false;
+    let pendingDebounce: number | null = null;
     const sessionKey = getSessionKey();
 
     const heartbeat = async () => {
@@ -144,6 +146,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } catch {}
     };
     const fetchOnline = async () => {
+      if (inflight) return;
+      inflight = true;
       try {
         const { data } = await (supabase as any).rpc("online_user_ids", { _window_seconds: 75 });
         if (cancelled) return;
@@ -151,12 +155,42 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         ids.add(user.id); // always include self
         setOnlineUserIds(ids);
       } catch {}
+      finally { inflight = false; }
+    };
+    // Debounced refetch — used by realtime triggers so a burst of
+    // last_seen_at updates only causes one round-trip.
+    const scheduleFetch = () => {
+      if (pendingDebounce != null) return;
+      pendingDebounce = window.setTimeout(() => {
+        pendingDebounce = null;
+        fetchOnline();
+      }, 400);
     };
 
     heartbeat();
     fetchOnline();
     const heartbeatInterval = window.setInterval(heartbeat, 30_000);
     const pollInterval = window.setInterval(fetchOnline, 20_000);
+
+    // Realtime: any profile row update (last_seen_at / status) instantly
+    // triggers a refetch so desktop and web converge without waiting for
+    // the next 20s poll. Profiles are already authenticated-readable, so
+    // RLS lets every signed-in client receive these change events.
+    const topic = `presence:profiles:${user.id}`;
+    removeChannelByTopic(topic);
+    const presenceChannel = supabase
+      .channel(topic)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "profiles" },
+        () => scheduleFetch()
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "profiles" },
+        () => scheduleFetch()
+      )
+      .subscribe();
 
     const onWake = () => { heartbeat(); fetchOnline(); };
     window.addEventListener("focus", onWake);
@@ -168,6 +202,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       cancelled = true;
       window.clearInterval(heartbeatInterval);
       window.clearInterval(pollInterval);
+      if (pendingDebounce != null) window.clearTimeout(pendingDebounce);
+      try { supabase.removeChannel(presenceChannel); } catch {}
+      removeChannelByTopic(topic);
       window.removeEventListener("focus", onWake);
       window.removeEventListener("online", onWake);
       document.removeEventListener("visibilitychange", onWake);
