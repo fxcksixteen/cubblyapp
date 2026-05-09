@@ -85,14 +85,33 @@ final class PresenceService: ObservableObject {
         statusRefreshTask?.cancel()
         statusRefreshTask = Task { [weak self] in
             while !Task.isCancelled {
-                // Tighter poll (10s) so DND/Idle/Invisible flips on the
-                // web/desktop side reflect on iOS within seconds even if the
-                // postgres_changes subscription on profiles silently drops.
-                try? await Task.sleep(nanoseconds: 10_000_000_000)
+                // Bulk refresh as a safety net (60s is plenty — postgres_changes
+                // delivers UPDATE/INSERT in real time below).
+                try? await Task.sleep(nanoseconds: 60_000_000_000)
                 guard let self else { return }
                 await self.refreshProfileStatuses()
+                await self.reconcileOnlineFromDatabase()
             }
         }
+
+        // Server-side heartbeat — keeps `profiles.last_seen_at` fresh so
+        // OTHER clients (web/desktop) see iOS as online via the same
+        // `online_user_ids()` RPC they use. Without this, an iOS user on a
+        // flaky websocket can appear offline to peers even though presence
+        // is fine on this device.
+        Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                _ = try? await SupabaseManager.shared.client
+                    .rpc("presence_heartbeat")
+                    .execute()
+                try? await Task.sleep(nanoseconds: 30_000_000_000)
+            }
+        }
+
+        // One-shot DB reconcile: trust postgres over a possibly-half-dead
+        // socket. Runs immediately on start and again on every foreground.
+        await reconcileOnlineFromDatabase()
     }
 
     func stop() async {
