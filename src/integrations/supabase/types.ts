@@ -486,6 +486,7 @@ export type Database = {
           created_at: string
           display_name: string
           id: string
+          last_seen_at: string
           status: string
           updated_at: string
           user_id: string
@@ -498,6 +499,7 @@ export type Database = {
           created_at?: string
           display_name: string
           id?: string
+          last_seen_at?: string
           status?: string
           updated_at?: string
           user_id: string
@@ -510,6 +512,7 @@ export type Database = {
           created_at?: string
           display_name?: string
           id?: string
+          last_seen_at?: string
           status?: string
           updated_at?: string
           user_id?: string
@@ -1013,6 +1016,13 @@ export type Database = {
         Args: { _conversation_id: string }
         Returns: undefined
       }
+      online_user_ids: {
+        Args: { _window_seconds?: number }
+        Returns: {
+          user_id: string
+        }[]
+      }
+      presence_heartbeat: { Args: never; Returns: string }
       purchase_shop_item: { Args: { _item_id: string }; Returns: Json }
       send_test_bot_reply: {
         Args: { _conversation_id: string }
