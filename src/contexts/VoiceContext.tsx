@@ -128,11 +128,16 @@ async function applyScreenBitrate(sender: RTCRtpSender, maxBitrate: number) {
       params.encodings = [{}];
     }
     params.encodings[0].maxBitrate = maxBitrate;
-    (params.encodings[0] as any).scaleResolutionDownBy = 1;
-    (params.encodings[0] as any).networkPriority = "high";
-    (params.encodings[0] as any).priority = "high";
-    // maintain-resolution → drop FPS instead of pixelating when CPU/bw drops
-    (params as any).degradationPreference = "maintain-resolution";
+    // Allow encoder to scale resolution down under CPU/bandwidth pressure
+    // so it doesn't keep encoding 1080p frames at the expense of dropping
+    // voice RTP packets — that was the "everyone lags when streaming a
+    // game" symptom. Cap framerate too.
+    (params.encodings[0] as any).maxFramerate = (params.encodings[0] as any).maxFramerate ?? 60;
+    (params.encodings[0] as any).networkPriority = "medium";
+    (params.encodings[0] as any).priority = "medium";
+    // balanced → drop both FPS and resolution as needed; "maintain-resolution"
+    // was forcing resolution and starving the voice transceiver of bandwidth.
+    (params as any).degradationPreference = "balanced";
     await sender.setParameters(params);
   } catch (e) {
     console.warn("[Voice] Could not set screen encoding bitrate:", e);
