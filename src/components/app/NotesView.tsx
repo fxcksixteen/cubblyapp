@@ -1107,7 +1107,18 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     const onPointerUp = (e: PointerEvent) => {
       if (!dragging) return;
       try { dragging.releasePointerCapture(pointerId); } catch {}
-      if (!activated) { cleanup(); return; }
+      if (!activated) {
+        // Treat as a simple click: open inline images in a lightbox.
+        const clicked = dragging;
+        cleanup();
+        if (clicked && clicked.tagName.toLowerCase() === "img") {
+          const id = clicked.getAttribute("data-att-id");
+          const att = id ? latestRef.current.attachments.find((a) => a.id === id) : null;
+          const url = (clicked as HTMLImageElement).src;
+          if (url) setLightbox({ kind: "image", url, name: att?.name || "image" });
+        }
+        return;
+      }
       const ins = computeInsertion(e.clientX, e.clientY);
       if (ins) {
         try {
