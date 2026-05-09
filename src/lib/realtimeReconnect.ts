@@ -169,11 +169,18 @@ export function installRealtimeWatchdog() {
   if (watchdogInstalled || typeof window === "undefined") return;
   watchdogInstalled = true;
 
+  let lastWakeAt = 0;
   const fireWake = (reason: string) => {
+    // Debounce — bursts of online/visible/focus shouldn't tear healthy
+    // channels down repeatedly.
+    const now = Date.now();
+    if (now - lastWakeAt < 2000) return;
+    lastWakeAt = now;
     log(`watchdog wake (${reason}) — pinging realtime`);
     try {
       const realtime: any = (supabase as any).realtime;
-      // If the socket isn't open, force a reconnect.
+      // Only force-cycle the socket if it's actually closed. Reconnecting a
+      // healthy socket is what was causing the global:online CLOSED loop.
       const isOpen = realtime?.isConnected?.() ?? realtime?.conn?.readyState === 1;
       if (!isOpen) {
         try { realtime?.disconnect?.(); } catch { /* ignore */ }
@@ -202,13 +209,12 @@ export function installRealtimeWatchdog() {
     } catch { /* ignore */ }
   }, 30_000);
 
-  // Hook the realtime client's own onError/onClose so we surface a wake
-  // event to every subscription (they'll resubscribe via the wrapper).
-  try {
-    const realtime: any = (supabase as any).realtime;
-    realtime?.onError?.(() => fireWake("socket-error"));
-    realtime?.onClose?.(() => fireWake("socket-close"));
-  } catch { /* ignore */ }
+  // NOTE: We deliberately do NOT hook realtime.onError / onClose here.
+  // Those events fire as part of normal channel lifecycle (including during
+  // a reconnect we triggered), and re-firing fireWake from inside a close
+  // event creates a tight reconnect loop that prevents any channel from
+  // ever reaching SUBSCRIBED — which is exactly the bug that caused every
+  // user's status indicator to flap online/offline forever.
 
   log("watchdog installed");
 }
