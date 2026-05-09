@@ -741,7 +741,7 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {/* Inline previews for image/video/PDF attachments */}
+        {/* Inline previews for image/video/PDF attachments — draggable to reorder */}
         {attachments.length > 0 && (
           <div className="px-6 pt-4 flex flex-col gap-3">
             {attachments
@@ -752,6 +752,18 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
                   att={att}
                   onRemove={() => removeAtt(att.id)}
                   onDownload={() => downloadAtt(att)}
+                  onMove={(fromId, toId) => {
+                    setAttachments((prev) => {
+                      const fromIdx = prev.findIndex((p) => p.id === fromId);
+                      const toIdx = prev.findIndex((p) => p.id === toId);
+                      if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return prev;
+                      const next = prev.slice();
+                      const [moved] = next.splice(fromIdx, 1);
+                      next.splice(toIdx, 0, moved);
+                      dirty.current = true;
+                      return next;
+                    });
+                  }}
                 />
               ))}
           </div>
@@ -804,15 +816,22 @@ const InlineAttachment = ({
   att,
   onRemove,
   onDownload,
+  onMove,
 }: {
   att: { id: string; name: string; mime: string; size: number; storagePath: string; iv: string };
   onRemove: () => void;
   onDownload: () => void;
+  onMove?: (fromId: string, toId: string) => void;
 }) => {
   const n = useNotes();
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  // Long-press to start drag on touch devices.
+  const touchHoldRef = useRef<number | null>(null);
+  const touchActiveRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
