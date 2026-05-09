@@ -105,14 +105,24 @@ export function subscribeWithReconnect(
       return;
     }
     current = ch;
+    const subscribedAt = Date.now();
+    let everSubscribed = false;
     try {
       ch.subscribe((status) => {
         if (cancelled) return;
         if (status === "SUBSCRIBED") {
           attempt = 0;
+          everSubscribed = true;
           return;
         }
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+          // Ignore the CLOSED that fires synchronously during the rebuild
+          // itself — that's the previous channel tearing down, not a failure
+          // of the new one. Only treat it as a real failure if we've either
+          // been alive long enough OR already reached SUBSCRIBED before.
+          if (status === "CLOSED" && !everSubscribed && Date.now() - subscribedAt < 800) {
+            return;
+          }
           scheduleReconnect(status);
         }
       });
