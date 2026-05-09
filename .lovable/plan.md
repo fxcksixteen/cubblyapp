@@ -1,80 +1,98 @@
-## v0.3.1 hotfix plan
+# v0.3.2 Hotfix Plan
 
-Five distinct bugs, all addressed below.
+Five urgent bugs across presence, voice calls, and personal notes. All scoped to client/Edge — no schema changes (one column added for note attachment positions).
 
 ---
 
-### 1. Badge 3D artwork missing in the Shop
+## 1. Status indicators flapping online ↔ offline
 
-**Cause:** `ShopView.ItemPreview` for `category === "badge"` renders a generic colored chip with a `★`. The actual artwork map (`BADGE_ART`) lives in `src/components/app/UserBadges.tsx` and is only used in profile rows.
+**Root cause (from console logs):** `global:online` channel reports `CLOSED` every ~1s in an infinite loop. `subscribeWithReconnect` rebuilds it, the watchdog ALSO disconnects/reconnects the realtime socket on `socket-close`, the reconnect re-fires `socket-close`, and we get a tight race that prevents the channel from ever reaching `SUBSCRIBED`. With the channel never stable, presence sync drops users every cycle. The 10s offline grace helps but on bad networks the channel never recovers.
 
 **Fix:**
-- Extract `BADGE_ART` + `<Badge />` into a shared module (`src/components/app/badgeArt.ts` re-exporting from `UserBadges.tsx`, or just import the map directly from `UserBadges.tsx`).
-- In `ShopView.ItemPreview` badge branch, render the matching SVG/PNG (e.g. `imgChatChampion`, `imgPetite`, etc.) at ~64px next to the user's display name instead of the chip+star.
-- Also update `src/components/app/settings/ShopItemsGrid.tsx` (badge previews) the same way so My Account → Badges shows the real artwork.
+- In `src/lib/realtimeReconnect.ts`: stop disconnecting the realtime socket inside the watchdog on `socket-close`/`socket-error` — those events fire DURING normal reconnects and create the loop. Only force a socket reconnect on `online`, `visibilitychange→visible`, `focus`, AND when the 30s interval check finds the socket actually closed while visible. Remove the `onError`/`onClose` → `fireWake` hooks entirely.
+- Debounce `cubbly:realtime-wake` (≥2s) so a flurry of events doesn't re-tear-down healthy channels.
+- In `subscribeWithReconnect`: ignore `CLOSED` if it arrives within 500ms of subscribe (it's the rebuild itself, not a failure).
+- In `AuthContext` presence effect: use a single stable `presenceKey` per session (current `${user.id}:${uuid}` is fine) but DON'T recreate the channel on every `cubbly:realtime-wake` — let supabase-js auto-rejoin. Re-`track()` on visibilitychange instead of full rebuild.
+- Bump `PRESENCE_OFFLINE_GRACE_MS` from 10s → 20s as additional safety.
 
 ---
 
-### 2. Mute & deafen still kills the call
+## 2. Rejoin call doesn't put user back into the call
 
-**Cause:** `applyLocalMicMute` in `VoiceContext.tsx` always calls `sender.replaceTrack(null)` then `replaceTrack(originalMicTrackRef.current)`. On undeafen the original track is sometimes ended/stale (e.g. after device-change or an iOS background trip), so `replaceTrack` succeeds locally but the peer never receives audio again — the call is "broken" until reconnect.
+**Symptoms:** When the last remaining user leaves and another tries to rejoin via the call pill, the call event stays `ongoing` but the rejoiner doesn't actually enter — no participant row, no audio.
+
+**Investigation needed in `GroupCallContext.tsx`:**
+- `acceptCall` only runs for `incomingCall`; rejoin via the pill takes a different path (likely `startCall` with the existing conversation). Need to verify `startCall` reuses the existing `ongoing` `call_event` instead of creating a new one and that `joinCallChannel` correctly inserts a `call_participants` row with `left_at = NULL`.
+- Also check the active-call timer — user reports the call "doesn't stay counting time" when one user is alone, suggesting `started_at` is being reset or the timer reads the wrong row.
 
 **Fix:**
-- Default mute path = `track.enabled = false/true` only (lightweight, never breaks the SRTP stream).
-- Keep the `replaceTrack(null)` belt-and-suspenders behavior **only on iOS PWA** (where the original leak occurred), gated by a `isIOSPWA()` check that already exists in `iosAudioUnlock.ts`.
-- On undeafen, if `originalMicTrackRef.current.readyState === "ended"`, reacquire a fresh mic stream via `getUserMedia` and `replaceTrack` with the new track before broadcasting `peer-mute: false`.
-- Add a guard so deafen always restores the prior mute state regardless of whether the deafen→mute path actually swapped the track.
+- Add a `rejoinCall(conversationId)` path that:
+  1. Looks up the existing `ongoing` `call_event` for this conversation.
+  2. If found, reuses its `id` (don't insert a new event).
+  3. Calls `heartbeat_call_participant` to upsert our row with `left_at=NULL`.
+  4. Joins the WebRTC mesh channel.
+- Wire the call-pill "Join" button to `rejoinCall` (currently calls `startCall`).
+- Fix the duration counter to read `call_events.started_at` for the row that's still `ongoing`, regardless of who is in it.
 
 ---
 
-### 3. Existing themes (Cubbly, Onyx, etc.) no longer apply
+## 3. Call pill in chat sometimes disappears after a 2-person call ends
 
-**Cause:** `EquippedThemeBridge` runs on every login. When the user has **no shop-theme equipped** (the 4 built-in themes are local-only, never written to `user_equipped`), it falls through to `setTheme("default")`, which overwrites the locally saved "cubbly" preference.
+**Likely cause:** The pill is rendered from a `messages` row of type "call" OR the live `call_events` row. When `end_call_event_if_stale` runs it sets `state='ended'` but if the UI's `useMessages`/realtime listener gets a DELETE event (or the event row isn't read because `state != ongoing`), the pill vanishes.
 
 **Fix:**
-- In `EquippedThemeBridge`, only call `setTheme(THEME_MAP[id])` when there *is* an equipped row.
-- When no equipped theme row exists, **do nothing** — let the user's localStorage choice (loaded by `ThemeContext`) stay in effect.
-- When the user explicitly *unequips* a shop theme via realtime DELETE, fall back to whatever is in localStorage (re-read it), not hard-coded "default".
+- Render the call pill from a permanent `messages` row inserted at call start (system message with `metadata.call_event_id`). End-of-call updates the message metadata with `ended_at` + duration, never deletes it.
+- If we already have such a row, audit the realtime subscription — confirm we're not accidentally filtering ended call rows out (e.g. `where state='ongoing'`).
+
+I'll inspect `ChatView.tsx` + the call-pill component first to pick the minimum-invasive variant.
 
 ---
 
-### 4. Settings tabs — double titles, inconsistent buttons, ugly cards
+## 4. Game streaming tanks both clients' calls
 
-**Causes:**
-- `SettingsModal` already renders a header row (`User Settings` eyebrow + `<h1>{activeLabel}</h1>`).
-- Each tab component (`DataPrivacySettings`, `AccessibilitySettings`, `ContentSocialSettings`, `DevicesSettings`, etc.) *also* renders its own `<h2>{title}</h2>` + description block → the "two titles" the user is seeing.
-- The `Switch` in `DataPrivacySettings` uses shadcn's default `bg-primary`, which is the global orange `--primary` token — that's why the toggles look "Cubbly orange" even on the default theme. The custom toggle in `AccessibilitySettings`/`ContentSocialSettings` uses `#3ba55c` (green) — different color, different shape → inconsistent.
+**Root cause:** Game capture path uses `getDisplayMedia` with default constraints (1080p60 + ≥5 Mbps). On the encoder side this saturates CPU; on the receive side, decoding a high-bitrate stream alongside voice causes both audio jitter buffers to underrun → the "lag" both users see. The "quality" picker only sets a label, it doesn't actually clamp the sender encoding.
 
-**Fix:**
-- Remove the inner `<h2>` + description block from every settings sub-component (`DataPrivacySettings`, `AccessibilitySettings`, `ContentSocialSettings`, `DevicesSettings`, `ChatSettings`, `LanguageTimeSettings`, `KeybindsSettings`, `AdvancedSettings`, `NotificationSettings`, `ActivityPrivacySettings`, `GamingModeSettings`, `UpdateLogsSettings`).
-- Move the per-tab description into the `SettingsModal` header itself (under the `<h1>`), driven by a `descriptions` map keyed by `SettingsCategory` so the header shows: eyebrow → title → optional one-line description. Single source of truth, no duplication.
-- Replace shadcn `Switch` usage in `DataPrivacySettings` with the same custom toggle used by `AccessibilitySettings` / `ContentSocialSettings`. Lift it into `src/components/app/settings/SettingsToggle.tsx` and import everywhere so all toggles look identical (green when on, neutral when off).
-- Standardise primary action buttons across all settings tabs to the Discord blurple (`#5865f2`) — no more orange leakage.
-- Standardise card padding/radius (`rounded-[24px] border p-5`) and section eyebrows (`text-[11px] uppercase tracking-[0.18em]`) by introducing a tiny `SettingsCard` + `SettingsSectionLabel` helper in `src/components/app/settings/_shared.tsx`.
+**Fix in `GroupCallContext.tsx` screenshare path:**
+- When the source is a game window (already known via `ScreenSharePicker`), apply hard caps:
+  - `applyConstraints({ width: 1280, height: 720, frameRate: 30 })` on the captured track.
+  - On the `RTCRtpSender` for the video transceiver, call `setParameters` with `encodings: [{ maxBitrate: 1_500_000, maxFramerate: 30, scaleResolutionDownBy: 1 }]` for "high", `800kbps@30/720p` for "medium", `400kbps@15/480p` for "low".
+- Mark the screenshare transceiver `contentHint = "motion"` so encoders prioritize framerate over fidelity instead of vice versa.
+- Disable simulcast on screenshare (it doubles encoder cost for no gain in 2-person calls).
+- Verify the audio transceiver isn't being downgraded when video is added (check `addTransceiver` ordering).
 
 ---
 
-### 5. Devices tab — wrong purpose & wrong location
+## 5. Personal notes: rich, draggable attachments inside the note
 
-The current "Devices" tab lists local mics/speakers/cameras. The user wants it to be a **security panel** showing currently signed-in sessions with the option to revoke them — and moved under **User Settings**.
+**Today:** Attachments render as plain filename chips below the note body.
 
-**Plan:**
-- Rename current local-hardware listing → fold the mic/speaker/camera enumeration into the existing **Voice & Video** tab as a "Detected hardware" subsection (it already covers input/output device choice).
-- Replace the "Devices" tab content with a real **Active Sessions** panel:
-  - New table `public.user_sessions(id uuid PK, user_id uuid, device_label text, user_agent text, platform text, ip_inet inet, last_seen_at timestamptz, created_at timestamptz, current_session_id text)` with RLS allowing a user to `select`/`delete` only their own rows.
-  - On every successful auth state change in `AuthContext`, upsert a row keyed by a stable `session_id` stored in `localStorage` (`cubbly:session-id`, generated once per install), updating `last_seen_at` and `device_label` (e.g. `Cubbly Desktop · Windows 11`, `Chrome on macOS`, `iPhone PWA`).
-  - On `signOut`, delete the row for the current `session_id`.
-  - New `DevicesSettings` UI: lists rows ordered by `last_seen_at DESC`, with the current device pinned at top and badged "This device". Each other row has a **Sign out** button that deletes the row (the next time that client polls/refreshes it gets a 401 from `auth.refreshSession`, which we already handle by routing to `/login`). Add a **"Sign out everywhere else"** button.
-- Move `Devices` from the **App Settings** section to the **User Settings** section in `settingsSections` inside `SettingsModal`, right after `Notifications`.
+**Target:** Images/videos/PDFs render inline as draggable cards within the note canvas; images open in `ImageLightbox`, videos in `VideoLightbox` (same components as chat).
+
+**Schema (one migration):**
+- Add `attachment_layout JSONB` to `notes` (or to a side table if we prefer). Stores `[{ path, type, x, y, w, h, z }]`. Keep encrypted-at-rest by storing it inside the existing ciphertext payload — no schema change needed if we extend the JSON shape that's already encrypted. **Preferred: extend the ciphertext JSON, no migration.**
+
+**Frontend changes (`NotesView.tsx` + `NotesContext.tsx`):**
+- Decrypted note shape becomes `{ body: string, attachments: Array<{ id, path, mime, x, y, w, h }> }`.
+- Render an absolutely-positioned layer over the note body containing one card per attachment:
+  - `image/*` → `<img>` thumbnail, click opens `ImageLightbox`.
+  - `video/*` → `<video>` poster + play, click opens `VideoLightbox`.
+  - `application/pdf` → PDF.js mini-preview (or first-page thumbnail via `<embed>`), click opens fullscreen.
+  - other → existing file chip.
+- Drag: pointer events (works on mouse + touch + Pencil). Throttle position updates; persist on `pointerup` via `updateNote`. iOS PWA: use `touch-action: none` on the drag handle to prevent page scroll while dragging.
+- Resize: corner handle, same persistence model.
+- Add a "Reset layout" button in the note header.
+
+**Acceptance:** Open a note with image+pdf+video on web/desktop and iOS PWA; drag each card; positions persist; lightboxes work.
 
 ---
 
-### Technical notes
+## Technical notes
 
-- New file: `src/components/app/settings/_shared.tsx` (SettingsCard, SettingsSectionLabel, SettingsToggle).
-- Migration: `create table public.user_sessions ...` + RLS + index on `(user_id, last_seen_at desc)`.
-- `EquippedThemeBridge` change is a 4-line tweak; `ThemeContext` exposes a small `getSavedTheme()` helper.
-- Voice fix needs a feature-detect helper for ended tracks + a tiny `acquireFreshMic()` utility added next to `applyLocalMicMute`.
-- `BADGE_ART` map will be moved/exported from `UserBadges.tsx` so `ShopView` and `ShopItemsGrid` can import it without duplication.
+- Files touched: `src/lib/realtimeReconnect.ts`, `src/contexts/AuthContext.tsx`, `src/contexts/GroupCallContext.tsx`, `src/components/app/ChatView.tsx` (call pill), `src/components/app/NotesView.tsx`, `src/contexts/NotesContext.tsx`, `src/lib/notesCrypto.ts` (to extend payload shape).
+- No DB migrations required if note layout rides inside the existing encrypted blob (preferred).
+- Bump `package.json` to `0.3.2` and append a changelog entry.
 
-After these changes I'll bump the changelog with v0.3.1 entries covering the badge artwork, mute/deafen stability fix, theme persistence fix, settings UI overhaul, and the new sessions panel.
+## Out of scope
+
+- Full WebRTC SFU rewrite (would fix screenshare perf more thoroughly, but too big for this hotfix).
+- Server-side presence (would solve flapping permanently — track separately).
