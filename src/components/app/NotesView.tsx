@@ -592,6 +592,14 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     if (!root) return;
     const els = Array.from(root.querySelectorAll<HTMLElement>("[data-att-id]"));
     for (const el of els) {
+      const tag = el.tagName.toLowerCase();
+      if (tag === "img" || tag === "video") {
+        el.setAttribute("draggable", "false");
+        el.setAttribute("data-cubbly-movable", "1");
+        (el as HTMLElement).style.userSelect = "none";
+        (el as HTMLElement).style.cursor = "grab";
+        (el as any).style.webkitUserDrag = "none";
+      }
       const id = el.getAttribute("data-att-id");
       if (!id) continue;
       const cached = blobUrlCacheRef.current.get(id);
