@@ -1175,8 +1175,6 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     });
     return ids;
   })();
-  const previewableNotInlined = attachments.filter((a) => isPreviewable(a.mime) && !inlinedIds.has(a.id));
-  const otherFiles = attachments.filter((a) => !isPreviewable(a.mime));
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
