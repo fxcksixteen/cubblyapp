@@ -753,25 +753,29 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     sel?.addRange(after);
   };
 
-  // Upload + insert a file at a specific caret range. Images/videos go
-  // inline into the body; everything else falls back to the attachment list.
-  const uploadAndInsert = async (file: File, range: Range | null) => {
+  // Upload a file. By default we DO NOT insert it inline — attachments
+  // appear in the bottom strip and the user inserts them explicitly. The
+  // `insertInline` flag is only used when a file is dropped directly into
+  // the editor body (drag-drop or paste), where the user clearly intends
+  // for it to land at the drop point.
+  const uploadFile = async (file: File, opts: { insertInline?: boolean; range?: Range | null } = {}) => {
     if (file.size > 25 * 1024 * 1024) { toast.error("File too large (25MB max)"); return; }
     setUploading(true);
     try {
       const att = await n.uploadAttachment(file);
       setAttachments((prev) => [...prev, att]);
       dirty.current = true;
+      // Pre-cache blob URL from the original file (cheaper than redownloading).
       if (att.mime.startsWith("image/") || att.mime.startsWith("video/")) {
-        // Get a usable blob URL immediately from the original file (cheaper
-        // than re-downloading from storage).
         const url = URL.createObjectURL(file);
         blobUrlCacheRef.current.set(att.id, url);
-        const node = att.mime.startsWith("image/")
-          ? buildInlineImg(att.id, url, file.name)
-          : buildInlineVideo(att.id, url);
-        insertNodeAtCaret(node, range);
-        setBody(bodyRef.current?.innerHTML || "");
+        if (opts.insertInline) {
+          const node = att.mime.startsWith("image/")
+            ? buildInlineImg(att.id, url, file.name)
+            : buildInlineVideo(att.id, url);
+          insertNodeAtCaret(node, opts.range ?? null);
+          setBody(bodyRef.current?.innerHTML || "");
+        }
       }
     } catch (e: any) {
       toast.error(e?.message || "Upload failed");
@@ -780,16 +784,9 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     }
   };
 
-  // Toolbar Attach button — appends inline at end of body for images,
-  // adds to file list for everything else.
+  // Toolbar Attach button — never auto-inserts; just adds to attachments.
   const onUpload = async (file: File) => {
-    let range: Range | null = null;
-    if (bodyRef.current) {
-      range = document.createRange();
-      range.selectNodeContents(bodyRef.current);
-      range.collapse(false);
-    }
-    await uploadAndInsert(file, range);
+    await uploadFile(file, { insertInline: false });
   };
 
   const downloadAtt = async (att: typeof attachments[0]) => {
