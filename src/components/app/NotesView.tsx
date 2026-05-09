@@ -906,16 +906,197 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     }
   };
 
-  // Track when the user starts dragging an inline image so onDrop can
-  // identify it and move (rather than duplicate) the node.
-  const onEditorDragStart = (e: React.DragEvent) => {
-    const target = e.target as HTMLElement;
-    const id = target?.getAttribute?.("data-att-id");
-    if (id && e.dataTransfer) {
-      e.dataTransfer.setData("application/x-cubbly-att", id);
-      e.dataTransfer.effectAllowed = "move";
-    }
-  };
+  // Pointer-based drag for inline images/videos. Native HTML5 drag inside
+  // contenteditable is unreliable (duplicates, no-ops, weird drop offsets), so
+  // we implement our own: hold an inline image, see a ghost, see a drop marker
+  // showing the exact insertion point, release to move the node there.
+  useEffect(() => {
+    const root = bodyRef.current;
+    if (!root) return;
+
+    let dragging: HTMLElement | null = null;
+    let ghost: HTMLElement | null = null;
+    let marker: HTMLElement | null = null;
+    let startX = 0;
+    let startY = 0;
+    let activated = false;
+    let pointerId = 0;
+    const ACTIVATION_PX = 5;
+
+    const cleanup = () => {
+      if (ghost) { try { ghost.remove(); } catch {} ghost = null; }
+      if (marker) { try { marker.remove(); } catch {} marker = null; }
+      if (dragging) {
+        dragging.style.opacity = "";
+        dragging.style.cursor = "grab";
+      }
+      dragging = null;
+      activated = false;
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+    };
+
+    const ensureGhost = (el: HTMLElement) => {
+      const rect = el.getBoundingClientRect();
+      const g = el.cloneNode(true) as HTMLElement;
+      g.removeAttribute("data-att-id");
+      g.style.position = "fixed";
+      g.style.left = `${rect.left}px`;
+      g.style.top = `${rect.top}px`;
+      g.style.width = `${rect.width}px`;
+      g.style.height = `${rect.height}px`;
+      g.style.opacity = "0.75";
+      g.style.pointerEvents = "none";
+      g.style.zIndex = "9999";
+      g.style.transform = "scale(0.96)";
+      g.style.boxShadow = "0 12px 32px rgba(0,0,0,0.45)";
+      g.style.borderRadius = "8px";
+      document.body.appendChild(g);
+      return g;
+    };
+
+    const ensureMarker = () => {
+      const m = document.createElement("div");
+      m.style.position = "fixed";
+      m.style.height = "3px";
+      m.style.background = "hsl(var(--primary))";
+      m.style.borderRadius = "2px";
+      m.style.boxShadow = "0 0 8px hsl(var(--primary) / 0.6)";
+      m.style.pointerEvents = "none";
+      m.style.zIndex = "9998";
+      m.style.transition = "top 60ms linear, left 60ms linear, width 60ms linear";
+      document.body.appendChild(m);
+      return m;
+    };
+
+    // Compute insertion target: returns { parent, refNode } where the dragged
+    // node should be inserted before refNode (or at end if refNode is null).
+    const computeInsertion = (x: number, y: number): { parent: Node; refNode: Node | null; markerRect: DOMRect } | null => {
+      if (!root) return null;
+      const rootRect = root.getBoundingClientRect();
+      const cx = Math.min(Math.max(x, rootRect.left + 4), rootRect.right - 4);
+      const cy = Math.min(Math.max(y, rootRect.top + 4), rootRect.bottom - 4);
+
+      // Find the direct child of root that the pointer is over (block-level).
+      const children = Array.from(root.childNodes).filter((c) => {
+        if (c === dragging) return false;
+        if (c.nodeType === 3) return (c.textContent || "").trim().length > 0;
+        return c.nodeType === 1;
+      });
+
+      if (children.length === 0) {
+        const r = new DOMRect(rootRect.left + 8, rootRect.top + 8, rootRect.width - 16, 0);
+        return { parent: root, refNode: null, markerRect: r };
+      }
+
+      // Find the child whose vertical center is closest, and decide before/after.
+      let bestIdx = 0;
+      let bestDist = Infinity;
+      const childRects: DOMRect[] = [];
+      for (let i = 0; i < children.length; i++) {
+        const c = children[i];
+        let rect: DOMRect;
+        if (c.nodeType === 1) {
+          rect = (c as HTMLElement).getBoundingClientRect();
+        } else {
+          const range = document.createRange();
+          range.selectNodeContents(c);
+          rect = range.getBoundingClientRect();
+        }
+        childRects.push(rect);
+        const cyMid = rect.top + rect.height / 2;
+        const d = Math.abs(cy - cyMid);
+        if (d < bestDist) { bestDist = d; bestIdx = i; }
+      }
+
+      const targetRect = childRects[bestIdx];
+      const insertBefore = cy < targetRect.top + targetRect.height / 2;
+      const refNode = insertBefore ? children[bestIdx] : children[bestIdx].nextSibling;
+      const markerY = insertBefore ? targetRect.top - 2 : targetRect.bottom;
+      const markerRect = new DOMRect(rootRect.left + 8, markerY, rootRect.width - 16, 3);
+      return { parent: root, refNode, markerRect };
+    };
+
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      const movable = target.closest('[data-cubbly-movable="1"]') as HTMLElement | null;
+      if (!movable || !root.contains(movable)) return;
+      // For videos: only initiate drag from the image area, not the controls.
+      // We approximate: if the click is in the bottom 40px of the video element
+      // (where controls live), don't start a drag.
+      if (movable.tagName.toLowerCase() === "video") {
+        const r = movable.getBoundingClientRect();
+        if (e.clientY > r.bottom - 44) return;
+      }
+      dragging = movable;
+      startX = e.clientX;
+      startY = e.clientY;
+      pointerId = e.pointerId;
+      try { movable.setPointerCapture(e.pointerId); } catch {}
+      e.preventDefault();
+    };
+
+    const onPointerMove = (e: PointerEvent) => {
+      if (!dragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      if (!activated) {
+        if (Math.hypot(dx, dy) < ACTIVATION_PX) return;
+        activated = true;
+        ghost = ensureGhost(dragging);
+        marker = ensureMarker();
+        dragging.style.opacity = "0.25";
+        dragging.style.cursor = "grabbing";
+        document.body.style.userSelect = "none";
+        document.body.style.cursor = "grabbing";
+      }
+      if (ghost) {
+        const rect = dragging.getBoundingClientRect();
+        ghost.style.left = `${e.clientX - rect.width / 2}px`;
+        ghost.style.top = `${e.clientY - rect.height / 2}px`;
+      }
+      const ins = computeInsertion(e.clientX, e.clientY);
+      if (ins && marker) {
+        marker.style.left = `${ins.markerRect.left}px`;
+        marker.style.top = `${ins.markerRect.top}px`;
+        marker.style.width = `${ins.markerRect.width}px`;
+        marker.style.display = "block";
+      } else if (marker) {
+        marker.style.display = "none";
+      }
+    };
+
+    const onPointerUp = (e: PointerEvent) => {
+      if (!dragging) return;
+      try { dragging.releasePointerCapture(pointerId); } catch {}
+      if (!activated) { cleanup(); return; }
+      const ins = computeInsertion(e.clientX, e.clientY);
+      if (ins) {
+        try {
+          ins.parent.insertBefore(dragging, ins.refNode);
+          setBody(root.innerHTML);
+          dirty.current = true;
+        } catch {}
+      }
+      cleanup();
+    };
+
+    const onPointerCancel = () => cleanup();
+
+    root.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerCancel);
+
+    return () => {
+      root.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerCancel);
+      cleanup();
+    };
+  }, [note.id]);
 
   const exec = (cmd: string) => {
     document.execCommand(cmd, false);
