@@ -52,7 +52,13 @@ final class CallSignaling {
     // MARK: - Global ring channel (always on)
 
     func subscribeToIncomingCalls() async {
-        let channel = await RealtimeChannelFactory.make("voice-global:\(userId.uuidString)", client: client)
+        // CRITICAL: web/desktop subscribe to `voice-global:<lowercase-uuid>`.
+        // Supabase auth user ids serialize as lowercase on those clients, while
+        // Swift's `UUID.uuidString` returns UPPERCASE. If we don't lowercase,
+        // iOS subscribes to a different Realtime topic entirely and rings
+        // never cross platforms. Same applies on every other channel/payload
+        // that embeds a user id below.
+        let channel = await RealtimeChannelFactory.make("voice-global:\(userId.uuidString.lowercased())", client: client)
         let stream = channel.broadcastStream(event: "incoming-call")
         Task { [weak self] in
             for await message in stream {
