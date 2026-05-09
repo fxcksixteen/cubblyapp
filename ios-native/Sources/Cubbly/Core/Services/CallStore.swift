@@ -393,7 +393,7 @@ final class CallStore: ObservableObject {
         // Without this, web/desktop callers (which now wait for ready-for-offer
         // before sending the SDP offer) hang forever and the call never forms.
         await signaling.broadcast(type: "ready-for-offer", payload: [
-            "callEventId": inc.callEventId.map { .string($0.uuidString) } ?? .null
+            "callEventId": inc.callEventId.map { .string($0.uuidString.lowercased()) } ?? .null
         ])
         print("[Call] 📡 Sent ready-for-offer to caller")
     }
