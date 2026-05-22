@@ -23,9 +23,28 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.3.2";
+export const CURRENT_VERSION = "0.3.3";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.3.3",
+    title: "Servers that actually work, reliable rejoin & settings parity",
+    date: "2026-05-22",
+    hero: bearImage,
+    newFeatures: [
+      "Servers now have a proper dedicated layout — when you open a server, the DM sidebar steps aside and you get the server's own text + voice channel list instead.",
+      "Voice channels in servers are live: click one to join the group call, see who's in there, and leave anytime.",
+      "Every Settings tab now uses the same toggle component, row layout, and spacing as the Chat tab — full visual parity across Notifications, Privacy, Accessibility, Content & Social, Activity Privacy, Gaming Mode, Language & Time, and Advanced.",
+    ],
+    bugFixes: [
+      "Rejoining a call now actually puts you back into a real, working WebRTC session with your peer — the Rejoin button uses the exact same code path as the top-right call button, clears any stale ringing state, revives your participant row, and forces a fresh offer so audio/video really flows.",
+      "Server invites no longer fail with 'gen_random_bytes does not exist' — invite codes are now generated without depending on pgcrypto.",
+      "Message deletes now sync instantly across both sides of a conversation via realtime DELETE events on the messages table.",
+      "Switching appearance themes is now idempotent and synchronous — no more needing to click a theme twice to make it stick.",
+      "Replaced the gamer badge artwork with the new white-bear-with-headphones PNG.",
+      "Server channels: 'Select a channel' placeholder is gone — the selected channel's conversation now loads correctly with its real name in the header.",
+    ],
+  },
   {
     version: "0.3.2",
     title: "Rock-solid presence, rejoinable calls & screenshare polish",
