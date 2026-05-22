@@ -251,13 +251,22 @@ const ChannelGroup = ({
   );
 };
 
-const VoiceChannelPanel = ({ channel, conversation }: { channel: any; conversation: any }) => {
+const VoiceChannelPanel = ({ channel, conversation }: { channel: any; conversation: Conversation | null }) => {
+  const groupCall = useGroupCall();
+  const isJoined = !!conversation && groupCall.activeCall?.conversationId === conversation.id;
+  const handleJoin = async () => {
+    if (!conversation) return;
+    if (isJoined) { groupCall.leaveCall(); return; }
+    await groupCall.startCall(conversation.id, channel.name, conversation.members.map((m) => m.user_id));
+  };
+
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <div className="flex items-center gap-2 px-5 h-14 border-b" style={{ borderColor: "var(--app-border)" }}>
         <Volume2 className="h-5 w-5" style={{ color: "var(--app-text-secondary)" }} />
         <span className="font-semibold" style={{ color: "var(--app-text-primary)" }}>{channel.name}</span>
       </div>
+      {conversation && <GroupCallPanel conversationId={conversation.id} />}
       <div className="flex-1 flex items-center justify-center text-center p-6">
         <div className="max-w-sm">
           <div className="flex h-16 w-16 mx-auto items-center justify-center rounded-full mb-4" style={{ backgroundColor: "var(--app-bg-tertiary)" }}>
@@ -265,8 +274,11 @@ const VoiceChannelPanel = ({ channel, conversation }: { channel: any; conversati
           </div>
           <h3 className="font-semibold mb-1" style={{ color: "var(--app-text-primary)" }}>Voice channel</h3>
           <p className="text-sm" style={{ color: "var(--app-text-secondary)" }}>
-            Voice channels are coming together — for now, hop into the matching group call from the chat to talk with everyone here.
+            {isJoined ? "You're connected to this channel." : "Join this channel to talk with everyone here."}
           </p>
+          <Button onClick={handleJoin} disabled={!conversation} className="mt-4 rounded-full px-5">
+            {isJoined ? "Leave Voice" : "Join Voice"}
+          </Button>
         </div>
       </div>
     </div>
