@@ -54,14 +54,15 @@ function loadSavedTheme(): ThemeName {
 export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   const [theme, setThemeState] = useState<ThemeName>(loadSavedTheme);
 
+  // Apply data-theme synchronously alongside the React state update so the
+  // CSS variables flip in the SAME paint. The previous useEffect-only path
+  // raced with the EquippedThemeBridge re-asserting the saved theme, which
+  // is why some themes needed multiple clicks to "stick".
   const setTheme = (t: ThemeName) => {
     if (!VALID_THEMES.includes(t)) t = "default";
+    try { document.documentElement.setAttribute("data-theme", t); } catch {}
+    try { localStorage.setItem("cubbly-theme", t); } catch (e) { console.warn("Failed to save theme preference:", e); }
     setThemeState(t);
-    try {
-      localStorage.setItem("cubbly-theme", t);
-    } catch (e) {
-      console.warn("Failed to save theme preference:", e);
-    }
   };
 
   useEffect(() => {

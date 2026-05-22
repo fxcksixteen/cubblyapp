@@ -1,6 +1,11 @@
 import { CSSProperties, ReactNode } from "react";
+import { Switch } from "@/components/ui/switch";
 
-/** Shared toggle used in every settings tab so they all look identical. */
+/**
+ * Shared toggle used in every settings tab so they all look identical.
+ * Renders the shadcn `<Switch>` (the same primitive the Chat tab uses) so
+ * every settings tab matches the Chat tab pixel-for-pixel.
+ */
 export const SettingsToggle = ({
   checked,
   onChange,
@@ -10,20 +15,7 @@ export const SettingsToggle = ({
   onChange: (v: boolean) => void;
   ariaLabel?: string;
 }) => (
-  <button
-    type="button"
-    role="switch"
-    aria-checked={checked}
-    aria-label={ariaLabel}
-    onClick={() => onChange(!checked)}
-    className="relative h-6 w-11 shrink-0 rounded-full transition-colors"
-    style={{ backgroundColor: checked ? "#3ba55c" : "#3f4147" }}
-  >
-    <span
-      className="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform"
-      style={{ transform: checked ? "translateX(22px)" : "translateX(2px)" }}
-    />
-  </button>
+  <Switch checked={checked} onCheckedChange={onChange} aria-label={ariaLabel} />
 );
 
 /** Single labeled toggle row, used inside SettingsCard groups. */

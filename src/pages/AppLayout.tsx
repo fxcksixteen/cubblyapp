@@ -529,25 +529,28 @@ const AppLayout = () => {
           onJumpToConversation={(convId) => navigate(`/@me/chat/${convId}`, { replace: true })}
         />
 
-        <DMSidebar
-          conversations={visibleConversations}
-          activeView={activeView}
-          setActiveView={(view) => {
-            if (view.startsWith("dm:")) {
-              const convId = view.replace("dm:", "");
-              navigate(`/@me/chat/${convId}`, { replace: true });
-            } else if (view === "shop") {
-              navigate("/@me/shop", { replace: true });
-            } else if (view === "notes") {
-              navigate("/@me/notes", { replace: true });
-            } else {
-              navigate(`/@me/${friendTab}`, { replace: true });
-            }
-          }}
-          onCloseConversation={handleCloseConversation}
-          onOpenDM={handleOpenDM}
-          onCreateGroup={() => setCreateGroupOpen(true)}
-        />
+        {!isServerRoute && (
+          <DMSidebar
+            conversations={visibleConversations}
+            activeView={activeView}
+            setActiveView={(view) => {
+              if (view.startsWith("dm:")) {
+                const convId = view.replace("dm:", "");
+                navigate(`/@me/chat/${convId}`, { replace: true });
+              } else if (view === "shop") {
+                navigate("/@me/shop", { replace: true });
+              } else if (view === "notes") {
+                navigate("/@me/notes", { replace: true });
+              } else {
+                navigate(`/@me/${friendTab}`, { replace: true });
+              }
+            }}
+            onCloseConversation={handleCloseConversation}
+            onOpenDM={handleOpenDM}
+            onCreateGroup={() => setCreateGroupOpen(true)}
+          />
+        )}
+
 
         <div className="flex flex-1 flex-col">
           <div className="flex h-14 items-center justify-between border-b px-5 shadow-sm" style={{ backgroundColor: "var(--app-bg-primary)", borderColor: "var(--app-border)" }}>

@@ -171,13 +171,17 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
     .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())[0];
   const liveCallInThisChat = activeCall?.conversationId === conversationId;
 
+  // Rejoin = behave EXACTLY like the header phone button. AppLayout's
+  // handleVoiceCall calls `startCall(convId, peerId, peerName)` — we do
+  // the same thing here, no Promise.resolve cast wrapping that was making
+  // the button feel inert when the existing call_event was stale.
   const handleRejoin = (eventId: string) => {
-    if (!recipientUserId || rejoiningEventId === eventId) return;
+    if (!recipientUserId) return;
     setRejoiningEventId(eventId);
     try {
-      void Promise.resolve((startCall as unknown as (cid: string, pid: string, name: string) => Promise<void>)(conversationId, recipientUserId, recipientName))
-        .catch(() => setRejoiningEventId(null));
-    } catch {
+      startCall(conversationId, recipientUserId, recipientName);
+    } catch (e) {
+      console.error("[Rejoin] startCall failed:", e);
       setRejoiningEventId(null);
     }
   };
