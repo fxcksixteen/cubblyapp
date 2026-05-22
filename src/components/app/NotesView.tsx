@@ -1250,7 +1250,7 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
         />
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto overflow-x-auto">
         <div
           ref={bodyRef}
           contentEditable
@@ -1268,6 +1268,9 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
             color: "var(--app-text-primary)",
             minHeight: "8rem",
             WebkitUserSelect: "text",
+            userSelect: "text",
+            overflowX: "auto",
+            overflowWrap: "anywhere",
             outline: editorDragOver ? "2px dashed hsl(var(--primary))" : undefined,
             outlineOffset: editorDragOver ? "-4px" : undefined,
             borderRadius: 6,
@@ -1275,6 +1278,7 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
           suppressContentEditableWarning
         />
       </div>
+
 
       {/* Unified attachment strip — every attached file appears here with
           quick actions (insert/uninsert for media, download, delete). */}
