@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Hash, Volume2, Plus, Settings, UserPlus, LogOut, Copy, Loader2, ChevronDown } from "lucide-react";
-import { useServers } from "@/contexts/ServersContext";
+import { Hash, Volume2, Plus, Settings, UserPlus, LogOut, Copy, Loader2, ChevronDown, type LucideIcon } from "lucide-react";
+import { useServers, type ServerChannel } from "@/contexts/ServersContext";
 import { useServerChannels, useServerMembers } from "@/hooks/useServerChannels";
 import type { Conversation } from "@/hooks/useConversations";
 import { useAuth } from "@/contexts/AuthContext";
@@ -206,7 +206,7 @@ const ServerView = () => {
   );
 };
 
-const MenuItem = ({ icon: Icon, label, onClick, danger }: { icon: any; label: string; onClick: () => void; danger?: boolean }) => (
+const MenuItem = ({ icon: Icon, label, onClick, danger }: { icon: LucideIcon; label: string; onClick: () => void; danger?: boolean }) => (
   <button
     onClick={onClick}
     className="flex w-full items-center gap-2 px-3 py-1.5 text-sm transition-colors"
@@ -221,7 +221,7 @@ const MenuItem = ({ icon: Icon, label, onClick, danger }: { icon: any; label: st
 
 const ChannelGroup = ({
   label, channels, activeId, onSelect,
-}: { label: string; channels: any[]; activeId?: string; onSelect: (id: string) => void }) => {
+}: { label: string; channels: ServerChannel[]; activeId?: string; onSelect: (id: string) => void }) => {
   if (channels.length === 0) return null;
   return (
     <div className="mb-2">
@@ -250,7 +250,7 @@ const ChannelGroup = ({
   );
 };
 
-const VoiceChannelPanel = ({ channel, conversation }: { channel: any; conversation: Conversation | null }) => {
+const VoiceChannelPanel = ({ channel, conversation }: { channel: ServerChannel; conversation: Conversation | null }) => {
   const groupCall = useGroupCall();
   const isJoined = !!conversation && groupCall.activeCall?.conversationId === conversation.id;
   const handleJoin = async () => {
