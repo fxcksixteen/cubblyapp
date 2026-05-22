@@ -1233,7 +1233,7 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
         <span className="mx-1 h-4 w-px shrink-0" style={{ backgroundColor: "var(--app-border)" }} />
         <button
           onClick={() => fileRef.current?.click()}
-          className="flex items-center gap-1 px-2 py-1 rounded transition-colors active:bg-[var(--app-hover)] shrink-0"
+          className="flex items-center gap-1 px-2 py-1 rounded transition-colors cursor-pointer hover:bg-[var(--app-hover)] hover:text-[var(--app-text-primary)] active:bg-[var(--app-active)] shrink-0"
         >
           {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Paperclip className="h-3.5 w-3.5" />}
           Attach
