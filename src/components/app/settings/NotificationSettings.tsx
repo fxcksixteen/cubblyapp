@@ -187,7 +187,9 @@ const NotificationSettings = ({ cardStyle }: NotificationSettingsProps) => {
         <div className="mt-5 grid gap-3 md:grid-cols-2">
           <button
             onClick={sendTestNotification}
-            className="rounded-[18px] border px-4 py-3 text-sm font-semibold transition-colors hover:opacity-90"
+            disabled={notifBlocked || notifUnsupported}
+            title={sendBtnTooltip}
+            className="rounded-[18px] border px-4 py-3 text-sm font-semibold transition-colors hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
             style={{
               backgroundColor: "var(--app-bg-secondary)",
               borderColor: "var(--app-border)",
@@ -198,6 +200,47 @@ const NotificationSettings = ({ cardStyle }: NotificationSettingsProps) => {
           </button>
           <button
             onClick={playTestSound}
+            className="rounded-[18px] border px-4 py-3 text-sm font-semibold transition-colors hover:opacity-90"
+            style={{
+              backgroundColor: "var(--app-bg-secondary)",
+              borderColor: "var(--app-border)",
+              color: "var(--app-text-primary)",
+            }}
+          >
+            Play Message Sound
+          </button>
+        </div>
+
+        <div className="mt-3">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--app-text-secondary)" }}>
+            Call Sounds
+          </p>
+          <div className="grid gap-3 md:grid-cols-3">
+            {([
+              ["outgoingRing", "Outgoing Ring"],
+              ["incomingCall", "Incoming Call"],
+              ["joinCall", "Join Call"],
+              ["leaveCall", "Leave Call"],
+              ["mute", "Mute"],
+              ["unmute", "Unmute"],
+              ["deafen", "Deafen"],
+              ["undeafen", "Undeafen"],
+              ["screenshareStart", "Screenshare Start"],
+              ["screenshareStop", "Screenshare Stop"],
+            ] as const).map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => testCallSound(key, label.toLowerCase())}
+                className="rounded-[18px] border px-4 py-3 text-sm font-semibold transition-colors hover:opacity-90"
+                style={{
+                  backgroundColor: "var(--app-bg-secondary)",
+                  borderColor: "var(--app-border)",
+                  color: "var(--app-text-primary)",
+                }}
+              >
+                {label}
+              </button>
+            ))}
             className="rounded-[18px] border px-4 py-3 text-sm font-semibold transition-colors hover:opacity-90"
             style={{
               backgroundColor: "var(--app-bg-secondary)",
