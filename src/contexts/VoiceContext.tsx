@@ -1506,6 +1506,20 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     console.log(`[Voice] 📞 startCall — peer: ${peerName} (${peerId}), bot: ${isBotCall}`);
 
     try {
+      stopLooping("incomingCall");
+      stopLooping("outgoingRing");
+      setIncomingCall(null);
+      isRemoteHangup.current = false;
+
+      if (activeCallRef.current?.conversationId !== conversationId && pcRef.current) {
+        try { pcRef.current.close(); } catch {}
+        pcRef.current = null;
+      }
+      if (channelRef.current && activeCallRef.current?.conversationId !== conversationId) {
+        try { supabase.removeChannel(channelRef.current); } catch {}
+        channelRef.current = null;
+      }
+
       // ─── Hardcoded invariant: only ONE call can ever be ongoing per chat. ───
       // Before starting a fresh one, check the DB for an existing ongoing
       // call_event in this conversation. If it exists, REUSE its id (we're
@@ -1556,6 +1570,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       }
       if (!callEventId) callEventId = crypto.randomUUID();
 
+      if (isJoiningExisting) {
+        await ensureOwnParticipantRow(callEventId!, {
+          is_muted: activeCallRef.current?.isMuted ?? false,
+          is_deafened: activeCallRef.current?.isDeafened ?? false,
+          is_video_on: activeCallRef.current?.isVideoOn ?? false,
+          is_screen_sharing: false,
+        });
+      }
+
       incomingCandidateQueue.current = [];
       outgoingCandidateBuffer.current = [];
       remoteDescriptionSet.current = false;
@@ -1577,13 +1600,23 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         isVideoOn: false,
       });
       peerIdRef.current = peerId;
+      activeCallRef.current = {
+        conversationId,
+        peerId,
+        peerName,
+        state: "calling",
+        startedAt: undefined,
+        isMuted: false,
+        isDeafened: false,
+        isVideoOn: false,
+      };
 
       // Only play the outgoing ring when actually starting a brand new call.
       if (!isBotCall && !isJoiningExisting) {
         playLooping("outgoingRing", { volume: 0.4 });
       }
 
-      await ensureOwnParticipantRow(callEventId!);
+      if (!isJoiningExisting) await ensureOwnParticipantRow(callEventId!);
 
       // Only insert a new call_event row if we're NOT joining an existing one.
       if (!isJoiningExisting) {
