@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { Hash, Volume2, Plus, Settings, UserPlus, LogOut, Copy, Loader2, ChevronDown } from "lucide-react";
 import { useServers } from "@/contexts/ServersContext";
 import { useServerChannels, useServerMembers } from "@/hooks/useServerChannels";
-import { Conversation } from "@/hooks/useConversations";
+import type { Conversation } from "@/hooks/useConversations";
 import { useAuth } from "@/contexts/AuthContext";
 import { useGroupCall } from "@/contexts/GroupCallContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -29,7 +29,6 @@ const ServerView = () => {
   const server = servers.find((s) => s.id === serverId);
   const { channels } = useServerChannels(serverId || null);
   const { members } = useServerMembers(serverId || null);
-  const groupCall = useGroupCall();
   const [activeConv, setActiveConv] = useState<Conversation | null>(null);
 
   const isOwner = !!server && server.owner_id === user?.id;
