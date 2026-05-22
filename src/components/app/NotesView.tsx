@@ -1477,12 +1477,13 @@ const ToolBtn = ({ label, onClick, bold, italic, underline }: { label: string; o
   <button
     onMouseDown={(e) => { e.preventDefault(); onClick(); }}
     onTouchStart={(e) => { e.preventDefault(); onClick(); }}
-    className="px-2 py-1 rounded transition-colors active:bg-[var(--app-hover)] shrink-0"
+    className="px-2 py-1 rounded transition-colors cursor-pointer hover:bg-[var(--app-hover)] hover:text-[var(--app-text-primary)] active:bg-[var(--app-active)] shrink-0"
     style={{ fontWeight: bold ? 700 : undefined, fontStyle: italic ? "italic" : undefined, textDecoration: underline ? "underline" : undefined }}
   >
     {label}
   </button>
 );
+
 
 function stripHtml(html: string) {
   const tmp = document.createElement("div");
