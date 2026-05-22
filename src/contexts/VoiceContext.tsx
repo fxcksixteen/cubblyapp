@@ -1004,13 +1004,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         if (payload.senderId === user.id) return;
         console.log(`[Voice] 📥 Signal received: ${payload.type} from ${payload.senderId?.substring(0,8)}...`);
         const pc = pcRef.current;
+      const activeCallSnapshot = activeCallRef.current;
+      const callEventIdSnapshot = currentCallEventIdRef.current;
 
         if (payload.type === "ready-for-offer") {
           try {
-            if (!outgoingCallMetaRef.current && activeCall?.conversationId === conversationId && currentCallEventId) {
+            if (!outgoingCallMetaRef.current && activeCallSnapshot?.conversationId === conversationId && callEventIdSnapshot) {
               outgoingCallMetaRef.current = {
                 conversationId,
-                callEventId: currentCallEventId,
+                callEventId: callEventIdSnapshot,
               };
             }
             await initializeOutgoingConnection(channel, conversationId);
@@ -1121,7 +1123,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           // handshake so we end up actually connected. Without this branch
           // the rejoiner sat in "connected" state with no pc, no audio,
           // and a phantom incoming card.
-          if (!pc && activeCall?.conversationId === conversationId) {
+          if (!pc && activeCallSnapshot?.conversationId === conversationId) {
             try {
               console.log("[Voice] 🔁 Rejoin offer received — auto-accepting");
               const stream = await getUserMedia();
