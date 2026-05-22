@@ -43,10 +43,30 @@ const NotificationSettings = ({ cardStyle }: NotificationSettingsProps) => {
     });
   };
 
-  const sendTestNotification = () => {
+  const sendTestNotification = async () => {
     if (!prefs.desktopEnabled) {
       toast.error("Turn on Desktop Notifications first.");
       return;
+    }
+
+    // Browser path: request permission if needed, surface clear errors.
+    if (!isElectron) {
+      if (typeof Notification === "undefined") {
+        toast.error("This browser doesn't support notifications.");
+        return;
+      }
+      let perm = getNotificationPermission();
+      if (perm === "default") {
+        try { perm = await Notification.requestPermission(); } catch {}
+      }
+      if (perm === "denied") {
+        toast.error("Notifications are blocked in this browser. Enable them in your browser settings.");
+        return;
+      }
+      if (perm !== "granted") {
+        toast.error("Notification permission was not granted.");
+        return;
+      }
     }
 
     notify({
@@ -68,19 +88,29 @@ const NotificationSettings = ({ cardStyle }: NotificationSettingsProps) => {
     toast.success("Played message.wav.");
   };
 
-  const testCallSound = (key: "outgoingRing" | "incomingCall" | "leaveCall", label: string) => {
-    if (key === "leaveCall") {
-      playSound("leaveCall", { force: true, volume: 0.5 });
+  const testCallSound = (
+    key: "outgoingRing" | "incomingCall" | "leaveCall" | "joinCall" | "mute" | "unmute" | "deafen" | "undeafen" | "screenshareStart" | "screenshareStop",
+    label: string,
+  ) => {
+    const looping = key === "outgoingRing" || key === "incomingCall";
+    if (!looping) {
+      playSound(key, { force: true, volume: 0.55 });
       toast.success(`Played ${label}.`);
       return;
     }
-    // Looping sounds — start, then auto-stop after 4s so the user can hear them
-    // without needing a separate "stop" button.
     stopLooping(key);
     playLooping(key, { force: true, volume: 0.5 });
     toast.success(`Playing ${label} for 4 seconds…`);
     window.setTimeout(() => stopLooping(key), 4000);
   };
+
+  const notifBlocked = !isElectron && typeof Notification !== "undefined" && getNotificationPermission() === "denied";
+  const notifUnsupported = !isElectron && typeof Notification === "undefined";
+  const sendBtnTooltip = notifUnsupported
+    ? "This browser doesn't support notifications"
+    : notifBlocked
+      ? "Notifications are blocked in this browser"
+      : undefined;
 
   const rows = [
     {
