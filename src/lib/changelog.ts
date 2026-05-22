@@ -43,6 +43,10 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Switching appearance themes is now idempotent and synchronous — no more needing to click a theme twice to make it stick.",
       "Replaced the gamer badge artwork with the new white-bear-with-headphones PNG.",
       "Server channels: 'Select a channel' placeholder is gone — the selected channel's conversation now loads correctly with its real name in the header.",
+      "Launching a game during a call no longer freezes Cubbly — the native Windows audio capture init is wrapped with a hard 2-second timeout, so a stuck driver falls back to video-only screenshare instead of locking the call.",
+      "Personal Notes: long lines now scroll horizontally instead of getting clipped, text selection works again, and every toolbar control has a proper hover/cursor state.",
+      "Notifications tab: 'Send Test Notification' now requests browser permission when needed, shows a clear toast when notifications are blocked or unsupported, and disables the button when it can't possibly work. Every call sound (outgoing ring, incoming call, join, leave, mute, unmute, deafen, undeafen, screenshare start/stop) is now testable from its own button.",
+      "Desktop installer is significantly smaller: build now ships only the production bundle + the win32-x64 native prebuild, drops source maps, READMEs, test folders, and non-English Electron locales, and uses maximum asar compression.",
     ],
   },
   {
