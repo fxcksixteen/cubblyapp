@@ -1,18 +1,21 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Hash, Volume2, Plus, Settings, UserPlus, LogOut, Copy, Loader2, ChevronDown } from "lucide-react";
 import { useServers } from "@/contexts/ServersContext";
 import { useServerChannels, useServerMembers } from "@/hooks/useServerChannels";
-import { useConversations } from "@/hooks/useConversations";
+import { Conversation } from "@/hooks/useConversations";
 import { useAuth } from "@/contexts/AuthContext";
+import { useGroupCall } from "@/contexts/GroupCallContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import ChatView from "@/components/app/ChatView";
+import GroupCallPanel from "@/components/app/GroupCallPanel";
 import StatusIndicator from "@/components/app/StatusIndicator";
 import UserDisplayName from "@/components/app/UserDisplayName";
 import UserBadges from "@/components/app/UserBadges";
 import { getEffectivePresenceStatus } from "@/lib/presence";
 import { getProfileColor } from "@/lib/profileColors";
+import { Button } from "@/components/ui/button";
 
 const ServerView = () => {
   const location = useLocation();
@@ -26,7 +29,8 @@ const ServerView = () => {
   const server = servers.find((s) => s.id === serverId);
   const { channels } = useServerChannels(serverId || null);
   const { members } = useServerMembers(serverId || null);
-  const { conversations } = useConversations();
+  const groupCall = useGroupCall();
+  const [activeConv, setActiveConv] = useState<Conversation | null>(null);
 
   const isOwner = !!server && server.owner_id === user?.id;
 
@@ -39,9 +43,43 @@ const ServerView = () => {
   }, [channelId, channels, serverId, navigate]);
 
   const activeChannel = channels.find((c) => c.id === channelId);
-  const activeConv = activeChannel?.conversation_id
-    ? conversations.find((c) => c.id === activeChannel.conversation_id)
-    : null;
+  const activeParticipant = useMemo(() => ({
+    user_id: server?.id || "server",
+    display_name: server?.name || "Server",
+    username: "",
+    avatar_url: server?.icon_url || null,
+    status: "online",
+  }), [server?.id, server?.name, server?.icon_url]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!activeChannel?.conversation_id) { setActiveConv(null); return; }
+    (async () => {
+      const { data } = await supabase
+        .from("conversations")
+        .select("id, is_group, name, picture_url, owner_id")
+        .eq("id", activeChannel.conversation_id)
+        .maybeSingle();
+      if (cancelled) return;
+      if (!data) { setActiveConv(null); return; }
+      setActiveConv({
+        id: data.id,
+        is_group: data.is_group,
+        name: data.name,
+        picture_url: data.picture_url,
+        owner_id: data.owner_id,
+        participant: activeParticipant,
+        members: members.map((m) => ({
+          user_id: m.user_id,
+          display_name: m.display_name,
+          username: m.username,
+          avatar_url: m.avatar_url,
+          status: m.status,
+        })),
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [activeChannel?.conversation_id, activeParticipant, members]);
 
   const [createChanOpen, setCreateChanOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
