@@ -43,10 +43,30 @@ const NotificationSettings = ({ cardStyle }: NotificationSettingsProps) => {
     });
   };
 
-  const sendTestNotification = () => {
+  const sendTestNotification = async () => {
     if (!prefs.desktopEnabled) {
       toast.error("Turn on Desktop Notifications first.");
       return;
+    }
+
+    // Browser path: request permission if needed, surface clear errors.
+    if (!isElectron) {
+      if (typeof Notification === "undefined") {
+        toast.error("This browser doesn't support notifications.");
+        return;
+      }
+      let perm = getNotificationPermission();
+      if (perm === "default") {
+        try { perm = await Notification.requestPermission(); } catch {}
+      }
+      if (perm === "denied") {
+        toast.error("Notifications are blocked in this browser. Enable them in your browser settings.");
+        return;
+      }
+      if (perm !== "granted") {
+        toast.error("Notification permission was not granted.");
+        return;
+      }
     }
 
     notify({
@@ -68,19 +88,29 @@ const NotificationSettings = ({ cardStyle }: NotificationSettingsProps) => {
     toast.success("Played message.wav.");
   };
 
-  const testCallSound = (key: "outgoingRing" | "incomingCall" | "leaveCall", label: string) => {
-    if (key === "leaveCall") {
-      playSound("leaveCall", { force: true, volume: 0.5 });
+  const testCallSound = (
+    key: "outgoingRing" | "incomingCall" | "leaveCall" | "joinCall" | "mute" | "unmute" | "deafen" | "undeafen" | "screenshareStart" | "screenshareStop",
+    label: string,
+  ) => {
+    const looping = key === "outgoingRing" || key === "incomingCall";
+    if (!looping) {
+      playSound(key, { force: true, volume: 0.55 });
       toast.success(`Played ${label}.`);
       return;
     }
-    // Looping sounds — start, then auto-stop after 4s so the user can hear them
-    // without needing a separate "stop" button.
     stopLooping(key);
     playLooping(key, { force: true, volume: 0.5 });
     toast.success(`Playing ${label} for 4 seconds…`);
     window.setTimeout(() => stopLooping(key), 4000);
   };
+
+  const notifBlocked = !isElectron && typeof Notification !== "undefined" && getNotificationPermission() === "denied";
+  const notifUnsupported = !isElectron && typeof Notification === "undefined";
+  const sendBtnTooltip = notifUnsupported
+    ? "This browser doesn't support notifications"
+    : notifBlocked
+      ? "Notifications are blocked in this browser"
+      : undefined;
 
   const rows = [
     {
@@ -157,7 +187,9 @@ const NotificationSettings = ({ cardStyle }: NotificationSettingsProps) => {
         <div className="mt-5 grid gap-3 md:grid-cols-2">
           <button
             onClick={sendTestNotification}
-            className="rounded-[18px] border px-4 py-3 text-sm font-semibold transition-colors hover:opacity-90"
+            disabled={notifBlocked || notifUnsupported}
+            title={sendBtnTooltip}
+            className="rounded-[18px] border px-4 py-3 text-sm font-semibold transition-colors hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
             style={{
               backgroundColor: "var(--app-bg-secondary)",
               borderColor: "var(--app-border)",
@@ -184,41 +216,34 @@ const NotificationSettings = ({ cardStyle }: NotificationSettingsProps) => {
             Call Sounds
           </p>
           <div className="grid gap-3 md:grid-cols-3">
-            <button
-              onClick={() => testCallSound("outgoingRing", "outgoing ring")}
-              className="rounded-[18px] border px-4 py-3 text-sm font-semibold transition-colors hover:opacity-90"
-              style={{
-                backgroundColor: "var(--app-bg-secondary)",
-                borderColor: "var(--app-border)",
-                color: "var(--app-text-primary)",
-              }}
-            >
-              Outgoing Ring
-            </button>
-            <button
-              onClick={() => testCallSound("incomingCall", "incoming call")}
-              className="rounded-[18px] border px-4 py-3 text-sm font-semibold transition-colors hover:opacity-90"
-              style={{
-                backgroundColor: "var(--app-bg-secondary)",
-                borderColor: "var(--app-border)",
-                color: "var(--app-text-primary)",
-              }}
-            >
-              Incoming Call
-            </button>
-            <button
-              onClick={() => testCallSound("leaveCall", "leave call")}
-              className="rounded-[18px] border px-4 py-3 text-sm font-semibold transition-colors hover:opacity-90"
-              style={{
-                backgroundColor: "var(--app-bg-secondary)",
-                borderColor: "var(--app-border)",
-                color: "var(--app-text-primary)",
-              }}
-            >
-              Leave Call
-            </button>
+            {([
+              ["outgoingRing", "Outgoing Ring"],
+              ["incomingCall", "Incoming Call"],
+              ["joinCall", "Join Call"],
+              ["leaveCall", "Leave Call"],
+              ["mute", "Mute"],
+              ["unmute", "Unmute"],
+              ["deafen", "Deafen"],
+              ["undeafen", "Undeafen"],
+              ["screenshareStart", "Screenshare Start"],
+              ["screenshareStop", "Screenshare Stop"],
+            ] as const).map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => testCallSound(key, label.toLowerCase())}
+                className="rounded-[18px] border px-4 py-3 text-sm font-semibold transition-colors hover:opacity-90"
+                style={{
+                  backgroundColor: "var(--app-bg-secondary)",
+                  borderColor: "var(--app-border)",
+                  color: "var(--app-text-primary)",
+                }}
+              >
+                {label}
+              </button>
+            ))}
           </div>
         </div>
+
 
         <p className="mt-4 text-xs leading-relaxed" style={{ color: "var(--app-text-secondary)" }}>
           Do Not Disturb and Gaming Mode still suppress alerts automatically, even if these toggles are on.

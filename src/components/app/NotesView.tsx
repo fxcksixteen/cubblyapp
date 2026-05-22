@@ -1233,7 +1233,7 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
         <span className="mx-1 h-4 w-px shrink-0" style={{ backgroundColor: "var(--app-border)" }} />
         <button
           onClick={() => fileRef.current?.click()}
-          className="flex items-center gap-1 px-2 py-1 rounded transition-colors active:bg-[var(--app-hover)] shrink-0"
+          className="flex items-center gap-1 px-2 py-1 rounded transition-colors cursor-pointer hover:bg-[var(--app-hover)] hover:text-[var(--app-text-primary)] active:bg-[var(--app-active)] shrink-0"
         >
           {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Paperclip className="h-3.5 w-3.5" />}
           Attach
@@ -1250,7 +1250,7 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
         />
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto overflow-x-auto">
         <div
           ref={bodyRef}
           contentEditable
@@ -1268,6 +1268,9 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
             color: "var(--app-text-primary)",
             minHeight: "8rem",
             WebkitUserSelect: "text",
+            userSelect: "text",
+            overflowX: "auto",
+            overflowWrap: "anywhere",
             outline: editorDragOver ? "2px dashed hsl(var(--primary))" : undefined,
             outlineOffset: editorDragOver ? "-4px" : undefined,
             borderRadius: 6,
@@ -1275,6 +1278,7 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
           suppressContentEditableWarning
         />
       </div>
+
 
       {/* Unified attachment strip — every attached file appears here with
           quick actions (insert/uninsert for media, download, delete). */}
@@ -1473,12 +1477,13 @@ const ToolBtn = ({ label, onClick, bold, italic, underline }: { label: string; o
   <button
     onMouseDown={(e) => { e.preventDefault(); onClick(); }}
     onTouchStart={(e) => { e.preventDefault(); onClick(); }}
-    className="px-2 py-1 rounded transition-colors active:bg-[var(--app-hover)] shrink-0"
+    className="px-2 py-1 rounded transition-colors cursor-pointer hover:bg-[var(--app-hover)] hover:text-[var(--app-text-primary)] active:bg-[var(--app-active)] shrink-0"
     style={{ fontWeight: bold ? 700 : undefined, fontStyle: italic ? "italic" : undefined, textDecoration: underline ? "underline" : undefined }}
   >
     {label}
   </button>
 );
+
 
 function stripHtml(html: string) {
   const tmp = document.createElement("div");

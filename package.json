@@ -13,12 +13,22 @@
     },
     "files": [
       "dist/**/*",
-      "electron/**/*",
+      "electron/**/*.cjs",
+      "electron/icon.ico",
       "package.json",
       "native/win-audio-capture/index.js",
       "native/win-audio-capture/package.json",
-      "native/win-audio-capture/prebuilds/**/*"
+      "native/win-audio-capture/prebuilds/win32-x64/**/*",
+      "!**/*.map",
+      "!**/{CHANGELOG.md,README.md,README,readme.md,readme}",
+      "!**/{test,tests,__tests__,example,examples,docs,doc}/**",
+      "!**/*.{ts,tsx,d.ts}",
+      "!**/.bin/**"
     ],
+    "compression": "maximum",
+    "electronLanguages": ["en-US"],
+    "removePackageScripts": true,
+    "removePackageKeywords": true,
     "extraMetadata": {
       "main": "electron/main.cjs"
     },
