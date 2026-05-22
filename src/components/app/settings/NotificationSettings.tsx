@@ -241,57 +241,9 @@ const NotificationSettings = ({ cardStyle }: NotificationSettingsProps) => {
                 {label}
               </button>
             ))}
-            className="rounded-[18px] border px-4 py-3 text-sm font-semibold transition-colors hover:opacity-90"
-            style={{
-              backgroundColor: "var(--app-bg-secondary)",
-              borderColor: "var(--app-border)",
-              color: "var(--app-text-primary)",
-            }}
-          >
-            Play Message Sound
-          </button>
-        </div>
-
-        <div className="mt-3">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--app-text-secondary)" }}>
-            Call Sounds
-          </p>
-          <div className="grid gap-3 md:grid-cols-3">
-            <button
-              onClick={() => testCallSound("outgoingRing", "outgoing ring")}
-              className="rounded-[18px] border px-4 py-3 text-sm font-semibold transition-colors hover:opacity-90"
-              style={{
-                backgroundColor: "var(--app-bg-secondary)",
-                borderColor: "var(--app-border)",
-                color: "var(--app-text-primary)",
-              }}
-            >
-              Outgoing Ring
-            </button>
-            <button
-              onClick={() => testCallSound("incomingCall", "incoming call")}
-              className="rounded-[18px] border px-4 py-3 text-sm font-semibold transition-colors hover:opacity-90"
-              style={{
-                backgroundColor: "var(--app-bg-secondary)",
-                borderColor: "var(--app-border)",
-                color: "var(--app-text-primary)",
-              }}
-            >
-              Incoming Call
-            </button>
-            <button
-              onClick={() => testCallSound("leaveCall", "leave call")}
-              className="rounded-[18px] border px-4 py-3 text-sm font-semibold transition-colors hover:opacity-90"
-              style={{
-                backgroundColor: "var(--app-bg-secondary)",
-                borderColor: "var(--app-border)",
-                color: "var(--app-text-primary)",
-              }}
-            >
-              Leave Call
-            </button>
           </div>
         </div>
+
 
         <p className="mt-4 text-xs leading-relaxed" style={{ color: "var(--app-text-secondary)" }}>
           Do Not Disturb and Gaming Mode still suppress alerts automatically, even if these toggles are on.
