@@ -1,18 +1,21 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Hash, Volume2, Plus, Settings, UserPlus, LogOut, Copy, Loader2, ChevronDown } from "lucide-react";
-import { useServers } from "@/contexts/ServersContext";
+import { Hash, Volume2, Plus, Settings, UserPlus, LogOut, Copy, Loader2, ChevronDown, type LucideIcon } from "lucide-react";
+import { useServers, type ServerChannel } from "@/contexts/ServersContext";
 import { useServerChannels, useServerMembers } from "@/hooks/useServerChannels";
-import { useConversations } from "@/hooks/useConversations";
+import type { Conversation } from "@/hooks/useConversations";
 import { useAuth } from "@/contexts/AuthContext";
+import { useGroupCall } from "@/contexts/GroupCallContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import ChatView from "@/components/app/ChatView";
+import GroupCallPanel from "@/components/app/GroupCallPanel";
 import StatusIndicator from "@/components/app/StatusIndicator";
 import UserDisplayName from "@/components/app/UserDisplayName";
 import UserBadges from "@/components/app/UserBadges";
 import { getEffectivePresenceStatus } from "@/lib/presence";
 import { getProfileColor } from "@/lib/profileColors";
+import { Button } from "@/components/ui/button";
 
 const ServerView = () => {
   const location = useLocation();
@@ -26,7 +29,7 @@ const ServerView = () => {
   const server = servers.find((s) => s.id === serverId);
   const { channels } = useServerChannels(serverId || null);
   const { members } = useServerMembers(serverId || null);
-  const { conversations } = useConversations();
+  const [activeConv, setActiveConv] = useState<Conversation | null>(null);
 
   const isOwner = !!server && server.owner_id === user?.id;
 
@@ -39,9 +42,43 @@ const ServerView = () => {
   }, [channelId, channels, serverId, navigate]);
 
   const activeChannel = channels.find((c) => c.id === channelId);
-  const activeConv = activeChannel?.conversation_id
-    ? conversations.find((c) => c.id === activeChannel.conversation_id)
-    : null;
+  const activeParticipant = useMemo(() => ({
+    user_id: server?.id || "server",
+    display_name: server?.name || "Server",
+    username: "",
+    avatar_url: server?.icon_url || null,
+    status: "online",
+  }), [server?.id, server?.name, server?.icon_url]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!activeChannel?.conversation_id) { setActiveConv(null); return; }
+    (async () => {
+      const { data } = await supabase
+        .from("conversations")
+        .select("id, is_group, name, picture_url, owner_id")
+        .eq("id", activeChannel.conversation_id)
+        .maybeSingle();
+      if (cancelled) return;
+      if (!data) { setActiveConv(null); return; }
+      setActiveConv({
+        id: data.id,
+        is_group: data.is_group,
+        name: data.name,
+        picture_url: data.picture_url,
+        owner_id: data.owner_id,
+        participant: activeParticipant,
+        members: members.map((m) => ({
+          user_id: m.user_id,
+          display_name: m.display_name,
+          username: m.username,
+          avatar_url: m.avatar_url,
+          status: m.status,
+        })),
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [activeChannel?.conversation_id, activeParticipant, members]);
 
   const [createChanOpen, setCreateChanOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -169,7 +206,7 @@ const ServerView = () => {
   );
 };
 
-const MenuItem = ({ icon: Icon, label, onClick, danger }: { icon: any; label: string; onClick: () => void; danger?: boolean }) => (
+const MenuItem = ({ icon: Icon, label, onClick, danger }: { icon: LucideIcon; label: string; onClick: () => void; danger?: boolean }) => (
   <button
     onClick={onClick}
     className="flex w-full items-center gap-2 px-3 py-1.5 text-sm transition-colors"
@@ -184,7 +221,7 @@ const MenuItem = ({ icon: Icon, label, onClick, danger }: { icon: any; label: st
 
 const ChannelGroup = ({
   label, channels, activeId, onSelect,
-}: { label: string; channels: any[]; activeId?: string; onSelect: (id: string) => void }) => {
+}: { label: string; channels: ServerChannel[]; activeId?: string; onSelect: (id: string) => void }) => {
   if (channels.length === 0) return null;
   return (
     <div className="mb-2">
@@ -213,13 +250,22 @@ const ChannelGroup = ({
   );
 };
 
-const VoiceChannelPanel = ({ channel, conversation }: { channel: any; conversation: any }) => {
+const VoiceChannelPanel = ({ channel, conversation }: { channel: ServerChannel; conversation: Conversation | null }) => {
+  const groupCall = useGroupCall();
+  const isJoined = !!conversation && groupCall.activeCall?.conversationId === conversation.id;
+  const handleJoin = async () => {
+    if (!conversation) return;
+    if (isJoined) { groupCall.leaveCall(); return; }
+    await groupCall.startCall(conversation.id, channel.name, conversation.members.map((m) => m.user_id));
+  };
+
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <div className="flex items-center gap-2 px-5 h-14 border-b" style={{ borderColor: "var(--app-border)" }}>
         <Volume2 className="h-5 w-5" style={{ color: "var(--app-text-secondary)" }} />
         <span className="font-semibold" style={{ color: "var(--app-text-primary)" }}>{channel.name}</span>
       </div>
+      {conversation && <GroupCallPanel conversationId={conversation.id} />}
       <div className="flex-1 flex items-center justify-center text-center p-6">
         <div className="max-w-sm">
           <div className="flex h-16 w-16 mx-auto items-center justify-center rounded-full mb-4" style={{ backgroundColor: "var(--app-bg-tertiary)" }}>
@@ -227,8 +273,11 @@ const VoiceChannelPanel = ({ channel, conversation }: { channel: any; conversati
           </div>
           <h3 className="font-semibold mb-1" style={{ color: "var(--app-text-primary)" }}>Voice channel</h3>
           <p className="text-sm" style={{ color: "var(--app-text-secondary)" }}>
-            Voice channels are coming together — for now, hop into the matching group call from the chat to talk with everyone here.
+            {isJoined ? "You're connected to this channel." : "Join this channel to talk with everyone here."}
           </p>
+          <Button onClick={handleJoin} disabled={!conversation} className="mt-4 rounded-full px-5">
+            {isJoined ? "Leave Voice" : "Join Voice"}
+          </Button>
         </div>
       </div>
     </div>

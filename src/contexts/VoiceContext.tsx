@@ -314,6 +314,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const [remoteAudioLevel, setRemoteAudioLevel] = useState(0);
   const [callEvents, setCallEvents] = useState<CallEvent[]>([]);
   const [currentCallEventId, setCurrentCallEventId] = useState<string | null>(null);
+  const activeCallRef = useRef<ActiveCall | null>(null);
+  const currentCallEventIdRef = useRef<string | null>(null);
   const [detectedRegion, setDetectedRegion] = useState("us-east");
   const [ping, setPing] = useState(0);
 
@@ -327,6 +329,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     (window as any).__cubblyInCall = !!activeCall && activeCall.state !== "ended";
     return () => { (window as any).__cubblyInCall = false; };
   }, [activeCall]);
+
+  useEffect(() => { activeCallRef.current = activeCall; }, [activeCall]);
+  useEffect(() => { currentCallEventIdRef.current = currentCallEventId; }, [currentCallEventId]);
 
   // Same idea for screensharing — when this is true, ActivityContext stops
   // running `tasklist` polls entirely so the heavy IPC doesn't compete with
@@ -999,13 +1004,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         if (payload.senderId === user.id) return;
         console.log(`[Voice] 📥 Signal received: ${payload.type} from ${payload.senderId?.substring(0,8)}...`);
         const pc = pcRef.current;
+      const activeCallSnapshot = activeCallRef.current;
+      const callEventIdSnapshot = currentCallEventIdRef.current;
 
         if (payload.type === "ready-for-offer") {
           try {
-            if (!outgoingCallMetaRef.current && activeCall?.conversationId === conversationId && currentCallEventId) {
+            if (!outgoingCallMetaRef.current && activeCallSnapshot?.conversationId === conversationId && callEventIdSnapshot) {
               outgoingCallMetaRef.current = {
                 conversationId,
-                callEventId: currentCallEventId,
+                callEventId: callEventIdSnapshot,
               };
             }
             await initializeOutgoingConnection(channel, conversationId);
@@ -1116,7 +1123,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           // handshake so we end up actually connected. Without this branch
           // the rejoiner sat in "connected" state with no pc, no audio,
           // and a phantom incoming card.
-          if (!pc && activeCall?.conversationId === conversationId) {
+          if (!pc && activeCallSnapshot?.conversationId === conversationId) {
             try {
               console.log("[Voice] 🔁 Rejoin offer received — auto-accepting");
               const stream = await getUserMedia();
@@ -1499,6 +1506,20 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     console.log(`[Voice] 📞 startCall — peer: ${peerName} (${peerId}), bot: ${isBotCall}`);
 
     try {
+      stopLooping("incomingCall");
+      stopLooping("outgoingRing");
+      setIncomingCall(null);
+      isRemoteHangup.current = false;
+
+      if (activeCallRef.current?.conversationId !== conversationId && pcRef.current) {
+        try { pcRef.current.close(); } catch {}
+        pcRef.current = null;
+      }
+      if (channelRef.current && activeCallRef.current?.conversationId !== conversationId) {
+        try { supabase.removeChannel(channelRef.current); } catch {}
+        channelRef.current = null;
+      }
+
       // ─── Hardcoded invariant: only ONE call can ever be ongoing per chat. ───
       // Before starting a fresh one, check the DB for an existing ongoing
       // call_event in this conversation. If it exists, REUSE its id (we're
@@ -1549,6 +1570,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       }
       if (!callEventId) callEventId = crypto.randomUUID();
 
+      if (isJoiningExisting) {
+        await ensureOwnParticipantRow(callEventId!, {
+          is_muted: activeCallRef.current?.isMuted ?? false,
+          is_deafened: activeCallRef.current?.isDeafened ?? false,
+          is_video_on: activeCallRef.current?.isVideoOn ?? false,
+          is_screen_sharing: false,
+        });
+      }
+
       incomingCandidateQueue.current = [];
       outgoingCandidateBuffer.current = [];
       remoteDescriptionSet.current = false;
@@ -1570,13 +1600,23 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         isVideoOn: false,
       });
       peerIdRef.current = peerId;
+      activeCallRef.current = {
+        conversationId,
+        peerId,
+        peerName,
+        state: "calling",
+        startedAt: undefined,
+        isMuted: false,
+        isDeafened: false,
+        isVideoOn: false,
+      };
 
       // Only play the outgoing ring when actually starting a brand new call.
       if (!isBotCall && !isJoiningExisting) {
         playLooping("outgoingRing", { volume: 0.4 });
       }
 
-      await ensureOwnParticipantRow(callEventId!);
+      if (!isJoiningExisting) await ensureOwnParticipantRow(callEventId!);
 
       // Only insert a new call_event row if we're NOT joining an existing one.
       if (!isJoiningExisting) {
