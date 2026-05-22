@@ -314,6 +314,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const [remoteAudioLevel, setRemoteAudioLevel] = useState(0);
   const [callEvents, setCallEvents] = useState<CallEvent[]>([]);
   const [currentCallEventId, setCurrentCallEventId] = useState<string | null>(null);
+  const activeCallRef = useRef<ActiveCall | null>(null);
+  const currentCallEventIdRef = useRef<string | null>(null);
   const [detectedRegion, setDetectedRegion] = useState("us-east");
   const [ping, setPing] = useState(0);
 
@@ -327,6 +329,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     (window as any).__cubblyInCall = !!activeCall && activeCall.state !== "ended";
     return () => { (window as any).__cubblyInCall = false; };
   }, [activeCall]);
+
+  useEffect(() => { activeCallRef.current = activeCall; }, [activeCall]);
+  useEffect(() => { currentCallEventIdRef.current = currentCallEventId; }, [currentCallEventId]);
 
   // Same idea for screensharing — when this is true, ActivityContext stops
   // running `tasklist` polls entirely so the heavy IPC doesn't compete with
