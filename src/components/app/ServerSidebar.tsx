@@ -41,6 +41,8 @@ const ServerSidebar = ({
 
       <button
         onClick={() => {
+          // Always leave any server view and return to the DM home.
+          if (parts[1] === "server") navigate("/@me");
           if (!homeActive) onHomeClick();
         }}
         className="group relative flex h-14 w-14 items-center justify-center overflow-visible transition-all duration-200 hover:scale-[1.03]"
