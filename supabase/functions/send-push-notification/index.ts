@@ -15,8 +15,29 @@ const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 webpush.setVapidDetails("mailto:hello@cubbly.app", VAPID_PUBLIC, VAPID_PRIVATE);
 
+// Cached internal-secret fetched from DB on first invocation.
+let cachedInternalSecret: string | null = null;
+async function getInternalSecret(admin: ReturnType<typeof createClient>): Promise<string | null> {
+  if (cachedInternalSecret) return cachedInternalSecret;
+  const { data } = await admin.rpc("get_internal_secret", { _name: "push_internal_secret" });
+  if (typeof data === "string" && data.length > 0) cachedInternalSecret = data;
+  return cachedInternalSecret;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
+
+  // Only the DB trigger (which passes our internal secret) may invoke this.
+  const provided = req.headers.get("x-internal-secret") || "";
+  const expected = await getInternalSecret(admin);
+  if (!expected || provided !== expected) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
 
   try {
     const { user_id, title, body, tag, url } = await req.json();
@@ -26,6 +47,7 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
 
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
     const { data: subs, error } = await admin
