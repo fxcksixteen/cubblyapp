@@ -102,20 +102,47 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+    if (await isPrivateHost(parsed.hostname)) {
+      return new Response(JSON.stringify({ error: "blocked host" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // Fetch with a sane UA + 5s timeout, cap body to 512KB.
+    // Manually follow up to 5 redirects, validating each hop against the SSRF block list.
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
     let res: Response;
+    let currentUrl = parsed.toString();
     try {
-      res = await fetch(parsed.toString(), {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (compatible; CubblyBot/1.0; +https://cubbly.app)",
-          Accept: "text/html,application/xhtml+xml",
-        },
-        redirect: "follow",
-        signal: controller.signal,
-      });
+      let redirects = 0;
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        res = await fetch(currentUrl, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (compatible; CubblyBot/1.0; +https://cubbly.app)",
+            Accept: "text/html,application/xhtml+xml",
+          },
+          redirect: "manual",
+          signal: controller.signal,
+        });
+        if (res.status >= 300 && res.status < 400) {
+          const loc = res.headers.get("location");
+          if (!loc || ++redirects > 5) break;
+          const next = new URL(loc, currentUrl);
+          if (next.protocol !== "http:" && next.protocol !== "https:") break;
+          if (await isPrivateHost(next.hostname)) {
+            return new Response(JSON.stringify({ error: "blocked redirect host" }), {
+              status: 400,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+          currentUrl = next.toString();
+          continue;
+        }
+        break;
+      }
     } finally {
       clearTimeout(timeout);
     }
