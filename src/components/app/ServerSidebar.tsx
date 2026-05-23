@@ -145,8 +145,6 @@ const ServerSidebar = ({
         </>
       )}
 
-      <div className="mx-auto h-[2px] w-8 rounded-full bg-[#35363c]" />
-
       <button
         onClick={() => setCreateOpen(true)}
         title="Create or join a server"
