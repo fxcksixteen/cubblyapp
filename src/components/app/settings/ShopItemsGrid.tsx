@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import imgChatChampion from "@/assets/badges/chat_champion.svg";
 import imgEarlySupporter from "@/assets/badges/early_supporter.svg";
 import imgFriendly from "@/assets/badges/friendly.svg";
-import imgGamer from "@/assets/badges/gamer.svg";
+import imgGamer from "@/assets/badges/gamer.png";
 import imgLegend from "@/assets/badges/legend.svg";
 import imgNightOwl from "@/assets/badges/night_owl.svg";
 import imgOg from "@/assets/badges/og.png";
