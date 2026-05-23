@@ -52,6 +52,44 @@ function absolutize(url: string, base: string): string {
   }
 }
 
+function ipIsPrivate(ip: string): boolean {
+  // IPv6 loopback / link-local / unique-local / mapped IPv4
+  const v6 = ip.toLowerCase();
+  if (v6 === "::1" || v6 === "::") return true;
+  if (v6.startsWith("fe80:") || v6.startsWith("fc") || v6.startsWith("fd")) return true;
+  if (v6.startsWith("::ffff:")) return ipIsPrivate(v6.slice(7));
+  const parts = ip.split(".").map((p) => parseInt(p, 10));
+  if (parts.length !== 4 || parts.some((n) => isNaN(n) || n < 0 || n > 255)) return false;
+  const [a, b] = parts;
+  if (a === 10) return true;
+  if (a === 127) return true;
+  if (a === 0) return true;
+  if (a === 169 && b === 254) return true; // link-local + cloud metadata
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
+  if (a >= 224) return true; // multicast / reserved
+  return false;
+}
+
+async function isPrivateHost(hostname: string): Promise<boolean> {
+  const host = hostname.toLowerCase();
+  if (!host) return true;
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".internal")) return true;
+  // Literal IPs in URLs
+  if (/^[0-9.]+$/.test(host) || host.includes(":")) return ipIsPrivate(host);
+  try {
+    const records = await Deno.resolveDns(host, "A").catch(() => [] as string[]);
+    const records6 = await Deno.resolveDns(host, "AAAA").catch(() => [] as string[]);
+    for (const ip of [...records, ...records6]) {
+      if (ipIsPrivate(ip)) return true;
+    }
+  } catch {
+    return true; // resolution failed — treat as unsafe
+  }
+  return false;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -102,20 +140,47 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+    if (await isPrivateHost(parsed.hostname)) {
+      return new Response(JSON.stringify({ error: "blocked host" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // Fetch with a sane UA + 5s timeout, cap body to 512KB.
+    // Manually follow up to 5 redirects, validating each hop against the SSRF block list.
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
     let res: Response;
+    let currentUrl = parsed.toString();
     try {
-      res = await fetch(parsed.toString(), {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (compatible; CubblyBot/1.0; +https://cubbly.app)",
-          Accept: "text/html,application/xhtml+xml",
-        },
-        redirect: "follow",
-        signal: controller.signal,
-      });
+      let redirects = 0;
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        res = await fetch(currentUrl, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (compatible; CubblyBot/1.0; +https://cubbly.app)",
+            Accept: "text/html,application/xhtml+xml",
+          },
+          redirect: "manual",
+          signal: controller.signal,
+        });
+        if (res.status >= 300 && res.status < 400) {
+          const loc = res.headers.get("location");
+          if (!loc || ++redirects > 5) break;
+          const next = new URL(loc, currentUrl);
+          if (next.protocol !== "http:" && next.protocol !== "https:") break;
+          if (await isPrivateHost(next.hostname)) {
+            return new Response(JSON.stringify({ error: "blocked redirect host" }), {
+              status: 400,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+          currentUrl = next.toString();
+          continue;
+        }
+        break;
+      }
     } finally {
       clearTimeout(timeout);
     }

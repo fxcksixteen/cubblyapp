@@ -1,6 +1,8 @@
 // Fetches a public Discord guild template by code or URL and returns the
 // serialized template payload. Runs server-side to avoid CORS, and to
 // insulate the client from Discord API quirks/rate-limit headers.
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -9,13 +11,36 @@ const CORS = {
 function extractCode(input: string): string | null {
   const trimmed = (input || "").trim();
   if (!trimmed) return null;
-  // discord.new/<code>, discord.com/template/<code>, or raw code
   const m = trimmed.match(/(?:template\/|discord\.new\/)?([a-zA-Z0-9]{6,32})$/);
   return m?.[1] ?? null;
 }
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
+
+  // Require an authenticated Cubbly user — prevents abuse as an open Discord proxy.
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { ...CORS, "Content-Type": "application/json" },
+    });
+  }
+  const sb = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_ANON_KEY")!,
+    { global: { headers: { Authorization: authHeader } } },
+  );
+  const { data: claims, error: authErr } = await sb.auth.getClaims(
+    authHeader.replace("Bearer ", ""),
+  );
+  if (authErr || !claims?.claims) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { ...CORS, "Content-Type": "application/json" },
+    });
+  }
+
   try {
     const { input } = await req.json();
     const code = extractCode(input);
@@ -37,11 +62,10 @@ Deno.serve(async (req) => {
     const channels = (guild.channels ?? []) as Array<{
       id: number;
       name: string;
-      type: number; // 0 text, 2 voice, 4 category, 5 announcements, 13 stage
+      type: number;
       parent_id: number | null;
       position: number;
     }>;
-    // Build a parent_id → category name map.
     const categories = new Map<number, string>();
     for (const c of channels) {
       if (c.type === 4) categories.set(c.id, c.name);
