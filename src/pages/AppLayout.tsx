@@ -148,8 +148,9 @@ const AppLayout = () => {
   const isInCall = activeCall?.conversationId === activeConvId
     || groupCall.activeCall?.conversationId === activeConvId;
 
-  const currentUsername = user?.user_metadata?.username?.toLowerCase() || "";
-  const isAdmin = currentUsername === "kaszy";
+  // Note: a previous admin bypass keyed off user_metadata.username was removed —
+  // user_metadata is user-writable so it cannot be trusted for authorization.
+
 
   const { elsewhere, requestRemoteHangup } = useActiveCallElsewhere();
   useRemoteHangupListener();
