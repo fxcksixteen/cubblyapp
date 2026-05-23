@@ -14,6 +14,24 @@ export type Database = {
   }
   public: {
     Tables: {
+      _internal_secrets: {
+        Row: {
+          created_at: string
+          name: string
+          value: string
+        }
+        Insert: {
+          created_at?: string
+          name: string
+          value: string
+        }
+        Update: {
+          created_at?: string
+          name?: string
+          value?: string
+        }
+        Relationships: []
+      }
       apns_subscriptions: {
         Row: {
           app_version: string | null
@@ -988,6 +1006,7 @@ export type Database = {
         Returns: boolean
       }
       equip_shop_item: { Args: { _item_id: string }; Returns: undefined }
+      get_internal_secret: { Args: { _name: string }; Returns: string }
       heartbeat_call_participant: {
         Args: {
           _call_event_id: string
