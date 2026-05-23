@@ -49,7 +49,6 @@ Deno.serve(async (req) => {
     }
 
 
-    const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
     const { data: subs, error } = await admin
       .from("push_subscriptions")
       .select("id, endpoint, p256dh, auth")
