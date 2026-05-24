@@ -500,16 +500,30 @@ private struct ShopItemPreview: View {
         return Color(hex: v)
     }
 
-    @ViewBuilder
-    private func themeBackgroundFromCSS(_ s: String) -> some View {
-        // We can't parse arbitrary CSS gradients in SwiftUI — pick a sensible
-        // default backdrop and overlay the theme name. The full themed UI
-        // happens once a theme is equipped server-side.
-        LinearGradient(
-            colors: [Theme.Colors.primary, Color(hex: 0xEC4899), Color(hex: 0x6366F1)],
-            startPoint: .topLeading, endPoint: .bottomTrailing
-        )
-        .opacity(0.85)
+    private static func previewColors(forThemeId id: String, fallback: Color) -> [Color] {
+        let mapped = ThemeStore.colors(forShopThemeId: id)
+        if !mapped.isEmpty { return mapped }
+        return [fallback, Theme.Colors.primaryGlow]
+    }
+}
+
+private struct SpaceThemePreview: View {
+    var body: some View {
+        ZStack {
+            RadialGradient(colors: [Color(hex: 0x0D1224), Color(hex: 0x07080C), Color(hex: 0x04050A)],
+                           center: .topLeading, startRadius: 2, endRadius: 150)
+            ForEach(0..<22, id: \.self) { i in
+                Circle()
+                    .fill(Color.white.opacity(i % 3 == 0 ? 0.85 : 0.55))
+                    .frame(width: i % 5 == 0 ? 2 : 1, height: i % 5 == 0 ? 2 : 1)
+                    .offset(x: CGFloat((i * 37) % 150) - 75, y: CGFloat((i * 23) % 90) - 45)
+            }
+            Capsule()
+                .fill(LinearGradient(colors: [.white.opacity(0), .white.opacity(0.85), .white.opacity(0)], startPoint: .leading, endPoint: .trailing))
+                .frame(width: 54, height: 2)
+                .rotationEffect(.degrees(-28))
+                .offset(x: 32, y: -22)
+        }
     }
 }
 
