@@ -125,12 +125,24 @@ struct ProfilePopupView: View {
         }
     }
 
-    /// Treats anything ending in `.gif` or hosted on Giphy/Tenor as animated
-    /// so we route it through `AnimatedImageView` instead of `AsyncImage`.
+    /// Treats anything ending in `.gif`/`.webp`/`.apng`, hosted on Giphy/Tenor,
+    /// or whose URL path contains an animated marker as animated. Also handles
+    /// signed Supabase storage URLs where the extension is hidden in the path
+    /// before `?token=`.
     static func isAnimated(url: URL) -> Bool {
-        let s = url.absoluteString.lowercased()
-        return s.contains(".gif") || s.contains("giphy.com")
-            || s.contains("media.giphy") || s.contains("tenor.com")
+        let full = url.absoluteString.lowercased()
+        let path = url.path.lowercased()
+        if path.hasSuffix(".gif") || path.hasSuffix(".webp") || path.hasSuffix(".apng") {
+            return true
+        }
+        return full.contains(".gif")
+            || full.contains(".webp")
+            || full.contains(".apng")
+            || full.contains("giphy.com")
+            || full.contains("media.giphy")
+            || full.contains("tenor.com")
+            || full.contains("/animated/")
+            || full.contains("anim=1")
     }
 }
 
