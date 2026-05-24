@@ -163,11 +163,11 @@ Deno.serve(async (req) => {
     const payload = {
       aps: {
         alert: { title, body: body || "" },
-        // Custom Cubbly message ding — the iOS app ships `message.caf` (or
-        // `message.wav`) inside the bundle so APNs plays the branded sound
-        // instead of the user's default iPhone tone. Falls back to "default"
-        // for any device that can't find the file.
-        sound: "message.caf",
+        // Custom Cubbly message ding. The iOS app bundles `message.wav` under
+        // `Resources/Sounds/` (folder reference), so APNs finds it at the
+        // path below inside the .app bundle. Falls back to default sound on
+        // devices that can't resolve the file.
+        sound: "Sounds/message.wav",
         "thread-id": thread_id || (conversation_id ? `dm:${conversation_id}` : undefined),
         "mutable-content": 1,
       },
