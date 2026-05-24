@@ -603,6 +603,8 @@ final class CallStore: ObservableObject {
     func toggleMute() {
         isMuted.toggle()
         voiceClient?.setMicEnabled(!isMuted)
+        // BotEcho path: silence the local mic track that's looped back to us.
+        botEcho?.setMicEnabled(!isMuted)
         Task { await signaling?.broadcast(type: "peer-mute", payload: [
             "isMuted": .bool(isMuted), "isDeafened": .bool(isDeafened)
         ]) }
@@ -614,6 +616,7 @@ final class CallStore: ObservableObject {
         if isDeafened && !isMuted {
             isMuted = true
             voiceClient?.setMicEnabled(false)
+            botEcho?.setMicEnabled(false)
         }
         // Mute remote audio output by toggling all audio tracks on the inbound voice client.
         for t in voiceClient?.pc.transceivers ?? [] {
@@ -621,6 +624,8 @@ final class CallStore: ObservableObject {
                 track.isEnabled = !isDeafened
             }
         }
+        // Same for the BotEcho loopback so deafen actually silences the echo.
+        botEcho?.setRemoteAudioEnabled(!isDeafened)
         Task { await signaling?.broadcast(type: "peer-mute", payload: [
             "isMuted": .bool(isMuted), "isDeafened": .bool(isDeafened)
         ]) }
