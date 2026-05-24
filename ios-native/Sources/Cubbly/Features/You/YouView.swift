@@ -178,6 +178,10 @@ struct YouView: View {
                     showingActivityPrivacy = true
                 }
                 divider
+                row(icon: "paintbrush.pointed.fill", label: "Appearance") {
+                    showingAppearance = true
+                }
+                divider
                 row(icon: "paintbrush.fill", label: "Name Colors") {
                     cosmeticsMode = .name_color
                 }
@@ -190,6 +194,12 @@ struct YouView: View {
                     cosmeticsMode = .theme
                 }
                 divider
+                ForEach(MoreSettingsTabView.Mode.allCases) { tab in
+                    row(icon: tab.icon, label: tab.title) {
+                        moreTab = tab
+                    }
+                    divider
+                }
                 row(icon: "shield.fill", label: "Account")
             }
             .background(Theme.Colors.bgSecondary)
