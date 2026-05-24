@@ -12,11 +12,17 @@ struct AvatarView: View {
     var size: CGFloat = 40
 
     @State private var loadedImage: UIImage?
+    private var isAnimated: Bool {
+        guard let url else { return false }
+        return ProfilePopupView.isAnimated(url: url)
+    }
 
     var body: some View {
         ZStack {
             Circle().fill(Self.color(for: fallbackText))
-            if let img = loadedImage {
+            if isAnimated, let url {
+                AnimatedImageView(url: url, contentMode: .scaleAspectFill)
+            } else if let img = loadedImage {
                 Image(uiImage: img)
                     .resizable()
                     .scaledToFill()
@@ -35,6 +41,7 @@ struct AvatarView: View {
 
     private func load() async {
         guard let url else { loadedImage = nil; return }
+        if isAnimated { return }
         if let cached = AvatarImageCache.shared.image(for: url) {
             loadedImage = cached
             return
