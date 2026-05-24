@@ -74,11 +74,19 @@ final class SessionStore: ObservableObject {
             } else {
                 state = .signedOut
                 await PresenceService.shared.stop()
+                await CoinsStore.shared.stop()
+                await ShopStore.shared.stop()
+                await ActivityService.shared.stop()
+                await UnreadCountsStore.shared.stop()
             }
         case .signedOut:
             state = .signedOut
             currentProfile = nil
             await PresenceService.shared.stop()
+            await CoinsStore.shared.stop()
+            await ShopStore.shared.stop()
+            await ActivityService.shared.stop()
+            await UnreadCountsStore.shared.stop()
         case .passwordRecovery, .mfaChallengeVerified, .userDeleted:
             break
         @unknown default:
