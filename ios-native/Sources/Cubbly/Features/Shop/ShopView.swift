@@ -1,4 +1,5 @@
 import SwiftUI
+import Supabase
 
 /// Native Shop tab — mirrors the web `ShopView` so iOS users can browse the
 /// full catalog, see what they own/have equipped, and buy items using the
@@ -455,7 +456,7 @@ private struct CoinsInfoSheet: View {
 
 // MARK: - AnyJSON helper
 
-import Supabase
+
 
 extension AnyJSON {
     /// Best-effort plain dictionary extraction for jsonb columns.
