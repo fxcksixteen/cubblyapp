@@ -97,8 +97,8 @@ struct ShopView: View {
                 showCoinsInfo = true
             } label: {
                 HStack(spacing: 6) {
-                    Circle().fill(Theme.Colors.primary).frame(width: 16, height: 16)
-                        .overlay(Text("C").font(.cubbly(10, .heavy)).foregroundStyle(.white))
+                    BundledAssetImage(name: "coin-stack")
+                        .frame(width: 20, height: 20)
                     Text("\(coins.balance)")
                         .font(.cubbly(14, .bold))
                         .foregroundStyle(Theme.Colors.textPrimary)
@@ -228,8 +228,8 @@ private struct PurchaseConfirmSheet: View {
 
                 HStack(spacing: 8) {
                     HStack(spacing: 5) {
-                        Circle().fill(Theme.Colors.primary).frame(width: 14, height: 14)
-                            .overlay(Text("C").font(.cubbly(9, .heavy)).foregroundStyle(.white))
+                        BundledAssetImage(name: "coin-stack")
+                            .frame(width: 18, height: 18)
                         Text("\(item.price)")
                             .font(.cubbly(15, .heavy))
                             .foregroundStyle(Theme.Colors.textPrimary)
@@ -322,8 +322,8 @@ private struct ShopItemCard: View {
 
                 if !isOwned {
                     HStack(spacing: 4) {
-                        Circle().fill(Theme.Colors.primary).frame(width: 9, height: 9)
-                            .overlay(Text("C").font(.cubbly(6, .heavy)).foregroundStyle(.white))
+                        BundledAssetImage(name: "coin-stack")
+                            .frame(width: 14, height: 14)
                         Text("\(item.price)")
                             .font(.cubbly(11, .bold))
                             .foregroundStyle(Theme.Colors.textSecondary)
