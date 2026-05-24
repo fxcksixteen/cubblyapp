@@ -58,7 +58,7 @@ struct ServerRail: View {
         .background(Theme.Colors.bgTertiary.ignoresSafeArea(edges: .vertical))
     }
 
-    private struct UnreadAvatarItem {
+    struct UnreadAvatarItem {
         let conversationID: UUID
         let info: UnreadCountsStore.Info
     }
@@ -76,13 +76,8 @@ private struct UnreadAvatarBubble: View {
     let info: ServerRail.UnreadAvatarItem
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            AvatarView(
-                url: avatarURL,
-                fallbackText: fallbackText,
-                size: 44
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-
+            AvatarView(url: avatarURL, fallbackText: fallbackText, size: 44)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             ZStack {
                 Capsule().fill(Theme.Colors.danger)
                 Text(info.info.count > 99 ? "99+" : "\(info.info.count)")
@@ -106,8 +101,4 @@ private struct UnreadAvatarBubble: View {
         if info.info.isGroup, let n = info.info.groupName, !n.isEmpty { return n }
         return info.info.lastSenderName ?? "?"
     }
-}
-
-extension ServerRail {
-    fileprivate typealias UnreadAvatarItem = ServerRail.UnreadAvatarItem
 }
