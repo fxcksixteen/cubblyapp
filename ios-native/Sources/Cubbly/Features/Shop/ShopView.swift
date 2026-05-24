@@ -25,6 +25,7 @@ struct ShopView: View {
     @State private var activeTab: Tab = .all
     @State private var showCoinsInfo = false
     @State private var notEnoughItem: ShopStore.Item?
+    @State private var confirmPurchaseItem: ShopStore.Item?
 
     var body: some View {
         VStack(spacing: 0) {
