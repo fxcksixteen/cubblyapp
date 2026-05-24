@@ -538,6 +538,13 @@ struct ChatView: View {
             hasMore = rows.count >= 50
             await loadCallEvents()
             await reactions.load(messageIds: messages.compactMap { UUID(uuidString: $0.id) })
+            // Force a hard snap to the newest message after first hydration
+            // so the chat always opens at the bottom, even when opened from
+            // the DM sidebar, a notification deep link, or a horizontal swipe.
+            await MainActor.run {
+                didInitialScroll = true
+                scrollToBottomTrigger = UUID()
+            }
         } catch is CancellationError {} catch {
             print("[Chat] load failed:", error)
         }
