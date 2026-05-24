@@ -57,6 +57,12 @@ struct YouView: View {
         .sheet(isPresented: $showingVoiceVideoSettings) {
             VoiceVideoSettingsView()
         }
+        .sheet(isPresented: $showingActivityPrivacy) {
+            ActivityPrivacySettingsView()
+        }
+        .sheet(item: $cosmeticsMode) { mode in
+            CosmeticsSettingsView(mode: mode)
+        }
     }
 
     private var bannerAndAvatar: some View {
