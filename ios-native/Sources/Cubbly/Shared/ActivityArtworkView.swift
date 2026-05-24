@@ -1,4 +1,5 @@
 import SwiftUI
+import SVGKit
 
 struct ActivityArtworkView: View {
     let name: String?
