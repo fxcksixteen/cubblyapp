@@ -8,6 +8,8 @@ struct YouView: View {
     @State private var showingSignOutConfirm = false
     @State private var showingNotificationSettings = false
     @State private var showingVoiceVideoSettings = false
+    @State private var showingActivityPrivacy = false
+    @State private var cosmeticsMode: CosmeticsSettingsView.Mode?
 
     /// Read directly from the session profile so we never get stuck on a
     /// stale snapshot when the view re-appears. Falls back to "online" until
