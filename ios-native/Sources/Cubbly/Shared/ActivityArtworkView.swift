@@ -31,7 +31,8 @@ struct ActivityArtworkView: View {
         guard !failed, let url = Self.iconURL(name: name, processName: processName) else { return }
         do {
             let (data, _) = try await URLSession.shared.data(from: url)
-            if let img = UIImage(data: data) { await MainActor.run { image = img } }
+            let img = UIImage(data: data) ?? SVGKImage(data: data)?.uiImage
+            if let img { await MainActor.run { image = img } }
             else { failed = true }
         } catch { failed = true }
     }
