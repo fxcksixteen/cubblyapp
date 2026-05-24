@@ -166,13 +166,23 @@ struct YouView: View {
                     showingVoiceVideoSettings = true
                 }
                 divider
-                row(icon: "gamecontroller.fill", label: "Activity Privacy")
+                row(icon: "gamecontroller.fill", label: "Activity Privacy") {
+                    showingActivityPrivacy = true
+                }
                 divider
-                row(icon: "paintpalette.fill", label: "Appearance")
+                row(icon: "paintbrush.fill", label: "Name Colors") {
+                    cosmeticsMode = .name_color
+                }
+                divider
+                row(icon: "rosette", label: "Badges") {
+                    cosmeticsMode = .badge
+                }
+                divider
+                row(icon: "paintpalette.fill", label: "Themes") {
+                    cosmeticsMode = .theme
+                }
                 divider
                 row(icon: "shield.fill", label: "Account")
-                divider
-                row(icon: "gearshape.fill", label: "All Settings")
             }
             .background(Theme.Colors.bgSecondary)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
