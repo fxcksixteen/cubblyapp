@@ -19,6 +19,11 @@ struct DMListView: View {
     @State private var didInitialLoad = false
     @State private var msgChannel: RealtimeChannelV2?
     @State private var convChannel: RealtimeChannelV2?
+    @State private var profilePopupUserID: UUID?
+
+    private func conversation_otherUser(_ conv: ConversationSummary) -> ConversationMember? {
+        conv.otherUser
+    }
 
     var body: some View {
         NavigationStack {
