@@ -8,6 +8,7 @@ struct MainTabView: View {
     @StateObject private var presence = PresenceService.shared
     @ObservedObject private var callStore = CallStore.shared
     @ObservedObject private var chrome = ChromeStore.shared
+    @ObservedObject private var theme = ThemeStore.shared
     @EnvironmentObject private var session: SessionStore
     @Environment(\.scenePhase) private var scenePhase
 
