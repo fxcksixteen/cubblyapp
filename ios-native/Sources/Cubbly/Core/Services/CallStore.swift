@@ -735,9 +735,14 @@ final class CallStore: ObservableObject {
     }
 
     /// Build a new offer and broadcast it on the per-call channel. Used when
-    /// a peer joins the existing call_event via `ready-for-offer`.
+    /// a peer joins the existing call_event via `ready-for-offer`, or as a
+    /// caller-side fallback when no `ready-for-offer` arrives.
     private func sendFreshOfferForJoiner() async {
         guard let signaling = signaling else { return }
+        // De-dup: if we already started the SDP exchange (sent or received an
+        // offer), don't fire a second one — that resets the PC state.
+        if sdpExchangeStarted { return }
+        sdpExchangeStarted = true
         // If we already have a voice client (we were the original caller),
         // renegotiate over it. Otherwise build a new one.
         let voice: WebRTCClient
@@ -752,21 +757,32 @@ final class CallStore: ObservableObject {
         do {
             let offer = try await voice.createOffer()
             let myName = SessionStore.shared?.currentProfile?.displayName
+            let myAvatar = SessionStore.shared?.currentProfile?.avatarURL
             await signaling.broadcast(type: "offer", payload: [
                 "sdp": .object(["type": .string("offer"), "sdp": .string(offer.sdp)]),
-                "callerAvatarUrl": peerAvatarUrl.map { .string($0) } ?? .null,
+                "callerAvatarUrl": myAvatar.map { .string($0) } ?? .null,
                 "senderName": myName.map { .string($0) } ?? .null,
                 "callEventId": currentCallEventId.map { .string($0.uuidString.lowercased()) } ?? .null
             ])
-            print("[Call] 📤 Offer sent in response to ready-for-offer")
+            print("[Call] 📤 Offer sent (ready-for-offer or fallback)")
         } catch {
             print("[Call] sendFreshOfferForJoiner failed:", error)
+            sdpExchangeStarted = false
         }
     }
 
     // MARK: - Voice offer/answer
 
     private func handleVoiceOffer(sdp: String) async {
+        // Guard against duplicate offers from retried ready-for-offer broadcasts.
+        if sdpExchangeStarted && voiceClient != nil {
+            print("[Call] ⚠️ Duplicate offer ignored — SDP exchange already in flight")
+            return
+        }
+        sdpExchangeStarted = true
+        // Caller-side retry safety net is no longer needed once we've seen an offer.
+        callerFallbackOfferTask?.cancel(); callerFallbackOfferTask = nil
+        readyForOfferRetryTask?.cancel(); readyForOfferRetryTask = nil
         // Build the voice client (we're the answerer).
         let voice = WebRTCClient(iceServers: iceServers, includeMicTrack: true)
         wireVoiceCallbacks(voice)
@@ -786,6 +802,7 @@ final class CallStore: ObservableObject {
             await signaling?.broadcast(type: "answer", payload: [
                 "sdp": .object(["type": .string("answer"), "sdp": .string(answer.sdp)])
             ])
+            print("[Call] 📥 Offer applied + 📤 answer sent")
         } catch {
             print("[Call] handleVoiceOffer failed:", error)
         }
