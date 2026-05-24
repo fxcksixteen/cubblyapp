@@ -283,6 +283,7 @@ final class CallStore: ObservableObject {
         self.currentCallEventId = evt.id
         self.state = .calling
         self.isMinimized = false
+        self.sdpExchangeStarted = false
         configureAudioSession()
         CallKitService.shared.startOutgoing(handleName: peerName)
         await signaling.joinCallChannel(conversationId: convId)
@@ -291,7 +292,7 @@ final class CallStore: ObservableObject {
 
         // Ask the live peer for a fresh offer. They'll respond with `offer`,
         // we'll answer in handleVoiceOffer. No ring, no duplicate event.
-        await signaling.broadcast(type: "ready-for-offer")
+        startReadyForOfferRetry(callEventId: evt.id)
         print("[Call] 🔁 Joining existing ongoing call_event:", evt.id.uuidString)
         return true
     }
