@@ -8,6 +8,7 @@ struct MainTabView: View {
     @StateObject private var presence = PresenceService.shared
     @ObservedObject private var callStore = CallStore.shared
     @ObservedObject private var chrome = ChromeStore.shared
+    @ObservedObject private var theme = ThemeStore.shared
     @EnvironmentObject private var session: SessionStore
     @Environment(\.scenePhase) private var scenePhase
 
@@ -40,7 +41,16 @@ struct MainTabView: View {
                     CubblyTabBar(selection: $selection)
                 }
             }
-            .background(Theme.Colors.bgPrimary.ignoresSafeArea())
+            .background(
+                ZStack {
+                    Theme.Colors.bgPrimary
+                    LinearGradient(colors: theme.backgroundGradient,
+                                   startPoint: .topLeading, endPoint: .bottomTrailing)
+                        .opacity(theme.equippedShopThemeId != nil ? 0.35 : 0.18)
+                        .allowsHitTesting(false)
+                }
+                .ignoresSafeArea()
+            )
 
             // Active call overlay (only when NOT minimized)
             if callStore.state != .idle && !callStore.isMinimized {
@@ -65,6 +75,11 @@ struct MainTabView: View {
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active, let uid = session.currentUserID {
                 Task { await PresenceService.shared.start(userID: uid, force: true) }
+            }
+        }
+        .task {
+            if let uid = session.currentUserID {
+                await ThemeStore.shared.start(userId: uid)
             }
         }
     }

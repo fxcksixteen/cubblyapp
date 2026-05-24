@@ -9,7 +9,9 @@ struct YouView: View {
     @State private var showingNotificationSettings = false
     @State private var showingVoiceVideoSettings = false
     @State private var showingActivityPrivacy = false
+    @State private var showingAppearance = false
     @State private var cosmeticsMode: CosmeticsSettingsView.Mode?
+    @State private var moreTab: MoreSettingsTabView.Mode?
 
     /// Read directly from the session profile so we never get stuck on a
     /// stale snapshot when the view re-appears. Falls back to "online" until
@@ -60,8 +62,14 @@ struct YouView: View {
         .sheet(isPresented: $showingActivityPrivacy) {
             ActivityPrivacySettingsView()
         }
+        .sheet(isPresented: $showingAppearance) {
+            AppearanceSettingsView()
+        }
         .sheet(item: $cosmeticsMode) { mode in
             CosmeticsSettingsView(mode: mode)
+        }
+        .sheet(item: $moreTab) { tab in
+            MoreSettingsTabView(mode: tab)
         }
     }
 
@@ -170,6 +178,10 @@ struct YouView: View {
                     showingActivityPrivacy = true
                 }
                 divider
+                row(icon: "paintbrush.pointed.fill", label: "Appearance") {
+                    showingAppearance = true
+                }
+                divider
                 row(icon: "paintbrush.fill", label: "Name Colors") {
                     cosmeticsMode = .name_color
                 }
@@ -182,6 +194,12 @@ struct YouView: View {
                     cosmeticsMode = .theme
                 }
                 divider
+                ForEach(MoreSettingsTabView.Mode.allCases) { tab in
+                    row(icon: tab.icon, label: tab.title) {
+                        moreTab = tab
+                    }
+                    divider
+                }
                 row(icon: "shield.fill", label: "Account")
             }
             .background(Theme.Colors.bgSecondary)
