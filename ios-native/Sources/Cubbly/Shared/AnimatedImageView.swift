@@ -36,9 +36,13 @@ struct AnimatedImageView: UIViewRepresentable {
     }
 
     private func load(into view: UIImageView) {
+        if let cached = AnimatedImageCache.shared.image(for: url) {
+            view.image = cached
+            return
+        }
         URLSession.shared.dataTask(with: url) { data, _, _ in
             guard let data else { return }
-            let image = Self.animatedImage(from: data) ?? UIImage(data: data)
+            let image = Self.cachedAnimatedImage(from: data, for: url)
             DispatchQueue.main.async { view.image = image }
         }.resume()
     }
