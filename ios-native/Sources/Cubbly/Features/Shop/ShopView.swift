@@ -559,8 +559,8 @@ private struct CoinsInfoSheet: View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(spacing: 8) {
-                    Circle().fill(Theme.Colors.primary).frame(width: 22, height: 22)
-                        .overlay(Text("C").font(.cubbly(13, .heavy)).foregroundStyle(.white))
+                    BundledAssetImage(name: "coin-stack")
+                        .frame(width: 34, height: 34)
                     Text("\(coins.balance)")
                         .font(.cubbly(28, .heavy))
                         .foregroundStyle(Theme.Colors.textPrimary)
