@@ -4,7 +4,8 @@ import SwiftUI
 /// they own and equip/unequip without going through the Shop tab. Locked
 /// items show a "Visit Shop" hint matching the web settings panel.
 struct CosmeticsSettingsView: View {
-    enum Mode: String { case name_color, theme, badge
+    enum Mode: String, Identifiable { case name_color, theme, badge
+        var id: String { rawValue }
         var title: String {
             switch self {
             case .name_color: return "Name Colors"
