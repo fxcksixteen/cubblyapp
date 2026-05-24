@@ -398,6 +398,7 @@ final class CallStore: ObservableObject {
         self.isMinimized = false
         self.incoming = nil
         self.ringTimedOut = false
+        self.sdpExchangeStarted = false
         incomingRingTimeoutTask?.cancel(); incomingRingTimeoutTask = nil
         SoundService.shared.stopLooping(.incomingCall)
         SoundService.shared.play(.message)
@@ -408,12 +409,10 @@ final class CallStore: ObservableObject {
             startHeartbeat()
         }
         // Tell the caller we're on the channel and ready for their offer.
-        // Without this, web/desktop callers (which now wait for ready-for-offer
-        // before sending the SDP offer) hang forever and the call never forms.
-        await signaling.broadcast(type: "ready-for-offer", payload: [
-            "callEventId": inc.callEventId.map { .string($0.uuidString.lowercased()) } ?? .null
-        ])
-        print("[Call] 📡 Sent ready-for-offer to caller")
+        // We retry until the offer arrives so a single dropped Realtime
+        // packet (common on mobile) doesn't wedge the call forever.
+        startReadyForOfferRetry(callEventId: inc.callEventId)
+        print("[Call] 📡 Sent ready-for-offer to caller (with retry)")
     }
 
     func declineIncoming() {
