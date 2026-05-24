@@ -167,7 +167,7 @@ struct DMListView: View {
                                 Label("View Profile", systemImage: "person.crop.circle")
                             }
                             Button {
-                                UIPasteboard.general.string = other.displayName
+                                UIPasteboard.general.string = other.username
                             } label: {
                                 Label("Copy Username", systemImage: "doc.on.doc")
                             }
