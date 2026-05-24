@@ -104,11 +104,12 @@ struct GiphyPickerView: View {
             ? query
             : "trending"
         do {
+            let token = try await SupabaseManager.shared.client.auth.session.accessToken
             let url = CubblyConfig.functionsURL.appendingPathComponent("giphy-search")
             var req = URLRequest(url: url)
             req.httpMethod = "POST"
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            req.setValue("Bearer \(CubblyConfig.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             req.setValue(CubblyConfig.supabaseAnonKey, forHTTPHeaderField: "apikey")
             req.httpBody = try JSONSerialization.data(withJSONObject: [
                 "query": q,
