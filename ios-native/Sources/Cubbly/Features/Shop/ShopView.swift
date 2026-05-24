@@ -414,19 +414,16 @@ private struct ShopItemPreview: View {
     @ViewBuilder
     private var themePreview: some View {
         let cfg = item.config?.jsonDictionary ?? [:]
-        let preview = cfg["preview"] as? String
         let bgColor = colorFromHex(cfg["bg"] as? String)
         let primary = colorFromHex(cfg["primary"] as? String) ?? Theme.Colors.primary
         ZStack {
-            if let bgColor {
+            if item.id == "theme_space" {
+                SpaceThemePreview()
+            } else if let bgColor {
                 bgColor
-            } else if let preview {
-                themeBackgroundFromCSS(preview)
             } else {
-                LinearGradient(
-                    colors: [primary, Theme.Colors.primaryGlow],
-                    startPoint: .topLeading, endPoint: .bottomTrailing
-                )
+                LinearGradient(colors: Self.previewColors(forThemeId: item.id, fallback: primary),
+                               startPoint: .topLeading, endPoint: .bottomTrailing)
             }
             VStack(spacing: 4) {
                 Text(item.name)
@@ -448,14 +445,17 @@ private struct ShopItemPreview: View {
         ZStack {
             Theme.Colors.bgTertiary
             HStack(spacing: 10) {
-                ZStack {
-                    Circle()
-                        .fill(bg)
-                        .frame(width: 44, height: 44)
-                        .shadow(color: glow.opacity(0.55), radius: 6)
-                    Image(systemName: Self.sfSymbol(forLucide: iconName))
-                        .font(.system(size: 20, weight: .heavy))
-                        .foregroundStyle(fg)
+                if let asset = ShopArtwork.badgeAssetName(for: item.id) {
+                    BundledAssetImage(name: asset)
+                        .frame(width: 56, height: 56)
+                        .shadow(color: .black.opacity(0.35), radius: 4, y: 2)
+                } else {
+                    ZStack {
+                        Circle().fill(bg).frame(width: 44, height: 44).shadow(color: glow.opacity(0.55), radius: 6)
+                        Image(systemName: Self.sfSymbol(forLucide: iconName))
+                            .font(.system(size: 20, weight: .heavy))
+                            .foregroundStyle(fg)
+                    }
                 }
                 VStack(alignment: .leading, spacing: 0) {
                     Text(nameToShow)
