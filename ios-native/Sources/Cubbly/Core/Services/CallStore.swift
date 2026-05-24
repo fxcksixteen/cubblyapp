@@ -427,6 +427,8 @@ final class CallStore: ObservableObject {
     func endCall() async {
         stopHeartbeat()
         stopRingTimeouts()
+        stopHandshakeRetries()
+        sdpExchangeStarted = false
         let conv = conversationId
         if let signaling = signaling, conv != nil {
             // v0.2.27 parity: soft-leave so the call_event stays ongoing for
