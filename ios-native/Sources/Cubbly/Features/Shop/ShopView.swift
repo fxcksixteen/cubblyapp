@@ -441,21 +441,53 @@ private struct ShopItemPreview: View {
     @ViewBuilder
     private var badgePreview: some View {
         let cfg = item.config?.jsonDictionary ?? [:]
+        let bg = colorFromHex(cfg["bg"] as? String) ?? Theme.Colors.bgFloating
+        let fg = colorFromHex(cfg["fg"] as? String) ?? .white
+        let glow = colorFromHex(cfg["glow"] as? String) ?? bg
+        let iconName = (cfg["icon"] as? String) ?? "star"
         ZStack {
             Theme.Colors.bgTertiary
-            HStack(spacing: 8) {
+            HStack(spacing: 10) {
                 ZStack {
-                    Circle().fill(colorFromHex(cfg["bg"] as? String) ?? Theme.Colors.bgFloating)
-                        .frame(width: 36, height: 36)
-                    Text("★")
-                        .font(.cubbly(18, .heavy))
-                        .foregroundStyle(colorFromHex(cfg["fg"] as? String) ?? .white)
+                    Circle()
+                        .fill(bg)
+                        .frame(width: 44, height: 44)
+                        .shadow(color: glow.opacity(0.55), radius: 6)
+                    Image(systemName: Self.sfSymbol(forLucide: iconName))
+                        .font(.system(size: 20, weight: .heavy))
+                        .foregroundStyle(fg)
                 }
-                Text(nameToShow)
-                    .font(.cubbly(13, .bold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(nameToShow)
+                        .font(.cubbly(13, .bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    Text(item.name)
+                        .font(.cubbly(10, .semibold))
+                        .foregroundStyle(Theme.Colors.textMuted)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
             }
+            .padding(.horizontal, 12)
+        }
+    }
+
+    /// Maps Lucide icon names used by the web shop catalog onto the closest
+    /// SF Symbol so badges render correctly on iOS without bundling extra
+    /// SVG assets per badge.
+    static func sfSymbol(forLucide name: String) -> String {
+        switch name {
+        case "flower":          return "camera.macro"
+        case "sparkles":        return "sparkles"
+        case "mic":             return "mic.fill"
+        case "message_circle":  return "message.fill"
+        case "crown":           return "crown.fill"
+        case "gamepad":         return "gamecontroller.fill"
+        case "moon":            return "moon.stars.fill"
+        case "heart":           return "heart.fill"
+        case "star":            return "star.fill"
+        default:                return "star.fill"
         }
     }
 
