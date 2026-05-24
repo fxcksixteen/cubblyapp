@@ -77,6 +77,11 @@ struct MainTabView: View {
                 Task { await PresenceService.shared.start(userID: uid, force: true) }
             }
         }
+        .task {
+            if let uid = session.currentUserID {
+                await ThemeStore.shared.start(userId: uid)
+            }
+        }
     }
 }
 
