@@ -918,6 +918,9 @@ final class CallStore: ObservableObject {
         pendingRemoteIce.removeAll()
         pendingScreenIce.removeAll()
         SoundService.shared.stopLooping(.outgoingRing)
+        // Reset the SDP-exchange flag so a rejoining peer's `ready-for-offer`
+        // produces a fresh offer instead of being dropped as a duplicate.
+        sdpExchangeStarted = false
         // Stay "calling" so UI shows we're waiting alone in the call. The
         // user can either End Call or wait for the peer to rejoin.
         state = .calling
