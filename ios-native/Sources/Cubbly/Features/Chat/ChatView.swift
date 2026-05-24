@@ -34,6 +34,8 @@ struct ChatView: View {
     @State private var videoURL: IdentifiedURL?
     @State private var lightboxURL: IdentifiedURL?
     @State private var profilePopupUserID: UUID?
+    @State private var didInitialScroll = false
+    @State private var scrollToBottomTrigger = UUID()
     @FocusState private var composerFocused: Bool
     @StateObject private var reactions = MessageReactionsStore()
 
@@ -320,6 +322,19 @@ struct ChatView: View {
             .onAppear {
                 if let last = messages.last?.id { proxy.scrollTo(last, anchor: .bottom) }
             }
+            .onChange(of: scrollToBottomTrigger) { _, _ in
+                // Forced jump to the true latest message after initial
+                // hydration / re-entry. Two passes so the bubble layout has
+                // settled (avatars, link previews) before the final snap.
+                guard let last = messages.last?.id else { return }
+                proxy.scrollTo(last, anchor: .bottom)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    proxy.scrollTo(last, anchor: .bottom)
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    proxy.scrollTo(last, anchor: .bottom)
+                }
+            }
         }
     }
 
@@ -523,6 +538,13 @@ struct ChatView: View {
             hasMore = rows.count >= 50
             await loadCallEvents()
             await reactions.load(messageIds: messages.compactMap { UUID(uuidString: $0.id) })
+            // Force a hard snap to the newest message after first hydration
+            // so the chat always opens at the bottom, even when opened from
+            // the DM sidebar, a notification deep link, or a horizontal swipe.
+            await MainActor.run {
+                didInitialScroll = true
+                scrollToBottomTrigger = UUID()
+            }
         } catch is CancellationError {} catch {
             print("[Chat] load failed:", error)
         }
