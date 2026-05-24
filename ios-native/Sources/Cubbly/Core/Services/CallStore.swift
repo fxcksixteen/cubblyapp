@@ -150,6 +150,7 @@ final class CallStore: ObservableObject {
         self.state = .calling
         self.startedAt = nil
         self.isMinimized = false
+        self.sdpExchangeStarted = false
         SoundService.shared.playLooping(.outgoingRing)
         CallKitService.shared.startOutgoing(handleName: peerName)
 
@@ -193,17 +194,21 @@ final class CallStore: ObservableObject {
 
         // 3) NOW ring the peer. Channel is joined, event row exists, our
         //    participant row is live — the ring will reliably arrive and the
-        //    accept-side liveness check will succeed.
+        //    accept-side liveness check will succeed. Pass OUR own avatar
+        //    (not the peer's) so their incoming sheet shows the right photo.
+        let myAvatar = SessionStore.shared?.currentProfile?.avatarURL
+        let myName = SessionStore.shared?.currentProfile?.displayName
         if let evtId = currentCallEventId {
             await signaling.ringUser(
                 targetUserId: peerId,
                 conversationId: conversationId,
                 callEventId: evtId,
-                callerName: SessionStore.shared?.currentProfile?.displayName,
-                callerAvatarUrl: peerAvatarUrl
+                callerName: myName,
+                callerAvatarUrl: myAvatar
             )
         }
         startOutgoingRingTimeout()
+        startCallerFallbackOffer()
         print("[Call] ⏳ Waiting for peer to send ready-for-offer…")
     }
 
