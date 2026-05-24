@@ -946,8 +946,12 @@ final class CallStore: ObservableObject {
         let session = AVAudioSession.sharedInstance()
         do {
             let mode: AVAudioSession.Mode = CallSettings.shared.echoCancellation ? .voiceChat : .default
-            var options: AVAudioSession.CategoryOptions = [.allowBluetooth, .allowBluetoothA2DP, .mixWithOthers]
-            if CallSettings.shared.speakerOutput { options.insert(.defaultToSpeaker) }
+            // IMPORTANT: do NOT include `.defaultToSpeaker` here. With that
+            // option present, `overrideOutputAudioPort(.none)` silently snaps
+            // right back to speaker — which is exactly the bug where the
+            // in-call speaker button looked dead. Route is now controlled
+            // EXCLUSIVELY via overrideOutputAudioPort below.
+            let options: AVAudioSession.CategoryOptions = [.allowBluetooth, .allowBluetoothA2DP, .mixWithOthers]
             try session.setCategory(.playAndRecord, mode: mode, options: options)
             try session.setActive(true, options: [])
             if CallSettings.shared.speakerOutput {
