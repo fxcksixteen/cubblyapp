@@ -62,8 +62,14 @@ struct YouView: View {
         .sheet(isPresented: $showingActivityPrivacy) {
             ActivityPrivacySettingsView()
         }
+        .sheet(isPresented: $showingAppearance) {
+            AppearanceSettingsView()
+        }
         .sheet(item: $cosmeticsMode) { mode in
             CosmeticsSettingsView(mode: mode)
+        }
+        .sheet(item: $moreTab) { tab in
+            MoreSettingsTabView(mode: tab)
         }
     }
 
