@@ -112,6 +112,24 @@ final class BotEchoCall {
         pendingBotIce.removeAll()
     }
 
+    /// Toggle the local mic in the echo loop. When disabled the caller PC
+    /// stops pushing audio frames so the bot has nothing to echo back —
+    /// which is exactly what "Mute" should feel like.
+    func setMicEnabled(_ enabled: Bool) {
+        localMic?.isEnabled = enabled
+    }
+
+    /// Toggle playback of the echoed (remote) audio track on the caller PC.
+    /// Used by Deafen so the user actually stops hearing themselves.
+    func setRemoteAudioEnabled(_ enabled: Bool) {
+        guard let caller = callerPC else { return }
+        for t in caller.transceivers {
+            if let track = t.receiver.track as? RTCAudioTrack {
+                track.isEnabled = enabled
+            }
+        }
+    }
+
     // MARK: - Echo: re-publish caller's audio back from the bot side
 
     private func republishOnBot(_ track: RTCAudioTrack) {
