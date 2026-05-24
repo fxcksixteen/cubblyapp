@@ -8,6 +8,8 @@ struct ProfilePopupView: View {
     let userID: UUID
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var presence: PresenceService
+    @ObservedObject private var activity = ActivityService.shared
+
 
     @State private var profile: Profile?
     @State private var loading = true
