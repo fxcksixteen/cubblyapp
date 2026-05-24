@@ -3,28 +3,29 @@ import SwiftUI
 /// Design tokens — mirrors `src/index.css` and `tailwind.config.ts` from the web app.
 enum Theme {
     enum Colors {
+        private static var p: ThemeStore.Palette { MainActor.assumeIsolated { ThemeStore.shared.palette } }
         // App surfaces
-        static let bgPrimary    = Color(hex: 0x313338)
-        static let bgSecondary  = Color(hex: 0x2B2D31)
-        static let bgTertiary   = Color(hex: 0x1E1F22)
-        static let bgFloating   = Color(hex: 0x111214)
-        static let bgHover      = Color(white: 1.0).opacity(0.05)
+        static var bgPrimary: Color { p.bgPrimary }
+        static var bgSecondary: Color { p.bgSecondary }
+        static var bgTertiary: Color { p.bgTertiary }
+        static var bgFloating: Color { p.bgFloating }
+        static var bgHover: Color { p.hover }
 
         // Text
-        static let textPrimary   = Color(hex: 0xF2F3F5)
-        static let textSecondary = Color(hex: 0xB5BAC1)
-        static let textMuted     = Color(hex: 0x80848E)
+        static var textPrimary: Color { p.textPrimary }
+        static var textSecondary: Color { p.textSecondary }
+        static var textMuted: Color { p.textMuted }
 
         // Accents
-        static let primary       = Color(hex: 0xE6A833)
-        static let primaryGlow   = Color(hex: 0xF2C062)
+        static var primary: Color { p.primary }
+        static var primaryGlow: Color { p.primaryGlow }
         static let success       = Color(hex: 0x3BA55C)
         static let danger        = Color(hex: 0xED4245)
         static let warning       = Color(hex: 0xFAA61A)
 
         // Borders
-        static let border        = Color(white: 1.0).opacity(0.06)
-        static let divider       = Color(white: 1.0).opacity(0.04)
+        static var border: Color { p.border }
+        static var divider: Color { p.divider }
     }
 
     /// Static Nunito faces shipped under Resources/Fonts — addressed by their

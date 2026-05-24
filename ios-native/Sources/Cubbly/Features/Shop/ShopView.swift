@@ -97,8 +97,8 @@ struct ShopView: View {
                 showCoinsInfo = true
             } label: {
                 HStack(spacing: 6) {
-                    Circle().fill(Theme.Colors.primary).frame(width: 16, height: 16)
-                        .overlay(Text("C").font(.cubbly(10, .heavy)).foregroundStyle(.white))
+                    BundledAssetImage(name: "coin-stack")
+                        .frame(width: 20, height: 20)
                     Text("\(coins.balance)")
                         .font(.cubbly(14, .bold))
                         .foregroundStyle(Theme.Colors.textPrimary)
@@ -228,8 +228,8 @@ private struct PurchaseConfirmSheet: View {
 
                 HStack(spacing: 8) {
                     HStack(spacing: 5) {
-                        Circle().fill(Theme.Colors.primary).frame(width: 14, height: 14)
-                            .overlay(Text("C").font(.cubbly(9, .heavy)).foregroundStyle(.white))
+                        BundledAssetImage(name: "coin-stack")
+                            .frame(width: 18, height: 18)
                         Text("\(item.price)")
                             .font(.cubbly(15, .heavy))
                             .foregroundStyle(Theme.Colors.textPrimary)
@@ -322,8 +322,8 @@ private struct ShopItemCard: View {
 
                 if !isOwned {
                     HStack(spacing: 4) {
-                        Circle().fill(Theme.Colors.primary).frame(width: 9, height: 9)
-                            .overlay(Text("C").font(.cubbly(6, .heavy)).foregroundStyle(.white))
+                        BundledAssetImage(name: "coin-stack")
+                            .frame(width: 14, height: 14)
                         Text("\(item.price)")
                             .font(.cubbly(11, .bold))
                             .foregroundStyle(Theme.Colors.textSecondary)
@@ -414,19 +414,16 @@ private struct ShopItemPreview: View {
     @ViewBuilder
     private var themePreview: some View {
         let cfg = item.config?.jsonDictionary ?? [:]
-        let preview = cfg["preview"] as? String
         let bgColor = colorFromHex(cfg["bg"] as? String)
         let primary = colorFromHex(cfg["primary"] as? String) ?? Theme.Colors.primary
         ZStack {
-            if let bgColor {
+            if item.id == "theme_space" {
+                SpaceThemePreview()
+            } else if let bgColor {
                 bgColor
-            } else if let preview {
-                themeBackgroundFromCSS(preview)
             } else {
-                LinearGradient(
-                    colors: [primary, Theme.Colors.primaryGlow],
-                    startPoint: .topLeading, endPoint: .bottomTrailing
-                )
+                LinearGradient(colors: Self.previewColors(forThemeId: item.id, fallback: primary),
+                               startPoint: .topLeading, endPoint: .bottomTrailing)
             }
             VStack(spacing: 4) {
                 Text(item.name)
@@ -448,14 +445,17 @@ private struct ShopItemPreview: View {
         ZStack {
             Theme.Colors.bgTertiary
             HStack(spacing: 10) {
-                ZStack {
-                    Circle()
-                        .fill(bg)
-                        .frame(width: 44, height: 44)
-                        .shadow(color: glow.opacity(0.55), radius: 6)
-                    Image(systemName: Self.sfSymbol(forLucide: iconName))
-                        .font(.system(size: 20, weight: .heavy))
-                        .foregroundStyle(fg)
+                if let asset = ShopArtwork.badgeAssetName(for: item.id) {
+                    BundledAssetImage(name: asset)
+                        .frame(width: 56, height: 56)
+                        .shadow(color: .black.opacity(0.35), radius: 4, y: 2)
+                } else {
+                    ZStack {
+                        Circle().fill(bg).frame(width: 44, height: 44).shadow(color: glow.opacity(0.55), radius: 6)
+                        Image(systemName: Self.sfSymbol(forLucide: iconName))
+                            .font(.system(size: 20, weight: .heavy))
+                            .foregroundStyle(fg)
+                    }
                 }
                 VStack(alignment: .leading, spacing: 0) {
                     Text(nameToShow)
@@ -500,16 +500,30 @@ private struct ShopItemPreview: View {
         return Color(hex: v)
     }
 
-    @ViewBuilder
-    private func themeBackgroundFromCSS(_ s: String) -> some View {
-        // We can't parse arbitrary CSS gradients in SwiftUI — pick a sensible
-        // default backdrop and overlay the theme name. The full themed UI
-        // happens once a theme is equipped server-side.
-        LinearGradient(
-            colors: [Theme.Colors.primary, Color(hex: 0xEC4899), Color(hex: 0x6366F1)],
-            startPoint: .topLeading, endPoint: .bottomTrailing
-        )
-        .opacity(0.85)
+    private static func previewColors(forThemeId id: String, fallback: Color) -> [Color] {
+        let mapped = ThemeStore.colors(forShopThemeId: id)
+        if !mapped.isEmpty { return mapped }
+        return [fallback, Theme.Colors.primaryGlow]
+    }
+}
+
+private struct SpaceThemePreview: View {
+    var body: some View {
+        ZStack {
+            RadialGradient(colors: [Color(hex: 0x0D1224), Color(hex: 0x07080C), Color(hex: 0x04050A)],
+                           center: .topLeading, startRadius: 2, endRadius: 150)
+            ForEach(0..<22, id: \.self) { i in
+                Circle()
+                    .fill(Color.white.opacity(i % 3 == 0 ? 0.85 : 0.55))
+                    .frame(width: i % 5 == 0 ? 2 : 1, height: i % 5 == 0 ? 2 : 1)
+                    .offset(x: CGFloat((i * 37) % 150) - 75, y: CGFloat((i * 23) % 90) - 45)
+            }
+            Capsule()
+                .fill(LinearGradient(colors: [.white.opacity(0), .white.opacity(0.85), .white.opacity(0)], startPoint: .leading, endPoint: .trailing))
+                .frame(width: 54, height: 2)
+                .rotationEffect(.degrees(-28))
+                .offset(x: 32, y: -22)
+        }
     }
 }
 
@@ -545,8 +559,8 @@ private struct CoinsInfoSheet: View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(spacing: 8) {
-                    Circle().fill(Theme.Colors.primary).frame(width: 22, height: 22)
-                        .overlay(Text("C").font(.cubbly(13, .heavy)).foregroundStyle(.white))
+                    BundledAssetImage(name: "coin-stack")
+                        .frame(width: 34, height: 34)
                     Text("\(coins.balance)")
                         .font(.cubbly(28, .heavy))
                         .foregroundStyle(Theme.Colors.textPrimary)

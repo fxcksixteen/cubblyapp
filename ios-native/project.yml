@@ -67,7 +67,7 @@ targets:
       properties:
         CFBundleDisplayName: Cubbly
         CFBundleShortVersionString: "0.1.6"
-        CFBundleVersion: "14"
+        CFBundleVersion: "15"
         UIBackgroundModes:
           - remote-notification
           - audio

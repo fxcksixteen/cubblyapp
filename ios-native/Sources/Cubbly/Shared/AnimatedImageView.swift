@@ -36,9 +36,13 @@ struct AnimatedImageView: UIViewRepresentable {
     }
 
     private func load(into view: UIImageView) {
+        if let cached = AnimatedImageCache.shared.image(for: url) {
+            view.image = cached
+            return
+        }
         URLSession.shared.dataTask(with: url) { data, _, _ in
             guard let data else { return }
-            let image = Self.animatedImage(from: data) ?? UIImage(data: data)
+            let image = Self.cachedAnimatedImage(from: data, for: url)
             DispatchQueue.main.async { view.image = image }
         }.resume()
     }
@@ -74,10 +78,28 @@ struct AnimatedImageView: UIViewRepresentable {
         }
         return 0.1
     }
+
+    static func cachedAnimatedImage(from data: Data, for url: URL) -> UIImage? {
+        if let cached = AnimatedImageCache.shared.image(for: url) { return cached }
+        guard let image = animatedImage(from: data) ?? UIImage(data: data) else { return nil }
+        AnimatedImageCache.shared.store(image, for: url)
+        return image
+    }
 }
 
 /// UIImageView subclass that refuses to advertise an intrinsic size. SwiftUI
 /// will then size it strictly via the .frame(...) modifiers we apply.
 final class NoIntrinsicImageView: UIImageView {
     override var intrinsicContentSize: CGSize { .zero }
+}
+
+final class AnimatedImageCache {
+    static let shared = AnimatedImageCache()
+    private let cache = NSCache<NSURL, UIImage>()
+    private init() { cache.totalCostLimit = 120 * 1024 * 1024 }
+    func image(for url: URL) -> UIImage? { cache.object(forKey: url as NSURL) }
+    func store(_ image: UIImage, for url: URL) {
+        let cost = Int(image.size.width * image.size.height * 4)
+        cache.setObject(image, forKey: url as NSURL, cost: cost)
+    }
 }

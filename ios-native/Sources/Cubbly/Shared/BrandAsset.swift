@@ -8,7 +8,7 @@ enum BrandAsset {
         }
 
         for ext in ["png", "jpg", "jpeg", "webp"] {
-            if let url = bundledURL(named: name, ext: ext, preferredSubdirectories: ["Images", nil]) {
+            if let url = bundledURL(named: name, ext: ext, preferredSubdirectories: ["Images", "Images/badges", "Images/coins", nil]) {
                 return UIImage(contentsOfFile: url.path)
             }
         }
