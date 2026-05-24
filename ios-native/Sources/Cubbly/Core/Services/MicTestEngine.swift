@@ -23,6 +23,7 @@ final class MicTestEngine: ObservableObject {
     private var meterTimer: Timer?
     private var startedAt: Date?
     private let maxDuration: TimeInterval = 10
+    private var touchedAudioSession = false
 
     func startRecording() {
         guard phase == .idle || phase == .recorded else { return }
@@ -106,11 +107,16 @@ final class MicTestEngine: ObservableObject {
     func stopAll() {
         stopPlayback()
         if phase == .recording { stopRecording() }
-        try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
-        // If a real call is active, restore its session.
-        if CallStore.shared.state != .idle {
-            CallStore.shared.reapplyAudioSession()
+        if touchedAudioSession {
+            if CallStore.shared.state == .idle {
+                try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+            } else {
+                // Never deactivate the shared audio session while a call is live;
+                // doing so stalls the active WebRTC mic/echo path after closing settings.
+                CallStore.shared.reapplyAudioSession()
+            }
         }
+        touchedAudioSession = false
         phase = .idle
         elapsed = 0
         level = 0
@@ -122,6 +128,7 @@ final class MicTestEngine: ObservableObject {
                                 mode: .measurement,
                                 options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP])
         try session.setActive(true, options: [])
+        touchedAudioSession = true
     }
 
     private static func rmsLevel(buffer: AVAudioPCMBuffer) -> Double {
