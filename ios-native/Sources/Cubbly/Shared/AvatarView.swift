@@ -14,7 +14,7 @@ struct AvatarView: View {
     @State private var loadedImage: UIImage?
     private var isAnimated: Bool {
         guard let url else { return false }
-        return ProfilePopupView.isAnimated(url: url)
+        return Self.isAnimated(url: url)
     }
 
     var body: some View {
@@ -75,6 +75,15 @@ struct AvatarView: View {
         var hash: UInt32 = 5381
         for byte in seed.utf8 { hash = (hash &* 33) &+ UInt32(byte) }
         return Color(hex: palette[Int(hash % UInt32(palette.count))])
+    }
+
+    static func isAnimated(url: URL) -> Bool {
+        let full = url.absoluteString.lowercased()
+        let path = url.path.lowercased()
+        return path.hasSuffix(".gif") || path.hasSuffix(".webp") || path.hasSuffix(".apng")
+            || full.contains(".gif") || full.contains(".webp") || full.contains(".apng")
+            || full.contains("giphy.com") || full.contains("media.giphy") || full.contains("tenor.com")
+            || full.contains("/animated/") || full.contains("anim=1")
     }
 }
 
