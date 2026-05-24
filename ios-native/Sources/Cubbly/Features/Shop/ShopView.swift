@@ -483,5 +483,5 @@ extension AnyJSON {
     }
 }
 
-// MARK: - alert(item:) requires Identifiable conformance
-extension ShopStore.Item: Identifiable {}
+// (ShopStore.Item already conforms to Identifiable via its `id: String`.)
+
