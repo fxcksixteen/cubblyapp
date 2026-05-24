@@ -184,7 +184,88 @@ struct ShopView: View {
                 notEnoughItem = item
                 return
             }
-            Task { _ = await shop.purchase(item) }
+            // Discord-style confirmation modal before spending coins.
+            confirmPurchaseItem = item
+        }
+    }
+}
+
+// MARK: - Purchase confirmation sheet (Cubbly-branded)
+
+private struct PurchaseConfirmSheet: View {
+    let item: ShopStore.Item
+    let balance: Int
+    let displayName: String
+    let onConfirm: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        ZStack {
+            Theme.Colors.bgTertiary.ignoresSafeArea()
+            VStack(spacing: 16) {
+                ShopItemPreview(item: item, displayName: displayName)
+                    .frame(height: 110)
+                    .frame(maxWidth: .infinity)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .padding(.horizontal, 20)
+                    .padding(.top, 18)
+
+                VStack(spacing: 4) {
+                    Text("Confirm purchase")
+                        .font(.cubbly(18, .heavy))
+                        .foregroundStyle(Theme.Colors.textPrimary)
+                    Text(item.name)
+                        .font(.cubbly(15, .semibold))
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                    if let d = item.description, !d.isEmpty {
+                        Text(d)
+                            .font(.cubbly(12))
+                            .foregroundStyle(Theme.Colors.textMuted)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 24)
+                    }
+                }
+
+                HStack(spacing: 8) {
+                    HStack(spacing: 5) {
+                        Circle().fill(Theme.Colors.primary).frame(width: 14, height: 14)
+                            .overlay(Text("C").font(.cubbly(9, .heavy)).foregroundStyle(.white))
+                        Text("\(item.price)")
+                            .font(.cubbly(15, .heavy))
+                            .foregroundStyle(Theme.Colors.textPrimary)
+                            .monospacedDigit()
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 6)
+                    .background(Theme.Colors.bgSecondary, in: Capsule())
+                    Text("After: \(balance - item.price) coins")
+                        .font(.cubbly(11))
+                        .foregroundStyle(Theme.Colors.textMuted)
+                        .monospacedDigit()
+                }
+
+                Spacer()
+
+                VStack(spacing: 10) {
+                    Button(action: onConfirm) {
+                        Text("Buy for \(item.price) coins")
+                            .font(.cubbly(15, .heavy))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity).padding(.vertical, 13)
+                            .background(Theme.Colors.primary, in: RoundedRectangle(cornerRadius: 12))
+                    }
+                    .buttonStyle(.plain)
+                    Button(action: onCancel) {
+                        Text("Cancel")
+                            .font(.cubbly(14, .semibold))
+                            .foregroundStyle(Theme.Colors.textSecondary)
+                            .frame(maxWidth: .infinity).padding(.vertical, 11)
+                            .background(Theme.Colors.bgSecondary, in: RoundedRectangle(cornerRadius: 12))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 18)
+            }
         }
     }
 }
