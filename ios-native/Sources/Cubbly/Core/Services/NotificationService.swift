@@ -93,7 +93,13 @@ final class NotificationService: NSObject, ObservableObject {
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = prefs.showMessagePreview ? body : "New message"
-        content.sound = nil // we handle our own sound via SoundService for in-app dings.
+        // Play the branded Cubbly message ding for local foreground banners
+        // when the user has message sounds on. Otherwise stay silent.
+        if prefs.messageSoundEnabled {
+            content.sound = UNNotificationSound(named: UNNotificationSoundName("Sounds/message.wav"))
+        } else {
+            content.sound = nil
+        }
         content.threadIdentifier = threadID ?? "dm:\(conversationID.uuidString)"
         content.userInfo = [
             "conversation_id": conversationID.uuidString,

@@ -56,6 +56,13 @@ final class SessionStore: ObservableObject {
                 await PresenceService.shared.start(userID: session.user.id)
                 // Bootstrap call signaling now that we have a user id.
                 await CallStore.shared.attach(client: SupabaseManager.shared.client, userId: session.user.id)
+                // Start coin/shop/activity/unread services so the rest of
+                // the UI can read live data without each view bootstrapping
+                // its own subscription.
+                await CoinsStore.shared.start(userId: session.user.id)
+                await ShopStore.shared.start(userId: session.user.id)
+                await ActivityService.shared.start(userId: session.user.id)
+                await UnreadCountsStore.shared.start(userId: session.user.id)
                 // Flush any APNs token that arrived before sign-in completed,
                 // ask for permission on first launch, AND re-register every
                 // launch if already authorized so APNs always hands us a token.
@@ -67,11 +74,19 @@ final class SessionStore: ObservableObject {
             } else {
                 state = .signedOut
                 await PresenceService.shared.stop()
+                await CoinsStore.shared.stop()
+                await ShopStore.shared.stop()
+                await ActivityService.shared.stop()
+                await UnreadCountsStore.shared.stop()
             }
         case .signedOut:
             state = .signedOut
             currentProfile = nil
             await PresenceService.shared.stop()
+            await CoinsStore.shared.stop()
+            await ShopStore.shared.stop()
+            await ActivityService.shared.stop()
+            await UnreadCountsStore.shared.stop()
         case .passwordRecovery, .mfaChallengeVerified, .userDeleted:
             break
         @unknown default:

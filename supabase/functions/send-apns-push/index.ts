@@ -163,7 +163,11 @@ Deno.serve(async (req) => {
     const payload = {
       aps: {
         alert: { title, body: body || "" },
-        sound: "default",
+        // Custom Cubbly message ding. The iOS app bundles `message.wav` under
+        // `Resources/Sounds/` (folder reference), so APNs finds it at the
+        // path below inside the .app bundle. Falls back to default sound on
+        // devices that can't resolve the file.
+        sound: "Sounds/message.wav",
         "thread-id": thread_id || (conversation_id ? `dm:${conversation_id}` : undefined),
         "mutable-content": 1,
       },

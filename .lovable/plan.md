@@ -1,116 +1,103 @@
+## v0.1.6 native iOS plan
 
-# Cubbly v0.3.3 — Web & Desktop Fix Pack
+### Scope
+Bring the Swift native iOS app closer to web/desktop parity for calling, shop/coins, profile previews, activity presence, DM actions, unread badges, chat scrolling, and custom message sounds.
 
-Bump version to **v0.3.3** (web changelog + Electron package + iOS metadata stays at 0.1.5 since this is web/desktop only). Add a changelog entry summarizing the fixes below.
+### 1. Fix and harden native calling
+- Keep the native Swift/WebRTC approach. The project already uses the same Chromium WebRTC engine that browsers use, so switching to React Native is not the best path and would add risk rather than fix the current call flow.
+- Repair the call handshake so iOS reliably connects with web/desktop:
+  - ensure the caller creates a voice `WebRTCClient` and sends an offer after receiving `ready-for-offer`;
+  - ensure accept/join paths always create the right answerer/caller peer connection;
+  - improve ICE buffering and call state transitions so calls do not get stuck on “Calling…”;
+  - keep call event participant heartbeats in sync with the existing backend.
+- Add a first-class CubblyBot call test path:
+  - make calling CubblyBot start a local echo WebRTC call that loops mic audio back;
+  - add clear in-call state for “CubblyBot echo test” so you can verify mic, routing, speaker, mute, deafen, and WebRTC without another real user;
+  - keep it isolated from normal realtime signaling so it cannot create ghost backend calls.
+- Keep outgoing video/screenshare disabled unless a safe Swift WebRTC sender implementation is already possible in this patch; preserve receiving screenshares from web/desktop.
 
----
+### 2. Build the full native Shop tab
+- Replace the “Coming soon” shop screen with a native shop matching the web/desktop catalog:
+  - All / Name Colors / Themes / Badges tabs;
+  - promo tiles for Space Theme, Motion Name Colors, and Earn Coins;
+  - item previews for static, gradient, animated name colors, themes, animated/premium themes, and badges;
+  - owned/equipped/locked states;
+  - purchase flow via `purchase_shop_item`;
+  - equip/unequip via `equip_shop_item` / `unequip_shop_item`;
+  - not-enough-coins and already-owned feedback.
+- Add native coin state synced to the same backend tables as web/desktop:
+  - load `user_coins.balance` for the signed-in user;
+  - listen for realtime balance updates;
+  - show a coin pill/info panel explaining earning/spending.
+- Add the missing native shop artwork resources needed for parity, including coin images and badge art copied from the web asset set.
 
-## 1. Calls
+### 3. Add native settings access for shop-owned cosmetics
+- In native profile/settings areas, add catalog sections equivalent to web settings:
+  - Name Colors;
+  - Badges;
+  - Themes.
+- Locked items route users to the Shop tab; owned items can be equipped directly.
+- Reuse the same shop data/store so inventory/equipped state stays consistent between the Shop tab and settings.
 
-**A. "Rejoin" button doesn't actually start a call**
-- In `ChatView.tsx` / `VoiceCallOverlay.tsx`, the rejoin CTA currently calls a different code path than the header phone button.
-- Fix: route the Rejoin button through the exact same handler as the top-right Start Call button (`startCall(conversationId, { video: false })` from `VoiceContext` / `GroupCallContext` depending on DM vs group), instead of trying to "re-attach" to a missed-call session.
-- Clear any stale "incoming"/"ringing" state for that conversation before initiating so it doesn't short-circuit.
+### 4. Fix animated profile pictures and banners in profile previews
+- Expand animated media detection beyond `.gif`/Giphy/Tenor to include animated WebP and signed/storage URLs where the file extension may be hidden.
+- Update profile preview rendering so animated avatars and banners use the animated image renderer reliably.
+- Keep static images on the existing lightweight path.
 
-**B. Call pill shows wrong time / `00:00` duration**
-- Pill is being written on call start with `started_at = now` but on the hang-up path the duration update sometimes never fires (cleanup runs before the final `UPDATE` to `call_events`).
-- Fix: in `VoiceContext.endCall` and `GroupCallContext.leaveCall`, compute duration locally (`Date.now() - startedAtMs`) and `await` the supabase update before tearing down peer connections / clearing state. Also stamp `ended_at` so realtime subscribers re-render the pill with the correct duration.
+### 5. Add activity presence display on iOS
+- Add an iOS `ActivityService` that reads and subscribes to `user_activities`, matching web/desktop visibility rules.
+- Show friends’ activity in:
+  - DM sidebar rows;
+  - profile preview sheets;
+  - any existing active/presence surfaces where web already shows “Playing/Using”.
+- Add an Activity Privacy setting that controls whether the iOS user shares activity visibility.
+- iOS cannot reliably scan arbitrary running games like the desktop Electron app, so iOS will display synced activity from desktop/web and preserve the user’s privacy setting; it will not fake game detection from iOS.
 
-**C. Game-launch-during-call freezes Cubbly**
-- This is the Windows native audio capture (`native/win-audio-capture`) attaching to the game process and blocking the renderer.
-- Fix:
-  - Move all `process_loopback_capture` calls off the renderer/main thread into a Node worker so a stuck capture cannot freeze the UI/WebRTC.
-  - Add a 2s init timeout + try/catch around attach; on failure, silently disable activity-audio mixing for that session instead of crashing the call.
-  - Stop tearing down and re-creating the WebRTC PeerConnection when a new game is detected — only swap the local outbound track via `sender.replaceTrack(...)`.
+### 6. Add DM sidebar long-press user options menu
+- Add a custom Cubbly-branded Discord-style compact menu when pressing and holding a DM row/user.
+- Include practical actions that match available native functionality:
+  - View Profile;
+  - Message/Open Chat;
+  - Copy Username;
+  - optionally Remove Friend / Block if existing repositories support it cleanly.
+- Keep the styling native, dark, compact, and consistent with Cubbly’s theme tokens.
 
----
+### 7. Make chat opening always load bottom-up and land at latest message
+- Keep fetching latest messages descending from the backend, then render ascending.
+- Make initial chat entry scroll to the true latest message after hydration/layout, not just on first `onAppear`.
+- Preserve upward pagination without yanking the user back down when older messages load.
+- Re-scroll to bottom when opening from DM sidebar, notification deep-link, or horizontal swipe.
 
-## 2. Message delete doesn't sync in realtime
+### 8. Add native unread badges on the server rail
+- Add an unread-count service using `conversation_participants.last_read_at`, matching the web `useUnreadCounts` behavior.
+- Show a profile/group avatar bubble with a red unread count indicator in the left server rail for unread DMs/group DMs.
+- Keep badges live through realtime `messages` inserts and `conversation_participants` updates.
+- Clear/hide the active conversation’s rail badge when opening it, and sync read state through the existing `mark_conversation_read` RPC.
 
-- `useMessages` is subscribed to `INSERT` but the `DELETE` handler either filters by `new.id` (which is null on deletes) or the table isn't in `supabase_realtime` for DELETE events.
-- Fix:
-  - Migration: ensure `messages` table has `REPLICA IDENTITY FULL` and is in `supabase_realtime` publication for `DELETE`.
-  - In `useMessages`, add an `on('postgres_changes', { event: 'DELETE', ... })` handler keyed on `old.id` that removes the message from local state immediately for both participants.
-  - Optimistic removal on the deleter's side stays.
+### 9. Fix iOS push notification sound to use Cubbly’s message sound
+- Add `message.wav` as a named notification sound for APNs payloads and local notifications.
+- Update the native notification presentation path so foreground/local message notifications request the custom sound only when message sounds are enabled.
+- Update the APNs backend function payload to send the custom sound name for iOS remote pushes, so closed/background notifications use the Cubbly sound instead of the user’s default iPhone tone.
+- Keep the existing in-app `SoundService` ding for realtime foreground messages.
 
----
+### Files likely to change
+- `ios-native/Sources/Cubbly/Core/Services/CallStore.swift`
+- `ios-native/Sources/Cubbly/Core/Services/WebRTCClient.swift`
+- `ios-native/Sources/Cubbly/Core/Services/BotEchoCall.swift`
+- `ios-native/Sources/Cubbly/Core/Services/SoundService.swift`
+- `ios-native/Sources/Cubbly/Core/Services/NotificationService.swift`
+- `ios-native/Sources/Cubbly/Core/Services/APNsRegistrar.swift`
+- new native shop/coins/activity/unread services and models
+- `ios-native/Sources/Cubbly/Features/Shop/ShopView.swift`
+- `ios-native/Sources/Cubbly/Features/DMs/DMListView.swift`
+- `ios-native/Sources/Cubbly/Features/DMs/ServerRail.swift`
+- `ios-native/Sources/Cubbly/Features/Chat/ChatView.swift`
+- `ios-native/Sources/Cubbly/Features/Chat/ProfilePopupView.swift`
+- `ios-native/Sources/Cubbly/Features/You/YouView.swift`
+- native project resources under `ios-native/Resources/...`
+- `supabase/functions/send-apns-push/index.ts`
 
-## 3. App size is 700+ MB
-
-Audit + slim the Electron build:
-- Drop `node_modules` dev deps from packaged app — currently shipping the entire install. Switch `electron-builder` `files` allowlist to only `dist/**`, `electron/**.cjs`, `package.json`, and runtime-required native modules.
-- Exclude source maps, ICU data we don't need (`--disable-features=...`), and unused locales (keep `en-US` + a small set; electron-builder `electronLanguages`).
-- Strip `prebuilds/` for non-target architectures from `native/win-audio-capture` at pack time.
-- Enable `asar` + `compression: maximum`.
-- Target: < 200 MB installed. Will report final size after the change.
-
----
-
-## 4. Personal Notes
-
-- Add horizontal scroll: wrap the note content in a container with `overflow-x: auto` and `min-w-0`; only render scrollbar when content overflows (default browser behavior with `overflow-x: auto`). Also allow `white-space: pre` for code-like blocks.
-- Restore proper selection by removing the `user-select` constraints / parent `overflow: hidden` clipping selection drag.
-- Add hover states (`hover:bg-[var(--app-hover)]`, cursor-pointer, subtle border) to all interactive controls in the Notes tab to match the rest of the app.
-
----
-
-## 5. Appearance theme bugs
-
-- Theme apply is racing because `ThemeContext` writes CSS vars in an effect that depends on the previous theme's vars (closure capture).
-- Fix: make theme application idempotent — set every variable on `:root` from a single source-of-truth map every time, not a diff. Persist immediately via `localStorage.setItem`, then dispatch a `storage` event so other windows update too.
-- Add a unit-ish sanity check: after `setTheme(x)`, read back `--app-bg-primary` and confirm it matches; if not, retry once.
-
----
-
-## 6. Gamer badge — replace with attached headphones image
-
-- Delete `src/assets/badges/gamer.svg`.
-- Copy uploaded white-bear-headphones PNG → `src/assets/badges/gamer.png`.
-- Update `UserBadgesContext` / badge registry to point at the new PNG (and ensure `<img>` size containers fit a raster instead of an SVG).
-
----
-
-## 7. Notifications tab
-
-- "Send Test Notification" silently no-ops in the browser when permission is `denied`. Fix:
-  - Detect web (non-Electron) + permission state. If `default`, request permission first. If `denied`, show a toast explaining the browser blocked it. If Electron, route through `electronAPI.notify(...)`.
-  - Disable the button (with tooltip "Only available in the desktop app" or "Notifications blocked in this browser") when it cannot work, instead of pretending to send.
-- Make every Call Sound (outgoing ring, incoming call, leave call, mute, unmute, deafen, undeafen, message) testable from the list — wire each row to `playSound(key, { force: true })`.
-
----
-
-## 8. Settings toggle UI consistency
-
-The **Chat** settings tab is the source of truth. All other tabs must use the exact same toggle component, row layout, spacing, and section header style.
-- Extract the Chat tab's toggle row into `_shared.tsx` as `<SettingsRow>` + reuse the existing `<SettingsToggle>`.
-- Refactor `NotificationSettings`, `DataPrivacySettings`, `ContentSocialSettings`, `AccessibilitySettings`, `ActivityPrivacySettings`, `GamingModeSettings`, `AdvancedSettings`, `LanguageTimeSettings` to render rows through `SettingsRow` so they all match the screenshots' "Chat" style (full-width pill rows, consistent icon container, identical toggle track size/colors, identical typography).
-
----
-
-## 9. Servers
-
-**A. DM sidebar still visible on a server route**
-- `AppLayout` always mounts the DM list. Fix: when the route matches `/@me/server/:serverId/...`, render the server channel sidebar (text + voice channels grouped by category, using `useServerChannels`) instead of the DM list. The server rail on the far left stays.
-
-**B. "Select a channel" placeholder shows even though a channel is selected**
-- The server channel route reads `channelId` from the URL but the chat panel is keyed off `conversationId` from `ServersContext`/route state which isn't being resolved. Fix: resolve `server_channels.conversation_id` for the URL `channelId` and pass that conversation into `ChatView`. Show the actual channel name in the header.
-
-**C. Voice channels don't function**
-- Wire voice channels: clicking a voice channel calls `groupCall.joinCall(channel.conversation_id)`; show the participant list under the channel in the sidebar (live via realtime presence).
-
-**D. Invite error `gen_random_bytes(integer) does not exist`**
-- The `create_server_invite` (or equivalent) SQL function uses `gen_random_bytes`, but `pgcrypto` isn't enabled in this project (only `pgsodium`/`gen_random_uuid` from `pgcrypto` extension may be missing in the right schema).
-- Migration: `CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;` and rewrite the invite-code generator to use `encode(extensions.gen_random_bytes(6), 'base64')` (or switch to `substr(replace(gen_random_uuid()::text,'-',''),1,8)` which needs no extension — preferred, since it avoids the extension dependency entirely).
-
----
-
-## Technical notes
-
-- All DB changes go through `supabase--migration`. New extension and invite-RPC fix in one migration.
-- Realtime DELETE for `messages` requires `REPLICA IDENTITY FULL` + publication membership.
-- Electron size work is in `scripts/build-electron.cjs` + `package.json` `build` config; no runtime code impact.
-- Version bump: `package.json` → `0.3.3`, add changelog entry in `src/lib/changelog.ts`.
-
-## Out of scope
-- iOS native (`ios-native/`) stays at v0.1.5.
-- No design overhaul of settings — only consistency pass.
+### Validation
+- I will not run a production web build manually.
+- I will make the native changes in small, focused commits/files and rely on the harness checks.
+- Since you said you’ll test later, I’ll finish implementation and summarize what changed plus the exact areas to test on device.
