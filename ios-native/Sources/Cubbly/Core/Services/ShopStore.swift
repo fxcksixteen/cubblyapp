@@ -136,6 +136,18 @@ final class ShopStore: ObservableObject {
         }
     }
 
+    func unequipItem(id: String) async {
+        struct Args: Encodable { let _item_id: String }
+        do {
+            _ = try await SupabaseManager.shared.client
+                .rpc("unequip_shop_item", params: Args(_item_id: id))
+                .execute()
+            equipped.remove(id)
+        } catch {
+            lastError = "Couldn't update equipped item"
+        }
+    }
+
     private func subscribe() async {
         guard let uid = userId else { return }
         let ch = await RealtimeChannelFactory.make("shop-inv:\(uid.uuidString.lowercased())")
