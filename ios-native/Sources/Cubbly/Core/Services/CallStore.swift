@@ -809,7 +809,12 @@ final class CallStore: ObservableObject {
     }
 
     private func handleVoiceAnswer(sdp: String) async {
-        guard let voice = voiceClient else { return }
+        guard let voice = voiceClient else {
+            print("[Call] ⚠️ Answer received but no voiceClient — dropping")
+            return
+        }
+        // Once we've received the answer we know the SDP exchange is complete.
+        callerFallbackOfferTask?.cancel(); callerFallbackOfferTask = nil
         do {
             try await voice.setRemoteDescription(RTCSessionDescription(type: .answer, sdp: sdp))
             for c in pendingRemoteIce { voice.addIceCandidate(c) }
@@ -820,6 +825,7 @@ final class CallStore: ObservableObject {
             stopRingTimeouts()
             // Tell CallKit we're connected so the green pill appears.
             CallKitService.shared.reportConnected()
+            print("[Call] ✅ Answer applied — call is live")
         } catch {
             print("[Call] setRemoteDescription(answer) failed:", error)
         }
