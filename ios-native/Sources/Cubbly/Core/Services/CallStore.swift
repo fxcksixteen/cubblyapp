@@ -76,6 +76,18 @@ final class CallStore: ObservableObject {
     /// 30s unanswered-ring timer (Discord parity).
     private var ringTimeoutTask: Task<Void, Never>?
     private var incomingRingTimeoutTask: Task<Void, Never>?
+    /// Answerer-side: periodically re-broadcasts `ready-for-offer` until the
+    /// caller's `offer` arrives. Single-shot ready-for-offer is fragile on
+    /// flaky mobile networks and lossy Realtime channels — retrying every
+    /// 1.5s up to 8s makes the handshake reliable.
+    private var readyForOfferRetryTask: Task<Void, Never>?
+    /// Caller-side: if `ready-for-offer` never arrives (peer ack lost), fall
+    /// back to sending an offer proactively after a short delay so the call
+    /// can still connect.
+    private var callerFallbackOfferTask: Task<Void, Never>?
+    /// Set to true once we've sent or received an SDP offer on the current
+    /// call so retry tasks know to stop.
+    private var sdpExchangeStarted: Bool = false
 
     private init() {}
 
