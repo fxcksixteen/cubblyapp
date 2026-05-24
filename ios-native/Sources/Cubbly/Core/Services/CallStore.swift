@@ -603,6 +603,8 @@ final class CallStore: ObservableObject {
     func toggleMute() {
         isMuted.toggle()
         voiceClient?.setMicEnabled(!isMuted)
+        // BotEcho path: silence the local mic track that's looped back to us.
+        botEcho?.setMicEnabled(!isMuted)
         Task { await signaling?.broadcast(type: "peer-mute", payload: [
             "isMuted": .bool(isMuted), "isDeafened": .bool(isDeafened)
         ]) }
@@ -614,6 +616,7 @@ final class CallStore: ObservableObject {
         if isDeafened && !isMuted {
             isMuted = true
             voiceClient?.setMicEnabled(false)
+            botEcho?.setMicEnabled(false)
         }
         // Mute remote audio output by toggling all audio tracks on the inbound voice client.
         for t in voiceClient?.pc.transceivers ?? [] {
@@ -621,6 +624,8 @@ final class CallStore: ObservableObject {
                 track.isEnabled = !isDeafened
             }
         }
+        // Same for the BotEcho loopback so deafen actually silences the echo.
+        botEcho?.setRemoteAudioEnabled(!isDeafened)
         Task { await signaling?.broadcast(type: "peer-mute", payload: [
             "isMuted": .bool(isMuted), "isDeafened": .bool(isDeafened)
         ]) }
@@ -941,8 +946,12 @@ final class CallStore: ObservableObject {
         let session = AVAudioSession.sharedInstance()
         do {
             let mode: AVAudioSession.Mode = CallSettings.shared.echoCancellation ? .voiceChat : .default
-            var options: AVAudioSession.CategoryOptions = [.allowBluetooth, .allowBluetoothA2DP, .mixWithOthers]
-            if CallSettings.shared.speakerOutput { options.insert(.defaultToSpeaker) }
+            // IMPORTANT: do NOT include `.defaultToSpeaker` here. With that
+            // option present, `overrideOutputAudioPort(.none)` silently snaps
+            // right back to speaker — which is exactly the bug where the
+            // in-call speaker button looked dead. Route is now controlled
+            // EXCLUSIVELY via overrideOutputAudioPort below.
+            let options: AVAudioSession.CategoryOptions = [.allowBluetooth, .allowBluetoothA2DP, .mixWithOthers]
             try session.setCategory(.playAndRecord, mode: mode, options: options)
             try session.setActive(true, options: [])
             if CallSettings.shared.speakerOutput {

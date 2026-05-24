@@ -8,6 +8,8 @@ struct ProfilePopupView: View {
     let userID: UUID
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var presence: PresenceService
+    @ObservedObject private var activity = ActivityService.shared
+
 
     @State private var profile: Profile?
     @State private var loading = true
@@ -80,6 +82,24 @@ struct ProfilePopupView: View {
                             .foregroundStyle(Theme.Colors.textPrimary)
                     }
                     .padding(.top, 6)
+                }
+
+                // Live cross-platform activity ("Playing X" / "Using Y").
+                // Broadcast by desktop/web clients; iOS only displays.
+                if let label = activity.label(for: p.userID, isOnline: presence.isOnline(p.userID)) {
+                    HStack(spacing: 8) {
+                        Image(systemName: label.hasPrefix("Using") ? "wrench.and.screwdriver.fill" : "gamecontroller.fill")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Theme.Colors.primary)
+                        Text(label)
+                            .font(.cubbly(13, .semibold))
+                            .foregroundStyle(Theme.Colors.textPrimary)
+                            .lineLimit(1)
+                        Spacer()
+                    }
+                    .padding(10)
+                    .background(Theme.Colors.bgSecondary, in: RoundedRectangle(cornerRadius: 10))
+                    .padding(.top, 4)
                 }
 
                 Spacer()
