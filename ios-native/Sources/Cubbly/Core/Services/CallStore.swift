@@ -543,6 +543,59 @@ final class CallStore: ObservableObject {
         incomingRingTimeoutTask?.cancel(); incomingRingTimeoutTask = nil
     }
 
+    // MARK: - Handshake retries (mobile-network resilience)
+
+    /// Answerer-side: re-broadcast `ready-for-offer` every 1.5s for up to 8s
+    /// until we receive the caller's `offer`. Single-shot signaling drops
+    /// silently on flaky Realtime/4G/5G connections.
+    private func startReadyForOfferRetry(callEventId: UUID?) {
+        readyForOfferRetryTask?.cancel()
+        readyForOfferRetryTask = Task { [weak self] in
+            guard let self = self else { return }
+            let payload: [String: AnyJSON] = [
+                "callEventId": callEventId.map { .string($0.uuidString.lowercased()) } ?? .null
+            ]
+            for attempt in 0..<6 {
+                if Task.isCancelled { return }
+                let started = await self.sdpExchangeStarted
+                if started { return }
+                await self.signaling?.broadcast(type: "ready-for-offer", payload: payload)
+                if attempt == 0 {
+                    print("[Call] 📡 ready-for-offer sent (attempt 1)")
+                } else {
+                    print("[Call] 🔁 ready-for-offer retry #\(attempt + 1)")
+                }
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+            }
+        }
+    }
+
+    /// Caller-side: if the peer never sends `ready-for-offer` within 5s
+    /// (their accept ack got dropped, channel race, etc.), proactively send
+    /// an offer anyway. Worst case the peer is still joining their channel
+    /// and ignores it — but if the channel is up they'll answer immediately.
+    private func startCallerFallbackOffer() {
+        callerFallbackOfferTask?.cancel()
+        callerFallbackOfferTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            guard let self = self else { return }
+            if Task.isCancelled { return }
+            let started = await self.sdpExchangeStarted
+            if started { return }
+            let st = await self.state
+            // Only push the fallback offer if we're still actively calling
+            // (peer hasn't picked up but they may have joined the channel).
+            guard st == .calling else { return }
+            print("[Call] ⚠️ No ready-for-offer after 5s — sending fallback offer")
+            await self.sendFreshOfferForJoiner()
+        }
+    }
+
+    private func stopHandshakeRetries() {
+        readyForOfferRetryTask?.cancel(); readyForOfferRetryTask = nil
+        callerFallbackOfferTask?.cancel(); callerFallbackOfferTask = nil
+    }
+
     // MARK: - Mute / Deafen
 
     func toggleMute() {
