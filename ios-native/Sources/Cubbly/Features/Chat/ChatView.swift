@@ -34,6 +34,8 @@ struct ChatView: View {
     @State private var videoURL: IdentifiedURL?
     @State private var lightboxURL: IdentifiedURL?
     @State private var profilePopupUserID: UUID?
+    @State private var didInitialScroll = false
+    @State private var scrollToBottomTrigger = UUID()
     @FocusState private var composerFocused: Bool
     @StateObject private var reactions = MessageReactionsStore()
 
