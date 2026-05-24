@@ -60,6 +60,19 @@ struct ShopView: View {
                 dismissButton: .default(Text("OK"))
             )
         }
+        .sheet(item: $confirmPurchaseItem) { item in
+            PurchaseConfirmSheet(
+                item: item,
+                balance: coins.balance,
+                displayName: session.currentProfile?.displayName ?? "YourName",
+                onConfirm: {
+                    confirmPurchaseItem = nil
+                    Task { _ = await shop.purchase(item) }
+                },
+                onCancel: { confirmPurchaseItem = nil }
+            )
+            .presentationDetents([.medium])
+        }
         .onChange(of: shop.lastError) { _, msg in
             // Reset so the alert can fire again later.
             if let msg, !msg.isEmpty {
