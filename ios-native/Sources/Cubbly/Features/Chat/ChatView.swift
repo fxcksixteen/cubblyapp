@@ -322,6 +322,19 @@ struct ChatView: View {
             .onAppear {
                 if let last = messages.last?.id { proxy.scrollTo(last, anchor: .bottom) }
             }
+            .onChange(of: scrollToBottomTrigger) { _, _ in
+                // Forced jump to the true latest message after initial
+                // hydration / re-entry. Two passes so the bubble layout has
+                // settled (avatars, link previews) before the final snap.
+                guard let last = messages.last?.id else { return }
+                proxy.scrollTo(last, anchor: .bottom)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    proxy.scrollTo(last, anchor: .bottom)
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    proxy.scrollTo(last, anchor: .bottom)
+                }
+            }
         }
     }
 
