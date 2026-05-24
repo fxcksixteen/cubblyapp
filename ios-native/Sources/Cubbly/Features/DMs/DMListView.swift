@@ -61,6 +61,15 @@ struct DMListView: View {
                 }
                 .environmentObject(session)
             }
+            .sheet(item: Binding(
+                get: { profilePopupUserID.map { IdentifiedUUID(id: $0) } },
+                set: { profilePopupUserID = $0?.id }
+            )) { wrapper in
+                ProfilePopupView(userID: wrapper.id)
+                    .environmentObject(presence)
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
+            }
             .task {
                 if !didInitialLoad {
                     didInitialLoad = true
