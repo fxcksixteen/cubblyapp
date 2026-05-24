@@ -117,13 +117,12 @@ final class ActivityService: ObservableObject {
 
     private func subscribe() async {
         let ch = await RealtimeChannelFactory.make("user-activities-global")
-        let changes = ch.postgresChange(
-            AnyAction.self, schema: "public", table: "user_activities")
-        Task { [weak self] in
-            for await _ in changes {
-                await self?.refresh()
-            }
-        }
+        let ins = ch.postgresChange(InsertAction.self, schema: "public", table: "user_activities")
+        let upd = ch.postgresChange(UpdateAction.self, schema: "public", table: "user_activities")
+        let del = ch.postgresChange(DeleteAction.self, schema: "public", table: "user_activities")
+        Task { [weak self] in for await _ in ins { await self?.refresh() } }
+        Task { [weak self] in for await _ in upd { await self?.refresh() } }
+        Task { [weak self] in for await _ in del { await self?.refresh() } }
         do { try await ch.subscribeWithError() }
         catch { print("[Activity] subscribe failed:", error) }
         channel = ch
