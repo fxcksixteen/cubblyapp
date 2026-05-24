@@ -76,6 +76,18 @@ final class CallStore: ObservableObject {
     /// 30s unanswered-ring timer (Discord parity).
     private var ringTimeoutTask: Task<Void, Never>?
     private var incomingRingTimeoutTask: Task<Void, Never>?
+    /// Answerer-side: periodically re-broadcasts `ready-for-offer` until the
+    /// caller's `offer` arrives. Single-shot ready-for-offer is fragile on
+    /// flaky mobile networks and lossy Realtime channels — retrying every
+    /// 1.5s up to 8s makes the handshake reliable.
+    private var readyForOfferRetryTask: Task<Void, Never>?
+    /// Caller-side: if `ready-for-offer` never arrives (peer ack lost), fall
+    /// back to sending an offer proactively after a short delay so the call
+    /// can still connect.
+    private var callerFallbackOfferTask: Task<Void, Never>?
+    /// Set to true once we've sent or received an SDP offer on the current
+    /// call so retry tasks know to stop.
+    private var sdpExchangeStarted: Bool = false
 
     private init() {}
 
@@ -138,6 +150,7 @@ final class CallStore: ObservableObject {
         self.state = .calling
         self.startedAt = nil
         self.isMinimized = false
+        self.sdpExchangeStarted = false
         SoundService.shared.playLooping(.outgoingRing)
         CallKitService.shared.startOutgoing(handleName: peerName)
 
@@ -181,17 +194,21 @@ final class CallStore: ObservableObject {
 
         // 3) NOW ring the peer. Channel is joined, event row exists, our
         //    participant row is live — the ring will reliably arrive and the
-        //    accept-side liveness check will succeed.
+        //    accept-side liveness check will succeed. Pass OUR own avatar
+        //    (not the peer's) so their incoming sheet shows the right photo.
+        let myAvatar = SessionStore.shared?.currentProfile?.avatarURL
+        let myName = SessionStore.shared?.currentProfile?.displayName
         if let evtId = currentCallEventId {
             await signaling.ringUser(
                 targetUserId: peerId,
                 conversationId: conversationId,
                 callEventId: evtId,
-                callerName: SessionStore.shared?.currentProfile?.displayName,
-                callerAvatarUrl: peerAvatarUrl
+                callerName: myName,
+                callerAvatarUrl: myAvatar
             )
         }
         startOutgoingRingTimeout()
+        startCallerFallbackOffer()
         print("[Call] ⏳ Waiting for peer to send ready-for-offer…")
     }
 
@@ -266,6 +283,7 @@ final class CallStore: ObservableObject {
         self.currentCallEventId = evt.id
         self.state = .calling
         self.isMinimized = false
+        self.sdpExchangeStarted = false
         configureAudioSession()
         CallKitService.shared.startOutgoing(handleName: peerName)
         await signaling.joinCallChannel(conversationId: convId)
@@ -274,7 +292,7 @@ final class CallStore: ObservableObject {
 
         // Ask the live peer for a fresh offer. They'll respond with `offer`,
         // we'll answer in handleVoiceOffer. No ring, no duplicate event.
-        await signaling.broadcast(type: "ready-for-offer")
+        startReadyForOfferRetry(callEventId: evt.id)
         print("[Call] 🔁 Joining existing ongoing call_event:", evt.id.uuidString)
         return true
     }
@@ -380,6 +398,7 @@ final class CallStore: ObservableObject {
         self.isMinimized = false
         self.incoming = nil
         self.ringTimedOut = false
+        self.sdpExchangeStarted = false
         incomingRingTimeoutTask?.cancel(); incomingRingTimeoutTask = nil
         SoundService.shared.stopLooping(.incomingCall)
         SoundService.shared.play(.message)
@@ -390,12 +409,10 @@ final class CallStore: ObservableObject {
             startHeartbeat()
         }
         // Tell the caller we're on the channel and ready for their offer.
-        // Without this, web/desktop callers (which now wait for ready-for-offer
-        // before sending the SDP offer) hang forever and the call never forms.
-        await signaling.broadcast(type: "ready-for-offer", payload: [
-            "callEventId": inc.callEventId.map { .string($0.uuidString.lowercased()) } ?? .null
-        ])
-        print("[Call] 📡 Sent ready-for-offer to caller")
+        // We retry until the offer arrives so a single dropped Realtime
+        // packet (common on mobile) doesn't wedge the call forever.
+        startReadyForOfferRetry(callEventId: inc.callEventId)
+        print("[Call] 📡 Sent ready-for-offer to caller (with retry)")
     }
 
     func declineIncoming() {
@@ -410,6 +427,8 @@ final class CallStore: ObservableObject {
     func endCall() async {
         stopHeartbeat()
         stopRingTimeouts()
+        stopHandshakeRetries()
+        sdpExchangeStarted = false
         let conv = conversationId
         if let signaling = signaling, conv != nil {
             // v0.2.27 parity: soft-leave so the call_event stays ongoing for
@@ -524,6 +543,59 @@ final class CallStore: ObservableObject {
     private func stopRingTimeouts() {
         ringTimeoutTask?.cancel(); ringTimeoutTask = nil
         incomingRingTimeoutTask?.cancel(); incomingRingTimeoutTask = nil
+    }
+
+    // MARK: - Handshake retries (mobile-network resilience)
+
+    /// Answerer-side: re-broadcast `ready-for-offer` every 1.5s for up to 8s
+    /// until we receive the caller's `offer`. Single-shot signaling drops
+    /// silently on flaky Realtime/4G/5G connections.
+    private func startReadyForOfferRetry(callEventId: UUID?) {
+        readyForOfferRetryTask?.cancel()
+        readyForOfferRetryTask = Task { [weak self] in
+            guard let self = self else { return }
+            let payload: [String: AnyJSON] = [
+                "callEventId": callEventId.map { .string($0.uuidString.lowercased()) } ?? .null
+            ]
+            for attempt in 0..<6 {
+                if Task.isCancelled { return }
+                let started = await self.sdpExchangeStarted
+                if started { return }
+                await self.signaling?.broadcast(type: "ready-for-offer", payload: payload)
+                if attempt == 0 {
+                    print("[Call] 📡 ready-for-offer sent (attempt 1)")
+                } else {
+                    print("[Call] 🔁 ready-for-offer retry #\(attempt + 1)")
+                }
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+            }
+        }
+    }
+
+    /// Caller-side: if the peer never sends `ready-for-offer` within 5s
+    /// (their accept ack got dropped, channel race, etc.), proactively send
+    /// an offer anyway. Worst case the peer is still joining their channel
+    /// and ignores it — but if the channel is up they'll answer immediately.
+    private func startCallerFallbackOffer() {
+        callerFallbackOfferTask?.cancel()
+        callerFallbackOfferTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            guard let self = self else { return }
+            if Task.isCancelled { return }
+            let started = await self.sdpExchangeStarted
+            if started { return }
+            let st = await self.state
+            // Only push the fallback offer if we're still actively calling
+            // (peer hasn't picked up but they may have joined the channel).
+            guard st == .calling else { return }
+            print("[Call] ⚠️ No ready-for-offer after 5s — sending fallback offer")
+            await self.sendFreshOfferForJoiner()
+        }
+    }
+
+    private func stopHandshakeRetries() {
+        readyForOfferRetryTask?.cancel(); readyForOfferRetryTask = nil
+        callerFallbackOfferTask?.cancel(); callerFallbackOfferTask = nil
     }
 
     // MARK: - Mute / Deafen
@@ -665,9 +737,14 @@ final class CallStore: ObservableObject {
     }
 
     /// Build a new offer and broadcast it on the per-call channel. Used when
-    /// a peer joins the existing call_event via `ready-for-offer`.
+    /// a peer joins the existing call_event via `ready-for-offer`, or as a
+    /// caller-side fallback when no `ready-for-offer` arrives.
     private func sendFreshOfferForJoiner() async {
         guard let signaling = signaling else { return }
+        // De-dup: if we already started the SDP exchange (sent or received an
+        // offer), don't fire a second one — that resets the PC state.
+        if sdpExchangeStarted { return }
+        sdpExchangeStarted = true
         // If we already have a voice client (we were the original caller),
         // renegotiate over it. Otherwise build a new one.
         let voice: WebRTCClient
@@ -682,21 +759,32 @@ final class CallStore: ObservableObject {
         do {
             let offer = try await voice.createOffer()
             let myName = SessionStore.shared?.currentProfile?.displayName
+            let myAvatar = SessionStore.shared?.currentProfile?.avatarURL
             await signaling.broadcast(type: "offer", payload: [
                 "sdp": .object(["type": .string("offer"), "sdp": .string(offer.sdp)]),
-                "callerAvatarUrl": peerAvatarUrl.map { .string($0) } ?? .null,
+                "callerAvatarUrl": myAvatar.map { .string($0) } ?? .null,
                 "senderName": myName.map { .string($0) } ?? .null,
                 "callEventId": currentCallEventId.map { .string($0.uuidString.lowercased()) } ?? .null
             ])
-            print("[Call] 📤 Offer sent in response to ready-for-offer")
+            print("[Call] 📤 Offer sent (ready-for-offer or fallback)")
         } catch {
             print("[Call] sendFreshOfferForJoiner failed:", error)
+            sdpExchangeStarted = false
         }
     }
 
     // MARK: - Voice offer/answer
 
     private func handleVoiceOffer(sdp: String) async {
+        // Guard against duplicate offers from retried ready-for-offer broadcasts.
+        if sdpExchangeStarted && voiceClient != nil {
+            print("[Call] ⚠️ Duplicate offer ignored — SDP exchange already in flight")
+            return
+        }
+        sdpExchangeStarted = true
+        // Caller-side retry safety net is no longer needed once we've seen an offer.
+        callerFallbackOfferTask?.cancel(); callerFallbackOfferTask = nil
+        readyForOfferRetryTask?.cancel(); readyForOfferRetryTask = nil
         // Build the voice client (we're the answerer).
         let voice = WebRTCClient(iceServers: iceServers, includeMicTrack: true)
         wireVoiceCallbacks(voice)
@@ -716,13 +804,19 @@ final class CallStore: ObservableObject {
             await signaling?.broadcast(type: "answer", payload: [
                 "sdp": .object(["type": .string("answer"), "sdp": .string(answer.sdp)])
             ])
+            print("[Call] 📥 Offer applied + 📤 answer sent")
         } catch {
             print("[Call] handleVoiceOffer failed:", error)
         }
     }
 
     private func handleVoiceAnswer(sdp: String) async {
-        guard let voice = voiceClient else { return }
+        guard let voice = voiceClient else {
+            print("[Call] ⚠️ Answer received but no voiceClient — dropping")
+            return
+        }
+        // Once we've received the answer we know the SDP exchange is complete.
+        callerFallbackOfferTask?.cancel(); callerFallbackOfferTask = nil
         do {
             try await voice.setRemoteDescription(RTCSessionDescription(type: .answer, sdp: sdp))
             for c in pendingRemoteIce { voice.addIceCandidate(c) }
@@ -733,6 +827,7 @@ final class CallStore: ObservableObject {
             stopRingTimeouts()
             // Tell CallKit we're connected so the green pill appears.
             CallKitService.shared.reportConnected()
+            print("[Call] ✅ Answer applied — call is live")
         } catch {
             print("[Call] setRemoteDescription(answer) failed:", error)
         }
@@ -823,6 +918,9 @@ final class CallStore: ObservableObject {
         pendingRemoteIce.removeAll()
         pendingScreenIce.removeAll()
         SoundService.shared.stopLooping(.outgoingRing)
+        // Reset the SDP-exchange flag so a rejoining peer's `ready-for-offer`
+        // produces a fresh offer instead of being dropped as a duplicate.
+        sdpExchangeStarted = false
         // Stay "calling" so UI shows we're waiting alone in the call. The
         // user can either End Call or wait for the peer to rejoin.
         state = .calling
