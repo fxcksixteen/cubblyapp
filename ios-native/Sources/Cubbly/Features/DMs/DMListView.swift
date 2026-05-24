@@ -149,6 +149,25 @@ struct DMListView: View {
                                        ? Theme.Colors.bgHover : Theme.Colors.bgPrimary)
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 2, leading: 6, bottom: 2, trailing: 6))
+                    .contextMenu {
+                        Button {
+                            openConversation = conv
+                        } label: {
+                            Label("Open Chat", systemImage: "bubble.left.and.bubble.right")
+                        }
+                        if let other = conversation_otherUser(conv) {
+                            Button {
+                                profilePopupUserID = other.userID
+                            } label: {
+                                Label("View Profile", systemImage: "person.crop.circle")
+                            }
+                            Button {
+                                UIPasteboard.general.string = other.displayName
+                            } label: {
+                                Label("Copy Username", systemImage: "doc.on.doc")
+                            }
+                        }
+                    }
                 }
             }
             .listStyle(.plain)
