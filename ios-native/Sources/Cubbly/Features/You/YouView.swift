@@ -8,6 +8,8 @@ struct YouView: View {
     @State private var showingSignOutConfirm = false
     @State private var showingNotificationSettings = false
     @State private var showingVoiceVideoSettings = false
+    @State private var showingActivityPrivacy = false
+    @State private var cosmeticsMode: CosmeticsSettingsView.Mode?
 
     /// Read directly from the session profile so we never get stuck on a
     /// stale snapshot when the view re-appears. Falls back to "online" until
@@ -54,6 +56,12 @@ struct YouView: View {
         }
         .sheet(isPresented: $showingVoiceVideoSettings) {
             VoiceVideoSettingsView()
+        }
+        .sheet(isPresented: $showingActivityPrivacy) {
+            ActivityPrivacySettingsView()
+        }
+        .sheet(item: $cosmeticsMode) { mode in
+            CosmeticsSettingsView(mode: mode)
         }
     }
 
@@ -158,13 +166,23 @@ struct YouView: View {
                     showingVoiceVideoSettings = true
                 }
                 divider
-                row(icon: "gamecontroller.fill", label: "Activity Privacy")
+                row(icon: "gamecontroller.fill", label: "Activity Privacy") {
+                    showingActivityPrivacy = true
+                }
                 divider
-                row(icon: "paintpalette.fill", label: "Appearance")
+                row(icon: "paintbrush.fill", label: "Name Colors") {
+                    cosmeticsMode = .name_color
+                }
+                divider
+                row(icon: "rosette", label: "Badges") {
+                    cosmeticsMode = .badge
+                }
+                divider
+                row(icon: "paintpalette.fill", label: "Themes") {
+                    cosmeticsMode = .theme
+                }
                 divider
                 row(icon: "shield.fill", label: "Account")
-                divider
-                row(icon: "gearshape.fill", label: "All Settings")
             }
             .background(Theme.Colors.bgSecondary)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
