@@ -41,7 +41,16 @@ struct MainTabView: View {
                     CubblyTabBar(selection: $selection)
                 }
             }
-            .background(Theme.Colors.bgPrimary.ignoresSafeArea())
+            .background(
+                ZStack {
+                    Theme.Colors.bgPrimary
+                    LinearGradient(colors: theme.backgroundGradient,
+                                   startPoint: .topLeading, endPoint: .bottomTrailing)
+                        .opacity(theme.equippedShopThemeId != nil ? 0.35 : 0.18)
+                        .allowsHitTesting(false)
+                }
+                .ignoresSafeArea()
+            )
 
             // Active call overlay (only when NOT minimized)
             if callStore.state != .idle && !callStore.isMinimized {
