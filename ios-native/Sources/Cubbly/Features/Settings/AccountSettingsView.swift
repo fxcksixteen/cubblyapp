@@ -131,11 +131,15 @@ struct AccountSettingsView: View {
 
     // MARK: - Load / save
 
+    private var originalEmail: String {
+        SupabaseManager.shared.client.auth.currentUser?.email ?? ""
+    }
+
     private var hasChanges: Bool {
         guard let p = session.currentProfile else { return false }
         return displayName != p.displayName
             || username != p.username
-            || email != (session.currentEmail ?? "")
+            || email != originalEmail
             || bio != (p.bio ?? "")
     }
 
@@ -144,7 +148,7 @@ struct AccountSettingsView: View {
         displayName = p.displayName
         username = p.username
         bio = p.bio ?? ""
-        email = session.currentEmail ?? ""
+        email = originalEmail
     }
 
     private func save() async {
@@ -162,7 +166,7 @@ struct AccountSettingsView: View {
             if !updates.isEmpty {
                 try await client.from("profiles").update(updates).eq("user_id", value: uid).execute()
             }
-            if email != (session.currentEmail ?? ""), !email.isEmpty {
+            if email != originalEmail, !email.isEmpty {
                 try await client.auth.update(user: UserAttributes(email: email))
             }
             await session.reloadProfile()
