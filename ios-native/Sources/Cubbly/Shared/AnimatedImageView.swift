@@ -38,12 +38,16 @@ struct AnimatedImageView: UIViewRepresentable {
     private func load(into view: UIImageView) {
         if let cached = AnimatedImageCache.shared.image(for: url) {
             view.image = cached
+            if cached.images?.isEmpty == false { view.startAnimating() }
             return
         }
         URLSession.shared.dataTask(with: url) { data, _, _ in
             guard let data else { return }
             let image = Self.cachedAnimatedImage(from: data, for: url)
-            DispatchQueue.main.async { view.image = image }
+            DispatchQueue.main.async {
+                view.image = image
+                if image?.images?.isEmpty == false { view.startAnimating() }
+            }
         }.resume()
     }
 
@@ -91,6 +95,13 @@ struct AnimatedImageView: UIViewRepresentable {
 /// will then size it strictly via the .frame(...) modifiers we apply.
 final class NoIntrinsicImageView: UIImageView {
     override var intrinsicContentSize: CGSize { .zero }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window != nil, image?.images?.isEmpty == false {
+            startAnimating()
+        }
+    }
 }
 
 final class AnimatedImageCache {

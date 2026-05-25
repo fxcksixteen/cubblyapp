@@ -121,6 +121,7 @@ struct ProfilePopupView: View {
         loading = true
         defer { loading = false }
         do {
+            await presence.refreshNow()
             profile = try await ProfilesRepository().fetchProfile(userID: userID)
         } catch {
             print("[ProfilePopup] failed:", error)

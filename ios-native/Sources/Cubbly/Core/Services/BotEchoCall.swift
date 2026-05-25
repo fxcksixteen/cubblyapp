@@ -29,6 +29,7 @@ final class BotEchoCall {
     private(set) var callerPC: RTCPeerConnection?
     private(set) var botPC: RTCPeerConnection?
     private var localMic: RTCAudioTrack?
+    private var botReturnMic: RTCAudioTrack?
     private var pendingCallerIce: [RTCIceCandidate] = []
     private var pendingBotIce: [RTCIceCandidate] = []
 
@@ -38,11 +39,7 @@ final class BotEchoCall {
 
     private lazy var botDelegate = LoopbackDelegate(label: "bot") { [weak self] cand in
         Task { @MainActor in self?.deliverIce(toCaller: cand) }
-    } onTrack: { [weak self] track, kind in
-        // The bot PC just received the caller's mic — re-publish it so the
-        // caller sees a remote audio track come back (this is the "echo").
-        guard kind == "audio", let audioTrack = track as? RTCAudioTrack else { return }
-        Task { @MainActor in self?.republishOnBot(audioTrack) }
+    } onTrack: { _, _ in
     }
 
     /// Fully-wired echo call. Returns when both peers are connected.
@@ -85,11 +82,16 @@ final class BotEchoCall {
         localMic = mic
         caller.add(mic, streamIds: ["caller-stream"])
 
-        // Bot side starts as recv-only (it'll add a sendrecv transceiver
-        // dynamically once it has the inbound track to echo).
-        let recv = RTCRtpTransceiverInit()
-        recv.direction = .recvOnly
-        bot.addTransceiver(of: .audio, init: recv)
+        // The bot must advertise audio *send* in its answer. Re-publishing a
+        // received track after SDP negotiation does not renegotiate the m-line,
+        // so the caller never receives audio. Instead, wire the same mic source
+        // through the bot PC before the answer is created; the caller hears its
+        // own captured audio back over the remote WebRTC receiver immediately.
+        let returnMic = factory.audioTrack(with: source, trackId: "mic-bot-echo-return")
+        botReturnMic = returnMic
+        let echo = RTCRtpTransceiverInit()
+        echo.direction = .sendRecv
+        bot.addTransceiver(with: returnMic, init: echo)
 
         // 1. Caller offers.
         let offer = try await offer(on: caller)
@@ -108,6 +110,7 @@ final class BotEchoCall {
         callerPC?.close(); callerPC = nil
         botPC?.close(); botPC = nil
         localMic = nil
+        botReturnMic = nil
         pendingCallerIce.removeAll()
         pendingBotIce.removeAll()
     }
@@ -117,6 +120,7 @@ final class BotEchoCall {
     /// which is exactly what "Mute" should feel like.
     func setMicEnabled(_ enabled: Bool) {
         localMic?.isEnabled = enabled
+        botReturnMic?.isEnabled = enabled
     }
 
     /// Toggle playback of the echoed (remote) audio track on the caller PC.
@@ -128,26 +132,6 @@ final class BotEchoCall {
                 track.isEnabled = enabled
             }
         }
-    }
-
-    // MARK: - Echo: re-publish caller's audio back from the bot side
-
-    private func republishOnBot(_ track: RTCAudioTrack) {
-        guard let bot = botPC else { return }
-        // Add the same audio track back as a sendrecv stream so it travels
-        // back to the caller PC. Renegotiation isn't needed because the
-        // caller's transceiver was created sendrecv (it already advertises
-        // recvability for the same m-line).
-        for transceiver in bot.transceivers where transceiver.mediaType == .audio {
-            var err: NSError?
-            transceiver.setDirection(.sendRecv, error: &err)
-            transceiver.sender.track = track
-            return
-        }
-        // Fallback: add fresh sendrecv transceiver.
-        let init1 = RTCRtpTransceiverInit()
-        init1.direction = .sendRecv
-        bot.addTransceiver(with: track, init: init1)
     }
 
     // MARK: - Local SDP/ICE plumbing
