@@ -76,6 +76,24 @@ struct YouView: View {
         .sheet(item: $moreTab) { tab in
             MoreSettingsTabView(mode: tab)
         }
+        .onChange(of: avatarPick) { _, newValue in
+            guard let item = newValue, let uid = session.currentUserID else { return }
+            uploadingAvatar = true
+            Task {
+                _ = await ProfilePhotoUploader.upload(item: item, kind: .avatar, userID: uid)
+                await session.reloadProfile()
+                await MainActor.run { avatarPick = nil; uploadingAvatar = false }
+            }
+        }
+        .onChange(of: bannerPick) { _, newValue in
+            guard let item = newValue, let uid = session.currentUserID else { return }
+            uploadingBanner = true
+            Task {
+                _ = await ProfilePhotoUploader.upload(item: item, kind: .banner, userID: uid)
+                await session.reloadProfile()
+                await MainActor.run { bannerPick = nil; uploadingBanner = false }
+            }
+        }
     }
 
     private var bannerAndAvatar: some View {
