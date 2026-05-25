@@ -36,6 +36,7 @@ final class PresenceService: ObservableObject {
         // Web uses lowercase UUID strings as the presence key. Match exactly
         // so we land in the same presence keyspace.
         let presenceKey = userID.uuidString.lowercased()
+        markOnline(userID)
         let ch = await RealtimeChannelFactory.make("global:online") { config in
             config.presence.key = presenceKey
         }
@@ -146,6 +147,7 @@ final class PresenceService: ObservableObject {
             "user_id": .string(key),
             "online_at": .string(ISO8601DateFormatter().string(from: Date()))
         ])
+        markOnline(uid)
     }
 
     /// Force-restart the presence channel. Called from app foreground +
@@ -290,6 +292,9 @@ final class PresenceService: ObservableObject {
 
     func effectiveStatus(for userID: UUID, storedStatus: String?) -> String {
         if userID.uuidString == "00000000-0000-0000-0000-000000000001" { return "online" }
+        if userID == trackedUserID {
+            return profileStatuses[userID.uuidString.lowercased()] ?? storedStatus ?? "online"
+        }
         if !onlineUserIDs.contains(userID) { return "offline" }
         // Prefer the live cached profile status (always up to date), then
         // fall back to the stale snapshot the caller had.
@@ -299,6 +304,12 @@ final class PresenceService: ObservableObject {
     }
 
     func isOnline(_ userID: UUID) -> Bool {
-        onlineUserIDs.contains(userID) || userID.uuidString == "00000000-0000-0000-0000-000000000001"
+        onlineUserIDs.contains(userID) || userID == trackedUserID || userID.uuidString == "00000000-0000-0000-0000-000000000001"
+    }
+
+    private func markOnline(_ userID: UUID) {
+        var ids = onlineUserIDs
+        ids.insert(userID)
+        onlineUserIDs = ids
     }
 }

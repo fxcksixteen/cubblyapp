@@ -20,7 +20,11 @@ struct AvatarView: View {
     var body: some View {
         ZStack {
             Circle().fill(Self.color(for: fallbackText))
-            if isAnimated, let url {
+            if let url {
+                // Always use the ImageIO-backed renderer for remote avatars.
+                // Storage/CDN signed URLs often hide the original .gif/.webp
+                // extension, so URL-extension checks alone incorrectly fell
+                // back to static UIImage decoding in profile previews.
                 AnimatedImageView(url: url, contentMode: .scaleAspectFill)
             } else if let img = loadedImage {
                 Image(uiImage: img)

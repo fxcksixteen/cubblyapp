@@ -38,12 +38,16 @@ struct AnimatedImageView: UIViewRepresentable {
     private func load(into view: UIImageView) {
         if let cached = AnimatedImageCache.shared.image(for: url) {
             view.image = cached
+            if cached.images?.isEmpty == false { view.startAnimating() }
             return
         }
         URLSession.shared.dataTask(with: url) { data, _, _ in
             guard let data else { return }
             let image = Self.cachedAnimatedImage(from: data, for: url)
-            DispatchQueue.main.async { view.image = image }
+            DispatchQueue.main.async {
+                view.image = image
+                if image?.images?.isEmpty == false { view.startAnimating() }
+            }
         }.resume()
     }
 
