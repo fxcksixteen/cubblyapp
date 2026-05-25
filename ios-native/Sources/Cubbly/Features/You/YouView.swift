@@ -108,27 +108,53 @@ struct YouView: View {
 
         return VStack(alignment: .leading, spacing: 0) {
             ZStack(alignment: .bottomLeading) {
-                ZStack {
-                    Rectangle().fill(bannerColor)
-                    if let bannerURL {
-                        AnimatedImageView(url: bannerURL, contentMode: .scaleAspectFill)
-                            .allowsHitTesting(false)
+                PhotosPicker(selection: $bannerPick, matching: .images, photoLibrary: .shared()) {
+                    ZStack {
+                        Rectangle().fill(bannerColor)
+                        if let bannerURL {
+                            AnimatedImageView(url: bannerURL, contentMode: .scaleAspectFill)
+                                .allowsHitTesting(false)
+                        }
+                        // Camera affordance in the corner so users discover
+                        // the tap-to-change behaviour (web/desktop has its
+                        // own upload control inside My Account).
+                        VStack { Spacer(); HStack { Spacer()
+                            Image(systemName: uploadingBanner ? "arrow.up.circle.fill" : "camera.fill")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .padding(8)
+                                .background(.black.opacity(0.45), in: Circle())
+                                .padding(10)
+                        } }
                     }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 132)
+                    .clipped()
+                    .contentShape(Rectangle())
                 }
-                .frame(maxWidth: .infinity)
-                .frame(height: 132)
-                .clipped()
+                .buttonStyle(.plain)
 
                 ZStack(alignment: .bottomTrailing) {
-                    AvatarView(
-                        url: session.currentProfile?.avatarURL.flatMap(URL.init(string:)),
-                        fallbackText: displayName,
-                        size: 96
-                    )
-                    .overlay(Circle().stroke(Theme.Colors.bgPrimary, lineWidth: 6))
+                    PhotosPicker(selection: $avatarPick, matching: .images, photoLibrary: .shared()) {
+                        ZStack {
+                            AvatarView(
+                                url: session.currentProfile?.avatarURL.flatMap(URL.init(string:)),
+                                fallbackText: displayName,
+                                size: 96
+                            )
+                            .overlay(Circle().stroke(Theme.Colors.bgPrimary, lineWidth: 6))
+                            if uploadingAvatar {
+                                Circle().fill(.black.opacity(0.35))
+                                ProgressView().tint(.white)
+                            }
+                        }
+                        .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
 
                     StatusDot(ownStatus: status, size: 18, borderColor: Theme.Colors.bgPrimary)
                         .offset(x: 2, y: 2)
+                        .allowsHitTesting(false)
                 }
                 .offset(x: 16, y: 48)
             }
