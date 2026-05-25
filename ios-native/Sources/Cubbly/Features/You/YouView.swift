@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 
 /// "You" tab — banner (with animated GIF support), avatar with status dot,
 /// status picker, settings rows, sign out.
@@ -12,6 +13,10 @@ struct YouView: View {
     @State private var showingAppearance = false
     @State private var showingAccount = false
     @State private var moreTab: MoreSettingsTabView.Mode?
+    @State private var avatarPick: PhotosPickerItem?
+    @State private var bannerPick: PhotosPickerItem?
+    @State private var uploadingAvatar = false
+    @State private var uploadingBanner = false
 
     /// Read directly from the session profile so we never get stuck on a
     /// stale snapshot when the view re-appears. Falls back to "online" until
