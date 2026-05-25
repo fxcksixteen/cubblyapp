@@ -95,6 +95,13 @@ struct AnimatedImageView: UIViewRepresentable {
 /// will then size it strictly via the .frame(...) modifiers we apply.
 final class NoIntrinsicImageView: UIImageView {
     override var intrinsicContentSize: CGSize { .zero }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window != nil, image?.images?.isEmpty == false {
+            startAnimating()
+        }
+    }
 }
 
 final class AnimatedImageCache {
