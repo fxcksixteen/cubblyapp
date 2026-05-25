@@ -158,6 +158,14 @@ final class PresenceService: ObservableObject {
         await start(userID: uid, force: true)
     }
 
+    /// Immediate refresh used by profile previews so the dot reflects the
+    /// latest backend status instead of waiting for the next periodic tick.
+    func refreshNow() async {
+        await refreshProfileStatuses()
+        await reconcileOnlineFromDatabase()
+        if let uid = trackedUserID { markOnline(uid) }
+    }
+
     // MARK: - Presence application
 
     private func applyPresence(joins: [String], leaves: [String]) {
