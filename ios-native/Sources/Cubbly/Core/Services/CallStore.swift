@@ -944,6 +944,7 @@ final class CallStore: ObservableObject {
 
     private func configureAudioSession() {
         let session = AVAudioSession.sharedInstance()
+        let rtcSession = RTCAudioSession.sharedInstance()
         do {
             let mode: AVAudioSession.Mode = CallSettings.shared.echoCancellation ? .voiceChat : .default
             // IMPORTANT: do NOT include `.defaultToSpeaker` here. With that
@@ -959,7 +960,11 @@ final class CallStore: ObservableObject {
             } else {
                 try session.overrideOutputAudioPort(.none)
             }
+            rtcSession.lockForConfiguration()
+            rtcSession.isAudioEnabled = true
+            rtcSession.unlockForConfiguration()
         } catch {
+            rtcSession.unlockForConfiguration()
             print("[Call] configureAudioSession failed:", error)
         }
     }
