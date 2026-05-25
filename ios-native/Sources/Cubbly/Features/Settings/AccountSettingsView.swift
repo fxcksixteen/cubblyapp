@@ -1,4 +1,6 @@
 import SwiftUI
+import Supabase
+import Auth
 
 /// My Account settings — parity with web/desktop. Lists editable account
 /// fields (display name, username, email, about me) and nests Name Colors
