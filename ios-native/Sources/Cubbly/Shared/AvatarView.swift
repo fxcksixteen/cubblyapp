@@ -11,12 +11,6 @@ struct AvatarView: View {
     let fallbackText: String
     var size: CGFloat = 40
 
-    @State private var loadedImage: UIImage?
-    private var isAnimated: Bool {
-        guard let url else { return false }
-        return Self.isAnimated(url: url)
-    }
-
     var body: some View {
         ZStack {
             Circle().fill(Self.color(for: fallbackText))
@@ -26,37 +20,12 @@ struct AvatarView: View {
                 // extension, so URL-extension checks alone incorrectly fell
                 // back to static UIImage decoding in profile previews.
                 AnimatedImageView(url: url, contentMode: .scaleAspectFill)
-            } else if let img = loadedImage {
-                Image(uiImage: img)
-                    .resizable()
-                    .scaledToFill()
-            } else if url != nil {
-                // Briefly show initials only on the very first load; then the
-                // cache hands the image back instantly on subsequent appears.
-                initials
             } else {
                 initials
             }
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
-        .task(id: url) { await load() }
-    }
-
-    private func load() async {
-        guard let url else { loadedImage = nil; return }
-        if isAnimated { return }
-        if let cached = AvatarImageCache.shared.image(for: url) {
-            loadedImage = cached
-            return
-        }
-        do {
-            let (data, _) = try await URLSession.shared.data(from: url)
-            if let img = UIImage(data: data) {
-                AvatarImageCache.shared.store(img, for: url)
-                await MainActor.run { self.loadedImage = img }
-            }
-        } catch { /* keep initials */ }
     }
 
     private var initials: some View {
