@@ -1,69 +1,53 @@
-## 1. Horizontal swipe — copy what already works for Notes
+Four targeted iOS-only fixes. No backend, no web/desktop changes.
 
-You noticed Notes swipes back perfectly. That's because it's pushed onto a `NavigationStack` and iOS gives it the native interactive-pop gesture for free. The reason chat threads feel "forced" is that on top of that native gesture we're stacking our custom `HorizontalSwipe` modifier (`DragGesture`), and the two fight each other.
+## 1. PIN entry — make the dots typable
 
-Changes:
-- **`ChatView.swift`**: remove `.horizontalSwipe(right: { dismiss() }, …)`. Keep only `.enableEdgeSwipeBack()` so iOS's native `interactivePopGestureRecognizer` drives the back-swipe — identical to the Notes feel you just praised.
-- **`DMListView.swift`**: remove the `.horizontalSwipe(left: …, leftPreview: ChatThreadPreview)`. Replace it with a tiny right-edge `DragGesture` (minimumDistance 20, only starts within 20pt of the right edge) that triggers `openConversation = lastChat…` on flick — so swipe-from-right still re-opens the last chat, but doesn't intercept any vertical scroll or any drag started in the middle of the list.
-- **`HorizontalSwipe.swift`**: leave the file in place but unused by these two screens. (No other call sites use it for chat/DM.)
+In `Features/Notes/NotesView.swift` `LockScreen`, the hidden `TextField` (1×1, opacity 0.02) never gets focus, so the keyboard never appears.
 
-Result: pushing a chat = native iOS push animation; swiping back = the same native interactive-pop you already love on Notes; the DM peek/reveal preview goes away, but that's the price of the native feel — and matches Discord exactly.
+- Add `@FocusState private var pinFocused: Bool`.
+- Bind `.focused($pinFocused)` on the hidden `TextField`.
+- Set `pinFocused = true` in `.onAppear` and again whenever `step` changes (so the confirm step re-focuses).
+- Wrap the `PinDots` view in a `Button` (or `.onTapGesture`) that sets `pinFocused = true` — tapping the dots opens the keyboard.
+- Keep the field hidden but make it slightly larger (e.g. 40×40, opacity 0.001) behind the dots so the system has a real first-responder target.
 
-## 2. Discord-style friends strip at the top of the DM sidebar
+## 2. Launch screen logo
 
-New horizontal row of square avatar tiles right above Personal Notes, under the search bar — exactly like image 1.
+`cubbly-logo.png` is a 1920×1920 RGB image with no alpha — on the black launch background it renders as a white square with the logo inside. That's the "broken logo" the user is seeing.
 
-- New view `FriendsStrip` in `ios-native/Sources/Cubbly/Features/DMs/FriendsStrip.swift`:
-  - Pulls accepted friends from `FriendsRepository` (already used by `FriendsView`) into a small `@StateObject` cache so it shows instantly on revisit.
-  - `ScrollView(.horizontal)` of 64×72 tiles: `RoundedRectangle(cornerRadius: 16)` background `bgSecondary`, centred `AvatarView` size 52 clipped to `RoundedRectangle(cornerRadius: 14)`, with a `StatusDot` (size 14, bgSecondary border) pinned bottom-trailing — driven by `PresenceService.effectiveStatus` so online/idle/dnd/offline all show.
-  - Tap = `openConversation = ` existing DM with that friend, or open `NewChatSheet` prefilled if no DM exists.
-- Order: online first, then idle/dnd, then offline (matches Discord). Cap at ~20 visible, horizontally scrollable past that.
+- `Resources/LaunchScreen.storyboard`: switch the `imageView`'s `image="cubbly-logo"` → `image="cubbly-nobg"` (which is RGBA, transparent background) and update the `<resources>` entry to match. Keep 140×140, `scaleAspectFit`, black background.
 
-## 3. Personal Notes row — Discord-style redesign
+## 3. Swipe between DM list ↔ last opened chat (replicate Notes feel)
 
-Replace the current `PersonalNotesRow` with a layout matching image 2:
-- 40×40 `RoundedRectangle(cornerRadius: 20)` filled `bgTertiary` containing a 20pt pencil/edit glyph (`SVGIcon "notes"` tinted `textPrimary`).
-- Title "Personal Notes" in `Theme.Fonts.bodyMedium`, `textPrimary`, single line.
-- No subtitle. No outer card/background — just the row, full-width, vertical padding 10, leading padding 12, with `contentShape(Rectangle())` for the full-row tap target.
-- Sits right under the friends strip, above the conversation list.
-- Mirror the same row in `DMSidebarPreview` so the swipe-back peek matches.
+The user wants the exact same gesture Notes has: native iOS push/pop where you can swipe from the left edge to go back. Notes works because it's a `NavigationLink` push inside the `NavigationStack`, so the system's `interactivePopGestureRecognizer` drives both directions of the transition feel.
 
-Final sidebar order (top → bottom): header → search → friends strip → personal notes row → conversations list.
+Chat already has this (chat → back to list works via `.enableEdgeSwipeBack()`). What's missing is the *forward* swipe (list → re-open last chat). iOS doesn't ship a native "swipe-from-right to push" — Notes doesn't have that either. So we replicate it with a single, dedicated edge gesture, but widen and tune it so it actually triggers reliably.
 
-## 4. Activity in DM rows (parity with web/desktop)
+In `Features/DMs/DMListView.swift`:
 
-Web shows e.g. "Playing Minecraft" under the contact name instead of last message when the other user has a live activity. iOS already runs `ActivityService.shared` with realtime updates — just isn't read here.
+- Replace the current 24pt right-edge `.overlay` gesture with a wider, more responsive edge handler:
+  - Width 32pt, `minimumDistance: 12`.
+  - Trigger when `value.translation.width < -60` OR `predictedEndTranslation.width < -120`, and `abs(translation.height) < abs(translation.width)` (axis-lock to horizontal).
+  - Only arm when `lastChat.lastConversationID` exists and maps to a cached conversation; otherwise do nothing (no fallback to new-chat).
+- Add a subtle visual hint: a 2pt-wide vertical accent bar at the right edge that fades in while the drag is active (gives the user something to grab, matches Discord's edge handle).
+- Keep `ChatView`'s `.enableEdgeSwipeBack()` unchanged — that side already mirrors Notes.
 
-Changes in `DMListView.swift` `DMRow`:
-- Add `@ObservedObject var activity = ActivityService.shared`.
-- For 1:1 DMs (`conversation.otherUser != nil`), compute:
-  ```swift
-  let isOnline = presence.isOnline(other.userID)
-  let activityLabel = activity.label(for: other.userID, isOnline: isOnline)
-  ```
-- If `activityLabel != nil`, render the subtitle as that label with the small game/software icon (`SVGIcon "activity"`, 12pt, `Theme.Colors.success`) instead of the last-message preview. Otherwise keep current `previewText` behaviour.
-- Group rows unchanged.
+## 4. Friends strip not visible in the shipped build
 
-This is purely a read-only display change — no new subscriptions, no extra DB cost.
+`FriendsStrip.swift` is wired into `DMListView` correctly, but renders `EmptyView` when `sorted.isEmpty`, so when `FriendsRepository().listMine` returns nothing (or fails silently) the strip is invisible — which looks identical to "not added". The other likely cause is that the file isn't in the Xcode project target (it lives in `Sources/Cubbly/Features/DMs/` but `project.yml` uses globbing; need to verify).
 
-## 5. Launch screen — make it look like the brand, not a cropped face
+- Verify `ios-native/project.yml` globs `Sources/Cubbly/**/*.swift` (it does), so the file ships. If it doesn't compile, the build would fail — so the issue is render-time, not bundling.
+- Make the strip always render a container with a min-height so it's visible even while loading / when empty:
+  - Always show the horizontal `ScrollView` shell.
+  - While loading and cache empty: show 6 shimmer tiles (rounded-rect placeholders).
+  - When loaded with zero friends: show a single "Add friends" tile that opens the new-chat sheet / friends tab.
+- Surface load errors with a `print` so we can diagnose in console if it still appears blank.
+- Bump cache TTL check so it always tries once on first appear (current `< 30s` guard is fine since `lastLoaded` starts nil).
 
-Image 3 shows the launch storyboard scaling `cubbly-nobg` (a 200×200 face-only asset) to fill, so on iPhone it crops to just the eyes and snout on white.
+## Files touched
 
-Fix in `ios-native/Resources/LaunchScreen.storyboard`:
-- Change background `color` to `#000000` (matches `Theme.Colors.bgPrimary`, the same dark canvas the app boots into — no more white flash).
-- Swap `image="cubbly-nobg"` → `image="cubbly-logo"` (the proper full-logo asset already in `Assets.xcassets`).
-- Keep `contentMode="scaleAspectFit"`, shrink frame to 140×140, keep centred via the existing `centerX` / `centerY` constraints.
+- `ios-native/Sources/Cubbly/Features/Notes/NotesView.swift` — PIN focus
+- `ios-native/Resources/LaunchScreen.storyboard` — swap image to `cubbly-nobg`
+- `ios-native/Sources/Cubbly/Features/DMs/DMListView.swift` — wider edge swipe + hint bar
+- `ios-native/Sources/Cubbly/Features/DMs/FriendsStrip.swift` — always-visible shell, loading + empty states
 
-Result: cold-start shows a small, properly-proportioned Cubbly logo on the same dark background as the app itself — no flash, no cropped face.
-
----
-
-### Files touched
-
-- edit  `ios-native/Sources/Cubbly/Features/Chat/ChatView.swift` (remove `.horizontalSwipe`)
-- edit  `ios-native/Sources/Cubbly/Features/DMs/DMListView.swift` (remove `.horizontalSwipe`, add edge-only re-open gesture, redesign `PersonalNotesRow`, insert `FriendsStrip`, activity-aware `DMRow`, mirror in `DMSidebarPreview`)
-- new   `ios-native/Sources/Cubbly/Features/DMs/FriendsStrip.swift`
-- edit  `ios-native/Resources/LaunchScreen.storyboard` (logo + dark bg)
-
-No backend, schema, or web/desktop changes. After approval I'll apply the edits and rebuild the `cubbly-ios-v0.1.6-buildN-animated.zip`.
+After edits I'll rebuild the iOS zip (`cubbly-ios-v0.1.6-build20-fixes.zip`).
