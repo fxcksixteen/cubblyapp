@@ -2098,7 +2098,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       if (!channelRef.current) return;
 
       const screenPc = new RTCPeerConnection({ iceServers: iceServersRef.current });
-      screenPcRef.current = screenPc;
+      screenPcOutRef.current = screenPc;
 
       stream.getTracks().forEach(track => {
         const sender = screenPc.addTrack(track, stream);
