@@ -1,81 +1,133 @@
-# iOS v0.1.7 — Launch Screen + Discord-Style Interactive Swipe
+# Cubbly — Backend Cost Audit & Recommended Cleanups
 
-Two focused polish changes for the native iOS app. No web/desktop changes.
-
----
-
-## 1) Discord-style launch screen
-
-Goal: when the app cold-starts, show a full 9:16 screen painted in Cubbly's main brown brand color with the no-background Cubbly logo centered — exactly how Discord's launch screen shows just their logo on a flat brand color.
-
-What to change:
-- `ios-native/Resources/LaunchScreen.storyboard` — already uses brown bg + centered `cubbly-nobg`. Tighten it so:
-  - Background color is set to the canonical Cubbly brown `#96725E` (matches `SPLASH_BG_COLOR` from the web splash) on both the root view and `LaunchBackground.colorset`.
-  - Logo image is centered with a fixed 180×180 size (looks right on every device class from SE through Pro Max — current 200 is fine but we'll lock it via auto-layout instead of frame math).
-  - Remove the "respects safe area" hint so the brown fills edge-to-edge in true 9:16, including under the notch / dynamic island and home indicator.
-- `LaunchBackground.colorset/Contents.json` — confirm the sRGB components resolve to `#96725E` (currently `0.588, 0.447, 0.369` ≈ correct, will re-verify and snap exact).
-- `Info.plist` `UILaunchScreen` dict — keep `cubbly-nobg` as the image, ensure `UIImageRespectsSafeAreaInsets = false` so the brown bleeds full-bleed.
-- No change to the in-app `SplashView` (the cozy animated bears loop) — that one stays as the post-launch loading state, just like Discord shows their logo first and then their app loads in.
-
-Result: identical launch behavior to Discord — flat brand-brown 9:16 with logo dead-center, then the app loads into the existing animated splash.
+A full sweep of Lovable Cloud usage (database, realtime, edge functions, storage, client polling). The current footprint is small (DB 19.7 MB, ~3.7K messages, 6 active users) but several patterns will bleed money as you scale. Findings ranked by likely cost impact.
 
 ---
 
-## 2) Discord-style interactive horizontal swipe (DM list ⇄ chat)
+## 1) Database health red flags
 
-Goal: when the user is in a DM thread, dragging right reveals the DM sidebar live under the finger; dragging left from the DM list reveals the most recently opened chat. Half-swipes, slow-swipes, pause, reverse, and commit all feel smooth and rubber-banded — just like Discord and the new Lovable iOS app.
+From `db_health` + storage inspection:
 
-### Background research
+- **Rolled-back transactions since boot: 1,590,173.** That is *enormous* for a DB with 3.7K rows. Almost certainly an upsert hitting a unique constraint over and over (most likely candidates: `accrue_message_coins` trigger, `push_subscriptions` upsert on web, `heartbeat_call_participant` upsert during call). Each rolled-back txn still writes to WAL and burns CPU.
+- **WAL size: 144 MB vs DB size: 19.7 MB** (≈7× the database). Driven by the same churn: `profiles.last_seen_at` UPDATE every 30s per session, plus the rolled-back txns above. WAL bloat → bigger backups → bigger disk → bigger bill.
+- **Memory 62%** — fine now, but presence/realtime fanout grows with users.
 
-Discord's RN app uses their own gesture stack (built on `react-native-gesture-handler` + `react-native-reanimated`, with a custom `PanResponder`-style "DrawerLayout" they open-sourced fragments of). The smoothness comes from three properties:
+**Action**
 
-1. The gesture runs on the UI thread (not JS), so tracking is frame-perfect.
-2. Content + sidebar are siblings in a `ZStack` and both translate by the same `dragX` value — the sidebar isn't pushed in *after* a threshold, it tracks the finger from pixel 1.
-3. Release uses a spring with velocity carried over, so a fast flick commits and a slow drag past threshold settles.
+- Enable Postgres query logging for one hour and capture which statement rolls back most. (We'll do this via `analytics_query` over `postgres_logs`.) Patch whichever it is.
+- Confirm `accrue_message_coins` trigger doesn't run for bot/self.
+- Switch `presence_heartbeat` from a per-row UPDATE on `profiles` to writing to `user_sessions` only (already happens); stop bumping `profiles.last_seen_at` from the client every 30s — derive presence from `user_sessions.last_seen_at` in `online_user_ids` (it already does, redundantly).
 
-The native SwiftUI equivalent is `DragGesture` driving a `@GestureState` translation, with `.interactiveSpring` on the offset and a velocity-aware `.onEnded` that decides commit vs. snap-back. This already runs on the render thread in SwiftUI — no library needed. We already have a working version in `ios-native/Sources/Cubbly/Shared/HorizontalSwipe.swift` (used elsewhere); it just isn't wired into the DM list ↔ chat transition, and its commit logic needs velocity + slightly tuned thresholds to feel Discord-smooth.
+---
 
-### What to build
+## 2) Client polling cadence (drives WAL + realtime + DB egress)
 
-- **New navigation controller** `DMRootView` (replaces direct `NavigationStack` usage inside `DMListView`):
-  - Holds `@State var openChatID: UUID?` (the currently-open conversation) and `@State var dragX: CGFloat = 0`.
-  - Renders DM list and ChatView as siblings in a `ZStack`, both with `.offset(x:)` tied to the same drag value. When no chat is open, only the DM list is interactive.
-  - Tracks the most-recently-opened conversation so swiping left from the DM list when no chat is currently open re-opens the last one (Discord behavior).
-- **Interactive `PanGestureView`** (UIKit-backed `UIViewRepresentable` wrapping `UIPanGestureRecognizer`):
-  - We use a recognizer instead of SwiftUI's `DragGesture` because we need (a) `shouldRecognizeSimultaneouslyWith` to coexist with the vertical `ScrollView` inside chat without stealing its touches, and (b) real velocity at release for the spring.
-  - Reports `(translation, velocity, state)` back via a binding.
-  - Rejects gestures whose initial angle is more vertical than horizontal (so chat scrolling stays smooth).
-  - Allows the system left-edge swipe-back to coexist (we treat full-width pans, the edge-swipe handler keeps the first 20px).
-- **Spring commit logic** in `DMRootView`:
-  - Threshold: 35% of screen width OR velocity > 800 pt/s in the swipe direction → commit (open chat or open sidebar).
-  - Otherwise spring back with `interactiveSpring(response: 0.32, dampingFraction: 0.86)`.
-  - Rubber-band when dragging past the available edge (matches existing `HorizontalSwipe.rubberband` helper).
-- **Side-peek preview** while dragging:
-  - From chat → right: DM list slides in from the left in lock-step with the finger (no fade, no parallax — Discord doesn't parallax).
-  - From DM list → left: last chat slides in from the right in lock-step.
-- **ChatView changes**:
-  - Remove the `.enableEdgeSwipeBack()` modifier in favor of the new pan controller's "swipe right to dismiss chat" semantics (full-width drag, not just edge). The system back-edge gesture stays for true edge pulls so we don't break iOS muscle memory.
-  - Stop pushing chat via `NavigationStack`; instead, `DMRootView` flips `openChatID` and the offset animates the chat in.
+Per active web/desktop tab, today:
 
-### Files
+| Loop | Cadence | RPC |
+|---|---|---|
+| `AuthContext.heartbeat`    | 30 s | `presence_heartbeat` → UPDATE `profiles` + `user_sessions` |
+| `AuthContext.fetchOnline`  | 20 s | `online_user_ids` |
+| `AuthContext` profile-UPDATE realtime watcher | per event | re-fires `fetchOnline` (no filter) |
+| `CoinsContext` accrue      | 60 s | `accrue_activity_coins` |
+| `ActivityContext` electron poll | 60 s | upsert `user_activities` (if change) |
+| `realtimeReconnect` watchdog | 30 s | local socket check (cheap) |
 
-- New: `ios-native/Sources/Cubbly/Shared/InteractivePanGesture.swift` (UIPanGestureRecognizer wrapper).
-- New: `ios-native/Sources/Cubbly/Features/DMs/DMRootView.swift` (sibling-stack controller).
-- Edit: `ios-native/Sources/Cubbly/Features/MainTabView.swift` (`case .home: DMRootView()` instead of `DMListView()`).
-- Edit: `ios-native/Sources/Cubbly/Features/DMs/DMListView.swift` (replace nav-push with `openChatID` callback).
-- Edit: `ios-native/Sources/Cubbly/Features/Chat/ChatView.swift` (drop nav-push back gesture; honor parent-driven dismiss).
-- Edit: `ios-native/Resources/LaunchScreen.storyboard`, `LaunchBackground.colorset/Contents.json`, `Info.plist`.
+The killer is the **AuthContext profile-UPDATE handler**: every time *any* user's `profiles` row updates (i.e., every 30s per user globally), every signed-in client schedules a `fetchOnline()`. With N concurrent users that's O(N²) RPC calls per minute.
 
-### Version bump
+**Action**
 
-- `CFBundleShortVersionString` → `0.1.7`
-- `CFBundleVersion` → `19`
-- Rebuild source zip as `cubbly-ios-v0.1.7-build19.zip`.
+- Remove the profile-UPDATE realtime listener from `AuthContext`; trust the 20s `fetchOnline` poll. (Or, keep realtime but rely on it instead of polling — pick one, not both.)
+- Bump `fetchOnline` to 60 s. Status indicators rarely need sub-minute accuracy.
+- Keep `presence_heartbeat` at 30 s but stop updating `profiles.last_seen_at` inside it — only touch `user_sessions`. That kills the realtime fanout entirely and shrinks WAL.
+
+Expected impact: ~70% fewer DB RPCs at idle, dramatic WAL shrinkage, far fewer realtime egress messages.
+
+---
+
+## 3) Realtime publication is too broad
+
+`supabase_realtime` currently broadcasts 14 tables. Some are essential (`messages`, `call_events`, `call_participants`, `conversations`, `conversation_participants`, `friendships`, `message_reactions`). The chatty/unnecessary ones:
+
+- **`profiles`** — only needed for status, and only as a fallback. Removing fixes the cascade above.
+- **`user_activities`** — currently broadcast to every signed-in client with no filter; every Electron user emits an upsert/delete on every game change, fanned out to everyone. Cap to friends only (filter `user_id=in.(my-friends)`) or fall back to a periodic poll.
+- **`servers`, `server_channels`, `server_members`** — fine to keep; small volume.
+- **`user_equipped`, `user_inventory`** — only needed for the current user; if not filtered, you're fanning every shop equip to every client. Confirm filters in code or drop from publication.
+
+**Action**
+
+- Drop `profiles` and `user_activities` from `supabase_realtime`. Refetch on focus + on a 60 s timer instead. Realtime is billed per message broadcast.
+
+---
+
+## 4) Edge functions
+
+Per function review:
+
+- **`link-preview`** — invoked per URL per chat render, cached *only in memory* for the current tab. Every refresh re-invokes every link, every device re-invokes everything. Each invocation also does a 512 KB HTTP fetch from your egress.
+  - **Fix**: persist a `link_previews` table keyed by URL hash with `{title, description, image, site_name, fetched_at}` and a 30-day TTL. Edge function reads from cache first, only fetches on miss.
+- **`giphy-search`** — fine; user-initiated, auth-gated, no caching needed (Giphy is free up to limits).
+- **`send-apns-push` / `send-push-notification`** — invoked by the `notify_push_on_message` DB trigger **once per recipient per message**, with **no skip for online recipients**. Every message in a 5-person group = 4 edge invocations even if everyone is staring at the chat.
+  - **Fix**: in `notify_push_on_message`, skip recipients whose `profiles.last_seen_at > now() - interval '30 seconds'` AND who are currently in that conversation (check `conversation_participants.last_read_at`). Cuts push invocations by ~80% in active chats.
+- **`chat-with-bot`** — only called when user messages the bot. Fine.
+- **`discord-template`**, **`login-with-username`**, **`get-turn-credentials`**, **`get-vapid-public-key`** — low-volume, fine.
+
+---
+
+## 5) Storage: no upload caps, duplicate uploads, no lifecycle
+
+Current footprint:
+
+| Bucket | Files | Size |
+|---|---|---|
+| chat-attachments | 103 | 167 MB |
+| avatars | 46 | 53 MB |
+| notes-attachments | 10 | 33 MB |
+
+Concerns:
+
+- **Raw videos uploaded full quality** — multiple 10–13 MB `.mov` files from iOS, one `.mp4` at 9.4 MB. iOS PhotosPicker delivers originals.
+  - **Fix**: cap chat-attachment uploads at 10 MB; for videos, transcode/compress (iOS `AVAssetExportSession` with preset `HEVCHighest960x540` or `1280x720`) before upload — typically 70–85% size reduction.
+- **Avatars up to 3.5 MB.** Web/desktop already compress, iOS doesn't.
+  - **Fix**: cap avatars/banners at 500 KB after JPEG re-encode at 0.85 quality and max 1024 px on the long edge. (Already partially done in `ProfilePhotoUploader.swift`; verify it actually downsizes.)
+- **Six identical 4843 KB encrypted blobs in notes-attachments from the same user within 50 minutes** — looks like a re-save loop or failed-upload retry that didn't dedupe. Either a real bug or test data.
+  - **Fix**: dedupe by hashing the encrypted blob client-side and reusing the existing path if a row with the same hash already exists for the user; or just garbage-collect orphans not referenced by any `notes` row.
+- **No bucket lifecycle policy** — deleted notes/messages keep their attachments forever.
+  - **Fix**: nightly edge function `cleanup-orphan-attachments` that deletes storage objects with no matching `messages.content` reference / no matching `notes.ciphertext` reference older than 7 days.
+
+---
+
+## 6) Triggers and RPCs
+
+- **`accrue_message_coins`** runs on every `messages` INSERT. Cheap, but consider batching (every 100 messages already; OK). Confirm it short-circuits for the bot (it does — `_bot UUID` check).
+- **`notify_push_on_message`** — see §4. Also wrap the loops in a `LIMIT` defensive guard so a runaway group with thousands of participants can't queue thousands of edge calls per message.
+- **`heartbeat_call_participant`** — currently called every 10 s by both `VoiceContext` and `GroupCallContext`. That's fine during a call; just make sure both contexts aren't running simultaneously (would double the writes). Audit and consolidate.
+- **`end_call_event_if_stale`** — relies on a client to invoke it. No `call_events` are stale right now, but you have **282 call_events rows** for ~6 users, all preserved indefinitely. Fine for analytics, but consider a 30-day TTL cleanup if you don't query them.
+
+---
+
+## 7) Misc
+
+- **`coin_transactions`** has 397 rows for 6 users — small now, but it grows fast (every voice block, every message block). Add a quarterly partition / archive policy before it hits 100K rows.
+- **`gif_favorites`** at 108 rows from a few users is fine; no concern.
+- **No DB indexes audit found** in this scan — schedule `EXPLAIN ANALYZE` on the hot queries (`messages` infinite scroll, `online_user_ids`, `conversations` list) once user count grows; today the dataset is too small for it to matter.
+
+---
+
+## Quick-win priority list
+
+If you only want to do three things this week, do these — they cover ~90% of avoidable cost:
+
+1. **Patch `notify_push_on_message`** to skip recipients who are active in the conversation. *(Edge function invocations)*
+2. **Drop the AuthContext profile-UPDATE realtime watcher**, raise `fetchOnline` to 60s, and stop bumping `profiles.last_seen_at` in `presence_heartbeat`. *(WAL + realtime egress + DB RPCs)*
+3. **Add upload caps + iOS compression** for chat attachments and avatars; dedupe notes-attachments. *(Storage GB-months + egress)*
+
+The deeper investigation (1.59M rolled-back txns, `link-preview` persistent cache, orphan-attachment GC) is worth doing next.
 
 ---
 
 ## Out of scope
 
-- No web/desktop changes.
-- No new dependencies (SPM stays untouched — no `react-native-gesture-handler` analogs needed; UIKit's `UIPanGestureRecognizer` already gives us frame-perfect tracking).
-- No changes to chat content, call flow, notes, or shop.
+- No UI changes.
+- No new dependencies.
+- No changes that risk breaking calls, messaging, or auth — every fix above is additive or a parameter tweak.
