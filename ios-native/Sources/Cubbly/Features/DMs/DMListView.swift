@@ -354,6 +354,7 @@ private struct DMRow: View {
     let conversation: ConversationSummary
     let isHighlighted: Bool
     @ObservedObject var presence: PresenceService
+    @ObservedObject private var activity = ActivityService.shared
 
     var body: some View {
         HStack(spacing: 12) {
@@ -384,10 +385,20 @@ private struct DMRow: View {
                     .font(Theme.Fonts.bodyMedium)
                     .foregroundStyle(Theme.Colors.textPrimary)
                     .lineLimit(1)
-                Text(Self.previewText(for: conversation.lastMessage))
-                    .font(Theme.Fonts.bodySmall)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-                    .lineLimit(1)
+                if let label = activityLabel {
+                    HStack(spacing: 4) {
+                        SVGIcon(name: "activity", size: 12, tint: Theme.Colors.success)
+                        Text(label)
+                            .font(Theme.Fonts.bodySmall)
+                            .foregroundStyle(Theme.Colors.success)
+                            .lineLimit(1)
+                    }
+                } else {
+                    Text(Self.previewText(for: conversation.lastMessage))
+                        .font(Theme.Fonts.bodySmall)
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .lineLimit(1)
+                }
             }
 
             Spacer(minLength: 8)
@@ -403,6 +414,11 @@ private struct DMRow: View {
         .background(isHighlighted ? Theme.Colors.bgHover : Color.clear)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .contentShape(Rectangle())
+    }
+
+    private var activityLabel: String? {
+        guard let other = conversation.otherUser else { return nil }
+        return activity.label(for: other.userID, isOnline: presence.isOnline(other.userID))
     }
 
     /// Replace raw `[attachments]…` JSON with a friendly one-liner so the DM
