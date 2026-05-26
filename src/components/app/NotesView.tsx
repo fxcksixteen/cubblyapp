@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, lazy, Suspense } from "react";
 import { useNotes, NoteRow, NotePlaintext } from "@/contexts/NotesContext";
-import { Pin, PinOff, Trash2, Plus, Paperclip, ShieldCheck, Loader2, FileText, Download, X, EyeOff, ArrowLeft, KeyRound, Edit3, Copy, AlertTriangle, Play, Maximize2 } from "lucide-react";
+import { Pin, PinOff, Trash2, Plus, Paperclip, ShieldCheck, Loader2, FileText, Download, X, EyeOff, ArrowLeft, KeyRound, Edit3, Copy, AlertTriangle, Play, Maximize2, Undo2, Redo2 } from "lucide-react";
 import { toast } from "sonner";
 import notesIcon from "@/assets/password-lock.svg";
 import { useIsMobile } from "@/hooks/use-mobile";
