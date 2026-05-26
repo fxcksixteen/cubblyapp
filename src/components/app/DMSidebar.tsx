@@ -373,7 +373,6 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
         <div className="flex-1 overflow-hidden min-w-0">
           <p className="truncate text-[15px] font-bold text-white leading-snug flex items-center gap-1.5">
             <UserDisplayName userId={user?.id} name={displayName} fallbackColor="#ffffff" className="truncate" />
-            <UserBadges userId={user?.id} size={13} />
           </p>
           <p className="truncate text-[11px] leading-snug" style={{ color: "var(--app-text-secondary, #949ba4)" }}>{username}</p>
         </div>
