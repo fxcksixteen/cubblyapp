@@ -75,7 +75,7 @@ const App = () => (
               </Routes>
               <UpdateModal />
               <WhatsNewModal />
-              <GlobalCallIndicator />
+              
               <GroupIncomingCallOverlay />
               </ServersProvider>
               </NotesProvider>
