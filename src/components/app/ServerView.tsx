@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Hash, Volume2, Plus, Settings, UserPlus, LogOut, Copy, Loader2, ChevronDown, Crown, type LucideIcon } from "lucide-react";
+import { Hash, Volume2, Plus, Settings, UserPlus, LogOut, Copy, Loader2, ChevronDown, Crown, MicOff, Headphones, Video, MonitorUp, type LucideIcon } from "lucide-react";
 import { useServers, type ServerChannel } from "@/contexts/ServersContext";
 import { useServerChannels, useServerMembers } from "@/hooks/useServerChannels";
+import { useChannelVoiceParticipants } from "@/hooks/useChannelVoiceParticipants";
 import type { Conversation } from "@/hooks/useConversations";
 import { useAuth } from "@/contexts/AuthContext";
 import { useGroupCall } from "@/contexts/GroupCallContext";
@@ -230,22 +231,67 @@ const ChannelGroup = ({
         const isActive = c.id === activeId;
         const Icon = c.kind === "voice" ? Volume2 : Hash;
         return (
-          <button
-            key={c.id}
-            onClick={() => onSelect(c.id)}
-            className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm transition-colors"
-            style={{
-              backgroundColor: isActive ? "var(--app-active, #404249)" : undefined,
-              color: isActive ? "var(--app-text-primary)" : "var(--app-text-secondary)",
-            }}
-            onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = "var(--app-hover)"; }}
-            onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = ""; }}
-          >
-            <Icon className="h-4 w-4 shrink-0" />
-            <span className="truncate">{c.name}</span>
-          </button>
+          <div key={c.id}>
+            <button
+              onClick={() => onSelect(c.id)}
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm transition-colors"
+              style={{
+                backgroundColor: isActive ? "var(--app-active, #404249)" : undefined,
+                color: isActive ? "var(--app-text-primary)" : "var(--app-text-secondary)",
+              }}
+              onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = "var(--app-hover)"; }}
+              onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = ""; }}
+            >
+              <Icon className="h-4 w-4 shrink-0" />
+              <span className="truncate">{c.name}</span>
+            </button>
+            {c.kind === "voice" && c.conversation_id && (
+              <VoiceChannelParticipants conversationId={c.conversation_id} />
+            )}
+          </div>
         );
       })}
+    </div>
+  );
+};
+
+/** Discord-style list of avatars + names of users currently in a voice channel. */
+const VoiceChannelParticipants = ({ conversationId }: { conversationId: string }) => {
+  const { participants } = useChannelVoiceParticipants(conversationId);
+  if (participants.length === 0) return null;
+  return (
+    <div className="ml-6 mt-0.5 mb-1 space-y-0.5">
+      {participants.map((p) => (
+        <div
+          key={p.user_id}
+          className="flex items-center gap-2 px-2 py-1 rounded transition-colors hover:bg-[var(--app-hover)]"
+        >
+          {p.avatar_url ? (
+            <img src={p.avatar_url} alt="" className="h-5 w-5 rounded-full object-cover" />
+          ) : (
+            <div
+              className="h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-bold"
+              style={{ backgroundColor: getProfileColor(p.user_id).bg, color: "white" }}
+            >
+              {p.display_name.charAt(0).toUpperCase()}
+            </div>
+          )}
+          <UserDisplayName
+            userId={p.user_id}
+            name={p.display_name}
+            className="flex-1 truncate text-[13px]"
+          />
+          <div className="flex items-center gap-1 shrink-0" style={{ color: "var(--app-text-secondary)" }}>
+            {p.is_screen_sharing && <MonitorUp className="h-3 w-3" />}
+            {p.is_video_on && <Video className="h-3 w-3" />}
+            {p.is_deafened ? (
+              <Headphones className="h-3 w-3" style={{ color: "#ed4245" }} />
+            ) : p.is_muted ? (
+              <MicOff className="h-3 w-3" style={{ color: "#ed4245" }} />
+            ) : null}
+          </div>
+        </div>
+      ))}
     </div>
   );
 };
