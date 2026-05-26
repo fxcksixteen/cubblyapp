@@ -359,7 +359,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
   const iceServersRef = useRef<RTCIceServer[]>(STUN_ONLY_SERVERS);
   const pcRef = useRef<RTCPeerConnection | null>(null);
-  const screenPcRef = useRef<RTCPeerConnection | null>(null);
+  // Two independent screen-share PCs so MY outgoing share and the PEER's
+  // incoming share can coexist (Discord-style multi-share). Previously a
+  // single `screenPcRef` was reused for both directions — when the peer
+  // started sharing while I was already sharing, the incoming offer
+  // overwrote my outgoing PC's ref, breaking ICE routing for both streams.
+  const screenPcOutRef = useRef<RTCPeerConnection | null>(null);
+  const screenPcInRef = useRef<RTCPeerConnection | null>(null);
   /** Cleanup fn for an active native (WASAPI) per-window audio capture, if any. */
   const nativeWindowAudioStopRef = useRef<(() => void) | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
