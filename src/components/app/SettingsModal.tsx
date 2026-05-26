@@ -848,7 +848,8 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 };
 
