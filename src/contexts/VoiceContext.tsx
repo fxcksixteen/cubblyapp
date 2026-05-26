@@ -1588,10 +1588,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             }
             console.log("[Voice] 🔁 Joining existing ongoing call_event:", callEventId);
           } else {
-            // No real peer present — close this stale event via the RPC
-            // (works even if we weren't the original caller) and start fresh.
+            // No real peer present. Ask the backend to close it only if it is
+            // genuinely stale; brand-new events can exist for a moment before
+            // the first participant heartbeat lands.
             try { await (supabase as any).rpc("end_call_event_if_stale", { _call_event_id: existing.id }); } catch {}
-            try { await supabase.from("call_events").update({ state: "ended", ended_at: new Date().toISOString() } as any).eq("id", existing.id); } catch {}
           }
         }
       } catch (e) {
@@ -1645,8 +1645,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         playLooping("outgoingRing", { volume: 0.4 });
       }
 
-      if (!isJoiningExisting) await ensureOwnParticipantRow(callEventId!);
-
       // Only insert a new call_event row if we're NOT joining an existing one.
       if (!isJoiningExisting) {
         setCallEvents(prev => [...prev, {
@@ -1655,12 +1653,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           state: "ongoing",
           startedAt: new Date().toISOString(),
         }]);
-        supabase.from("call_events").insert({
+        await supabase.from("call_events").insert({
           id: callEventId,
           conversation_id: conversationId,
           caller_id: user.id,
           state: "ongoing",
-        } as any).then(() => {});
+        } as any);
+        await ensureOwnParticipantRow(callEventId!);
       }
       setCurrentCallEventId(callEventId);
 

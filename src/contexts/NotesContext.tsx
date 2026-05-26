@@ -24,6 +24,20 @@ export interface NotePlaintext {
   attachments?: Array<{ id: string; name: string; mime: string; size: number; storagePath: string; iv: string }>;
 }
 
+function extractNotesStoragePath(value?: string | null): string {
+  if (!value) return "";
+  try {
+    const u = new URL(value);
+    const match = u.pathname.match(/\/storage\/v1\/object\/(?:sign|public|authenticated)\/notes-attachments\/(.+)$/);
+    if (match) return decodeURIComponent(match[1]);
+  } catch {
+    // Plain storage paths are not valid URLs; keep handling them below.
+  }
+  return value.includes("notes-attachments/")
+    ? decodeURIComponent(value.split("notes-attachments/").pop() || "")
+    : value;
+}
+
 function normalizeNotePlaintext(plain: NotePlaintext): NotePlaintext {
   // Be VERY liberal with legacy attachment shapes from earlier desktop/web
   // versions and from third-party clients. We accept several common key
@@ -36,7 +50,7 @@ function normalizeNotePlaintext(plain: NotePlaintext): NotePlaintext {
     name: String(a.name || a.filename || a.fileName || "Attachment"),
     mime: String(a.mime || a.type || a.contentType || a.mimeType || "application/octet-stream"),
     size: Number(a.size || a.byteSize || a.bytes || 0),
-    storagePath: String(a.storagePath || a.storage_path || a.path || a.key || a.objectKey || ""),
+    storagePath: extractNotesStoragePath(a.storagePath || a.storage_path || a.path || a.key || a.objectKey || a.url || a.signedUrl || a.signed_url || ""),
     iv: String(a.iv || a.IV || a.nonce || a.initVector || ""),
   })).filter((a) => !!a.storagePath);
   return { ...plain, attachments };
@@ -257,7 +271,7 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
 
   const downloadAttachment = useCallback(async (att: { storagePath?: string; storage_path?: string; path?: string; iv?: string; mime: string; name: string }) => {
     if (!key) throw new Error("Locked");
-    const storagePath = att.storagePath || att.storage_path || att.path;
+    const storagePath = extractNotesStoragePath(att.storagePath || att.storage_path || att.path || (att as any).url || (att as any).signedUrl || (att as any).signed_url);
     if (!storagePath) throw new Error("Missing attachment path");
     const { data, error } = await supabase.storage.from("notes-attachments").download(storagePath);
     if (error || !data) throw error || new Error("Download failed");
