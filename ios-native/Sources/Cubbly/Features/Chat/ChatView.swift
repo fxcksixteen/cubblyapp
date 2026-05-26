@@ -757,8 +757,10 @@ struct ChatView: View {
 
         for u in urls {
             do {
-                let data = try Data(contentsOf: u)
-                let ext = u.pathExtension.isEmpty ? "bin" : u.pathExtension.lowercased()
+                // Re-encode locally so we never push raw 4K HEICs or 80MB
+                // 4K HDR clips into chat-attachments. Saves us bandwidth +
+                // storage cost without any user-visible quality loss.
+                let (data, ext) = await AttachmentCompressor.compress(url: u)
                 let name = u.lastPathComponent
                 // CRITICAL: chat-attachments RLS requires the FIRST folder
                 // segment to be the conversation_id (not the user_id) — the
