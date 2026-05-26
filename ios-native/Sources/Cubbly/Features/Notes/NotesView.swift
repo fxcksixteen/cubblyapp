@@ -351,9 +351,9 @@ private struct NoteEditorView: View {
 
     private func flushSave() {
         saveTask?.cancel()
-        Task { [title, body, noteID] in
+        Task { [title, noteBody, noteID] in
             await NotesStore.shared.updateNote(id: noteID, plain: NotePlaintext(
-                title: title, body: textToHtml(body)
+                title: title, body: textToHtml(noteBody)
             ))
         }
     }
