@@ -219,37 +219,69 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
         )}
       </div>
 
-      {/* Screen share view */}
+      {/* Screen share view — shows MY share and the PEER's share independently
+          so when both of us are sharing at the same time, both previews are
+          visible (Discord-style multi-share). */}
       {hasScreenShare && (
-        <div className="relative bg-black">
+        <div className={`flex flex-col gap-2 bg-black ${isScreenSharing && remoteScreenStream ? "p-2" : ""}`}>
           {isScreenSharing && screenStream && (
-            <video ref={screenVideoRef} autoPlay muted playsInline className="w-full max-h-[400px] object-contain" />
+            <div className="relative bg-black">
+              <video
+                ref={screenVideoRef}
+                autoPlay
+                muted
+                playsInline
+                className="w-full max-h-[400px] object-contain transition-[filter,opacity] duration-200"
+                style={{
+                  filter: localPreviewPaused ? "blur(14px) saturate(0.85)" : "none",
+                  opacity: localPreviewPaused ? 0.55 : 1,
+                }}
+              />
+              {localPreviewPaused && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 pointer-events-none">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/15 backdrop-blur-md border border-white/15">
+                    <Pause className="h-5 w-5 text-white" />
+                  </div>
+                  <p className="text-sm font-semibold text-white/95 drop-shadow">Stream paused</p>
+                  <p className="text-[11px] text-white/70 max-w-xs text-center px-4 drop-shadow">
+                    Your stream is still working — this preview is paused to save resources while Cubbly isn't focused.
+                  </p>
+                </div>
+              )}
+              <div className="absolute top-3 right-3 flex gap-2">
+                <button
+                  onClick={() => screenStream && setFullscreenView({ stream: screenStream, name: displayName, type: "screen", isLocal: true })}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg bg-black/60 text-white hover:bg-black/80 transition-colors"
+                  title="Fullscreen"
+                >
+                  <Maximize2 className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="absolute top-3 left-3 px-2 py-0.5 rounded bg-black/55 text-[10px] font-semibold text-white/90 uppercase tracking-wide">
+                You
+              </div>
+            </div>
           )}
-          {!isScreenSharing && remoteScreenStream && (
-            // muted: audio is routed through the per-peer GainNode (see
-            // VoiceContext screen-pc ontrack), so the right-click "User Volume"
-            // and the fullscreen viewer's volume slider both control it.
-            <video ref={remoteScreenVideoRef} autoPlay muted playsInline className="w-full max-h-[400px] object-contain" />
+          {remoteScreenStream && (
+            <div className="relative bg-black">
+              {/* muted: audio is routed through the per-peer GainNode (see
+                  VoiceContext screen-pc ontrack), so the right-click "User Volume"
+                  and the fullscreen viewer's volume slider both control it. */}
+              <video ref={remoteScreenVideoRef} autoPlay muted playsInline className="w-full max-h-[400px] object-contain" />
+              <div className="absolute top-3 right-3 flex gap-2">
+                <button
+                  onClick={() => remoteScreenStream && setFullscreenView({ stream: remoteScreenStream, name: recipientName, type: "screen", isLocal: false })}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg bg-black/60 text-white hover:bg-black/80 transition-colors"
+                  title="Fullscreen"
+                >
+                  <Maximize2 className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="absolute top-3 left-3 px-2 py-0.5 rounded bg-black/55 text-[10px] font-semibold text-white/90 uppercase tracking-wide">
+                {recipientName}
+              </div>
+            </div>
           )}
-          <div className="absolute top-3 right-3 flex gap-2">
-            <button
-              onClick={() => {
-                const stream = isScreenSharing ? screenStream : remoteScreenStream;
-                if (stream) {
-                  setFullscreenView({
-                    stream,
-                    name: isScreenSharing ? displayName : recipientName,
-                    type: "screen",
-                    isLocal: isScreenSharing,
-                  });
-                }
-              }}
-              className="flex h-8 w-8 items-center justify-center rounded-lg bg-black/60 text-white hover:bg-black/80 transition-colors"
-              title="Fullscreen"
-            >
-              <Maximize2 className="h-4 w-4" />
-            </button>
-          </div>
         </div>
       )}
 
