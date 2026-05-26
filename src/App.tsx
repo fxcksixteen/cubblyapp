@@ -74,6 +74,9 @@ const App = () => (
               <GlobalCallIndicator />
               <GroupIncomingCallOverlay />
               <SpaceBackground />
+              <SkyBackground />
+              <SnowyBackground />
+              <HillsBackground />
               </ServersProvider>
               </NotesProvider>
               </UserBadgesProvider>
