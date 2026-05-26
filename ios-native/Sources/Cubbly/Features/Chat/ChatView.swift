@@ -1081,9 +1081,11 @@ private struct DiscordStyleBubble: View {
             VStack(alignment: .leading, spacing: 3) {
                 if !grouped {
                     HStack(spacing: 6) {
-                        Text(message.senderName ?? "Unknown")
-                            .font(Theme.Fonts.bodyMedium)
-                            .foregroundStyle(Theme.Colors.textPrimary)
+                        CubblyNameText(
+                            userId: message.senderID,
+                            text: message.senderName ?? "Unknown",
+                            font: Theme.Fonts.bodyMedium
+                        )
                         Text(timeString(message.createdAt))
                             .font(.cubbly(10))
                             .foregroundStyle(Theme.Colors.textMuted)
