@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Hash, Volume2, Plus, Settings, UserPlus, LogOut, Copy, Loader2, ChevronDown, type LucideIcon } from "lucide-react";
+import { Hash, Volume2, Plus, Settings, UserPlus, LogOut, Copy, Loader2, ChevronDown, Crown, type LucideIcon } from "lucide-react";
 import { useServers, type ServerChannel } from "@/contexts/ServersContext";
 import { useServerChannels, useServerMembers } from "@/hooks/useServerChannels";
 import type { Conversation } from "@/hooks/useConversations";
