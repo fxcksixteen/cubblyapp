@@ -23,23 +23,9 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.3.7";
+export const CURRENT_VERSION = "0.3.6";
 
 export const CHANGELOG: ChangelogEntry[] = [
-  {
-    version: "0.3.7",
-    title: "Multi-stream screenshare & paused local preview",
-    date: "2026-05-26",
-    hero: bearImage,
-    newFeatures: [
-      "Calls now support multiple simultaneous screenshares, Discord-style. You and the person you're calling can both share at the same time, and starting your own share no longer kicks the other person's stream off your screen.",
-      "When you tab away from Cubbly while sharing your screen, your local preview in the call window now pauses and blurs with a glassmorphism overlay reading 'Stream paused — your stream is still working, this just saves resources.' The outgoing stream to your friend keeps running at full quality; only your own preview is throttled.",
-    ],
-    bugFixes: [
-      "Fixed a bug where stopping your own screenshare would also tear down the peer's incoming share, leaving you with a black box until they restarted theirs.",
-      "Fixed incoming peer screenshares not appearing if you were already sharing — both shares are now wired through separate peer connections so neither can clobber the other.",
-    ],
-  },
 
   {
     version: "0.3.6",
