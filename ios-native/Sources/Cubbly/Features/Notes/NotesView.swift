@@ -281,7 +281,7 @@ private struct NoteEditorView: View {
     @ObservedObject var store: NotesStore
     let noteID: UUID
     @State private var title: String = ""
-    @State private var body: String = ""
+    @State private var noteBody: String = ""
     @State private var loaded = false
     @State private var saveTask: Task<Void, Never>?
     @FocusState private var bodyFocused: Bool
