@@ -23,9 +23,32 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.3.3";
+export const CURRENT_VERSION = "0.3.4";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.3.4",
+    title: "Cozier shop, polished Space theme & three new animated themes",
+    date: "2026-05-26",
+    hero: bearImage,
+    newFeatures: [
+      "Three brand-new animated themes added to the shop: Sky Dusk (drifting clouds over a sunset gradient), Snowy Drift (gentle falling snow over frosted blue), and Moonlit Hills (layered silhouettes under a glowing moon, drifting wisps, and warm fireflies blinking above the ridges).",
+      "Animated Themes group in the shop now shows real, live mini-previews — actual stars and shooting streaks for Space, drifting clouds for Sky, falling flakes for Snowy, and the moonlit hills scene with stars and fireflies — instead of flat gradient swatches.",
+      "Server voice-channel mini call card in the DM sidebar: when you're in a server voice call, the sidebar now shows a compact card with the channel name and live participants while you keep browsing.",
+    ],
+    bugFixes: [
+      "Notes attachments: images saved from the iOS app and the desktop app now display properly again — they were silently failing to render after an earlier upload-path change.",
+      "Unequipping a theme from the shop now takes effect instantly on desktop — no more 'unequip looks like it did nothing until I refresh with Ctrl+R'.",
+      "Space theme: pop-up modals (Settings, Add a Server, etc.) now open correctly instead of being clipped or hidden behind the starfield. Modals are now portaled to the document body and properly carry the app's theme tokens, so backgrounds aren't transparent anymore.",
+      "Space theme: the falling star is now smooth and continuous from top-right to bottom-left — no more mid-flight pause — and now fires every 15–30 seconds instead of every 30–90.",
+      "Space theme: the What's New changelog modal now correctly opens above the Settings modal instead of being trapped behind it, thanks to a proper z-index layering pass that no longer forces every dialog onto the same layer.",
+      "Add a Server modal no longer renders with a transparent background under the Space theme (and any other theme using a custom backdrop) — the portal wrapper now inherits the app's themed surface tokens.",
+      "Moonlit Hills is now genuinely animated: pulsing moon glow, three slow wispy clouds drifting across the sky, and a layer of warm fireflies floating and blinking above the hill silhouettes — on top of the existing twinkling stars.",
+      "Sky Dusk, Snowy Drift, and Moonlit Hills are now grouped under Animated Themes alongside Space (instead of their own loose 'Theme' bucket) and are priced in line with other premium animated themes.",
+      "Petite badge now has a proper shop description like every other badge.",
+    ],
+  },
+
   {
     version: "0.3.3",
     title: "Servers that actually work, reliable rejoin & settings parity",
