@@ -312,7 +312,7 @@ final class NotesStore: ObservableObject {
         let storagePath = "\(uid.uuidString)/\(id).bin"
         _ = try await client.storage.from("notes-attachments")
             .upload(storagePath, data: cipherWithTag,
-                    options: .init(contentType: "application/octet-stream", upsert: false))
+                    options: FileOptions(contentType: "application/octet-stream", upsert: false))
         return NoteAttachment(id: id, name: name, mime: mime, size: data.count,
                               storagePath: storagePath, iv: iv)
     }
