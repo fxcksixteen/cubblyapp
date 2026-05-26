@@ -34,7 +34,11 @@ export const HillsBackground = () => {
   return (
     <div className="cb-hills-bg" aria-hidden="true">
       <div className="cb-hills-stars" />
+      <div className="cb-hills-cloud w1" />
+      <div className="cb-hills-cloud w2" />
+      <div className="cb-hills-cloud w3" />
       <div className="cb-hills-moon" />
+      <div className="cb-hills-fireflies" />
       <div className="cb-hills-layer h1" />
       <div className="cb-hills-layer h2" />
       <div className="cb-hills-layer h3" />
