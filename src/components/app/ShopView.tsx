@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCoins } from "@/contexts/CoinsContext";
+import { useTheme, ThemeName } from "@/contexts/ThemeContext";
 import { toast } from "sonner";
 import { playSound } from "@/lib/sounds";
 import shopIcon from "@/assets/icons/shop.svg";
@@ -27,6 +28,18 @@ const BADGE_ART: Record<string, string> = {
   badge_og: imgOg,
   badge_petite: imgPetite,
   badge_voice_veteran: imgVoiceVeteran,
+};
+
+const THEME_ITEM_MAP: Record<string, ThemeName> = {
+  theme_midnight_aurora: "onyx",
+  theme_sunset_cozy: "cubbly",
+  theme_space: "space",
+  theme_ocean_depths: "ocean",
+  theme_cherry_blossom: "blossom",
+  theme_evergreen: "forest",
+  theme_synthwave: "synthwave",
+  theme_lava_flow: "lava",
+  theme_borealis: "borealis",
 };
 
 type Category = "name_color" | "theme" | "badge";
@@ -159,6 +172,7 @@ function ItemPreview({ item, displayName }: { item: ShopItem; displayName: strin
 const ShopView = () => {
   const { user } = useAuth();
   const { balance } = useCoins();
+  const { setTheme } = useTheme();
   const [items, setItems] = useState<ShopItem[]>([]);
   const [owned, setOwned] = useState<Set<string>>(new Set());
   const [equipped, setEquipped] = useState<Set<string>>(new Set());
@@ -317,6 +331,18 @@ const ShopView = () => {
     const isEq = equipped.has(item.id);
     const { error } = await supabase.rpc(isEq ? "unequip_shop_item" : "equip_shop_item", { _item_id: item.id });
     if (error) { toast.error("Couldn't update equipped item"); return; }
+    setEquipped((prev) => {
+      const next = new Set(prev);
+      if (isEq) next.delete(item.id);
+      else {
+        if (item.category === "theme" || item.category === "name_color") {
+          items.filter((i) => i.category === item.category).forEach((i) => next.delete(i.id));
+        }
+        next.add(item.id);
+      }
+      return next;
+    });
+    if (item.category === "theme") setTheme(isEq ? "default" : (THEME_ITEM_MAP[item.id] || "default"));
     toast.success(isEq ? `Unequipped ${item.name}` : `Equipped ${item.name}`);
   };
 

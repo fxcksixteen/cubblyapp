@@ -24,6 +24,18 @@ export interface NotePlaintext {
   attachments?: Array<{ id: string; name: string; mime: string; size: number; storagePath: string; iv: string }>;
 }
 
+function normalizeNotePlaintext(plain: NotePlaintext): NotePlaintext {
+  const attachments = (plain.attachments || []).map((a: any) => ({
+    id: String(a.id || crypto.randomUUID()),
+    name: String(a.name || a.filename || "Attachment"),
+    mime: String(a.mime || a.type || a.contentType || "application/octet-stream"),
+    size: Number(a.size || a.byteSize || 0),
+    storagePath: String(a.storagePath || a.storage_path || a.path || ""),
+    iv: String(a.iv || ""),
+  })).filter((a) => a.storagePath && a.iv);
+  return { ...plain, attachments };
+}
+
 export interface NoteRow {
   id: string;
   user_id: string;
@@ -106,7 +118,7 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
     const out: NoteRow[] = [];
     for (const r of rows) {
       try {
-        const plain = await decryptJson<NotePlaintext>(k, r.iv, r.ciphertext);
+        const plain = normalizeNotePlaintext(await decryptJson<NotePlaintext>(k, r.iv, r.ciphertext));
         out.push({ ...r, decrypted: plain });
       } catch {
         out.push({ ...r, decrypted: null, decryptError: true });
@@ -237,9 +249,11 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
     return { id, name: file.name, mime: file.type || "application/octet-stream", size: file.size, storagePath, iv };
   }, [user, key]);
 
-  const downloadAttachment = useCallback(async (att: { storagePath: string; iv: string; mime: string; name: string }) => {
+  const downloadAttachment = useCallback(async (att: { storagePath?: string; storage_path?: string; path?: string; iv: string; mime: string; name: string }) => {
     if (!key) throw new Error("Locked");
-    const { data, error } = await supabase.storage.from("notes-attachments").download(att.storagePath);
+    const storagePath = att.storagePath || att.storage_path || att.path;
+    if (!storagePath) throw new Error("Missing attachment path");
+    const { data, error } = await supabase.storage.from("notes-attachments").download(storagePath);
     if (error || !data) throw error || new Error("Download failed");
     const buf = await data.arrayBuffer();
     const plain = await decryptBytes(key, att.iv, buf);

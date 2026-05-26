@@ -170,7 +170,7 @@
    (the AppLayout container has `.h-screen`), NOT to nested `.app-themed`
    modal/dialog backdrops — otherwise popups become see-through and look broken. */
 [data-theme="space"] body { background-color: #04050a; }
-[data-theme="space"] .app-themed.h-screen { position: relative; background-color: transparent !important; }
+[data-theme="space"] .app-themed.h-screen { position: relative; isolation: isolate; background-color: transparent !important; }
 [data-theme="space"] .app-themed.h-screen .sidebar-primary,
 [data-theme="space"] .app-themed.h-screen .sidebar-tertiary,
 [data-theme="space"] .app-themed.h-screen .user-panel { background-color: rgba(12, 14, 20, 0.72); backdrop-filter: blur(8px); }
@@ -183,28 +183,33 @@
 @keyframes cb-space-drift { from { transform: translate(0,0); } to { transform: translate(-200px, -200px); } }
 @keyframes cb-space-twinkle { 0%,100% { opacity: 0.35; } 50% { opacity: 0.75; } }
 
-/* Shooting stars — slow, graceful, rare. Long delays and tapered tails. */
+/* Shooting star — one rare, graceful streak from top-right to bottom-left. */
 .cb-shooting-star {
   position: absolute;
-  width: 180px;
+  top: 7%;
+  right: 6%;
+  width: 220px;
   height: 2px;
-  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.15) 40%, rgba(255,255,255,0.9) 90%, #fff 100%);
+  transform-origin: right center;
+  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(175,205,255,0.14) 26%, rgba(225,238,255,0.7) 78%, #fff 100%);
   border-radius: 999px;
-  filter: drop-shadow(0 0 8px rgba(180,210,255,0.9)) drop-shadow(0 0 16px rgba(120,160,255,0.5));
+  filter: drop-shadow(0 0 8px rgba(210,230,255,0.95)) drop-shadow(0 0 18px rgba(120,160,255,0.45));
   opacity: 0;
-  transform: rotate(205deg);
+  transform: translate(0,0) rotate(-24deg) scaleX(0.02);
   will-change: transform, opacity;
+  animation: cb-shoot 3.2s cubic-bezier(.16,.74,.2,1) both;
 }
-.cb-shooting-star.s1 { top: 5%;  right: -15%; animation: cb-shoot 2.8s ease-out 12s infinite; }
-.cb-shooting-star.s2 { top: 18%; right: -15%; animation: cb-shoot 3.2s ease-out 38s infinite; }
-.cb-shooting-star.s3 { top: 32%; right: -15%; animation: cb-shoot 3.0s ease-out 64s infinite; }
-.cb-shooting-star.s4 { top: 48%; right: -15%; animation: cb-shoot 3.4s ease-out 92s infinite; }
+.cb-shooting-star::after { content: ""; position: absolute; right: -2px; top: 50%; width: 7px; height: 7px; border-radius: 999px; background: #fff; transform: translateY(-50%); box-shadow: 0 0 12px rgba(255,255,255,.98), 0 0 28px rgba(145,180,255,.68); }
 @keyframes cb-shoot {
-  0%   { opacity: 0; transform: translate(0,0) rotate(205deg) scaleX(0.6); }
-  8%   { opacity: 1; transform: translate(-10vw, 4vh) rotate(205deg) scaleX(1); }
-  85%  { opacity: 1; }
-  100% { opacity: 0; transform: translate(-110vw, 50vh) rotate(205deg) scaleX(1); }
+  0%   { opacity: 0; transform: translate(0,0) rotate(-24deg) scaleX(0.02); }
+  12%  { opacity: 1; transform: translate(-4vw, 3vh) rotate(-24deg) scaleX(0.08); }
+  36%  { opacity: 1; transform: translate(-28vw, 17vh) rotate(-24deg) scaleX(1); }
+  82%  { opacity: .9; transform: translate(-82vw, 50vh) rotate(-24deg) scaleX(1); }
+  100% { opacity: 0; transform: translate(-112vw, 69vh) rotate(-24deg) scaleX(.72); }
 }
+
+[data-theme="space"] [role="dialog"],
+[data-theme="space"] [data-radix-popper-content-wrapper] { z-index: 1000 !important; }
 
 /* ── Sky / Snowy / Hills animated themes ─────────────────────────────────
    Same isolation pattern as Space: only the ROOT app surface (`.h-screen`)

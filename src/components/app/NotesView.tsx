@@ -624,12 +624,15 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     if (bodyRef.current) {
       bodyRef.current.innerHTML = note.decrypted?.body || "";
     }
-    setTitle(note.decrypted?.title || "");
-    setBody(note.decrypted?.body || "");
-    setAttachments(note.decrypted?.attachments || []);
+    const nextTitle = note.decrypted?.title || "";
+    const nextBody = note.decrypted?.body || "";
+    const nextAttachments = note.decrypted?.attachments || [];
+    setTitle(nextTitle);
+    setBody(nextBody);
+    setAttachments(nextAttachments);
+    latestRef.current = { title: nextTitle, body: nextBody, attachments: nextAttachments };
     dirty.current = false;
-    // Hydrate inline images for this note
-    void hydrateInlineMedia();
+    requestAnimationFrame(() => void hydrateInlineMedia());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [note.id]);
 
@@ -1305,6 +1308,17 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
           {attachments.map((att) => {
             const isMedia = att.mime.startsWith("image/") || att.mime.startsWith("video/");
             const isInlined = inlinedIds.has(att.id);
+            if (isMedia && !isInlined) {
+              return (
+                <InlineAttachment
+                  key={att.id}
+                  att={att}
+                  onRemove={() => removeAtt(att.id)}
+                  onDownload={() => downloadAtt(att)}
+                  onInsertIntoBody={() => insertExistingAttIntoBody(att)}
+                />
+              );
+            }
             return (
               <div
                 key={att.id}
