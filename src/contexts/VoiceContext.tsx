@@ -2160,7 +2160,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     screenStream?.getTracks().forEach(t => t.stop());
     setScreenStream(null);
     setIsScreenSharing(false);
-    setRemoteScreenStream(null);
+    // NOTE: do NOT clear remoteScreenStream here — that belongs to the peer's
+    // share and must stay alive when WE stop ours (Discord-style multi-stream).
     if (wasSharing) playSound("screenshareStop", { volume: 0.4 });
 
     // Tear down native per-window audio if it was active
@@ -2177,8 +2178,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       screenLoopbackPcRef.current = null;
     }
 
-    screenPcRef.current?.close();
-    screenPcRef.current = null;
+    // Only close OUR outgoing screen PC. Incoming peer share stays untouched.
+    screenPcOutRef.current?.close();
+    screenPcOutRef.current = null;
 
     if (channelRef.current && user) {
       channelRef.current.send({
@@ -2187,7 +2189,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         payload: { type: "screen-stop", senderId: user.id },
       });
     }
-  }, [screenStream, user]);
+  }, [screenStream, isScreenSharing, user]);
 
   const endCall = useCallback(() => {
     console.log("[Voice] 🔴 endCall — remote hangup:", isRemoteHangup.current);
