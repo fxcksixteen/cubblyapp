@@ -67,6 +67,16 @@ struct ChatView: View {
         // bar disables it by default). Native edge-pan only — does NOT eat
         // vertical scroll touches the way a custom DragGesture would.
         .enableEdgeSwipeBack()
+        // Discord-style full-width interactive swipe-to-go-back: dragging
+        // right anywhere on the chat reveals the DM sidebar in lock-step
+        // with the finger; release past threshold pops the chat. The DM
+        // sidebar is rendered as a live peek using the shared
+        // ConversationsCache so it matches the real Home tab exactly.
+        .horizontalSwipe(
+            right: { dismiss() },
+            leftPreview: { Color.clear },
+            rightPreview: { DMSidebarPreview() }
+        )
         .sheet(isPresented: $showGifPicker) {
             GiphyPickerView { url in
                 showGifPicker = false
