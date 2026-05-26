@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useGroupCall } from "@/contexts/GroupCallContext";
-import { useServers } from "@/contexts/ServersContext";
-import { useServerChannels } from "@/hooks/useServerChannels";
+import { supabase } from "@/integrations/supabase/client";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import callEndIcon from "@/assets/icons/call-end.svg";
 import videoIcon from "@/assets/icons/video-camera.svg";
@@ -32,19 +31,29 @@ const PingBars = ({ ping }: { ping: number }) => {
  */
 const SidebarGroupCallCard = () => {
   const { activeCall, leaveCall, ping, toggleVideo } = useGroupCall();
-  const { servers } = useServers();
   const navigate = useNavigate();
   const [elapsed, setElapsed] = useState(0);
+  const [serverInfo, setServerInfo] = useState<{ server_id: string; server_name: string; channel_id: string } | null>(null);
 
-  // Find the server + channel that owns this call (channel.conversation_id === activeCall.conversationId).
-  const ownerServer = useMemo(
-    () => servers.find((s) => activeCall && s.id), // dummy iteration, we resolve below
-    [servers, activeCall],
-  );
-  // We need channels for ALL servers to find the matching one; query each is overkill,
-  // so just look across servers' channels via useServerChannels per server.
-  // Simpler: render nothing if we can't resolve — the conversationName from activeCall is the channel name.
-  const stateLabel = "Voice Connected";
+  // Resolve which server/channel owns this group call so the card can deep-link back.
+  useEffect(() => {
+    if (!activeCall) { setServerInfo(null); return; }
+    let cancelled = false;
+    (async () => {
+      const { data: ch } = await supabase
+        .from("server_channels")
+        .select("id, server_id, servers(name)")
+        .eq("conversation_id", activeCall.conversationId)
+        .maybeSingle();
+      if (cancelled || !ch) return;
+      setServerInfo({
+        server_id: (ch as any).server_id,
+        server_name: (ch as any).servers?.name || "Server",
+        channel_id: (ch as any).id,
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [activeCall?.conversationId]);
 
   useEffect(() => {
     if (!activeCall?.joinedAt) { setElapsed(0); return; }
@@ -53,14 +62,13 @@ const SidebarGroupCallCard = () => {
   }, [activeCall?.joinedAt]);
 
   if (!activeCall) return null;
+  // Only show for SERVER calls — DM/group calls already render via SidebarVoiceCard's path.
+  // If we couldn't resolve a server channel, this is a non-server group call; bail.
+  if (!serverInfo) return null;
 
-  const locationLabel = activeCall.conversationName || "Voice Channel";
-  // Try to find which server hosts this conversation, so the card can navigate back.
-  const matchedServer = ownerServer; // best-effort; navigation falls back to /@me
-
-  const onOpenCall = () => {
-    if (matchedServer) navigate(`/@me/server/${matchedServer.id}`);
-  };
+  const stateLabel = "Voice Connected";
+  const locationLabel = `${serverInfo.server_name} › #${activeCall.conversationName || "voice"}`;
+  const onOpenCall = () => navigate(`/@me/server/${serverInfo.server_id}/${serverInfo.channel_id}`);
 
   const formatTime = (ms: number) => {
     const s = Math.floor(ms / 1000);
