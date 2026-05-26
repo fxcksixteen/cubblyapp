@@ -66,7 +66,7 @@ targets:
       path: Resources/Info.plist
       properties:
         CFBundleDisplayName: Cubbly
-        CFBundleShortVersionString: "0.1.7"
+        CFBundleShortVersionString: "0.1.6"
         CFBundleVersion: "19"
         UIBackgroundModes:
           - remote-notification

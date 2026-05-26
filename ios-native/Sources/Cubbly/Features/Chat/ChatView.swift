@@ -1081,9 +1081,11 @@ private struct DiscordStyleBubble: View {
             VStack(alignment: .leading, spacing: 3) {
                 if !grouped {
                     HStack(spacing: 6) {
-                        Text(message.senderName ?? "Unknown")
-                            .font(Theme.Fonts.bodyMedium)
-                            .foregroundStyle(Theme.Colors.textPrimary)
+                        CubblyNameText(
+                            userId: message.senderID,
+                            text: message.senderName ?? "Unknown",
+                            font: Theme.Fonts.bodyMedium
+                        )
                         Text(timeString(message.createdAt))
                             .font(.cubbly(10))
                             .foregroundStyle(Theme.Colors.textMuted)
@@ -1324,9 +1326,11 @@ struct MessageActionMenuView: View {
                 AvatarView(url: message.senderAvatarURL.flatMap(URL.init(string:)),
                            fallbackText: message.senderName ?? "?", size: 36)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(message.senderName ?? "Unknown")
-                        .font(Theme.Fonts.bodyMedium)
-                        .foregroundStyle(Theme.Colors.textPrimary)
+                    CubblyNameText(
+                        userId: message.senderID,
+                        text: message.senderName ?? "Unknown",
+                        font: Theme.Fonts.bodyMedium
+                    )
                     Text(previewText)
                         .font(.cubbly(13))
                         .foregroundStyle(Theme.Colors.textSecondary)
