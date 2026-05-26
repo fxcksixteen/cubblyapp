@@ -128,6 +128,38 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
     }
   }, [remoteScreenStream]);
 
+  // Pause the LOCAL inline screenshare preview when the Cubbly window loses
+  // focus / goes into the background. The outgoing MediaStream tracks are
+  // untouched — the peer still sees your screen normally — we just stop
+  // painting our own preview to save GPU/decoder cycles. Mirrors what the
+  // fullscreen viewer already does for local previews.
+  const [localPreviewPaused, setLocalPreviewPaused] = useState(false);
+  useEffect(() => {
+    if (!isScreenSharing) { setLocalPreviewPaused(false); return; }
+    const onBlur = () => setLocalPreviewPaused(true);
+    const onFocus = () => setLocalPreviewPaused(false);
+    const onVis = () => {
+      if (document.visibilityState === "hidden") setLocalPreviewPaused(true);
+      else if (document.hasFocus()) setLocalPreviewPaused(false);
+    };
+    if (typeof document !== "undefined" && !document.hasFocus()) setLocalPreviewPaused(true);
+    window.addEventListener("blur", onBlur);
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.removeEventListener("blur", onBlur);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [isScreenSharing]);
+
+  useEffect(() => {
+    const v = screenVideoRef.current;
+    if (!v) return;
+    if (localPreviewPaused) { try { v.pause(); } catch {} }
+    else { v.play().catch(() => {}); }
+  }, [localPreviewPaused]);
+
   // Wire camera streams to <video> elements. ALWAYS call play() after
   // setting srcObject — autoplay alone fails silently when srcObject is
   // assigned after the element mounts (which is exactly what happens when
