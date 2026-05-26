@@ -361,6 +361,7 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
         conversations={conversations}
         onOpenCall={(convId) => setActiveView(`dm:${convId}`)}
       />
+      <SidebarGroupCallCard />
 
       {/* User panel */}
       <div className="flex items-center gap-2.5 px-2 py-2 user-panel" style={{ backgroundColor: 'var(--app-bg-accent)' }}>
