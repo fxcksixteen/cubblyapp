@@ -2126,7 +2126,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       // Periodically log outbound stats so we can confirm the encoder is
       // actually delivering the bitrate / resolution we asked for.
       const statsInterval = setInterval(async () => {
-        if (!screenPcRef.current || screenPcRef.current !== screenPc) {
+        if (!screenPcOutRef.current || screenPcOutRef.current !== screenPc) {
           clearInterval(statsInterval);
           return;
         }
