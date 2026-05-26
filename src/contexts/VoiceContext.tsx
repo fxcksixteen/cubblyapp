@@ -1527,6 +1527,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       // was the source of "two Ongoing Call pills" after a restart.
       let callEventId: string | null = null;
       let isJoiningExisting = false;
+      // When rejoining, preserve the ORIGINAL call start time from the DB so
+      // the elapsed timer (UI + chat pill) doesn't reset to 0 just because
+      // one participant briefly dropped out. The call only truly "ends" when
+      // the last participant leaves (state flips to "ended").
+      let existingStartedAtMs: number | undefined;
       try {
         const { data: existing } = await supabase
           .from("call_events")
