@@ -497,11 +497,36 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         .order("started_at", { ascending: false })
         .limit(1)
         .maybeSingle();
+
+      // Only reuse an existing ongoing call_event (and inherit its started_at)
+      // if at least one OTHER participant is FRESHLY live — otherwise we'd
+      // join a stale ghost event and the elapsed timer would jump to e.g.
+      // "1:29:00" the moment we tap join. Mirrors VoiceContext liveness.
+      let reused = false;
       if (existing?.id) {
-        callEventId = existing.id;
-        if (existing.started_at) callStartedAt = new Date(existing.started_at).getTime();
-      } else {
+        const { data: liveRows } = await supabase
+          .from("call_participants")
+          .select("user_id, last_seen_at, left_at")
+          .eq("call_event_id", existing.id);
+        const FRESH_MS = 30_000;
+        const now = Date.now();
+        const otherActive = (liveRows || []).some((r: any) =>
+          r.user_id !== user.id &&
+          r.left_at === null &&
+          (!r.last_seen_at || now - new Date(r.last_seen_at).getTime() < FRESH_MS)
+        );
+        if (otherActive) {
+          callEventId = existing.id;
+          if (existing.started_at) callStartedAt = new Date(existing.started_at).getTime();
+          reused = true;
+        } else {
+          // Close the stale ghost so it doesn't keep haunting future joins.
+          try { await (supabase as any).rpc("end_call_event_if_stale", { _call_event_id: existing.id }); } catch {}
+        }
+      }
+      if (!reused) {
         callEventId = crypto.randomUUID();
+        callStartedAt = Date.now();
         await supabase.from("call_events").insert({
           id: callEventId,
           conversation_id: conversationId,
@@ -511,6 +536,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       }
     } catch {
       callEventId = crypto.randomUUID();
+      callStartedAt = Date.now();
       await supabase.from("call_events").insert({
         id: callEventId,
         conversation_id: conversationId,
