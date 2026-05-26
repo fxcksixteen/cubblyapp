@@ -130,10 +130,20 @@ const CreateServerModal = ({ open, onClose, onCreated }: Props) => {
     : "Paste a discord.new link or template code.";
 
   return createPortal(
-    <div className="app-themed fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 p-4" onClick={close}>
+    <div
+      className="app-themed fixed inset-0 z-[1000] flex items-center justify-center p-4 transition-all duration-200 ease-out"
+      style={{ backgroundColor: visible ? "rgba(0,0,0,0.6)" : "rgba(0,0,0,0)" }}
+      onClick={close}
+    >
       <div
-        className="w-full max-w-md rounded-xl overflow-hidden"
-        style={{ backgroundColor: "var(--app-bg-secondary)", border: "1px solid var(--app-border)" }}
+        className="w-full max-w-md rounded-xl overflow-hidden transition-all ease-out"
+        style={{
+          backgroundColor: "var(--app-bg-secondary)",
+          border: "1px solid var(--app-border)",
+          transform: visible ? "scale(1) translateY(0)" : "scale(0.94) translateY(10px)",
+          opacity: visible ? 1 : 0,
+          transitionDuration: "200ms",
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3 px-5 pt-4 pb-3">
