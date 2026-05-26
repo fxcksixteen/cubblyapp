@@ -28,14 +28,31 @@ const CreateServerModal = ({ open, onClose, onCreated }: Props) => {
     channels: Array<{ name: string; kind: "text" | "voice"; category: string | null }>;
   } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const [visible, setVisible] = useState(false);
 
-  if (!open) return null;
+  useEffect(() => {
+    if (open) {
+      setMounted(true);
+      const r = requestAnimationFrame(() => requestAnimationFrame(() => setVisible(true)));
+      return () => cancelAnimationFrame(r);
+    } else if (mounted) {
+      setVisible(false);
+      const t = setTimeout(() => setMounted(false), 220);
+      return () => clearTimeout(t);
+    }
+  }, [open]);
+
+  if (!mounted) return null;
 
   const reset = () => {
     setName(""); setIconUrl(""); setCode(""); setPreview(null);
     setTemplateInput(""); setTemplatePreview(null);
   };
-  const close = () => { reset(); setMode("picker"); onClose(); };
+  const close = () => {
+    setVisible(false);
+    setTimeout(() => { reset(); setMode("picker"); onClose(); }, 220);
+  };
 
   const onCreate = async () => {
     if (!name.trim()) return toast.error("Pick a name");
