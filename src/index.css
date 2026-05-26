@@ -182,29 +182,28 @@
 @keyframes cb-space-drift { from { transform: translate(0,0); } to { transform: translate(-200px, -200px); } }
 @keyframes cb-space-twinkle { 0%,100% { opacity: 0.35; } 50% { opacity: 0.75; } }
 
-/* Shooting star — one rare, graceful streak from top-right to bottom-left. */
+/* Shooting star — one rare, graceful streak from top-right to bottom-left.
+   Single linear motion across the full path so it never pauses mid-flight. */
 .cb-shooting-star {
   position: absolute;
-  top: 7%;
-  right: 6%;
-  width: 220px;
+  top: 4%;
+  right: 2%;
+  width: 260px;
   height: 2px;
-  transform-origin: right center;
-  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(175,205,255,0.14) 26%, rgba(225,238,255,0.7) 78%, #fff 100%);
+  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(175,205,255,0.18) 30%, rgba(225,238,255,0.75) 80%, #fff 100%);
   border-radius: 999px;
   filter: drop-shadow(0 0 8px rgba(210,230,255,0.95)) drop-shadow(0 0 18px rgba(120,160,255,0.45));
   opacity: 0;
-  transform: translate(0,0) rotate(-24deg) scaleX(0.02);
+  transform: translate(0, 0) rotate(-28deg);
   will-change: transform, opacity;
-  animation: cb-shoot 3.2s cubic-bezier(.16,.74,.2,1) both;
+  animation: cb-shoot 5.2s linear both;
 }
 .cb-shooting-star::after { content: ""; position: absolute; right: -2px; top: 50%; width: 7px; height: 7px; border-radius: 999px; background: #fff; transform: translateY(-50%); box-shadow: 0 0 12px rgba(255,255,255,.98), 0 0 28px rgba(145,180,255,.68); }
 @keyframes cb-shoot {
-  0%   { opacity: 0; transform: translate(0,0) rotate(-24deg) scaleX(0.02); }
-  12%  { opacity: 1; transform: translate(-4vw, 3vh) rotate(-24deg) scaleX(0.08); }
-  36%  { opacity: 1; transform: translate(-28vw, 17vh) rotate(-24deg) scaleX(1); }
-  82%  { opacity: .9; transform: translate(-82vw, 50vh) rotate(-24deg) scaleX(1); }
-  100% { opacity: 0; transform: translate(-112vw, 69vh) rotate(-24deg) scaleX(.72); }
+  0%   { opacity: 0;  transform: translate(0, 0) rotate(-28deg); }
+  8%   { opacity: 1; }
+  92%  { opacity: 1; }
+  100% { opacity: 0;  transform: translate(-115vw, 70vh) rotate(-28deg); }
 }
 
 [data-theme="space"] [role="dialog"],
