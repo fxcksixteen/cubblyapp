@@ -26,6 +26,7 @@ import SearchBar from "./SearchBar";
 import UserProfileCard from "./chat/UserProfileCard";
 import SidebarActivityCard from "./SidebarActivityCard";
 import SidebarVoiceCard from "./SidebarVoiceCard";
+import SidebarGroupCallCard from "./SidebarGroupCallCard";
 import UserDisplayName from "./UserDisplayName";
 import UserBadges from "./UserBadges";
 import friendsIcon from "@/assets/icons/friends.svg";
