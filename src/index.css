@@ -198,7 +198,7 @@
   will-change: transform, opacity;
   animation: cb-shoot 5.2s linear both;
 }
-.cb-shooting-star::after { content: ""; position: absolute; right: -2px; top: 50%; width: 7px; height: 7px; border-radius: 999px; background: #fff; transform: translateY(-50%); box-shadow: 0 0 12px rgba(255,255,255,.98), 0 0 28px rgba(145,180,255,.68); }
+.cb-shooting-star::after { content: ""; position: absolute; left: -2px; top: 50%; width: 7px; height: 7px; border-radius: 999px; background: #fff; transform: translateY(-50%); box-shadow: 0 0 12px rgba(255,255,255,.98), 0 0 28px rgba(145,180,255,.68); }
 @keyframes cb-shoot {
   0%   { opacity: 0;  transform: translate(0, 0) rotate(-28deg); }
   8%   { opacity: 1; }
