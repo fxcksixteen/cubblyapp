@@ -1603,7 +1603,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         // Pretending we're connected before the handshake completed was the
         // root cause of "rejoin lands you in a fake call with no audio".
         state: "calling",
-        startedAt: undefined,
+        startedAt: existingStartedAtMs,
         isMuted: false,
         isDeafened: false,
         isVideoOn: false,
@@ -1614,7 +1614,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         peerId,
         peerName,
         state: "calling",
-        startedAt: undefined,
+        startedAt: existingStartedAtMs,
         isMuted: false,
         isDeafened: false,
         isVideoOn: false,
