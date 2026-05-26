@@ -40,6 +40,9 @@ const THEME_ITEM_MAP: Record<string, ThemeName> = {
   theme_synthwave: "synthwave",
   theme_lava_flow: "lava",
   theme_borealis: "borealis",
+  theme_sky_dusk: "sky",
+  theme_snowy_drift: "snowy",
+  theme_moonlit_hills: "hills",
 };
 
 type Category = "name_color" | "theme" | "badge";
