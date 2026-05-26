@@ -23,9 +23,20 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.3.4";
+export const CURRENT_VERSION = "0.3.5";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.3.5",
+    title: "Hotfix: desktop app boots again",
+    date: "2026-05-26",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Fixed a desktop startup crash introduced in v0.3.4 where the app died on launch with 'Cannot find module builder-util-runtime'. A too-greedy packaging filter was stripping a runtime dependency of the auto-updater out of the installer. The v0.3.5 installer ships it correctly and Cubbly opens normally again.",
+    ],
+  },
+
   {
     version: "0.3.4",
     title: "Cozier shop, polished Space theme & three new animated themes",
