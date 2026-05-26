@@ -28,6 +28,7 @@ import WhatsNewModal from "./components/app/WhatsNewModal";
 import GlobalCallIndicator from "./components/app/GlobalCallIndicator";
 import { GroupIncomingCallOverlay } from "./components/app/GroupCallPanel";
 import SpaceBackground from "./components/app/SpaceBackground";
+import { SkyBackground, SnowyBackground, HillsBackground } from "./components/app/ThemeBackgrounds";
 
 const queryClient = new QueryClient();
 
