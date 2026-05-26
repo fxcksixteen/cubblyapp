@@ -323,7 +323,8 @@ const CreateServerModal = ({ open, onClose, onCreated }: Props) => {
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 };
 
