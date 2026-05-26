@@ -416,14 +416,20 @@ private struct ShopItemPreview: View {
         let cfg = item.config?.jsonDictionary ?? [:]
         let bgColor = colorFromHex(cfg["bg"] as? String)
         let primary = colorFromHex(cfg["primary"] as? String) ?? Theme.Colors.primary
+        let isAnimated = (item.subcategory == "animated") || (cfg["animated"] as? Bool == true)
         ZStack {
             if item.id == "theme_space" {
                 SpaceThemePreview()
             } else if let bgColor {
                 bgColor
             } else {
-                LinearGradient(colors: Self.previewColors(forThemeId: item.id, fallback: primary),
-                               startPoint: .topLeading, endPoint: .bottomTrailing)
+                let stops = Self.previewColors(forThemeId: item.id, fallback: primary)
+                if isAnimated {
+                    AnimatedThemeGradient(colors: stops)
+                } else {
+                    LinearGradient(colors: stops,
+                                   startPoint: .topLeading, endPoint: .bottomTrailing)
+                }
             }
             VStack(spacing: 4) {
                 Text(item.name)
