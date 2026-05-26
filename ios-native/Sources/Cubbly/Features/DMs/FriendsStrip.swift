@@ -9,6 +9,7 @@ final class FriendsStripCache: ObservableObject {
     static let shared = FriendsStripCache()
     @Published var friends: [FriendEntry] = []
     @Published var lastLoaded: Date?
+    @Published var loading: Bool = false
     private init() {}
 }
 
@@ -18,26 +19,27 @@ struct FriendsStrip: View {
     @ObservedObject private var cache = FriendsStripCache.shared
     @ObservedObject private var convCache = ConversationsCache.shared
 
-    /// Called with the conversation to open. If the friend has no existing
-    /// DM, `onNoExistingDM` is invoked so the host can show the new-chat sheet.
     var onOpen: (ConversationSummary) -> Void
     var onNoExistingDM: (Profile) -> Void
 
     var body: some View {
-        Group {
-            if !sorted.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) {
-                        ForEach(sorted, id: \.id) { entry in
-                            FriendTile(profile: entry.profile)
-                                .onTapGesture { tap(entry.profile) }
-                        }
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                if sorted.isEmpty && cache.loading {
+                    ForEach(0..<6, id: \.self) { _ in ShimmerTile() }
+                } else if sorted.isEmpty {
+                    AddFriendsTile { onNoExistingDM(.placeholder) }
+                } else {
+                    ForEach(sorted, id: \.id) { entry in
+                        FriendTile(profile: entry.profile)
+                            .onTapGesture { tap(entry.profile) }
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 4)
                 }
             }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
         }
+        .frame(height: 92)
         .task { await load() }
     }
 
@@ -64,12 +66,16 @@ struct FriendsStrip: View {
 
     private func load() async {
         guard let me = session.currentUserID else { return }
-        // Show cached instantly; refresh silently in the background.
         if let last = cache.lastLoaded, Date().timeIntervalSince(last) < 30 { return }
-        if let list = try? await FriendsRepository().listMine(currentUserID: me) {
+        cache.loading = true
+        do {
+            let list = try await FriendsRepository().listMine(currentUserID: me)
             cache.friends = list
             cache.lastLoaded = Date()
+        } catch {
+            print("[FriendsStrip] load failed:", error)
         }
+        cache.loading = false
     }
 }
 
@@ -108,5 +114,75 @@ private struct FriendTile: View {
                 .frame(width: 68)
         }
         .contentShape(Rectangle())
+    }
+}
+
+private struct ShimmerTile: View {
+    @State private var phase: CGFloat = 0
+    var body: some View {
+        VStack(spacing: 4) {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Theme.Colors.bgSecondary)
+                .frame(width: 64, height: 64)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(LinearGradient(
+                            colors: [.clear, Theme.Colors.bgTertiary.opacity(0.6), .clear],
+                            startPoint: .leading, endPoint: .trailing))
+                        .offset(x: phase)
+                        .mask(RoundedRectangle(cornerRadius: 16))
+                )
+            RoundedRectangle(cornerRadius: 4)
+                .fill(Theme.Colors.bgSecondary)
+                .frame(width: 48, height: 8)
+        }
+        .onAppear {
+            withAnimation(.linear(duration: 1.2).repeatForever(autoreverses: false)) {
+                phase = 80
+            }
+        }
+    }
+}
+
+private struct AddFriendsTile: View {
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Theme.Colors.bgSecondary)
+                        .frame(width: 64, height: 64)
+                    Image(systemName: "person.crop.circle.badge.plus")
+                        .font(.system(size: 24, weight: .semibold))
+                        .foregroundStyle(Theme.Colors.primary)
+                }
+                Text("Add friends")
+                    .font(.cubbly(10, .semibold))
+                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .lineLimit(1)
+                    .frame(width: 68)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private extension Profile {
+    /// Sentinel used only to satisfy the `onNoExistingDM(Profile)` signature
+    /// when invoked from the empty-state "Add friends" tile.
+    static var placeholder: Profile {
+        Profile(
+            id: UUID(),
+            userID: UUID(),
+            username: "",
+            displayName: "",
+            avatarURL: nil,
+            bannerURL: nil,
+            bio: nil,
+            status: "offline",
+            createdAt: Date(),
+            updatedAt: Date()
+        )
     }
 }

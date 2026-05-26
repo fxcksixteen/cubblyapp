@@ -14,7 +14,7 @@
                         <rect key="frame" x="0.0" y="0.0" width="393" height="852"/>
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                         <subviews>
-                            <imageView clipsSubviews="YES" userInteractionEnabled="NO" contentMode="scaleAspectFit" image="cubbly-logo" translatesAutoresizingMaskIntoConstraints="NO" id="Lgo-aQ-aLg">
+                            <imageView clipsSubviews="YES" userInteractionEnabled="NO" contentMode="scaleAspectFit" image="cubbly-nobg" translatesAutoresizingMaskIntoConstraints="NO" id="Lgo-aQ-aLg">
                                 <rect key="frame" x="126.5" y="376" width="140" height="140"/>
                                 <constraints>
                                     <constraint firstAttribute="height" constant="140" id="HH1-aw-001"/>
@@ -36,6 +36,6 @@
         </scene>
     </scenes>
     <resources>
-        <image name="cubbly-logo" width="140" height="140"/>
+        <image name="cubbly-nobg" width="140" height="140"/>
     </resources>
 </document>

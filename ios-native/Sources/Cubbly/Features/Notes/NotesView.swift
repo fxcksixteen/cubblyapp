@@ -34,6 +34,7 @@ private struct LockScreen: View {
     @State private var busy = false
     @State private var shake = false
     @State private var errorText: String?
+    @FocusState private var pinFocused: Bool
 
     private var setup: Bool { (store.hasExistingVault ?? false) == false }
 
@@ -61,18 +62,28 @@ private struct LockScreen: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 28)
 
-            PinDots(value: step == 1 ? pin : confirmPin)
-                .offset(x: shake ? -10 : 0)
-                .animation(.default.repeatCount(3, autoreverses: true).speed(6), value: shake)
+            ZStack {
+                // Invisible but real first-responder field sized to cover the
+                // dots so tapping anywhere on the row opens the keyboard.
+                TextField("", text: step == 1 ? $pin : $confirmPin)
+                    .keyboardType(.numberPad)
+                    .textContentType(.oneTimeCode)
+                    .focused($pinFocused)
+                    .foregroundStyle(.clear)
+                    .tint(.clear)
+                    .accentColor(.clear)
+                    .frame(width: 220, height: 44)
+                    .opacity(0.02)
+                    .onChange(of: pin) { _, v in onPinChange(v, isConfirm: false) }
+                    .onChange(of: confirmPin) { _, v in onPinChange(v, isConfirm: true) }
 
-            // Hidden numeric pad
-            TextField("", text: step == 1 ? $pin : $confirmPin)
-                .keyboardType(.numberPad)
-                .textContentType(.oneTimeCode)
-                .frame(width: 1, height: 1)
-                .opacity(0.02)
-                .onChange(of: pin) { _, v in onPinChange(v, isConfirm: false) }
-                .onChange(of: confirmPin) { _, v in onPinChange(v, isConfirm: true) }
+                PinDots(value: step == 1 ? pin : confirmPin)
+                    .offset(x: shake ? -10 : 0)
+                    .animation(.default.repeatCount(3, autoreverses: true).speed(6), value: shake)
+                    .allowsHitTesting(false)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture { pinFocused = true }
 
             Toggle(isOn: $trust) {
                 Label("Trust this device — skip PIN next time", systemImage: "checkmark.shield.fill")
@@ -94,6 +105,12 @@ private struct LockScreen: View {
                 .padding(.bottom, 18)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { pinFocused = true }
+        }
+        .onChange(of: step) { _, _ in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { pinFocused = true }
+        }
     }
 
     private func onPinChange(_ v: String, isConfirm: Bool) {
