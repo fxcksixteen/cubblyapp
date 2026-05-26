@@ -147,6 +147,44 @@ Deno.serve(async (req) => {
       });
     }
 
+    // ── Persistent cache lookup ────────────────────────────────────────────
+    // Hash the normalized URL so we don't store URLs of unbounded length as
+    // primary keys. 30-day TTL — long enough that chat scroll is essentially
+    // free, short enough that stale OG cards eventually refresh.
+    const normalizedUrl = parsed.toString();
+    const hashBuf = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(normalizedUrl),
+    );
+    const urlHash = Array.from(new Uint8Array(hashBuf))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+
+    const admin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+    const TTL_MS = 30 * 24 * 60 * 60 * 1000;
+    const cutoff = new Date(Date.now() - TTL_MS).toISOString();
+    const { data: cached } = await admin
+      .from("link_previews")
+      .select("title, description, image, site_name, fetched_at")
+      .eq("url_hash", urlHash)
+      .gte("fetched_at", cutoff)
+      .maybeSingle();
+    if (cached) {
+      return new Response(
+        JSON.stringify({
+          title: cached.title,
+          description: cached.description,
+          image: cached.image,
+          siteName: cached.site_name,
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+
     // Fetch with a sane UA + 5s timeout, cap body to 512KB.
     // Manually follow up to 5 redirects, validating each hop against the SSRF block list.
     const controller = new AbortController();
@@ -237,10 +275,31 @@ Deno.serve(async (req) => {
     const siteName = pickMeta(html, "og:site_name") || parsed.hostname.replace(/^www\./, "");
     if (image) image = absolutize(image, parsed.toString());
 
+    // Best-effort upsert into the persistent cache so the next request for
+    // this URL skips the upstream fetch + HTML parse entirely.
+    admin
+      .from("link_previews")
+      .upsert(
+        {
+          url_hash: urlHash,
+          url: normalizedUrl,
+          title: title ?? null,
+          description: description ?? null,
+          image: image ?? null,
+          site_name: siteName ?? null,
+          fetched_at: new Date().toISOString(),
+        },
+        { onConflict: "url_hash" },
+      )
+      .then(({ error }) => {
+        if (error) console.warn("[link-preview] cache upsert failed:", error.message);
+      });
+
     return new Response(
       JSON.stringify({ title, description, image, siteName }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
+
   } catch (e) {
     console.error("[link-preview] error:", e);
     return new Response(JSON.stringify({ error: "Failed to fetch preview" }), {
