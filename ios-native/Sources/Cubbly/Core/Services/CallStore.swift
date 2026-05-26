@@ -222,34 +222,48 @@ final class CallStore: ObservableObject {
     /// created. This is what makes "Join" actually meet the other person.
     /// - Returns: true if we joined an existing live call, false if there
     ///   wasn't one (caller should fall back to startCall).
-    func tryJoinExisting(conversationId convId: UUID, peerId: UUID, peerName: String, peerAvatarUrl: String?) async -> Bool {
+    func tryJoinExisting(conversationId convId: UUID, peerId: UUID, peerName: String, peerAvatarUrl: String?, preferredCallEventId: UUID? = nil) async -> Bool {
         guard state == .idle, let signaling = signaling else { return false }
         let client = SupabaseManager.shared.client
         let myId: UUID
         do { myId = try await client.auth.user().id } catch { return false }
 
-        // 1. Find the most recent ongoing call_event for this conversation.
-        struct EvtRow: Decodable { let id: UUID; let started_at: Date }
+        // 1. Prefer the EXACT call_event the user tapped (from the chat pill).
+        //    Falling back to "most recent ongoing" is what caused Join to
+        //    occasionally land in the wrong (or a brand-new) call.
+        struct EvtRow: Decodable { let id: UUID; let started_at: Date; let state: String }
         var existing: EvtRow? = nil
-        do {
-            let rows: [EvtRow] = try await client.from("call_events")
-                .select("id,started_at")
-                .eq("conversation_id", value: convId.uuidString)
-                .eq("state", value: "ongoing")
-                .order("started_at", ascending: false)
-                .limit(1)
-                .execute()
-                .value
-            existing = rows.first
-        } catch {
-            print("[Call] tryJoinExisting lookup failed:", error)
+        if let pref = preferredCallEventId {
+            do {
+                let rows: [EvtRow] = try await client.from("call_events")
+                    .select("id,started_at,state")
+                    .eq("id", value: pref.uuidString)
+                    .limit(1)
+                    .execute()
+                    .value
+                if let r = rows.first, r.state == "ongoing" { existing = r }
+            } catch {
+                print("[Call] preferred call_event lookup failed:", error)
+            }
+        }
+        if existing == nil {
+            do {
+                let rows: [EvtRow] = try await client.from("call_events")
+                    .select("id,started_at,state")
+                    .eq("conversation_id", value: convId.uuidString)
+                    .eq("state", value: "ongoing")
+                    .order("started_at", ascending: false)
+                    .limit(1)
+                    .execute()
+                    .value
+                existing = rows.first
+            } catch {
+                print("[Call] tryJoinExisting lookup failed:", error)
+            }
         }
         guard let evt = existing else { return false }
 
-        // 2. Confirm at least one non-self peer is FRESHLY live: left_at IS
-        //    NULL **AND** last_seen_at within the last 30s. A row that hasn't
-        //    heartbeated in over 30s is treated as a ghost (closed laptop,
-        //    crashed tab, etc.) and DOES NOT count.
+        // 2. Confirm at least one non-self peer is FRESHLY live.
         struct PartRow: Decodable { let user_id: UUID; let last_seen_at: Date?; let left_at: Date? }
         var live: [PartRow] = []
         do {
@@ -268,9 +282,6 @@ final class CallStore: ObservableObject {
             (row.last_seen_at == nil || row.last_seen_at! > freshCutoff)
         }
         if !otherActive {
-            // Stale event — force-close it via the RPC so any straggler rows
-            // are also marked left, then signal failure so caller starts a
-            // fresh call instead of joining a ghost.
             _ = try? await client.rpc("end_call_event_if_stale", params: ["_call_event_id": evt.id.uuidString]).execute()
             return false
         }
@@ -736,9 +747,36 @@ final class CallStore: ObservableObject {
 
         case .readyForOffer:
             // A peer joined via "Join" pill while we were already in this
-            // call — send them a fresh offer (no re-ring). They'll answer.
-            Task { await sendFreshOfferForJoiner() }
+            // call. Always treat this as a fresh negotiation request — if
+            // the prior SDP exchange stalled (callee never received the
+            // earlier offer because the channel was joining mid-broadcast,
+            // for example) the new ready-for-offer is how we recover.
+            Task { await respondToPeerJoining() }
         }
+    }
+
+    /// Resets per-peer state and sends a brand-new offer over the call
+    /// channel. Used whenever a peer asks us for an offer via
+    /// `ready-for-offer`. Idempotent within a 1.5s window so retries from
+    /// the joining peer don't kick a thousand renegotiations.
+    private var lastJoinerOfferSentAt: Date = .distantPast
+    private func respondToPeerJoining() async {
+        if Date().timeIntervalSince(lastJoinerOfferSentAt) < 1.0 {
+            print("[Call] ⏭ ready-for-offer ignored — sent a fresh offer <1s ago")
+            return
+        }
+        lastJoinerOfferSentAt = Date()
+
+        // If we're connected, just renegotiate over the existing client.
+        // If we never got an answer (call still in .calling), tear down
+        // the stale voiceClient so the joiner gets a clean handshake.
+        if state != .connected {
+            voiceClient?.close()
+            voiceClient = nil
+            pendingRemoteIce.removeAll()
+        }
+        sdpExchangeStarted = false
+        await sendFreshOfferForJoiner()
     }
 
     /// Build a new offer and broadcast it on the per-call channel. Used when
@@ -746,12 +784,8 @@ final class CallStore: ObservableObject {
     /// caller-side fallback when no `ready-for-offer` arrives.
     private func sendFreshOfferForJoiner() async {
         guard let signaling = signaling else { return }
-        // De-dup: if we already started the SDP exchange (sent or received an
-        // offer), don't fire a second one — that resets the PC state.
         if sdpExchangeStarted { return }
         sdpExchangeStarted = true
-        // If we already have a voice client (we were the original caller),
-        // renegotiate over it. Otherwise build a new one.
         let voice: WebRTCClient
         if let existing = voiceClient {
             voice = existing
