@@ -3,7 +3,7 @@ import SwiftUI
 /// Bottom tab bar — pixel-matches `MobileBottomNav.tsx` from the PWA, using
 /// the actual Cubbly SVG icons via SVGKit.
 struct MainTabView: View {
-    enum Tab: Hashable { case home, friends, shop, you }
+    enum Tab: Hashable { case home, friends, notes, shop, you }
     @State private var selection: Tab = .home
     @StateObject private var presence = PresenceService.shared
     @ObservedObject private var callStore = CallStore.shared
@@ -28,6 +28,7 @@ struct MainTabView: View {
                     switch selection {
                     case .home:    DMListView()
                     case .friends: FriendsView()
+                    case .notes:   NotesView()
                     case .shop:    ShopView()
                     case .you:     YouView()
                     }
@@ -92,6 +93,7 @@ private struct CubblyTabBar: View {
         HStack(spacing: 0) {
             tab(.home,    label: "Home",    icon: "home")
             tab(.friends, label: "Friends", icon: "friends")
+            tab(.notes,   label: "Notes",   icon: "notes", systemFallback: "lock.shield.fill")
             tab(.shop,    label: "Shop",    icon: "shop")
             tab(.you,     label: "You",     icon: "settings")
         }
