@@ -274,6 +274,11 @@ const AppLayout = () => {
   });
 
   const renderHeader = () => {
+    if (isServerRoute) {
+      // ServerView has its own server-name + channel-list chrome. The top
+      // bar above it should NOT show the friends tabs.
+      return null;
+    }
     if (isShop) {
       return <span className="font-semibold" style={{ color: "var(--app-text-primary)" }}>Shop</span>;
     }
