@@ -206,8 +206,10 @@
   100% { opacity: 0;  transform: translate(-115vw, 70vh) rotate(-28deg); }
 }
 
-[data-theme="space"] [role="dialog"],
-[data-theme="space"] [data-radix-popper-content-wrapper] { z-index: 1000 !important; }
+/* (Removed: blanket [data-theme="space"] [role="dialog"] z-index override —
+   it forced every dialog to the same layer, causing the What's New panel to
+   render below the Settings modal. Modals manage their own z layers now.) */
+
 
 /* ── Sky / Snowy / Hills animated themes ─────────────────────────────────
    Same isolation pattern as Space: only the ROOT app surface (`.h-screen`)
