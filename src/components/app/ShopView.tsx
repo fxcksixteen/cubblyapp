@@ -388,6 +388,32 @@ const ShopView = () => {
         @keyframes shopSpaceDrift { from{background-position:0 0} to{background-position:-200px 0} }
         .shop-space-preview-shoot::after { content:""; position:absolute; top:18%; left:-30%; width:70px; height:1.5px; background:linear-gradient(90deg, transparent, rgba(255,255,255,.95)); border-radius:999px; transform:rotate(-22deg); filter: drop-shadow(0 0 4px rgba(255,255,255,.8)); animation: shopSpaceShoot 4.5s ease-in infinite; }
         @keyframes shopSpaceShoot { 0%{opacity:0; transform:translate(0,0) rotate(-22deg);} 10%{opacity:1;} 60%{opacity:1;} 100%{opacity:0; transform:translate(180%, 60%) rotate(-22deg);} }
+
+        /* Sky preview clouds */
+        .shop-sky-cloud { position:absolute; left:-40%; width:60%; height:14px; border-radius:999px;
+          background: radial-gradient(ellipse at 30% 60%, rgba(255,255,255,0.85), rgba(255,255,255,0.25) 60%, transparent 75%);
+          filter: blur(3px); animation: shopSkyDrift linear infinite; }
+        @keyframes shopSkyDrift { from { transform: translateX(0) } to { transform: translateX(260%) } }
+
+        /* Snowy preview falling flakes */
+        .shop-snow-layer { background-image:
+            radial-gradient(1.5px 1.5px at 12px 18px,#fff,transparent),
+            radial-gradient(1px 1px at 48px 60px,#fff,transparent),
+            radial-gradient(1.5px 1.5px at 90px 30px,#fff,transparent),
+            radial-gradient(1px 1px at 130px 80px,#fff,transparent),
+            radial-gradient(2px 2px at 60px 100px,#fff,transparent);
+          background-size: 160px 120px; opacity: 0.9; animation: shopSnowFall 3.2s linear infinite; }
+        @keyframes shopSnowFall { from { background-position: 0 -120px } to { background-position: 0 0 } }
+
+        /* Hills preview stars */
+        .shop-hills-stars { background-image:
+            radial-gradient(0.8px 0.8px at 18px 10px,#fff,transparent),
+            radial-gradient(0.8px 0.8px at 60px 22px,#fff,transparent),
+            radial-gradient(1px 1px at 110px 8px,#fff,transparent),
+            radial-gradient(0.6px 0.6px at 160px 26px,rgba(200,210,255,.9),transparent),
+            radial-gradient(0.8px 0.8px at 200px 14px,#fff,transparent);
+          background-size: 240px 60px; opacity: 0.85; animation: shopHillsTwinkle 4s ease-in-out infinite; }
+        @keyframes shopHillsTwinkle { 0%,100%{opacity:.55} 50%{opacity:.95} }
       `}</style>
 
       {/* Banner ads */}
