@@ -228,12 +228,9 @@
 [data-theme="hills"] .app-themed.h-screen .sidebar-primary,
 [data-theme="hills"] .app-themed.h-screen .sidebar-tertiary,
 [data-theme="hills"] .app-themed.h-screen .user-panel { background-color: rgba(10, 16, 30, 0.72); backdrop-filter: blur(8px); }
-[data-theme="sky"] .app-themed.h-screen > *,
-[data-theme="snowy"] .app-themed.h-screen > *,
-[data-theme="hills"] .app-themed.h-screen > * { position: relative; z-index: 1; }
 
 /* Sky — drifting clouds over soft dusk gradient */
-.cb-sky-bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+.cb-sky-bg { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden;
   background: linear-gradient(180deg, #1a3a6e 0%, #3a5a8e 35%, #6b7fa8 65%, #d4a373 100%); }
 .cb-sky-cloud { position: absolute; height: 60px; width: 220px; border-radius: 999px;
   background: radial-gradient(ellipse at 30% 60%, rgba(255,255,255,0.65), rgba(255,255,255,0.18) 60%, transparent 75%);
