@@ -11,7 +11,7 @@ enum ProfilePhotoUploader {
     static func upload(item: PhotosPickerItem, kind: Kind, userID: UUID) async -> String? {
         do {
             guard let raw = try await item.loadTransferable(type: Data.self) else { return nil }
-            let data = compress(raw)
+            let data = compress(raw, kind: kind)
             let prefix = kind == .avatar ? "avatar" : "banner"
             let path = "\(userID.uuidString)/\(prefix)-\(Int(Date().timeIntervalSince1970 * 1000)).jpg"
             let client = SupabaseManager.shared.client
@@ -32,14 +32,16 @@ enum ProfilePhotoUploader {
     }
 
     /// Re-encode HEIC / large images down to a reasonable JPEG so we don't
-    /// blow up bandwidth or the 50MB Supabase Storage limit.
-    private static func compress(_ data: Data) -> Data {
+    /// blow up bandwidth or the 50MB Supabase Storage limit. Avatars are
+    /// rendered tiny (≤80pt) so 512px is plenty; banners get more room.
+    private static func compress(_ data: Data, kind: Kind) -> Data {
         guard let img = UIImage(data: data) else { return data }
-        let maxSide: CGFloat = 1600
+        let maxSide: CGFloat = kind == .avatar ? 512 : 1280
+        let quality: CGFloat = kind == .avatar ? 0.8 : 0.82
         let scale = min(1, maxSide / max(img.size.width, img.size.height))
         let target = CGSize(width: img.size.width * scale, height: img.size.height * scale)
         let renderer = UIGraphicsImageRenderer(size: target)
         let resized = renderer.image { _ in img.draw(in: CGRect(origin: .zero, size: target)) }
-        return resized.jpegData(compressionQuality: 0.85) ?? data
+        return resized.jpegData(compressionQuality: quality) ?? data
     }
 }

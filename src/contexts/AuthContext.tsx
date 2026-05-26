@@ -161,12 +161,34 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     heartbeat();
     fetchOnline();
     const heartbeatInterval = window.setInterval(heartbeat, 30_000);
-    // Cost: was 20s, but status indicators don't need sub-minute accuracy.
-    // The realtime profile-UPDATE watcher used to refresh this on every
-    // remote heartbeat — it caused O(N²) RPCs across signed-in clients and
-    // was removed in the v0.1.7 backend cleanup. We rely on the timer +
-    // wake events (focus/online/visibility) instead.
-    const pollInterval = window.setInterval(fetchOnline, 60_000);
+    // 30s polling for the authoritative online set. The realtime listener
+    // below makes status changes feel instant; polling is the safety net.
+    const pollInterval = window.setInterval(fetchOnline, 30_000);
+
+    // Realtime: profile UPDATEs → refresh the online set quickly when
+    // someone flips status (online ↔ idle ↔ dnd ↔ invisible).
+    // SAFE COST-WISE: profiles.last_seen_at is no longer written by the
+    // heartbeat (v0.1.7 cleanup), so this channel only fires on actual
+    // user-driven status/avatar edits — a handful of events per user per
+    // day, not 1/30s. Debounced so rapid bursts coalesce.
+    const scheduleRefresh = () => {
+      if (pendingDebounce != null) return;
+      pendingDebounce = window.setTimeout(() => {
+        pendingDebounce = null;
+        fetchOnline();
+      }, 400);
+    };
+    const profilesTopic = `presence-profiles:${user.id}`;
+    const cleanupProfiles = subscribeWithReconnect(profilesTopic, () => {
+      removeChannelByTopic(profilesTopic);
+      const ch = supabase.channel(profilesTopic);
+      ch.on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "profiles" },
+        scheduleRefresh
+      );
+      return ch;
+    });
 
     const onWake = () => { heartbeat(); fetchOnline(); };
     window.addEventListener("focus", onWake);
@@ -179,6 +201,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       window.clearInterval(heartbeatInterval);
       window.clearInterval(pollInterval);
       if (pendingDebounce != null) window.clearTimeout(pendingDebounce);
+      cleanupProfiles();
       window.removeEventListener("focus", onWake);
       window.removeEventListener("online", onWake);
       document.removeEventListener("visibilitychange", onWake);
