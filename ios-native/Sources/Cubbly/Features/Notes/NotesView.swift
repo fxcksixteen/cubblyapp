@@ -296,14 +296,14 @@ private struct NoteEditorView: View {
                 .padding(.horizontal, 16).padding(.top, 12)
                 .onChange(of: title) { _, _ in scheduleSave() }
             Divider().padding(.vertical, 8)
-            TextEditor(text: $body)
+            TextEditor(text: $noteBody)
                 .font(.cubbly(15))
                 .foregroundStyle(Theme.Colors.textPrimary)
                 .scrollContentBackground(.hidden)
                 .background(Theme.Colors.bgPrimary)
                 .padding(.horizontal, 12)
                 .focused($bodyFocused)
-                .onChange(of: body) { _, _ in scheduleSave() }
+                .onChange(of: noteBody) { _, _ in scheduleSave() }
         }
         .background(Theme.Colors.bgPrimary)
         .navigationBarTitleDisplayMode(.inline)
