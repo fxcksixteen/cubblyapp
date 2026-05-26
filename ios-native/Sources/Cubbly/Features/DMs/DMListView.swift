@@ -505,8 +505,8 @@ struct DMSidebarPreview: View {
 // MARK: - Personal Notes row
 
 /// Single tappable row above the conversation list that opens the user's
-/// encrypted personal notes. Mirrors the web/desktop sidebar entry: lives
-/// directly under the search bar, above all chats.
+/// encrypted personal notes. Mirrors the Discord-iOS "Personal Notes" entry:
+/// circular icon tile + title only, no card chrome, full-width tap target.
 struct PersonalNotesRow: View {
     var action: () -> Void
 
@@ -514,40 +514,21 @@ struct PersonalNotesRow: View {
         Button(action: action) {
             HStack(spacing: 12) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [Theme.Colors.primary, Theme.Colors.primary.opacity(0.7)],
-                                startPoint: .topLeading, endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 44, height: 44)
-                    SVGIcon(name: "notes", size: 22, tint: .white)
+                    Circle()
+                        .fill(Theme.Colors.bgTertiary)
+                        .frame(width: 40, height: 40)
+                    SVGIcon(name: "notes", size: 20, tint: Theme.Colors.textPrimary)
                 }
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Personal Notes")
-                        .font(Theme.Fonts.bodyMedium)
-                        .foregroundStyle(Theme.Colors.textPrimary)
-                        .lineLimit(1)
-                    Text("Your private, end-to-end encrypted space")
-                        .font(Theme.Fonts.bodySmall)
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                        .lineLimit(1)
-                }
+                Text("Personal Notes")
+                    .font(Theme.Fonts.bodyMedium)
+                    .foregroundStyle(Theme.Colors.textPrimary)
+                    .lineLimit(1)
 
                 Spacer(minLength: 8)
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Theme.Colors.textMuted)
             }
-            .padding(.vertical, 8)
-            .padding(.horizontal, 10)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Theme.Colors.bgTertiary)
-            )
+            .padding(.vertical, 10)
+            .padding(.horizontal, 12)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
