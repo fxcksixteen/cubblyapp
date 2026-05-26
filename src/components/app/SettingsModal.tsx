@@ -602,10 +602,10 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
 
   // === MOBILE: Discord-style full-screen sheet with two-pane navigation ===
   if (isMobile) {
-    return (
+    return createPortal(
       <div
         ref={backdropRef}
-        className="app-themed fixed inset-0 z-50 transition-all duration-200 ease-out"
+        className="app-themed fixed inset-0 z-[1000] transition-all duration-200 ease-out"
         style={{
           backgroundColor: animating ? "var(--app-bg-primary)" : "rgba(0,0,0,0)",
           opacity: animating ? 1 : 0,
