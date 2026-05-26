@@ -23,9 +23,21 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.3.6";
+export const CURRENT_VERSION = "0.3.7";
 
 export const CHANGELOG: ChangelogEntry[] = [
+
+  {
+    version: "0.3.7",
+    title: "Hotfix: call pills and notes attachments",
+    date: "2026-05-26",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Fixed web/desktop call pills immediately flipping to 'Call Ended 00:00' when a call starts. The chat UI no longer fake-converts extra ongoing call rows into ended pills, and the call startup path now creates the call event before heartbeating the participant row so cleanup checks can't race the new call closed.",
+      "Personal Notes attachments now recover storage paths from legacy signed URLs too, so old note images/files saved with url/signedUrl metadata show up again instead of disappearing from the attachment strip.",
+    ],
+  },
 
   {
     version: "0.3.6",
