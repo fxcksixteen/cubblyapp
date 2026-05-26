@@ -37,9 +37,14 @@ struct DMListView: View {
                     searchBar
                         .padding(.horizontal, 12)
                         .padding(.bottom, 8)
+                    FriendsStrip(
+                        onOpen: { conv in openConversation = conv },
+                        onNoExistingDM: { _ in showNewChat = true }
+                    )
+                    .environmentObject(session)
+                    .environmentObject(presence)
                     PersonalNotesRow { showNotes = true }
-                        .padding(.horizontal, 12)
-                        .padding(.bottom, 8)
+                        .padding(.bottom, 4)
                     content
                 }
                 .frame(maxWidth: .infinity)
@@ -96,18 +101,30 @@ struct DMListView: View {
                 }
             }
             .refreshable { await load(silently: false) }
-            .horizontalSwipe(
-                left: {
-                    if let id = lastChat.lastConversationID,
-                       let conv = cache.conversations.first(where: { $0.id == id }) {
-                        openConversation = conv
-                    }
-                },
-                leftPreview: { ChatThreadPreview() },
-                rightPreview: { Color.clear }
-            )
+            // Right-edge-only swipe to re-open last chat. Tiny start zone
+            // (rightmost 24pt) so it never fights the vertical scroll of
+            // the DM list or the friends strip.
+            .overlay(alignment: .trailing) {
+                Color.clear
+                    .frame(width: 24)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 20)
+                            .onEnded { value in
+                                let dx = value.translation.width
+                                let predicted = value.predictedEndTranslation.width
+                                guard dx < -50 || predicted < -160 else { return }
+                                guard abs(value.translation.height) < 60 else { return }
+                                if let id = lastChat.lastConversationID,
+                                   let conv = cache.conversations.first(where: { $0.id == id }) {
+                                    openConversation = conv
+                                }
+                            }
+                    )
+            }
         }
     }
+
 
     private var header: some View {
         HStack {
