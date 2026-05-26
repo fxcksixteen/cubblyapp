@@ -213,7 +213,7 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
           <div className="flex items-center gap-1.5">
             <Monitor className="h-3.5 w-3.5" style={{ color: "#3ba55c" }} />
             <span className="text-[11px] font-semibold" style={{ color: "#3ba55c" }}>
-              {isScreenSharing ? "You're sharing" : "Screen shared"}
+              {isScreenSharing && remoteScreenStream ? "Both sharing" : isScreenSharing ? "You're sharing" : "Screen shared"}
             </span>
           </div>
         )}
