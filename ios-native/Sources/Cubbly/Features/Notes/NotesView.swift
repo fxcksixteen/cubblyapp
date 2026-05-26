@@ -281,7 +281,7 @@ private struct NoteEditorView: View {
     @ObservedObject var store: NotesStore
     let noteID: UUID
     @State private var title: String = ""
-    @State private var body: String = ""
+    @State private var noteBody: String = ""
     @State private var loaded = false
     @State private var saveTask: Task<Void, Never>?
     @FocusState private var bodyFocused: Bool
@@ -296,14 +296,14 @@ private struct NoteEditorView: View {
                 .padding(.horizontal, 16).padding(.top, 12)
                 .onChange(of: title) { _, _ in scheduleSave() }
             Divider().padding(.vertical, 8)
-            TextEditor(text: $body)
+            TextEditor(text: $noteBody)
                 .font(.cubbly(15))
                 .foregroundStyle(Theme.Colors.textPrimary)
                 .scrollContentBackground(.hidden)
                 .background(Theme.Colors.bgPrimary)
                 .padding(.horizontal, 12)
                 .focused($bodyFocused)
-                .onChange(of: body) { _, _ in scheduleSave() }
+                .onChange(of: noteBody) { _, _ in scheduleSave() }
         }
         .background(Theme.Colors.bgPrimary)
         .navigationBarTitleDisplayMode(.inline)
@@ -333,27 +333,27 @@ private struct NoteEditorView: View {
         if loaded { return }
         guard let n = note, let dec = n.decrypted else { return }
         title = dec.title
-        body = htmlToText(dec.body)
+        noteBody = htmlToText(dec.body)
         loaded = true
     }
 
     private func scheduleSave() {
         guard loaded else { return }
         saveTask?.cancel()
-        saveTask = Task { [title, body] in
+        saveTask = Task { [title, noteBody] in
             try? await Task.sleep(nanoseconds: 700_000_000)
             if Task.isCancelled { return }
             await NotesStore.shared.updateNote(id: noteID, plain: NotePlaintext(
-                title: title, body: textToHtml(body)
+                title: title, body: textToHtml(noteBody)
             ))
         }
     }
 
     private func flushSave() {
         saveTask?.cancel()
-        Task { [title, body, noteID] in
+        Task { [title, noteBody, noteID] in
             await NotesStore.shared.updateNote(id: noteID, plain: NotePlaintext(
-                title: title, body: textToHtml(body)
+                title: title, body: textToHtml(noteBody)
             ))
         }
     }
