@@ -7,11 +7,19 @@ import Supabase
 /// Encrypted personal notes — server only ever sees ciphertext, salts, and
 /// the PIN verifier. Same wire format as `src/contexts/NotesContext.tsx` so
 /// notes round-trip between iOS, web, and desktop transparently.
+struct NoteAttachment: Codable, Equatable, Identifiable {
+    var id: String
+    var name: String
+    var mime: String
+    var size: Int
+    var storagePath: String
+    var iv: String
+}
+
 struct NotePlaintext: Codable, Equatable {
     var title: String
     var body: String
-    // Attachments deliberately omitted in v0.1.6 iOS — preserve unknown
-    // fields by storing the raw JSON if present (see NotesStore.decryptRow).
+    var attachments: [NoteAttachment]?
 }
 
 struct NoteRow: Identifiable, Equatable {
@@ -288,9 +296,44 @@ final class NotesStore: ObservableObject {
         }
     }
 
+    // MARK: - Attachments (encrypted blobs in `notes-attachments` bucket)
+
+    /// Encrypt raw bytes with the vault key and upload to Supabase Storage.
+    /// Returns metadata to attach to the note. Matches web shape exactly.
+    func uploadAttachment(data: Data, name: String, mime: String) async throws -> NoteAttachment {
+        guard let key = key, let uid = currentUserId else {
+            throw NSError(domain: "Notes", code: 10, userInfo: [NSLocalizedDescriptionKey: "Locked"])
+        }
+        let nonce = AES.GCM.Nonce()
+        let sealed = try AES.GCM.seal(data, using: key, nonce: nonce)
+        let iv = Data(sealed.nonce).base64EncodedString()
+        let cipherWithTag = sealed.ciphertext + sealed.tag
+        let id = UUID().uuidString
+        let storagePath = "\(uid.uuidString)/\(id).bin"
+        _ = try await client.storage.from("notes-attachments")
+            .upload(storagePath, data: cipherWithTag,
+                    options: FileOptions(contentType: "application/octet-stream", upsert: false))
+        return NoteAttachment(id: id, name: name, mime: mime, size: data.count,
+                              storagePath: storagePath, iv: iv)
+    }
+
+    /// Download + decrypt an attachment, returning the plaintext bytes.
+    func downloadAttachment(_ att: NoteAttachment) async throws -> Data {
+        guard let key = key else { throw NSError(domain: "Notes", code: 11) }
+        let raw = try await client.storage.from("notes-attachments").download(path: att.storagePath)
+        guard let ivData = Data(base64Encoded: att.iv), raw.count >= 16 else {
+            throw NSError(domain: "Notes", code: 12)
+        }
+        let cipher = raw.prefix(raw.count - 16)
+        let tag = raw.suffix(16)
+        let box = try AES.GCM.SealedBox(nonce: AES.GCM.Nonce(data: ivData), ciphertext: cipher, tag: tag)
+        return try AES.GCM.open(box, using: key)
+    }
+
     // MARK: - Keychain trusted-device storage
 
     private func keychainAccount(_ userId: UUID) -> String { "notes-key:\(userId.uuidString)" }
+
 
     private func writeTrustedKey(userId: UUID, key: SymmetricKey) {
         let raw = key.withUnsafeBytes { Data($0) }
