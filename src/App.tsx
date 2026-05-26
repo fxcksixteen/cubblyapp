@@ -25,7 +25,7 @@ import AppLayout from "./pages/AppLayout.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import UpdateModal from "./components/app/UpdateModal";
 import WhatsNewModal from "./components/app/WhatsNewModal";
-import GlobalCallIndicator from "./components/app/GlobalCallIndicator";
+
 import { GroupIncomingCallOverlay } from "./components/app/GroupCallPanel";
 import SpaceBackground from "./components/app/SpaceBackground";
 import { SkyBackground, SnowyBackground, HillsBackground } from "./components/app/ThemeBackgrounds";
@@ -75,7 +75,7 @@ const App = () => (
               </Routes>
               <UpdateModal />
               <WhatsNewModal />
-              <GlobalCallIndicator />
+              
               <GroupIncomingCallOverlay />
               </ServersProvider>
               </NotesProvider>

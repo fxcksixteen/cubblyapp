@@ -36,6 +36,8 @@ export const CHANGELOG: ChangelogEntry[] = [
     bugFixes: [
       "Fixed web/desktop call pills immediately flipping to 'Call Ended 00:00' when a call starts. The chat UI no longer fake-converts extra ongoing call rows into ended pills, and the call startup path now creates the call event before heartbeating the participant row so cleanup checks can't race the new call closed.",
       "Personal Notes attachments now recover storage paths from legacy signed URLs too, so old note images/files saved with url/signedUrl metadata show up again instead of disappearing from the attachment strip.",
+      "Server voice-channel calls no longer start with an elapsed timer of '1:29:00' (or any other huge number). Joining a server voice call now only inherits the existing started_at when another participant is actually freshly live; stale ghost call_events get closed and a brand-new event with a fresh start time is created instead.",
+      "Removed the floating bottom 'in-call' pill that appeared in the middle of the screen on web/desktop when you were on a call but not viewing that chat. The sidebar voice card + the call's own chat already cover this, and the floating pill was just adding noise.",
     ],
   },
 
