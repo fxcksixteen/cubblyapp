@@ -157,40 +157,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } catch {}
       finally { inflight = false; }
     };
-    // Debounced refetch — used by realtime triggers so a burst of
-    // last_seen_at updates only causes one round-trip.
-    const scheduleFetch = () => {
-      if (pendingDebounce != null) return;
-      pendingDebounce = window.setTimeout(() => {
-        pendingDebounce = null;
-        fetchOnline();
-      }, 400);
-    };
 
     heartbeat();
     fetchOnline();
     const heartbeatInterval = window.setInterval(heartbeat, 30_000);
-    const pollInterval = window.setInterval(fetchOnline, 20_000);
-
-    // Realtime: any profile row update (last_seen_at / status) instantly
-    // triggers a refetch so desktop and web converge without waiting for
-    // the next 20s poll. Profiles are already authenticated-readable, so
-    // RLS lets every signed-in client receive these change events.
-    const topic = `presence:profiles:${user.id}`;
-    removeChannelByTopic(topic);
-    const presenceChannel = supabase
-      .channel(topic)
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "profiles" },
-        () => scheduleFetch()
-      )
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "profiles" },
-        () => scheduleFetch()
-      )
-      .subscribe();
+    // Cost: was 20s, but status indicators don't need sub-minute accuracy.
+    // The realtime profile-UPDATE watcher used to refresh this on every
+    // remote heartbeat — it caused O(N²) RPCs across signed-in clients and
+    // was removed in the v0.1.7 backend cleanup. We rely on the timer +
+    // wake events (focus/online/visibility) instead.
+    const pollInterval = window.setInterval(fetchOnline, 60_000);
 
     const onWake = () => { heartbeat(); fetchOnline(); };
     window.addEventListener("focus", onWake);
@@ -203,8 +179,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       window.clearInterval(heartbeatInterval);
       window.clearInterval(pollInterval);
       if (pendingDebounce != null) window.clearTimeout(pendingDebounce);
-      try { supabase.removeChannel(presenceChannel); } catch {}
-      removeChannelByTopic(topic);
       window.removeEventListener("focus", onWake);
       window.removeEventListener("online", onWake);
       document.removeEventListener("visibilitychange", onWake);
@@ -212,6 +186,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setOnlineUserIds(new Set());
     };
   }, [session?.user?.id]);
+
 
   const signOut = async () => {
     const uid = session?.user?.id;
