@@ -14,6 +14,7 @@ export interface BadgeData {
   fg: string;
   glow?: string;
   label: string;
+  description?: string;
 }
 
 interface Ctx {
