@@ -1,4 +1,6 @@
 import SwiftUI
+import PhotosUI
+import AVKit
 
 /// Personal Notes — encrypted with the same PIN-derived key as web/desktop
 /// so the same vault is unlocked by the same PIN across every platform.
@@ -63,8 +65,6 @@ private struct LockScreen: View {
                 .padding(.horizontal, 28)
 
             ZStack {
-                // Invisible but real first-responder field sized to cover the
-                // dots so tapping anywhere on the row opens the keyboard.
                 TextField("", text: step == 1 ? $pin : $confirmPin)
                     .keyboardType(.numberPad)
                     .textContentType(.oneTimeCode)
@@ -114,7 +114,6 @@ private struct LockScreen: View {
     }
 
     private func onPinChange(_ v: String, isConfirm: Bool) {
-        // Sanitize to 4 digits.
         let digits = String(v.filter(\.isNumber).prefix(4))
         if isConfirm {
             if digits != confirmPin { confirmPin = digits }
@@ -127,10 +126,7 @@ private struct LockScreen: View {
 
     private func submitFirst(_ v: String) async {
         errorText = nil
-        if setup {
-            step = 2
-            return
-        }
+        if setup { step = 2; return }
         busy = true
         let ok = await store.unlock(pin: v, trust: trust)
         busy = false
@@ -150,11 +146,8 @@ private struct LockScreen: View {
             return
         }
         busy = true
-        do {
-            try await store.setupVault(pin: v, trust: trust)
-        } catch {
-            errorText = "Couldn't create vault"
-        }
+        do { try await store.setupVault(pin: v, trust: trust) }
+        catch { errorText = "Couldn't create vault" }
         busy = false
     }
 }
@@ -198,11 +191,12 @@ private struct NotesEditorScreen: View {
                 .listRowBackground(Color.clear)
             }
             ForEach(store.notes) { note in
-                // Only allow opening notes that actually decrypted — otherwise
-                // pushing a broken row pops back to the DM list (the "black
-                // screen, kicked back" bug).
                 if note.decrypted != nil {
-                    NavigationLink(value: note.id) {
+                    // Plain Button (not NavigationLink) so we only have ONE
+                    // navigationDestination registration on this screen —
+                    // prevents SwiftUI double-pushing (the "note opens,
+                    // then Personal Notes reopens on top" bug).
+                    Button { selectedID = note.id } label: {
                         NoteRowView(note: note)
                     }
                     .listRowBackground(Theme.Colors.bgSecondary)
@@ -255,9 +249,8 @@ private struct NotesEditorScreen: View {
                 }
             }
         }
-        .navigationDestination(for: UUID.self) { id in
-            NoteEditorView(store: store, noteID: id)
-        }
+        // Single destination registration — both row taps and the new-note
+        // button drive it via `selectedID`. Native iOS swipe-back pops it.
         .navigationDestination(item: $selectedID) { id in
             NoteEditorView(store: store, noteID: id)
         }
@@ -287,6 +280,14 @@ private struct NoteRowView: View {
                     .font(.cubbly(15, .semibold))
                     .foregroundStyle(Theme.Colors.textPrimary)
                     .lineLimit(1)
+                if let count = note.decrypted?.attachments?.count, count > 0 {
+                    Image(systemName: "paperclip")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Theme.Colors.textMuted)
+                    Text("\(count)")
+                        .font(.cubbly(11, .semibold))
+                        .foregroundStyle(Theme.Colors.textMuted)
+                }
             }
             Text(plainPreview(note.decrypted?.body ?? "") )
                 .font(.cubbly(12))
@@ -297,7 +298,6 @@ private struct NoteRowView: View {
     }
 
     private func plainPreview(_ html: String) -> String {
-        // Cheap HTML strip so web-formatted notes preview cleanly on iOS.
         var s = html
         s = s.replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
         s = s.replacingOccurrences(of: "&nbsp;", with: " ")
@@ -309,47 +309,82 @@ private struct NoteRowView: View {
     }
 }
 
+// MARK: - Note Editor (with attachments)
+
 private struct NoteEditorView: View {
     @ObservedObject var store: NotesStore
     let noteID: UUID
     @State private var title: String = ""
     @State private var noteBody: String = ""
+    @State private var attachments: [NoteAttachment] = []
     @State private var loaded = false
     @State private var saveTask: Task<Void, Never>?
+    @State private var pickerItems: [PhotosPickerItem] = []
+    @State private var uploading = false
+    @State private var previewVideoURL: IdentifiedURL?
+    @State private var previewImageData: IdentifiedData?
     @FocusState private var bodyFocused: Bool
 
     private var note: NoteRow? { store.notes.first(where: { $0.id == noteID }) }
 
     var body: some View {
-        VStack(spacing: 0) {
-            TextField("Title", text: $title)
-                .font(.cubbly(22, .bold))
-                .foregroundStyle(Theme.Colors.textPrimary)
-                .padding(.horizontal, 16).padding(.top, 12)
-                .onChange(of: title) { _, _ in scheduleSave() }
-            Divider().padding(.vertical, 8)
-            TextEditor(text: $noteBody)
-                .font(.cubbly(15))
-                .foregroundStyle(Theme.Colors.textPrimary)
-                .scrollContentBackground(.hidden)
-                .background(Theme.Colors.bgPrimary)
-                .padding(.horizontal, 12)
-                .focused($bodyFocused)
-                .onChange(of: noteBody) { _, _ in scheduleSave() }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                TextField("Title", text: $title)
+                    .font(.cubbly(22, .bold))
+                    .foregroundStyle(Theme.Colors.textPrimary)
+                    .padding(.horizontal, 16).padding(.top, 12)
+                    .onChange(of: title) { _, _ in scheduleSave() }
+                Divider().padding(.vertical, 8)
+
+                if !attachments.isEmpty {
+                    AttachmentsGrid(
+                        attachments: attachments,
+                        store: store,
+                        onImageTap: { previewImageData = IdentifiedData(id: UUID(), data: $0) },
+                        onVideoTap: { previewVideoURL = IdentifiedURL(id: UUID(), url: $0) },
+                        onRemove: { removeAttachment(id: $0) }
+                    )
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
+                }
+
+                TextEditor(text: $noteBody)
+                    .font(.cubbly(15))
+                    .foregroundStyle(Theme.Colors.textPrimary)
+                    .scrollContentBackground(.hidden)
+                    .background(Theme.Colors.bgPrimary)
+                    .frame(minHeight: 320)
+                    .padding(.horizontal, 12)
+                    .focused($bodyFocused)
+                    .onChange(of: noteBody) { _, _ in scheduleSave() }
+            }
         }
         .background(Theme.Colors.bgPrimary)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    Task {
-                        if let n = note {
-                            await store.togglePin(id: n.id, pinned: !n.pinned)
+                HStack(spacing: 12) {
+                    PhotosPicker(selection: $pickerItems,
+                                 maxSelectionCount: 5,
+                                 matching: .any(of: [.images, .videos])) {
+                        if uploading {
+                            ProgressView().tint(Theme.Colors.primary)
+                        } else {
+                            Image(systemName: "paperclip")
+                                .foregroundStyle(Theme.Colors.primary)
                         }
                     }
-                } label: {
-                    Image(systemName: (note?.pinned ?? false) ? "pin.fill" : "pin")
-                        .foregroundStyle((note?.pinned ?? false) ? .orange : Theme.Colors.textSecondary)
+                    Button {
+                        Task {
+                            if let n = note {
+                                await store.togglePin(id: n.id, pinned: !n.pinned)
+                            }
+                        }
+                    } label: {
+                        Image(systemName: (note?.pinned ?? false) ? "pin.fill" : "pin")
+                            .foregroundStyle((note?.pinned ?? false) ? .orange : Theme.Colors.textSecondary)
+                    }
                 }
             }
             ToolbarItemGroup(placement: .keyboard) {
@@ -359,6 +394,16 @@ private struct NoteEditorView: View {
         }
         .onAppear { loadIfNeeded() }
         .onDisappear { flushSave() }
+        .onChange(of: pickerItems) { _, items in
+            guard !items.isEmpty else { return }
+            Task { await ingest(items) }
+        }
+        .fullScreenCover(item: $previewVideoURL) { wrap in
+            InAppVideoPlayer(url: wrap.url)
+        }
+        .fullScreenCover(item: $previewImageData) { wrap in
+            ImagePreview(data: wrap.data)
+        }
     }
 
     private func loadIfNeeded() {
@@ -366,28 +411,55 @@ private struct NoteEditorView: View {
         guard let n = note, let dec = n.decrypted else { return }
         title = dec.title
         noteBody = htmlToText(dec.body)
+        attachments = dec.attachments ?? []
         loaded = true
     }
 
     private func scheduleSave() {
         guard loaded else { return }
         saveTask?.cancel()
-        saveTask = Task { [title, noteBody] in
+        let snapshot = NotePlaintext(title: title, body: textToHtml(noteBody),
+                                     attachments: attachments.isEmpty ? nil : attachments)
+        saveTask = Task {
             try? await Task.sleep(nanoseconds: 700_000_000)
             if Task.isCancelled { return }
-            await NotesStore.shared.updateNote(id: noteID, plain: NotePlaintext(
-                title: title, body: textToHtml(noteBody)
-            ))
+            await NotesStore.shared.updateNote(id: noteID, plain: snapshot)
         }
     }
 
     private func flushSave() {
         saveTask?.cancel()
-        Task { [title, noteBody, noteID] in
-            await NotesStore.shared.updateNote(id: noteID, plain: NotePlaintext(
-                title: title, body: textToHtml(noteBody)
-            ))
+        let snapshot = NotePlaintext(title: title, body: textToHtml(noteBody),
+                                     attachments: attachments.isEmpty ? nil : attachments)
+        Task { [noteID] in
+            await NotesStore.shared.updateNote(id: noteID, plain: snapshot)
         }
+    }
+
+    private func ingest(_ items: [PhotosPickerItem]) async {
+        uploading = true
+        defer {
+            uploading = false
+            pickerItems = []
+        }
+        for item in items {
+            guard let data = try? await item.loadTransferable(type: Data.self) else { continue }
+            let ext = item.supportedContentTypes.first?.preferredFilenameExtension ?? "bin"
+            let mime = item.supportedContentTypes.first?.preferredMIMEType ?? "application/octet-stream"
+            let name = "attachment-\(Int(Date().timeIntervalSince1970)).\(ext)"
+            do {
+                let att = try await store.uploadAttachment(data: data, name: name, mime: mime)
+                attachments.append(att)
+                scheduleSave()
+            } catch {
+                print("[Notes] upload failed:", error)
+            }
+        }
+    }
+
+    private func removeAttachment(id: String) {
+        attachments.removeAll { $0.id == id }
+        scheduleSave()
     }
 
     private func htmlToText(_ html: String) -> String {
@@ -403,7 +475,6 @@ private struct NoteEditorView: View {
     }
 
     private func textToHtml(_ text: String) -> String {
-        // Wrap each line in <p> so web renders it the same way.
         let escaped = text
             .replacingOccurrences(of: "&", with: "&amp;")
             .replacingOccurrences(of: "<", with: "&lt;")
@@ -411,6 +482,162 @@ private struct NoteEditorView: View {
         let lines = escaped.split(separator: "\n", omittingEmptySubsequences: false)
         return lines.map { "<p>\($0.isEmpty ? "<br>" : String($0))</p>" }.joined()
     }
+}
+
+// MARK: - Attachments grid + previews
+
+private struct AttachmentsGrid: View {
+    let attachments: [NoteAttachment]
+    let store: NotesStore
+    let onImageTap: (Data) -> Void
+    let onVideoTap: (URL) -> Void
+    let onRemove: (String) -> Void
+
+    private let cols = [GridItem(.adaptive(minimum: 100), spacing: 8)]
+
+    var body: some View {
+        LazyVGrid(columns: cols, spacing: 8) {
+            ForEach(attachments) { att in
+                AttachmentTile(att: att, store: store,
+                               onImageTap: onImageTap,
+                               onVideoTap: onVideoTap,
+                               onRemove: { onRemove(att.id) })
+            }
+        }
+    }
+}
+
+private struct AttachmentTile: View {
+    let att: NoteAttachment
+    let store: NotesStore
+    let onImageTap: (Data) -> Void
+    let onVideoTap: (URL) -> Void
+    let onRemove: () -> Void
+
+    @State private var imageData: Data?
+    @State private var videoURL: URL?
+    @State private var loading = true
+    @State private var failed = false
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Group {
+                if att.mime.hasPrefix("image/"), let d = imageData, let img = UIImage(data: d) {
+                    Image(uiImage: img)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 100, height: 100)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .onTapGesture { onImageTap(d) }
+                } else if att.mime.hasPrefix("video/"), let url = videoURL {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10).fill(Theme.Colors.bgTertiary)
+                        Image(systemName: "play.circle.fill")
+                            .font(.system(size: 32))
+                            .foregroundStyle(.white)
+                        Text(att.name)
+                            .font(.cubbly(9))
+                            .foregroundStyle(.white.opacity(0.8))
+                            .lineLimit(1)
+                            .padding(.horizontal, 6)
+                            .frame(maxHeight: .infinity, alignment: .bottom)
+                            .padding(.bottom, 4)
+                    }
+                    .frame(width: 100, height: 100)
+                    .onTapGesture { onVideoTap(url) }
+                } else {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10).fill(Theme.Colors.bgTertiary)
+                        if loading {
+                            ProgressView().tint(Theme.Colors.primary)
+                        } else if failed {
+                            VStack(spacing: 4) {
+                                Image(systemName: "exclamationmark.triangle")
+                                    .foregroundStyle(.orange)
+                                Text(att.name)
+                                    .font(.cubbly(9))
+                                    .foregroundStyle(Theme.Colors.textMuted)
+                                    .lineLimit(2)
+                            }
+                            .padding(4)
+                        } else {
+                            VStack(spacing: 4) {
+                                Image(systemName: "doc.fill").foregroundStyle(Theme.Colors.textSecondary)
+                                Text(att.name)
+                                    .font(.cubbly(9))
+                                    .foregroundStyle(Theme.Colors.textMuted)
+                                    .lineLimit(2)
+                            }
+                            .padding(4)
+                        }
+                    }
+                    .frame(width: 100, height: 100)
+                }
+            }
+
+            Button(action: onRemove) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 18))
+                    .foregroundStyle(.white, .black.opacity(0.65))
+            }
+            .padding(4)
+        }
+        .task(id: att.id) { await load() }
+    }
+
+    private func load() async {
+        loading = true
+        defer { loading = false }
+        do {
+            let plain = try await store.downloadAttachment(att)
+            if att.mime.hasPrefix("image/") {
+                imageData = plain
+            } else if att.mime.hasPrefix("video/") {
+                let ext = att.name.split(separator: ".").last.map(String.init) ?? "mov"
+                let url = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("note-\(att.id).\(ext)")
+                try? plain.write(to: url)
+                videoURL = url
+            }
+        } catch {
+            failed = true
+        }
+    }
+}
+
+private struct ImagePreview: View {
+    let data: Data
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            if let img = UIImage(data: data) {
+                Image(uiImage: img).resizable().scaledToFit()
+            }
+            VStack {
+                HStack {
+                    Button { dismiss() } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "chevron.down")
+                            Text("Done")
+                        }
+                        .font(Theme.Fonts.bodyMedium)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12).padding(.vertical, 8)
+                        .background(.ultraThinMaterial, in: Capsule())
+                    }
+                    Spacer()
+                }
+                .padding(.top, 50).padding(.horizontal, 16)
+                Spacer()
+            }
+        }
+    }
+}
+
+private struct IdentifiedData: Identifiable {
+    let id: UUID
+    let data: Data
 }
 
 private extension String {
