@@ -1224,6 +1224,21 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
         className="flex items-center gap-1 px-4 py-1.5 border-b text-xs overflow-x-auto"
         style={{ borderColor: "var(--app-border)", color: "var(--app-text-secondary)" }}
       >
+        <button
+          onClick={() => exec("undo")}
+          title="Undo (Ctrl/Cmd+Z)"
+          className="flex items-center gap-1 px-2 py-1 rounded transition-colors cursor-pointer hover:bg-[var(--app-hover)] hover:text-[var(--app-text-primary)] active:bg-[var(--app-active)] shrink-0"
+        >
+          <Undo2 className="h-3.5 w-3.5" />
+        </button>
+        <button
+          onClick={() => exec("redo")}
+          title="Redo (Ctrl/Cmd+Shift+Z)"
+          className="flex items-center gap-1 px-2 py-1 rounded transition-colors cursor-pointer hover:bg-[var(--app-hover)] hover:text-[var(--app-text-primary)] active:bg-[var(--app-active)] shrink-0"
+        >
+          <Redo2 className="h-3.5 w-3.5" />
+        </button>
+        <span className="mx-1 h-4 w-px shrink-0" style={{ backgroundColor: "var(--app-border)" }} />
         <ToolBtn label="B" bold onClick={() => exec("bold")} />
         <ToolBtn label="I" italic onClick={() => exec("italic")} />
         <ToolBtn label="U" underline onClick={() => exec("underline")} />
