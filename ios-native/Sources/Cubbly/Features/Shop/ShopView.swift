@@ -419,7 +419,7 @@ private struct ShopItemPreview: View {
         let isAnimated = (item.subcategory == "animated") || (cfg["animated"] as? Bool == true)
         ZStack {
             if item.id == "theme_space" {
-                SpaceThemePreview()
+                SpaceThemeAnimated()
             } else if let bgColor {
                 bgColor
             } else {
