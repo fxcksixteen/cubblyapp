@@ -185,7 +185,7 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
           <div className="px-5 pt-3 pb-4">
             <p className="text-xl font-bold text-white flex items-center gap-2">
               <UserDisplayName userId={userId} name={displayName} fallbackColor="#ffffff" />
-              <UserBadges userId={userId} size={16} />
+              <UserBadges userId={userId} size={16} withTooltip />
             </p>
             <p className="text-sm text-[#949ba4]">@{profile?.username || displayName.toLowerCase()}</p>
 
