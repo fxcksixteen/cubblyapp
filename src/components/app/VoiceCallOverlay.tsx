@@ -19,7 +19,11 @@ import videoIcon from "@/assets/icons/video-camera.svg";
 import screenshareIcon from "@/assets/icons/screenshare.svg";
 
 const formatDuration = (ms: number) => {
-  const secs = Math.floor(ms / 1000);
+  // Guard against negatives / NaN — clock skew between client and server
+  // can briefly make (endedAt - startedAt) slightly negative, which used
+  // to render as the dreaded "-1:-1" in just-ended call pills.
+  const safeMs = Number.isFinite(ms) && ms > 0 ? ms : 0;
+  const secs = Math.floor(safeMs / 1000);
   const h = Math.floor(secs / 3600);
   const m = Math.floor((secs % 3600) / 60);
   const s = secs % 60;
