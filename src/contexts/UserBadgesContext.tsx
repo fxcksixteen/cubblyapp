@@ -38,6 +38,7 @@ function rowsToBadges(rows: any[]): BadgeData[] {
         fg: cfg.fg ?? "#ffffff",
         glow: cfg.glow,
         label: cfg.label ?? item.name ?? "Badge",
+        description: item.description ?? cfg.description ?? undefined,
       } as BadgeData;
     })
     .filter(Boolean) as BadgeData[];
