@@ -112,8 +112,8 @@ const CreateServerModal = ({ open, onClose, onCreated }: Props) => {
     : mode === "join" ? "Enter an invite code to join."
     : "Paste a discord.new link or template code.";
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={close}>
+  return createPortal(
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 p-4" onClick={close}>
       <div
         className="w-full max-w-md rounded-xl overflow-hidden"
         style={{ backgroundColor: "var(--app-bg-secondary)", border: "1px solid var(--app-border)" }}
