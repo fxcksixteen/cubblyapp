@@ -217,6 +217,11 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
       // Highest priority: while we're sending real-time PCM/video to peers,
       // never spawn `tasklist` / PowerShell — they block the IPC main thread.
       if (screenSharing) return POLL_INTERVAL_SCREENSHARE_MS;
+      // If we currently THINK a game is running, keep polling at the base
+      // cadence so we notice when it closes — being unfocused is the expected
+      // state mid-game, so we can't back off then or we ghost-detect for
+      // minutes and award unearned coins.
+      if (currentlyDetectedRef.current) return POLL_INTERVAL_MS;
       if (unfocused) return POLL_INTERVAL_UNFOCUSED_MS;
       return suppressing || inCall ? POLL_INTERVAL_SUPPRESSED_MS : POLL_INTERVAL_MS;
     };
