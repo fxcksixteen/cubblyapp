@@ -14,16 +14,16 @@
                         <rect key="frame" x="0.0" y="0.0" width="393" height="852"/>
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                         <subviews>
-                            <imageView clipsSubviews="YES" userInteractionEnabled="NO" contentMode="scaleAspectFit" image="cubbly-nobg" translatesAutoresizingMaskIntoConstraints="NO" id="Lgo-aQ-aLg">
-                                <rect key="frame" x="96.5" y="346" width="200" height="200"/>
+                            <imageView clipsSubviews="YES" userInteractionEnabled="NO" contentMode="scaleAspectFit" image="cubbly-logo" translatesAutoresizingMaskIntoConstraints="NO" id="Lgo-aQ-aLg">
+                                <rect key="frame" x="126.5" y="376" width="140" height="140"/>
                                 <constraints>
-                                    <constraint firstAttribute="height" constant="200" id="HH1-aw-001"/>
-                                    <constraint firstAttribute="width" constant="200" id="WW1-aw-001"/>
+                                    <constraint firstAttribute="height" constant="140" id="HH1-aw-001"/>
+                                    <constraint firstAttribute="width" constant="140" id="WW1-aw-001"/>
                                 </constraints>
                             </imageView>
                         </subviews>
                         <viewLayoutGuide key="safeArea" id="6Tk-OE-BBY"/>
-                        <color key="backgroundColor" red="0.58823529411764708" green="0.44705882352941179" blue="0.36862745098039218" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                        <color key="backgroundColor" red="0.0" green="0.0" blue="0.0" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
                         <constraints>
                             <constraint firstItem="Lgo-aQ-aLg" firstAttribute="centerX" secondItem="Ze5-6b-2t3" secondAttribute="centerX" id="CX1-aw-001"/>
                             <constraint firstItem="Lgo-aQ-aLg" firstAttribute="centerY" secondItem="Ze5-6b-2t3" secondAttribute="centerY" id="CY1-aw-001"/>
@@ -36,6 +36,6 @@
         </scene>
     </scenes>
     <resources>
-        <image name="cubbly-nobg" width="200" height="200"/>
+        <image name="cubbly-logo" width="140" height="140"/>
     </resources>
 </document>

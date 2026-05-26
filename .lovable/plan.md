@@ -1,66 +1,69 @@
-# iOS App Fixes — Notes placement, swipe feel, broken animations
+## 1. Horizontal swipe — copy what already works for Notes
 
-## 1. Move Personal Notes into the Home tab
+You noticed Notes swipes back perfectly. That's because it's pushed onto a `NavigationStack` and iOS gives it the native interactive-pop gesture for free. The reason chat threads feel "forced" is that on top of that native gesture we're stacking our custom `HorizontalSwipe` modifier (`DragGesture`), and the two fight each other.
 
-**Goal:** Notes should not be a bottom-tab. It should appear as a single "Personal Notes" entry in the DM sidebar, right under the search bar and above the conversation list — matching web/desktop.
+Changes:
+- **`ChatView.swift`**: remove `.horizontalSwipe(right: { dismiss() }, …)`. Keep only `.enableEdgeSwipeBack()` so iOS's native `interactivePopGestureRecognizer` drives the back-swipe — identical to the Notes feel you just praised.
+- **`DMListView.swift`**: remove the `.horizontalSwipe(left: …, leftPreview: ChatThreadPreview)`. Replace it with a tiny right-edge `DragGesture` (minimumDistance 20, only starts within 20pt of the right edge) that triggers `openConversation = lastChat…` on flick — so swipe-from-right still re-opens the last chat, but doesn't intercept any vertical scroll or any drag started in the middle of the list.
+- **`HorizontalSwipe.swift`**: leave the file in place but unused by these two screens. (No other call sites use it for chat/DM.)
 
-- `MainTabView.swift`
-  - Remove `.notes` from the `Tab` enum and the `switch selection` block.
-  - Remove the Notes button from the `CubblyTabBar` so the bar shows: Home, Friends, Shop, You (4 tabs, evenly spaced).
-- `DMListView.swift`
-  - Add a `PersonalNotesRow` view between `searchBar` and `content`:
-    - Tappable row styled like a DM row: avatar slot = notes SVG icon in a rounded square using `Theme.Colors.primary` tint background, title "Personal Notes", subtitle "Your private space" (or last-edited preview if cheap).
-    - Tap pushes `NotesView()` onto the existing `NavigationStack` via `navigationDestination(isPresented:)` or a dedicated `@State showNotes`.
-  - Mirror the same row inside `DMSidebarPreview` so the peek preview stays accurate.
-- `DMListView` also needs to update its `horizontalSwipe` if the home tab loses the notes peek anywhere (none today — safe).
+Result: pushing a chat = native iOS push animation; swiping back = the same native interactive-pop you already love on Notes; the DM peek/reveal preview goes away, but that's the price of the native feel — and matches Discord exactly.
 
-## 2. Fix the horizontal swipe (axis-lock + native feel)
+## 2. Discord-style friends strip at the top of the DM sidebar
 
-**Problem:** `HorizontalSwipe.swift` uses `simultaneousGesture` with a `DragGesture`, runs alongside vertical scrolling, never commits to an axis, and the spring snap-back is the only "feel" — so it feels mushy and lets the user drag diagonally.
+New horizontal row of square avatar tiles right above Personal Notes, under the search bar — exactly like image 1.
 
-Rewrite `HorizontalSwipe` so:
-- On the first ~8 pt of movement, decide an axis once. If `|dy| > |dx|` at decision time, **abort for the rest of the gesture** (let ScrollView take it). If horizontal wins, **ignore all subsequent vertical delta** — only `value.translation.width` drives `dragX`.
-- Track drag in a `@State` (not `@GestureState`) so we can drive the release animation explicitly with `.spring(response: 0.35, dampingFraction: 0.82)`; on commit, animate `dragX` to ±screenWidth before invoking the callback so the destination slides in instead of cutting.
-- Velocity-aware commit: if release velocity (`value.predictedEndTranslation.width - value.translation.width`) plus current `dragX` clears the threshold, commit even on a short drag — same as Discord/iOS swipe-back.
-- Edge-only start: optionally accept only drags that begin within ~24 pt of the appropriate screen edge for the right-edge (open-chat) direction to avoid accidental triggers from the middle of the list.
-- Keep the rubber-band past-edge resistance.
-- Apply this on all current callers (`DMListView`, `ChatView`, any others using `.horizontalSwipe`) — no API changes.
+- New view `FriendsStrip` in `ios-native/Sources/Cubbly/Features/DMs/FriendsStrip.swift`:
+  - Pulls accepted friends from `FriendsRepository` (already used by `FriendsView`) into a small `@StateObject` cache so it shows instantly on revisit.
+  - `ScrollView(.horizontal)` of 64×72 tiles: `RoundedRectangle(cornerRadius: 16)` background `bgSecondary`, centred `AvatarView` size 52 clipped to `RoundedRectangle(cornerRadius: 14)`, with a `StatusDot` (size 14, bgSecondary border) pinned bottom-trailing — driven by `PresenceService.effectiveStatus` so online/idle/dnd/offline all show.
+  - Tap = `openConversation = ` existing DM with that friend, or open `NewChatSheet` prefilled if no DM exists.
+- Order: online first, then idle/dnd, then offline (matches Discord). Cap at ~20 visible, horizontally scrollable past that.
 
-## 3. Fix Space theme & all animated theme/name animations
+## 3. Personal Notes row — Discord-style redesign
 
-**Root cause:** SwiftUI does **not** animate `LinearGradient.startPoint/endPoint` or `.position(x:y:)` through `withAnimation`. Every "animated" surface in the app (animated themes, Space theme, animated gradient names) relies on that — so nothing actually moves on device.
+Replace the current `PersonalNotesRow` with a layout matching image 2:
+- 40×40 `RoundedRectangle(cornerRadius: 20)` filled `bgTertiary` containing a 20pt pencil/edit glyph (`SVGIcon "notes"` tinted `textPrimary`).
+- Title "Personal Notes" in `Theme.Fonts.bodyMedium`, `textPrimary`, single line.
+- No subtitle. No outer card/background — just the row, full-width, vertical padding 10, leading padding 12, with `contentShape(Rectangle())` for the full-row tap target.
+- Sits right under the friends strip, above the conversation list.
+- Mirror the same row in `DMSidebarPreview` so the swipe-back peek matches.
 
-Switch every one of these to a `TimelineView(.animation)` driver so the value is recomputed each frame from `context.date`.
+Final sidebar order (top → bottom): header → search → friends strip → personal notes row → conversations list.
 
-### 3a. `AnimatedThemeGradient` (Shared/AnimatedThemeGradient.swift)
-- Wrap the `LinearGradient` in `TimelineView(.animation(minimumInterval: 1/30))` and compute `phase` from elapsed time modulo `duration` mapped to a triangle wave (so it oscillates like the web `aurora` keyframes).
-- Used by Shop previews and `MainTabView` background — both will start moving.
+## 4. Activity in DM rows (parity with web/desktop)
 
-### 3b. `SpaceThemeAnimated`
-- Replace the inline `.onAppear { withAnimation … }` with `TimelineView(.animation)`.
-- For the starfield: build the 60 stars **once** with stable random offsets (seeded array stored in `@State`), then in each timeline tick offset their x by `(elapsed * driftSpeed).truncatingRemainder(width)`. Use `Canvas` for cheap drawing instead of 60 `Circle().position()` views (more accurate to the web look and far cheaper on GPU).
-- Shooting star: drive `shoot` from `(elapsed.truncatingRemainder(period) / period)` so it loops every ~6 s with a long idle gap (matches web `shooting-star` keyframes).
-- Add a deeper indigo→black radial + subtle nebula blobs (two soft radial gradients, low opacity) so the preview reads as "Space" rather than dark gray with dots — that's what's making the user say the preview "looks broken".
-- Make the view honor the size it's given (currently fine via GeometryReader; keep that).
+Web shows e.g. "Playing Minecraft" under the contact name instead of last message when the other user has a live activity. iOS already runs `ActivityService.shared` with realtime updates — just isn't read here.
 
-### 3c. `AnimatedGradientNameText` (NameColorsStore.swift) and `AnimatedGradientText` (ShopView.swift)
-- Same fix: `TimelineView(.animation)` driving a `phase` value, used to compute `startPoint`/`endPoint` of the `LinearGradient` per frame.
-- Consolidate the two implementations into a single shared `AnimatedGradientText(name:colors:font:)` in `AnimatedThemeGradient.swift` (or a new `AnimatedGradients.swift`), and have both Shop previews and `CubblyNameText` use it. Eliminates the duplicate-broken-in-two-places hazard.
+Changes in `DMListView.swift` `DMRow`:
+- Add `@ObservedObject var activity = ActivityService.shared`.
+- For 1:1 DMs (`conversation.otherUser != nil`), compute:
+  ```swift
+  let isOnline = presence.isOnline(other.userID)
+  let activityLabel = activity.label(for: other.userID, isOnline: isOnline)
+  ```
+- If `activityLabel != nil`, render the subtitle as that label with the small game/software icon (`SVGIcon "activity"`, 12pt, `Theme.Colors.success`) instead of the last-message preview. Otherwise keep current `previewText` behaviour.
+- Group rows unchanged.
 
-### 3d. Verify equipped paths
-- `MainTabView.swift` already gates `SpaceThemeAnimated` and `AnimatedThemeGradient` by equipped theme id — once 3a/3b actually animate, equipping Space / Aurora / Synthwave / Lava / Borealis on the live app background will animate too. No logic change needed there.
-- `CubblyNameText` already routes to the animated variant for `.animated(stops:)` — once 3c is fixed, animated name colors animate everywhere they're used (chat bubbles, long-press preview, and we should additionally route `DMRow` sender names and `ProfilePopupView` through `CubblyNameText` so the effect shows beyond just ChatView).
+This is purely a read-only display change — no new subscriptions, no extra DB cost.
 
-## Out of scope
-- No changes to web/desktop.
-- No changes to backend, RLS, edge functions, or cost-related code.
-- Version stays at **v0.1.6 build 18**; zip will be rebuilt as `cubbly-ios-v0.1.6-build18-animated.zip` (overwrite).
+## 5. Launch screen — make it look like the brand, not a cropped face
 
-## Files touched
-- `ios-native/Sources/Cubbly/Features/MainTabView.swift`
-- `ios-native/Sources/Cubbly/Features/DMs/DMListView.swift`
-- `ios-native/Sources/Cubbly/Shared/HorizontalSwipe.swift`
-- `ios-native/Sources/Cubbly/Shared/AnimatedThemeGradient.swift` (+ rename/consolidate)
-- `ios-native/Sources/Cubbly/Core/Services/NameColorsStore.swift`
-- `ios-native/Sources/Cubbly/Features/Shop/ShopView.swift`
-- (optional) `ios-native/Sources/Cubbly/Features/Chat/ProfilePopupView.swift`, `DMListView.DMRow` to route names through `CubblyNameText`
+Image 3 shows the launch storyboard scaling `cubbly-nobg` (a 200×200 face-only asset) to fill, so on iPhone it crops to just the eyes and snout on white.
+
+Fix in `ios-native/Resources/LaunchScreen.storyboard`:
+- Change background `color` to `#000000` (matches `Theme.Colors.bgPrimary`, the same dark canvas the app boots into — no more white flash).
+- Swap `image="cubbly-nobg"` → `image="cubbly-logo"` (the proper full-logo asset already in `Assets.xcassets`).
+- Keep `contentMode="scaleAspectFit"`, shrink frame to 140×140, keep centred via the existing `centerX` / `centerY` constraints.
+
+Result: cold-start shows a small, properly-proportioned Cubbly logo on the same dark background as the app itself — no flash, no cropped face.
+
+---
+
+### Files touched
+
+- edit  `ios-native/Sources/Cubbly/Features/Chat/ChatView.swift` (remove `.horizontalSwipe`)
+- edit  `ios-native/Sources/Cubbly/Features/DMs/DMListView.swift` (remove `.horizontalSwipe`, add edge-only re-open gesture, redesign `PersonalNotesRow`, insert `FriendsStrip`, activity-aware `DMRow`, mirror in `DMSidebarPreview`)
+- new   `ios-native/Sources/Cubbly/Features/DMs/FriendsStrip.swift`
+- edit  `ios-native/Resources/LaunchScreen.storyboard` (logo + dark bg)
+
+No backend, schema, or web/desktop changes. After approval I'll apply the edits and rebuild the `cubbly-ios-v0.1.6-buildN-animated.zip`.

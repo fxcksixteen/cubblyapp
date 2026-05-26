@@ -37,9 +37,14 @@ struct DMListView: View {
                     searchBar
                         .padding(.horizontal, 12)
                         .padding(.bottom, 8)
+                    FriendsStrip(
+                        onOpen: { conv in openConversation = conv },
+                        onNoExistingDM: { _ in showNewChat = true }
+                    )
+                    .environmentObject(session)
+                    .environmentObject(presence)
                     PersonalNotesRow { showNotes = true }
-                        .padding(.horizontal, 12)
-                        .padding(.bottom, 8)
+                        .padding(.bottom, 4)
                     content
                 }
                 .frame(maxWidth: .infinity)
@@ -96,18 +101,30 @@ struct DMListView: View {
                 }
             }
             .refreshable { await load(silently: false) }
-            .horizontalSwipe(
-                left: {
-                    if let id = lastChat.lastConversationID,
-                       let conv = cache.conversations.first(where: { $0.id == id }) {
-                        openConversation = conv
-                    }
-                },
-                leftPreview: { ChatThreadPreview() },
-                rightPreview: { Color.clear }
-            )
+            // Right-edge-only swipe to re-open last chat. Tiny start zone
+            // (rightmost 24pt) so it never fights the vertical scroll of
+            // the DM list or the friends strip.
+            .overlay(alignment: .trailing) {
+                Color.clear
+                    .frame(width: 24)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 20)
+                            .onEnded { value in
+                                let dx = value.translation.width
+                                let predicted = value.predictedEndTranslation.width
+                                guard dx < -50 || predicted < -160 else { return }
+                                guard abs(value.translation.height) < 60 else { return }
+                                if let id = lastChat.lastConversationID,
+                                   let conv = cache.conversations.first(where: { $0.id == id }) {
+                                    openConversation = conv
+                                }
+                            }
+                    )
+            }
         }
     }
+
 
     private var header: some View {
         HStack {
@@ -337,6 +354,7 @@ private struct DMRow: View {
     let conversation: ConversationSummary
     let isHighlighted: Bool
     @ObservedObject var presence: PresenceService
+    @ObservedObject private var activity = ActivityService.shared
 
     var body: some View {
         HStack(spacing: 12) {
@@ -367,10 +385,20 @@ private struct DMRow: View {
                     .font(Theme.Fonts.bodyMedium)
                     .foregroundStyle(Theme.Colors.textPrimary)
                     .lineLimit(1)
-                Text(Self.previewText(for: conversation.lastMessage))
-                    .font(Theme.Fonts.bodySmall)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-                    .lineLimit(1)
+                if let label = activityLabel {
+                    HStack(spacing: 4) {
+                        SVGIcon(name: "activity", size: 12, tint: Theme.Colors.success)
+                        Text(label)
+                            .font(Theme.Fonts.bodySmall)
+                            .foregroundStyle(Theme.Colors.success)
+                            .lineLimit(1)
+                    }
+                } else {
+                    Text(Self.previewText(for: conversation.lastMessage))
+                        .font(Theme.Fonts.bodySmall)
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .lineLimit(1)
+                }
             }
 
             Spacer(minLength: 8)
@@ -386,6 +414,11 @@ private struct DMRow: View {
         .background(isHighlighted ? Theme.Colors.bgHover : Color.clear)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .contentShape(Rectangle())
+    }
+
+    private var activityLabel: String? {
+        guard let other = conversation.otherUser else { return nil }
+        return activity.label(for: other.userID, isOnline: presence.isOnline(other.userID))
     }
 
     /// Replace raw `[attachments]…` JSON with a friendly one-liner so the DM
@@ -443,8 +476,7 @@ struct DMSidebarPreview: View {
                 .padding(.bottom, 8)
 
                 PersonalNotesRow(action: {})
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 8)
+                    .padding(.bottom, 4)
 
                 ScrollView {
                     LazyVStack(spacing: 0) {
@@ -472,8 +504,8 @@ struct DMSidebarPreview: View {
 // MARK: - Personal Notes row
 
 /// Single tappable row above the conversation list that opens the user's
-/// encrypted personal notes. Mirrors the web/desktop sidebar entry: lives
-/// directly under the search bar, above all chats.
+/// encrypted personal notes. Mirrors the Discord-iOS "Personal Notes" entry:
+/// circular icon tile + title only, no card chrome, full-width tap target.
 struct PersonalNotesRow: View {
     var action: () -> Void
 
@@ -481,40 +513,21 @@ struct PersonalNotesRow: View {
         Button(action: action) {
             HStack(spacing: 12) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [Theme.Colors.primary, Theme.Colors.primary.opacity(0.7)],
-                                startPoint: .topLeading, endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 44, height: 44)
-                    SVGIcon(name: "notes", size: 22, tint: .white)
+                    Circle()
+                        .fill(Theme.Colors.bgTertiary)
+                        .frame(width: 40, height: 40)
+                    SVGIcon(name: "notes", size: 20, tint: Theme.Colors.textPrimary)
                 }
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Personal Notes")
-                        .font(Theme.Fonts.bodyMedium)
-                        .foregroundStyle(Theme.Colors.textPrimary)
-                        .lineLimit(1)
-                    Text("Your private, end-to-end encrypted space")
-                        .font(Theme.Fonts.bodySmall)
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                        .lineLimit(1)
-                }
+                Text("Personal Notes")
+                    .font(Theme.Fonts.bodyMedium)
+                    .foregroundStyle(Theme.Colors.textPrimary)
+                    .lineLimit(1)
 
                 Spacer(minLength: 8)
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Theme.Colors.textMuted)
             }
-            .padding(.vertical, 8)
-            .padding(.horizontal, 10)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Theme.Colors.bgTertiary)
-            )
+            .padding(.vertical, 10)
+            .padding(.horizontal, 12)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
