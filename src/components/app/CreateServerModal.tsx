@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { useServers } from "@/contexts/ServersContext";
 import { supabase } from "@/integrations/supabase/client";
 import { X, ArrowLeft, Home, Link2, Download, Users } from "lucide-react";
