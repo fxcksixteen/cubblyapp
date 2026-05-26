@@ -147,6 +147,44 @@ Deno.serve(async (req) => {
       });
     }
 
+    // ── Persistent cache lookup ────────────────────────────────────────────
+    // Hash the normalized URL so we don't store URLs of unbounded length as
+    // primary keys. 30-day TTL — long enough that chat scroll is essentially
+    // free, short enough that stale OG cards eventually refresh.
+    const normalizedUrl = parsed.toString();
+    const hashBuf = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(normalizedUrl),
+    );
+    const urlHash = Array.from(new Uint8Array(hashBuf))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+
+    const admin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+    const TTL_MS = 30 * 24 * 60 * 60 * 1000;
+    const cutoff = new Date(Date.now() - TTL_MS).toISOString();
+    const { data: cached } = await admin
+      .from("link_previews")
+      .select("title, description, image, site_name, fetched_at")
+      .eq("url_hash", urlHash)
+      .gte("fetched_at", cutoff)
+      .maybeSingle();
+    if (cached) {
+      return new Response(
+        JSON.stringify({
+          title: cached.title,
+          description: cached.description,
+          image: cached.image,
+          siteName: cached.site_name,
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+
     // Fetch with a sane UA + 5s timeout, cap body to 512KB.
     // Manually follow up to 5 redirects, validating each hop against the SSRF block list.
     const controller = new AbortController();
