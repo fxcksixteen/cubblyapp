@@ -32,7 +32,10 @@ export const CHANGELOG: ChangelogEntry[] = [
     title: "Hotfix: voice calls, server header & legacy notes attachments",
     date: "2026-05-26",
     hero: bearImage,
-    newFeatures: [],
+    newFeatures: [
+      "Calls now support multiple simultaneous screenshares — you and your friend can both stream at the same time, and you'll see both streams independently instead of one overwriting the other.",
+      "Your own screenshare preview now pauses and blurs with a glassmorphism overlay when Cubbly is not focused ('Stream paused — your stream is still live, this just saves resources'). The outgoing stream keeps running for your peer; only the local preview is throttled.",
+    ],
     bugFixes: [
       "Fixed call pills in chat instantly showing 'Call Ended -1:-1' the moment a call started. Tiny clock drift between your device and the server made the calculated duration briefly negative — durations are now clamped so a just-started call never renders as ended with garbage time.",
       "Server tabs no longer show the Friends header (Online / All / Pending / Blocked / Add Friend) across the top — that bar is now hidden inside a server, since the server view already has its own server-name and channel chrome.",
