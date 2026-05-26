@@ -719,15 +719,16 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
             </div>
           )}
         </div>
-      </div>
+      </div>,
+      document.body,
     );
   }
 
-  // === DESKTOP (unchanged) ===
-  return (
+  // === DESKTOP ===
+  return createPortal(
     <div
       ref={backdropRef}
-      className="app-themed fixed inset-0 z-50 flex items-center justify-center p-4 transition-all duration-250 ease-out"
+      className="app-themed fixed inset-0 z-[1000] flex items-center justify-center p-4 transition-all duration-250 ease-out"
       style={{
         backgroundColor: animating ? "rgba(0, 0, 0, 0.6)" : "rgba(0, 0, 0, 0)",
         backdropFilter: animating ? "blur(12px)" : "blur(0px)",
