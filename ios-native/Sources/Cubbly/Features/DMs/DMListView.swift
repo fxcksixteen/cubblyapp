@@ -101,26 +101,19 @@ struct DMListView: View {
                 }
             }
             .refreshable { await load(silently: false) }
-            // Right-edge-only swipe to re-open last chat. Tiny start zone
-            // (rightmost 24pt) so it never fights the vertical scroll of
-            // the DM list or the friends strip.
+            // Right-edge swipe to re-open last chat. Wider hit zone (32pt),
+            // axis-locked, and only armed when there's a last chat to open
+            // — so it never fights the DM list's vertical scroll.
             .overlay(alignment: .trailing) {
-                Color.clear
-                    .frame(width: 24)
-                    .contentShape(Rectangle())
-                    .gesture(
-                        DragGesture(minimumDistance: 20)
-                            .onEnded { value in
-                                let dx = value.translation.width
-                                let predicted = value.predictedEndTranslation.width
-                                guard dx < -50 || predicted < -160 else { return }
-                                guard abs(value.translation.height) < 60 else { return }
-                                if let id = lastChat.lastConversationID,
-                                   let conv = cache.conversations.first(where: { $0.id == id }) {
-                                    openConversation = conv
-                                }
-                            }
-                    )
+                if let id = lastChat.lastConversationID,
+                   cache.conversations.contains(where: { $0.id == id }) {
+                    EdgeSwipeOpen {
+                        if let conv = cache.conversations.first(where: { $0.id == id }) {
+                            openConversation = conv
+                        }
+                    }
+                    .frame(width: 32)
+                }
             }
         }
     }
