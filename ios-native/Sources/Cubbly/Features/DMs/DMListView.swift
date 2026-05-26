@@ -101,20 +101,19 @@ struct DMListView: View {
                 }
             }
             .refreshable { await load(silently: false) }
-            // Right-edge swipe to re-open last chat. Wider hit zone (32pt),
-            // axis-locked, and only armed when there's a last chat to open
-            // — so it never fights the DM list's vertical scroll.
-            .overlay(alignment: .trailing) {
-                if let id = lastChat.lastConversationID,
-                   cache.conversations.contains(where: { $0.id == id }) {
-                    EdgeSwipeOpen {
-                        if let conv = cache.conversations.first(where: { $0.id == id }) {
-                            openConversation = conv
-                        }
-                    }
-                    .frame(width: 32)
-                }
-            }
+            // Full-screen horizontal swipe — swipe LEFT anywhere on the DM
+            // sidebar to re-open the last active chat. Axis-locked so the
+            // vertical list scroll keeps working untouched. Matches the
+            // Personal Notes "sheet on top" feel: the chat is pushed on top
+            // of the sidebar via navigationDestination and the system
+            // edge-swipe-back pops it; this gesture just provides the
+            // forward direction with a fat hit area.
+            .horizontalSwipe(left: {
+                guard let id = lastChat.lastConversationID,
+                      let conv = cache.conversations.first(where: { $0.id == id })
+                else { return }
+                openConversation = conv
+            })
         }
     }
 

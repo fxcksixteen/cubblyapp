@@ -1,6 +1,4 @@
 import SwiftUI
-import AVKit
-import AVFoundation
 
 /// Top-level routing: while the session is loading we show the splash; once
 /// resolved we either show the auth flow or the main tabbed app.
@@ -27,77 +25,17 @@ struct RootView: View {
     }
 }
 
+/// Plain Cubbly-brown background with the transparent bear logo centered.
+/// Mirrors the native LaunchScreen.storyboard so launch -> splash is seamless.
 private struct SplashView: View {
-    private static let cozyLines = [
-        "Brewing something warm just for you...",
-        "Fluffing the cushions in your cozy corner...",
-        "The bears are getting everything ready...",
-        "Stirring the cocoa, lighting the fireplace...",
-        "Tucking your friends in safe and sound...",
-        "Wrapping your messages in a warm blanket...",
-        "Just a moment — the bears are tidying up...",
-        "Sprinkling a little extra cozy on everything...",
-        "Polishing your hangout space to a soft glow..."
-    ]
-    @State private var line = SplashView.cozyLines.randomElement() ?? "Loading..."
-
     var body: some View {
-        VStack(spacing: 24) {
-            LoopingVideoView(resourceName: "cubbly-loading", ext: "mov")
-                .frame(width: 260, height: 260)
-
-            Text(line)
-                .font(.cubbly(16, .semibold))
-                .foregroundStyle(Color(red: 1, green: 248/255, blue: 238/255))
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 24)
-                .shadow(color: .black.opacity(0.15), radius: 1, x: 0, y: 1)
+        ZStack {
+            Color(red: 150/255, green: 114/255, blue: 94/255).ignoresSafeArea()
+            Image("cubbly-nobg")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 180, height: 180)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
-
-private struct LoopingVideoView: UIViewRepresentable {
-    let resourceName: String
-    let ext: String
-
-    func makeUIView(context: Context) -> LoopingPlayerUIView {
-        let view = LoopingPlayerUIView()
-        if let url = BrandAsset.bundledURL(named: resourceName, ext: ext, preferredSubdirectories: [nil, "Videos"]) {
-            view.configure(with: url)
-        }
-        return view
-    }
-
-    func updateUIView(_ uiView: LoopingPlayerUIView, context: Context) {}
-}
-
-final class LoopingPlayerUIView: UIView {
-    private var player: AVQueuePlayer?
-    private var looper: AVPlayerLooper?
-    private let playerLayer = AVPlayerLayer()
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        backgroundColor = UIColor(red: 150/255, green: 114/255, blue: 94/255, alpha: 1)
-        layer.addSublayer(playerLayer)
-        playerLayer.videoGravity = .resizeAspect
-    }
-
-    required init?(coder: NSCoder) { fatalError() }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        playerLayer.frame = bounds
-    }
-
-    func configure(with url: URL) {
-        let item = AVPlayerItem(url: url)
-        let p = AVQueuePlayer(playerItem: item)
-        p.isMuted = true
-        looper = AVPlayerLooper(player: p, templateItem: item)
-        playerLayer.player = p
-        player = p
-        p.play()
     }
 }

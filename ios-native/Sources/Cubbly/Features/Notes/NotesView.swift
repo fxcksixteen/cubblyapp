@@ -182,23 +182,26 @@ private struct NotesEditorScreen: View {
     @State private var pendingDelete: NoteRow?
 
     var body: some View {
-        NavigationStack {
-            List {
-                if store.notes.isEmpty {
-                    VStack(spacing: 8) {
-                        Image(systemName: "note.text").font(.system(size: 30)).foregroundStyle(Theme.Colors.textMuted)
-                        Text("No notes yet")
-                            .font(.cubbly(14, .semibold))
-                            .foregroundStyle(Theme.Colors.textSecondary)
-                        Text("Tap + to create your first private note.")
-                            .font(.cubbly(11))
-                            .foregroundStyle(Theme.Colors.textMuted)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 40)
-                    .listRowBackground(Color.clear)
+        List {
+            if store.notes.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "note.text").font(.system(size: 30)).foregroundStyle(Theme.Colors.textMuted)
+                    Text("No notes yet")
+                        .font(.cubbly(14, .semibold))
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                    Text("Tap + to create your first private note.")
+                        .font(.cubbly(11))
+                        .foregroundStyle(Theme.Colors.textMuted)
                 }
-                ForEach(store.notes) { note in
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 40)
+                .listRowBackground(Color.clear)
+            }
+            ForEach(store.notes) { note in
+                // Only allow opening notes that actually decrypted — otherwise
+                // pushing a broken row pops back to the DM list (the "black
+                // screen, kicked back" bug).
+                if note.decrypted != nil {
                     NavigationLink(value: note.id) {
                         NoteRowView(note: note)
                     }
@@ -212,50 +215,62 @@ private struct NotesEditorScreen: View {
                         } label: { Label(note.pinned ? "Unpin" : "Pin", systemImage: note.pinned ? "pin.slash" : "pin") }
                         .tint(.orange)
                     }
+                } else {
+                    HStack(spacing: 8) {
+                        Image(systemName: "lock.trianglebadge.exclamationmark")
+                            .foregroundStyle(.orange)
+                        Text("Couldn't decrypt this note")
+                            .font(.cubbly(13))
+                            .foregroundStyle(Theme.Colors.textSecondary)
+                    }
+                    .listRowBackground(Theme.Colors.bgSecondary)
                 }
             }
-            .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
-            .background(Theme.Colors.bgPrimary)
-            .navigationTitle("Personal Notes")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Menu {
-                        Button { store.lock() } label: { Label("Lock vault", systemImage: "lock.fill") }
-                        Button(role: .destructive) {
-                            store.forgetDevice()
-                        } label: { Label("Forget this device", systemImage: "key.slash") }
-                    } label: {
-                        Image(systemName: "ellipsis.circle").foregroundStyle(Theme.Colors.textSecondary)
-                    }
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(Theme.Colors.bgPrimary)
+        .navigationTitle("Personal Notes")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Menu {
+                    Button { store.lock() } label: { Label("Lock vault", systemImage: "lock.fill") }
+                    Button(role: .destructive) {
+                        store.forgetDevice()
+                    } label: { Label("Forget this device", systemImage: "key.slash") }
+                } label: {
+                    Image(systemName: "ellipsis.circle").foregroundStyle(Theme.Colors.textSecondary)
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        Task {
-                            if let new = await store.createNote() {
-                                selectedID = new.id
-                            }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    Task {
+                        if let new = await store.createNote() {
+                            selectedID = new.id
                         }
-                    } label: {
-                        Image(systemName: "square.and.pencil").foregroundStyle(Theme.Colors.primary)
                     }
+                } label: {
+                    Image(systemName: "square.and.pencil").foregroundStyle(Theme.Colors.primary)
                 }
             }
-            .navigationDestination(for: UUID.self) { id in
-                NoteEditorView(store: store, noteID: id)
-            }
-            .alert("Delete note?", isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } })) {
-                Button("Cancel", role: .cancel) {}
-                Button("Delete", role: .destructive) {
-                    if let n = pendingDelete {
-                        Task { await store.deleteNote(id: n.id) }
-                    }
-                    pendingDelete = nil
+        }
+        .navigationDestination(for: UUID.self) { id in
+            NoteEditorView(store: store, noteID: id)
+        }
+        .navigationDestination(item: $selectedID) { id in
+            NoteEditorView(store: store, noteID: id)
+        }
+        .alert("Delete note?", isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } })) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
+                if let n = pendingDelete {
+                    Task { await store.deleteNote(id: n.id) }
                 }
-            } message: {
-                Text("\"\(pendingDelete?.decrypted?.title.nonEmpty ?? "Untitled")\" will be permanently removed.")
+                pendingDelete = nil
             }
+        } message: {
+            Text("\"\(pendingDelete?.decrypted?.title.nonEmpty ?? "Untitled")\" will be permanently removed.")
         }
     }
 }
