@@ -84,33 +84,23 @@ final class NameColorsStore: ObservableObject {
     func startRealtime() async {
         if channel != nil { return }
         let ch = await RealtimeChannelFactory.make("name-colors-global")
-        let stream = ch.postgresChange(AnyAction.self, schema: "public", table: "user_equipped")
-        Task { [weak self] in
-            for await action in stream {
-                let row = Self.payloadUserID(from: action)
-                guard let uid = row.userId, row.category == "name_color" else { continue }
-                await MainActor.run {
-                    self?.colors.removeValue(forKey: uid)
-                }
-                await self?.request(uid)
-            }
-        }
+        let ins = ch.postgresChange(InsertAction.self, schema: "public", table: "user_equipped")
+        let upd = ch.postgresChange(UpdateAction.self, schema: "public", table: "user_equipped")
+        let del = ch.postgresChange(DeleteAction.self, schema: "public", table: "user_equipped")
+        Task { [weak self] in for await a in ins { await self?.invalidate(from: a.record) } }
+        Task { [weak self] in for await a in upd { await self?.invalidate(from: a.record) } }
+        Task { [weak self] in for await a in del { await self?.invalidate(from: a.oldRecord) } }
         do { try await ch.subscribeWithError() } catch { print("[NameColors] subscribe:", error) }
         channel = ch
     }
 
-    private static func payloadUserID(from action: AnyAction) -> (userId: UUID?, category: String?) {
-        let rec: [String: AnyJSON]?
-        switch action {
-        case .insert(let a): rec = a.record
-        case .update(let a): rec = a.record
-        case .delete(let a): rec = a.oldRecord
-        default: rec = nil
-        }
-        guard let rec else { return (nil, nil) }
-        let cat = (rec["category"]).flatMap { if case .string(let s) = $0 { return s } else { return nil } }
-        let uid = (rec["user_id"]).flatMap { if case .string(let s) = $0 { return UUID(uuidString: s) } else { return nil } }
-        return (uid, cat)
+    private func invalidate(from record: [String: AnyJSON]) async {
+        guard
+            case .string(let cat)? = record["category"], cat == "name_color",
+            case .string(let s)? = record["user_id"], let uid = UUID(uuidString: s)
+        else { return }
+        await MainActor.run { self.colors.removeValue(forKey: uid) }
+        request(uid)
     }
 
     // MARK: parsing
