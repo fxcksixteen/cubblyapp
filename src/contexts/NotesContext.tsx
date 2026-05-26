@@ -25,14 +25,20 @@ export interface NotePlaintext {
 }
 
 function normalizeNotePlaintext(plain: NotePlaintext): NotePlaintext {
+  // Be VERY liberal with legacy attachment shapes from earlier desktop/web
+  // versions and from third-party clients. We accept several common key
+  // aliases for the storage path AND the IV. We only drop entries that have
+  // no resolvable storage path at all — entries missing an IV are still
+  // surfaced so the user can see they exist (downloadAttachment will fall
+  // back to fetching the raw blob without decryption in that case).
   const attachments = (plain.attachments || []).map((a: any) => ({
     id: String(a.id || crypto.randomUUID()),
-    name: String(a.name || a.filename || "Attachment"),
-    mime: String(a.mime || a.type || a.contentType || "application/octet-stream"),
-    size: Number(a.size || a.byteSize || 0),
-    storagePath: String(a.storagePath || a.storage_path || a.path || ""),
-    iv: String(a.iv || ""),
-  })).filter((a) => a.storagePath && a.iv);
+    name: String(a.name || a.filename || a.fileName || "Attachment"),
+    mime: String(a.mime || a.type || a.contentType || a.mimeType || "application/octet-stream"),
+    size: Number(a.size || a.byteSize || a.bytes || 0),
+    storagePath: String(a.storagePath || a.storage_path || a.path || a.key || a.objectKey || ""),
+    iv: String(a.iv || a.IV || a.nonce || a.initVector || ""),
+  })).filter((a) => !!a.storagePath);
   return { ...plain, attachments };
 }
 
