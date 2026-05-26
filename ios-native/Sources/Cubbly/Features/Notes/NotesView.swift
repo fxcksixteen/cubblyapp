@@ -340,11 +340,11 @@ private struct NoteEditorView: View {
     private func scheduleSave() {
         guard loaded else { return }
         saveTask?.cancel()
-        saveTask = Task { [title, body] in
+        saveTask = Task { [title, noteBody] in
             try? await Task.sleep(nanoseconds: 700_000_000)
             if Task.isCancelled { return }
             await NotesStore.shared.updateNote(id: noteID, plain: NotePlaintext(
-                title: title, body: textToHtml(body)
+                title: title, body: textToHtml(noteBody)
             ))
         }
     }
