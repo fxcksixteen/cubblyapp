@@ -206,8 +206,10 @@
   100% { opacity: 0;  transform: translate(-115vw, 70vh) rotate(-28deg); }
 }
 
-[data-theme="space"] [role="dialog"],
-[data-theme="space"] [data-radix-popper-content-wrapper] { z-index: 1000 !important; }
+/* (Removed: blanket [data-theme="space"] [role="dialog"] z-index override —
+   it forced every dialog to the same layer, causing the What's New panel to
+   render below the Settings modal. Modals manage their own z layers now.) */
+
 
 /* ── Sky / Snowy / Hills animated themes ─────────────────────────────────
    Same isolation pattern as Space: only the ROOT app surface (`.h-screen`)
@@ -268,7 +270,44 @@
   background-size: 320px 220px; opacity: 0.7; animation: cb-space-twinkle 8s ease-in-out infinite; }
 .cb-hills-moon { position: absolute; top: 8%; right: 12%; width: 90px; height: 90px; border-radius: 50%;
   background: radial-gradient(circle at 35% 35%, #fef9e7, #e8dcb8 60%, #c9b78a);
-  box-shadow: 0 0 60px rgba(255,240,200,0.4), 0 0 140px rgba(255,240,200,0.2); }
+  box-shadow: 0 0 60px rgba(255,240,200,0.4), 0 0 140px rgba(255,240,200,0.2);
+  animation: cb-hills-moon-glow 9s ease-in-out infinite; }
+@keyframes cb-hills-moon-glow {
+  0%,100% { box-shadow: 0 0 60px rgba(255,240,200,0.4), 0 0 140px rgba(255,240,200,0.2); }
+  50%     { box-shadow: 0 0 80px rgba(255,240,200,0.55), 0 0 180px rgba(255,240,200,0.3); }
+}
+
+/* Slow wispy clouds drifting across the moon and upper sky */
+.cb-hills-cloud { position: absolute; height: 22px; border-radius: 999px;
+  background: radial-gradient(ellipse at 35% 60%, rgba(220,225,245,0.32), rgba(220,225,245,0.08) 65%, transparent 80%);
+  filter: blur(6px); will-change: transform; }
+.cb-hills-cloud.w1 { top: 10%; width: 280px; left: -30%; animation: cb-hills-cloud-drift 95s linear infinite; }
+.cb-hills-cloud.w2 { top: 18%; width: 200px; left: -30%; animation: cb-hills-cloud-drift 140s linear infinite; animation-delay: -55s; transform: scale(0.85); opacity: 0.75; }
+.cb-hills-cloud.w3 { top: 26%; width: 340px; left: -30%; animation: cb-hills-cloud-drift 170s linear infinite; animation-delay: -110s; transform: scale(1.1); opacity: 0.6; }
+@keyframes cb-hills-cloud-drift { from { transform: translateX(0) } to { transform: translateX(155vw) } }
+
+/* Drifting fireflies above the hills */
+.cb-hills-fireflies { position: absolute; left: 0; right: 0; bottom: 12%; height: 38%;
+  background-image:
+    radial-gradient(2px 2px at 12% 30%, rgba(255,235,140,0.95), transparent 60%),
+    radial-gradient(1.5px 1.5px at 28% 70%, rgba(190,255,180,0.9), transparent 60%),
+    radial-gradient(2px 2px at 46% 45%, rgba(255,235,140,0.85), transparent 60%),
+    radial-gradient(1.5px 1.5px at 64% 80%, rgba(180,230,255,0.9), transparent 60%),
+    radial-gradient(2px 2px at 82% 25%, rgba(255,235,140,0.95), transparent 60%),
+    radial-gradient(1.5px 1.5px at 92% 60%, rgba(190,255,180,0.9), transparent 60%);
+  filter: drop-shadow(0 0 4px rgba(255,235,140,0.6));
+  animation: cb-hills-fireflies-float 14s ease-in-out infinite, cb-hills-fireflies-blink 4.5s ease-in-out infinite; }
+@keyframes cb-hills-fireflies-float {
+  0%,100% { transform: translate(0,0); }
+  25%     { transform: translate(8px,-10px); }
+  50%     { transform: translate(-6px,6px); }
+  75%     { transform: translate(10px,4px); }
+}
+@keyframes cb-hills-fireflies-blink {
+  0%,100% { opacity: 0.95; }
+  50%     { opacity: 0.45; }
+}
+
 .cb-hills-layer { position: absolute; left: 0; right: 0; bottom: 0; pointer-events: none; }
 .cb-hills-layer.h1 { height: 38%; background: #1f2a4a;
   clip-path: polygon(0 60%, 8% 45%, 18% 55%, 28% 30%, 40% 50%, 52% 35%, 65% 55%, 78% 40%, 90% 55%, 100% 45%, 100% 100%, 0 100%); opacity: 0.85; }

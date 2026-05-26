@@ -80,7 +80,7 @@ const WhatsNewModal = ({ forceVersion, onClose }: WhatsNewModalProps) => {
   // settings frame instead of filling the viewport).
   return createPortal(
     <div
-      className="fixed inset-0 z-[210] flex items-center justify-center p-4 transition-all duration-250 ease-out"
+      className="fixed inset-0 z-[1100] flex items-center justify-center p-4 transition-all duration-250 ease-out"
       style={{
         backgroundColor: visible ? "rgba(15, 10, 6, 0.65)" : "rgba(15, 10, 6, 0)",
         backdropFilter: visible ? "blur(20px) saturate(140%)" : "blur(0px)",
