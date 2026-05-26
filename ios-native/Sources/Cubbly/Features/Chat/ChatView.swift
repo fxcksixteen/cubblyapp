@@ -388,7 +388,8 @@ struct ChatView: View {
                 conversationId: conversation.id,
                 peerId: other.userID,
                 peerName: other.displayName,
-                peerAvatarUrl: other.avatarURL
+                peerAvatarUrl: other.avatarURL,
+                preferredCallEventId: eventId
             )
             if !joined {
                 await store.startCall(
