@@ -78,7 +78,7 @@ interface NotesContextValue {
   togglePin: (id: string, pinned: boolean) => Promise<void>;
   // attachments
   uploadAttachment: (file: File) => Promise<{ id: string; name: string; mime: string; size: number; storagePath: string; iv: string }>;
-  downloadAttachment: (att: { storagePath: string; iv: string; mime: string; name: string }) => Promise<Blob>;
+  downloadAttachment: (att: { storagePath: string; iv?: string; mime: string; name: string }) => Promise<Blob>;
 }
 
 const NotesContext = createContext<NotesContextValue | null>(null);
