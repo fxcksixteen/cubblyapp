@@ -34,19 +34,12 @@ struct ProfilePopupView: View {
             // Banner
             ZStack(alignment: .bottomLeading) {
                 if let banner = p.bannerURL.flatMap(URL.init) {
-                    if AvatarView.isAnimated(url: banner) {
-                        AnimatedImageView(url: banner, contentMode: .scaleAspectFill)
-                            .frame(height: 120)
-                            .clipped()
-                    } else {
-                        AsyncImage(url: banner) { img in
-                            img.resizable().scaledToFill()
-                        } placeholder: {
-                            Rectangle().fill(Theme.Colors.bgSecondary)
-                        }
+                    // Always go through the animated renderer — storage-signed
+                    // URLs frequently hide the .gif/.webp extension behind a
+                    // query string, which used to leave GIF banners frozen.
+                    AnimatedImageView(url: banner, contentMode: .scaleAspectFill)
                         .frame(height: 120)
                         .clipped()
-                    }
                 } else {
                     Rectangle()
                         .fill(AvatarView.color(for: p.username))
@@ -130,15 +123,16 @@ struct ProfilePopupView: View {
 
     @ViewBuilder
     private func profileAvatar(_ p: Profile) -> some View {
-        if let url = p.avatarURL.flatMap(URL.init), AvatarView.isAnimated(url: url) {
-            // Animated GIF / WebP avatar — render with our shared player so it
-            // actually animates inside the profile popup (matches web).
+        if let url = p.avatarURL.flatMap(URL.init) {
+            // Always animate — signed/storage URLs often hide the original
+            // .gif/.webp extension, which used to make GIF pfps freeze in
+            // profile previews.
             AnimatedImageView(url: url, contentMode: .scaleAspectFill)
                 .frame(width: 88, height: 88)
                 .clipShape(Circle())
         } else {
             AvatarView(
-                url: p.avatarURL.flatMap(URL.init),
+                url: nil,
                 fallbackText: p.displayName,
                 size: 88
             )
