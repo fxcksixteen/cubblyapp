@@ -20,6 +20,7 @@ struct DMListView: View {
     @State private var msgChannel: RealtimeChannelV2?
     @State private var convChannel: RealtimeChannelV2?
     @State private var profilePopupUserID: UUID?
+    @State private var showNotes = false
 
     private func conversation_otherUser(_ conv: ConversationSummary) -> Profile? {
         conv.otherUser
@@ -36,12 +37,19 @@ struct DMListView: View {
                     searchBar
                         .padding(.horizontal, 12)
                         .padding(.bottom, 8)
+                    PersonalNotesRow { showNotes = true }
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 8)
                     content
                 }
                 .frame(maxWidth: .infinity)
                 .background(Theme.Colors.bgPrimary)
             }
             .background(Theme.Colors.bgPrimary)
+            .navigationDestination(isPresented: $showNotes) {
+                NotesView()
+                    .environmentObject(session)
+            }
             .navigationDestination(item: $openConversation) { conv in
                 ChatView(conversation: conv)
                     .environmentObject(session)
