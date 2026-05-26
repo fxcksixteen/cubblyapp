@@ -182,9 +182,25 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
       try {
         const procs: string[] = (await api.getRunningProcesses()) || [];
         const detected = detectGame(procs, myGames);
-        broadcastActivity(detected);
+        if (detected) {
+          missStreakRef.current = 0;
+          currentlyDetectedRef.current = true;
+          broadcastActivity(detected);
+        } else {
+          // Debounce: require 2 consecutive misses before clearing so a
+          // single bad `tasklist` sample doesn't yank an active game.
+          // BUT once we hit the threshold, force the clear through even if
+          // the dedupe key already matches (prevents stuck "Playing X" rows
+          // when the previous broadcast errored out).
+          missStreakRef.current += 1;
+          if (missStreakRef.current >= 2) {
+            if (currentlyDetectedRef.current) lastSentRef.current = null;
+            currentlyDetectedRef.current = false;
+            broadcastActivity(null);
+          }
+        }
       } catch {
-        /* ignore */
+        /* ignore — don't increment miss streak on errors */
       }
     };
 
