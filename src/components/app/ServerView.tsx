@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Hash, Volume2, Plus, Settings, UserPlus, LogOut, Copy, Loader2, ChevronDown, Crown, Mic, MicOff, Headphones, HeadphoneOff, Video, MonitorUp, type LucideIcon } from "lucide-react";
+import { Hash, Volume2, Plus, Settings, UserPlus, LogOut, Copy, Loader2, ChevronDown, Crown, MicOff, Headphones, Video, MonitorUp, type LucideIcon } from "lucide-react";
 import { useServers, type ServerChannel } from "@/contexts/ServersContext";
 import { useServerChannels, useServerMembers } from "@/hooks/useServerChannels";
 import { useChannelVoiceParticipants } from "@/hooks/useChannelVoiceParticipants";
