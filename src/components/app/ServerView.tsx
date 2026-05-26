@@ -192,7 +192,7 @@ const ServerView = () => {
                 <div className="min-w-0 flex-1 flex items-center gap-1">
                   <UserDisplayName userId={m.user_id} name={m.display_name} className="truncate text-sm font-medium" />
                   <UserBadges userId={m.user_id} size={12} />
-                  {m.role === "owner" && <span title="Owner" className="text-[10px]">👑</span>}
+                  {m.role === "owner" && <Crown aria-label="Owner" className="h-3.5 w-3.5 shrink-0" style={{ color: "#faa61a" }} />}
                 </div>
               </div>
             );
