@@ -173,14 +173,16 @@ private extension Profile {
     /// when invoked from the empty-state "Add friends" tile.
     static var placeholder: Profile {
         Profile(
+            id: UUID(),
             userID: UUID(),
             username: "",
             displayName: "",
             avatarURL: nil,
+            bannerURL: nil,
             bio: nil,
-            status: nil,
-            statusMessage: nil,
-            createdAt: Date()
+            status: "offline",
+            createdAt: Date(),
+            updatedAt: Date()
         )
     }
 }
