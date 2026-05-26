@@ -476,8 +476,7 @@ struct DMSidebarPreview: View {
                 .padding(.bottom, 8)
 
                 PersonalNotesRow(action: {})
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 8)
+                    .padding(.bottom, 4)
 
                 ScrollView {
                     LazyVStack(spacing: 0) {
