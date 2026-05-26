@@ -45,10 +45,21 @@ struct MainTabView: View {
             .background(
                 ZStack {
                     Theme.Colors.bgPrimary
-                    LinearGradient(colors: theme.backgroundGradient,
-                                   startPoint: .topLeading, endPoint: .bottomTrailing)
-                        .opacity(theme.equippedShopThemeId != nil ? 0.35 : 0.18)
-                        .allowsHitTesting(false)
+                    if let id = theme.equippedShopThemeId,
+                       ["theme_midnight_aurora","theme_synthwave","theme_lava_flow","theme_borealis"].contains(id) {
+                        AnimatedThemeGradient(colors: theme.backgroundGradient)
+                            .opacity(0.35)
+                            .allowsHitTesting(false)
+                    } else if theme.equippedShopThemeId == "theme_space" {
+                        SpaceThemeAnimated()
+                            .opacity(0.55)
+                            .allowsHitTesting(false)
+                    } else {
+                        LinearGradient(colors: theme.backgroundGradient,
+                                       startPoint: .topLeading, endPoint: .bottomTrailing)
+                            .opacity(theme.equippedShopThemeId != nil ? 0.35 : 0.18)
+                            .allowsHitTesting(false)
+                    }
                 }
                 .ignoresSafeArea()
             )
