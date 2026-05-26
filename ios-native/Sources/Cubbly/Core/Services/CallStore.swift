@@ -747,9 +747,36 @@ final class CallStore: ObservableObject {
 
         case .readyForOffer:
             // A peer joined via "Join" pill while we were already in this
-            // call — send them a fresh offer (no re-ring). They'll answer.
-            Task { await sendFreshOfferForJoiner() }
+            // call. Always treat this as a fresh negotiation request — if
+            // the prior SDP exchange stalled (callee never received the
+            // earlier offer because the channel was joining mid-broadcast,
+            // for example) the new ready-for-offer is how we recover.
+            Task { await respondToPeerJoining() }
         }
+    }
+
+    /// Resets per-peer state and sends a brand-new offer over the call
+    /// channel. Used whenever a peer asks us for an offer via
+    /// `ready-for-offer`. Idempotent within a 1.5s window so retries from
+    /// the joining peer don't kick a thousand renegotiations.
+    private var lastJoinerOfferSentAt: Date = .distantPast
+    private func respondToPeerJoining() async {
+        if Date().timeIntervalSince(lastJoinerOfferSentAt) < 1.0 {
+            print("[Call] ⏭ ready-for-offer ignored — sent a fresh offer <1s ago")
+            return
+        }
+        lastJoinerOfferSentAt = Date()
+
+        // If we're connected, just renegotiate over the existing client.
+        // If we never got an answer (call still in .calling), tear down
+        // the stale voiceClient so the joiner gets a clean handshake.
+        if state != .connected {
+            voiceClient?.close()
+            voiceClient = nil
+            pendingRemoteIce.removeAll()
+        }
+        sdpExchangeStarted = false
+        await sendFreshOfferForJoiner()
     }
 
     /// Build a new offer and broadcast it on the per-call channel. Used when
@@ -757,12 +784,8 @@ final class CallStore: ObservableObject {
     /// caller-side fallback when no `ready-for-offer` arrives.
     private func sendFreshOfferForJoiner() async {
         guard let signaling = signaling else { return }
-        // De-dup: if we already started the SDP exchange (sent or received an
-        // offer), don't fire a second one — that resets the PC state.
         if sdpExchangeStarted { return }
         sdpExchangeStarted = true
-        // If we already have a voice client (we were the original caller),
-        // renegotiate over it. Otherwise build a new one.
         let voice: WebRTCClient
         if let existing = voiceClient {
             voice = existing
