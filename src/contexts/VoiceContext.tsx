@@ -2114,7 +2114,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           channelRef.current?.send({
             type: "broadcast",
             event: "voice-signal",
-            payload: { type: "screen-ice-candidate", candidate: event.candidate, senderId: user.id },
+            payload: { type: "screen-ice-candidate", role: "out", candidate: event.candidate, senderId: user.id },
           });
         }
       };
