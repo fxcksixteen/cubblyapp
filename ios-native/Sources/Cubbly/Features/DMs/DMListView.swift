@@ -442,6 +442,10 @@ struct DMSidebarPreview: View {
                 .padding(.horizontal, 12)
                 .padding(.bottom, 8)
 
+                PersonalNotesRow(action: {})
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
+
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(cache.conversations) { conv in
@@ -462,5 +466,57 @@ struct DMSidebarPreview: View {
         }
         .background(Theme.Colors.bgPrimary)
         .allowsHitTesting(false)
+    }
+}
+
+// MARK: - Personal Notes row
+
+/// Single tappable row above the conversation list that opens the user's
+/// encrypted personal notes. Mirrors the web/desktop sidebar entry: lives
+/// directly under the search bar, above all chats.
+struct PersonalNotesRow: View {
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [Theme.Colors.primary, Theme.Colors.primary.opacity(0.7)],
+                                startPoint: .topLeading, endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 44, height: 44)
+                    SVGIcon(name: "notes", size: 22, tint: .white)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Personal Notes")
+                        .font(Theme.Fonts.bodyMedium)
+                        .foregroundStyle(Theme.Colors.textPrimary)
+                        .lineLimit(1)
+                    Text("Your private, end-to-end encrypted space")
+                        .font(Theme.Fonts.bodySmall)
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 8)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.Colors.textMuted)
+            }
+            .padding(.vertical, 8)
+            .padding(.horizontal, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Theme.Colors.bgTertiary)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
