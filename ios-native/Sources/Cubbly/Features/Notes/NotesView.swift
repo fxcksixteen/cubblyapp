@@ -333,7 +333,7 @@ private struct NoteEditorView: View {
         if loaded { return }
         guard let n = note, let dec = n.decrypted else { return }
         title = dec.title
-        body = htmlToText(dec.body)
+        noteBody = htmlToText(dec.body)
         loaded = true
     }
 
