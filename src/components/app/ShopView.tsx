@@ -119,6 +119,34 @@ function ItemPreview({ item, displayName }: { item: ShopItem; displayName: strin
         </div>
       );
     }
+    if (item.id === "theme_sky_dusk") {
+      return (
+        <div className="relative h-20 w-full rounded-lg overflow-hidden" style={{ background: "linear-gradient(180deg,#1a3a6e 0%,#3a5a8e 35%,#6b7fa8 65%,#d4a373 100%)" }}>
+          <div className="shop-sky-cloud" style={{ top: "22%", animationDuration: "18s" }} />
+          <div className="shop-sky-cloud" style={{ top: "48%", animationDuration: "26s", animationDelay: "-8s", transform: "scale(0.7)", opacity: 0.7 }} />
+          <div className="shop-sky-cloud" style={{ top: "68%", animationDuration: "22s", animationDelay: "-14s", transform: "scale(1.1)" }} />
+        </div>
+      );
+    }
+    if (item.id === "theme_snowy_drift") {
+      return (
+        <div className="relative h-20 w-full rounded-lg overflow-hidden" style={{ background: "linear-gradient(180deg,#1a2735 0%,#243a52 60%,#3a5470 100%)" }}>
+          <div className="absolute inset-0 shop-snow-layer" />
+          <div className="absolute inset-0 shop-snow-layer" style={{ animationDuration: "5s", opacity: 0.55, backgroundSize: "140px 160px" }} />
+        </div>
+      );
+    }
+    if (item.id === "theme_moonlit_hills") {
+      return (
+        <div className="relative h-20 w-full rounded-lg overflow-hidden" style={{ background: "linear-gradient(180deg,#050818 0%,#0d1426 35%,#1a2244 70%,#2a3358 100%)" }}>
+          <div className="absolute inset-0 shop-hills-stars" />
+          <div className="absolute" style={{ top: "12%", right: "14%", width: 18, height: 18, borderRadius: "50%", background: "radial-gradient(circle at 35% 35%, #fef9e7, #e8dcb8 60%, #c9b78a)", boxShadow: "0 0 14px rgba(255,240,200,0.55), 0 0 28px rgba(255,240,200,0.25)" }} />
+          <div className="absolute left-0 right-0 bottom-0" style={{ height: "55%", background: "#1f2a4a", clipPath: "polygon(0 60%, 12% 45%, 25% 55%, 40% 30%, 55% 50%, 70% 35%, 85% 55%, 100% 45%, 100% 100%, 0 100%)", opacity: 0.9 }} />
+          <div className="absolute left-0 right-0 bottom-0" style={{ height: "38%", background: "#141a36", clipPath: "polygon(0 70%, 15% 50%, 30% 65%, 48% 40%, 62% 60%, 78% 45%, 92% 65%, 100% 55%, 100% 100%, 0 100%)" }} />
+          <div className="absolute left-0 right-0 bottom-0" style={{ height: "22%", background: "#08091a", clipPath: "polygon(0 80%, 20% 60%, 40% 75%, 60% 55%, 80% 70%, 100% 65%, 100% 100%, 0 100%)" }} />
+        </div>
+      );
+    }
     const cfg = item.config || {};
     const bg: string = cfg.preview || "linear-gradient(135deg, #f59e0b, #ef4444, #ec4899)";
     const animated: boolean = !!cfg.animated;
