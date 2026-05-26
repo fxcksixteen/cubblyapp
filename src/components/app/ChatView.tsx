@@ -159,12 +159,10 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
       .filter(e => e.state === "ongoing")
       .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
     const keepOngoingId = ongoingByStart[0]?.id;
-    return inWindow.map(e => {
-      if (e.state === "ongoing" && e.id !== keepOngoingId) {
-        return { ...e, state: "ended" as const, endedAt: e.endedAt || new Date().toISOString() };
-      }
-      return e;
-    });
+    // Never fake-convert duplicate ongoing rows into "Call Ended" locally.
+    // That made brand-new call pills flash as ended with 00:00 while the real
+    // backend row was still ongoing. Only render the newest ongoing pill.
+    return inWindow.filter(e => e.state !== "ongoing" || e.id === keepOngoingId);
   })();
   const latestOngoingCallEvent = conversationCallEvents
     .filter((event) => event.state === "ongoing")
