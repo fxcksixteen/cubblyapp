@@ -135,10 +135,11 @@ struct YouView: View {
                 .buttonStyle(.plain)
 
                 ZStack(alignment: .bottomTrailing) {
+                    let avatarURL = session.currentProfile?.avatarURL.flatMap(URL.init(string:))
                     PhotosPicker(selection: $avatarPick, matching: .images, photoLibrary: .shared()) {
                         ZStack {
                             AvatarView(
-                                url: session.currentProfile?.avatarURL.flatMap(URL.init(string:)),
+                                url: avatarURL,
                                 fallbackText: displayName,
                                 size: 96
                             )
