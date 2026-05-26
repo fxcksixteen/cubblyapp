@@ -2090,7 +2090,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         await localPc.setRemoteDescription({ type: answer.type, sdp: answer.sdp } as RTCSessionDescriptionInit);
 
         screenLoopbackPcRef.current = { local: localPc, remote: remotePc };
-        screenPcRef.current = localPc;
+        screenPcOutRef.current = localPc;
         return;
       }
 
