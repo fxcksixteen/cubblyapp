@@ -7,11 +7,19 @@ import Supabase
 /// Encrypted personal notes — server only ever sees ciphertext, salts, and
 /// the PIN verifier. Same wire format as `src/contexts/NotesContext.tsx` so
 /// notes round-trip between iOS, web, and desktop transparently.
+struct NoteAttachment: Codable, Equatable, Identifiable {
+    var id: String
+    var name: String
+    var mime: String
+    var size: Int
+    var storagePath: String
+    var iv: String
+}
+
 struct NotePlaintext: Codable, Equatable {
     var title: String
     var body: String
-    // Attachments deliberately omitted in v0.1.6 iOS — preserve unknown
-    // fields by storing the raw JSON if present (see NotesStore.decryptRow).
+    var attachments: [NoteAttachment]?
 }
 
 struct NoteRow: Identifiable, Equatable {
