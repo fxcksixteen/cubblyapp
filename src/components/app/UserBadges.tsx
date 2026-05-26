@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Sparkles, Mic, Crown, MessageCircle, Gamepad2, Moon, Heart, Star, Flower2 } from "lucide-react";
 import { BadgeData, useUserBadges } from "@/contexts/UserBadgesContext";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 // 3D badge artwork — keyed by shop_items.id. When an entry exists we render
 // the artwork directly (Discord-style — no chip, just the icon). Otherwise we
@@ -90,10 +91,12 @@ interface RowProps {
   userId: string | null | undefined;
   size?: number;
   className?: string;
+  /** When true, hovering a badge shows its name + description in a tooltip. */
+  withTooltip?: boolean;
 }
 
 /** Renders the equipped-badge row for a user (lazily loaded). */
-const UserBadges = ({ userId, size = 16, className }: RowProps) => {
+const UserBadges = ({ userId, size = 16, className, withTooltip = false }: RowProps) => {
   const { get, request } = useUserBadges();
   useEffect(() => {
     if (userId) request(userId);
@@ -102,9 +105,28 @@ const UserBadges = ({ userId, size = 16, className }: RowProps) => {
   if (!badges.length) return null;
   return (
     <span className={`inline-flex items-center gap-1 align-middle ${className ?? ""}`}>
-      {badges.map((b) => (
-        <Badge key={b.id} badge={b} size={size} />
-      ))}
+      {badges.map((b) =>
+        withTooltip ? (
+          <Tooltip key={b.id} delayDuration={150}>
+            <TooltipTrigger asChild>
+              <span className="inline-flex cursor-default">
+                <Badge badge={b} size={size} />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent
+              side="top"
+              className="bg-[#111214] border border-[#2b2d31] text-white px-3 py-2 rounded-lg shadow-xl max-w-[220px]"
+            >
+              <p className="text-[13px] font-semibold leading-tight">{b.label}</p>
+              {b.description && (
+                <p className="mt-0.5 text-[11px] leading-snug text-[#b5bac1]">{b.description}</p>
+              )}
+            </TooltipContent>
+          </Tooltip>
+        ) : (
+          <Badge key={b.id} badge={b} size={size} />
+        )
+      )}
     </span>
   );
 };

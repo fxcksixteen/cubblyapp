@@ -14,6 +14,7 @@ export interface BadgeData {
   fg: string;
   glow?: string;
   label: string;
+  description?: string;
 }
 
 interface Ctx {
@@ -37,6 +38,7 @@ function rowsToBadges(rows: any[]): BadgeData[] {
         fg: cfg.fg ?? "#ffffff",
         glow: cfg.glow,
         label: cfg.label ?? item.name ?? "Badge",
+        description: item.description ?? cfg.description ?? undefined,
       } as BadgeData;
     })
     .filter(Boolean) as BadgeData[];
@@ -54,7 +56,7 @@ export const UserBadgesProvider = ({ children }: { children: ReactNode }) => {
 
     const { data } = await supabase
       .from("user_equipped")
-      .select("user_id, item_id, slot, shop_items(category, config, name)")
+      .select("user_id, item_id, slot, shop_items(category, config, name, description)")
       .eq("category", "badge")
       .in("user_id", ids)
       .order("slot", { ascending: true });
