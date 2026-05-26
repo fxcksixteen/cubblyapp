@@ -56,7 +56,7 @@ export const UserBadgesProvider = ({ children }: { children: ReactNode }) => {
 
     const { data } = await supabase
       .from("user_equipped")
-      .select("user_id, item_id, slot, shop_items(category, config, name)")
+      .select("user_id, item_id, slot, shop_items(category, config, name, description)")
       .eq("category", "badge")
       .in("user_id", ids)
       .order("slot", { ascending: true });
