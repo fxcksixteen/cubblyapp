@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useServers } from "@/contexts/ServersContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -28,14 +28,31 @@ const CreateServerModal = ({ open, onClose, onCreated }: Props) => {
     channels: Array<{ name: string; kind: "text" | "voice"; category: string | null }>;
   } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const [visible, setVisible] = useState(false);
 
-  if (!open) return null;
+  useEffect(() => {
+    if (open) {
+      setMounted(true);
+      const r = requestAnimationFrame(() => requestAnimationFrame(() => setVisible(true)));
+      return () => cancelAnimationFrame(r);
+    } else if (mounted) {
+      setVisible(false);
+      const t = setTimeout(() => setMounted(false), 220);
+      return () => clearTimeout(t);
+    }
+  }, [open]);
+
+  if (!mounted) return null;
 
   const reset = () => {
     setName(""); setIconUrl(""); setCode(""); setPreview(null);
     setTemplateInput(""); setTemplatePreview(null);
   };
-  const close = () => { reset(); setMode("picker"); onClose(); };
+  const close = () => {
+    setVisible(false);
+    setTimeout(() => { reset(); setMode("picker"); onClose(); }, 220);
+  };
 
   const onCreate = async () => {
     if (!name.trim()) return toast.error("Pick a name");
@@ -113,10 +130,20 @@ const CreateServerModal = ({ open, onClose, onCreated }: Props) => {
     : "Paste a discord.new link or template code.";
 
   return createPortal(
-    <div className="app-themed fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 p-4" onClick={close}>
+    <div
+      className="app-themed fixed inset-0 z-[1000] flex items-center justify-center p-4 transition-all duration-200 ease-out"
+      style={{ backgroundColor: visible ? "rgba(0,0,0,0.6)" : "rgba(0,0,0,0)" }}
+      onClick={close}
+    >
       <div
-        className="w-full max-w-md rounded-xl overflow-hidden"
-        style={{ backgroundColor: "var(--app-bg-secondary)", border: "1px solid var(--app-border)" }}
+        className="w-full max-w-md rounded-xl overflow-hidden transition-all ease-out"
+        style={{
+          backgroundColor: "var(--app-bg-secondary)",
+          border: "1px solid var(--app-border)",
+          transform: visible ? "scale(1) translateY(0)" : "scale(0.94) translateY(10px)",
+          opacity: visible ? 1 : 0,
+          transitionDuration: "200ms",
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3 px-5 pt-4 pb-3">

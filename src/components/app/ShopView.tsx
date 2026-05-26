@@ -255,7 +255,7 @@ const ShopView = () => {
   useEffect(() => {
     if (!user) return;
     const ch = supabase
-      .channel(`inv:${user.id}`)
+      .channel(`inv:${user.id}:${Math.random().toString(36).slice(2, 10)}`)
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "user_inventory", filter: `user_id=eq.${user.id}` },
