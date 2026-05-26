@@ -55,6 +55,10 @@ const App = () => (
               <NameColorsStyles />
               <CoinTrackingBridge />
               <EquippedThemeBridge />
+              <SpaceBackground />
+              <SkyBackground />
+              <SnowyBackground />
+              <HillsBackground />
               <Routes>
                 <Route path="/" element={<Index />} />
                 <Route path="/login" element={<Login />} />
@@ -73,10 +77,6 @@ const App = () => (
               <WhatsNewModal />
               <GlobalCallIndicator />
               <GroupIncomingCallOverlay />
-              <SpaceBackground />
-              <SkyBackground />
-              <SnowyBackground />
-              <HillsBackground />
               </ServersProvider>
               </NotesProvider>
               </UserBadgesProvider>
