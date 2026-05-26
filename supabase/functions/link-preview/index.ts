@@ -275,10 +275,31 @@ Deno.serve(async (req) => {
     const siteName = pickMeta(html, "og:site_name") || parsed.hostname.replace(/^www\./, "");
     if (image) image = absolutize(image, parsed.toString());
 
+    // Best-effort upsert into the persistent cache so the next request for
+    // this URL skips the upstream fetch + HTML parse entirely.
+    admin
+      .from("link_previews")
+      .upsert(
+        {
+          url_hash: urlHash,
+          url: normalizedUrl,
+          title: title ?? null,
+          description: description ?? null,
+          image: image ?? null,
+          site_name: siteName ?? null,
+          fetched_at: new Date().toISOString(),
+        },
+        { onConflict: "url_hash" },
+      )
+      .then(({ error }) => {
+        if (error) console.warn("[link-preview] cache upsert failed:", error.message);
+      });
+
     return new Response(
       JSON.stringify({ title, description, image, siteName }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
+
   } catch (e) {
     console.error("[link-preview] error:", e);
     return new Response(JSON.stringify({ error: "Failed to fetch preview" }), {
