@@ -63,6 +63,12 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
   const lastSentRef = useRef<string | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollIntervalMsRef = useRef<number>(0);
+  // # of consecutive ticks where we saw NO matching game. Used to debounce
+  // transient `tasklist` misses (one bad sample shouldn't yank the activity),
+  // but force-clear after a couple of clean misses so ghost-detection doesn't
+  // keep awarding gaming coins after the user has closed their game.
+  const missStreakRef = useRef<number>(0);
+  const currentlyDetectedRef = useRef<boolean>(false);
 
   // ---- Fetch all visible activities + subscribe to realtime changes ----
   useEffect(() => {
@@ -176,9 +182,25 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
       try {
         const procs: string[] = (await api.getRunningProcesses()) || [];
         const detected = detectGame(procs, myGames);
-        broadcastActivity(detected);
+        if (detected) {
+          missStreakRef.current = 0;
+          currentlyDetectedRef.current = true;
+          broadcastActivity(detected);
+        } else {
+          // Debounce: require 2 consecutive misses before clearing so a
+          // single bad `tasklist` sample doesn't yank an active game.
+          // BUT once we hit the threshold, force the clear through even if
+          // the dedupe key already matches (prevents stuck "Playing X" rows
+          // when the previous broadcast errored out).
+          missStreakRef.current += 1;
+          if (missStreakRef.current >= 2) {
+            if (currentlyDetectedRef.current) lastSentRef.current = null;
+            currentlyDetectedRef.current = false;
+            broadcastActivity(null);
+          }
+        }
       } catch {
-        /* ignore */
+        /* ignore — don't increment miss streak on errors */
       }
     };
 
@@ -195,6 +217,11 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
       // Highest priority: while we're sending real-time PCM/video to peers,
       // never spawn `tasklist` / PowerShell — they block the IPC main thread.
       if (screenSharing) return POLL_INTERVAL_SCREENSHARE_MS;
+      // If we currently THINK a game is running, keep polling at the base
+      // cadence so we notice when it closes — being unfocused is the expected
+      // state mid-game, so we can't back off then or we ghost-detect for
+      // minutes and award unearned coins.
+      if (currentlyDetectedRef.current) return POLL_INTERVAL_MS;
       if (unfocused) return POLL_INTERVAL_UNFOCUSED_MS;
       return suppressing || inCall ? POLL_INTERVAL_SUPPRESSED_MS : POLL_INTERVAL_MS;
     };

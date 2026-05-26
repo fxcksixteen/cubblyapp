@@ -1,30 +1,60 @@
-I’ll fix the native iOS implementation in the same places you pointed to instead of keeping the fake edge-swipe approach.
+## v0.3.4 — Desktop & Web fixes + new features
 
-## Plan
+### 1. Space theme — modal/popup breakage
+The `cb-space-bg` fixed star-field is layering above Radix portals (Dialog/Popover/Sheet). Fix by lowering its `z-index` (e.g. `-1` with proper stacking context on `body`) and ensuring `pointer-events: none` is respected. Audit other animated theme backgrounds (Borealis, Synthwave, Lava) for the same regression.
 
-1. **Loading screen: use the no-background logo correctly**
-   - Put/use the transparent `cubbly-nobg.png` asset in the same asset catalog area as `cubbly-logo`.
-   - Make the launch screen a plain Cubbly-brown 9:16 screen with the transparent logo centered.
-   - Make the in-app `SplashView` match that same plain brown + centered transparent logo, removing the bear video/loading animation so launch and app loading no longer show the broken logo/square behavior.
-   - Keep the logo centered and stable with fixed sizing.
+### 2. Shooting stars look wrong
+Current `.cb-shooting-star` animation runs too often and too fast — looks like falling icicles. In `index.css`:
+- Slow streak duration to ~1.2s, with long random delays (15–40s) between cycles
+- Add a soft tapered gradient tail (transparent → white → transparent), small head glow
+- Reduce count to 2 streaks max, randomized diagonal angles
+- Ensure they fade in/out instead of hard cuts
 
-2. **Personal Notes black-screen/kickback bug**
-   - Fix the nested `NavigationStack` inside `NotesView`. Right now Notes is opened from `DMListView` through a navigation destination, then creates another `NavigationStack` for notes; opening an existing note can break the navigation hierarchy and pop back to DMs.
-   - Keep Notes as the sheet-like pushed screen, but use one clean internal navigation path for the notes list and note editor so tapping old notes opens the editor instead of going black and returning.
-   - Add a safe fallback if a note row can’t be decrypted/loaded so it doesn’t navigate into an empty black editor.
+### 3. Personal Notes — Undo/Redo
+Add undo/redo buttons to the note editor toolbar (web + desktop). Use the underlying TipTap/contenteditable history (`editor.chain().undo()` / `.redo()`), with disabled states based on `editor.can().undo()`. Keyboard shortcuts Cmd/Ctrl+Z and Cmd/Ctrl+Shift+Z.
 
-3. **DM sidebar ↔ chat threads: replicate the Notes relationship**
-   - Remove the right-edge-only `EdgeSwipeOpen` from `DMListView`.
-   - Stop treating chat like a separate edge-only destination.
-   - Rewire chat opening to use the same `NavigationStack`/`navigationDestination` pattern that Personal Notes uses: chat threads open on top of the DM sidebar.
-   - Keep `ChatView`’s native iOS interactive swipe-back enabled, but make it behave like Notes by allowing the system swipe-back across the screen instead of only the tiny edge where possible.
-   - Add a full-screen horizontal swipe on the DM sidebar that reopens the last active conversation, with the same sheet-on-top feel: DM list swipes left into the last chat; chat swipes right back to the DM list.
-   - Avoid the previous “fake side-by-side panel” behavior and avoid edge-only gestures.
+### 4. Voice call timer should NOT reset when one user leaves
+In `VoiceContext` / call-pill logic, the elapsed time is currently tied to the local user's join time. Change so the call's `started_at` lives on the call/session record and is only cleared when the last participant leaves. The pill and call UI both read from that shared `started_at`. Local rejoin keeps the same timestamp.
 
-4. **Profile preview GIFs: make avatar and banner animations actually play**
-   - Update profile previews to render avatar and banner URLs through the animated image renderer regardless of file extension, because signed/storage URLs may not end in `.gif` or `.webp`.
-   - Ensure animated views restart when the profile sheet appears/reappears so GIF avatars and banners don’t freeze.
-   - Keep static images working through the same renderer or a safe fallback.
+### 5. Game-detection ghost (free coins bug)
+In `ActivityContext` / detector loop: when the detected process disappears, sometimes the "current activity" state isn't cleared. Fix:
+- Require N consecutive misses (e.g. 2 polls) before clearing — but DO clear after that
+- On clear, immediately call `setGamingActive(false)` via `CoinTrackingBridge`
+- Add a hard watchdog: if no fresh detection event in >30s, force-clear
 
-5. **Package/version update**
-   - Bump the native build number and rebuild the iOS zip artifact after the fixes so you get a fresh package with these changes.
+### 6. Desktop app size (744 MB → ~150 MB target)
+Audit `electron-release/` and `package.json`:
+- Move heavy deps to `devDependencies` so they're not packaged
+- Add aggressive `--ignore` patterns to `@electron/packager` (test files, source maps, .md, .ts source, locales we don't use, `node_modules` of unused packages)
+- Strip Electron locales except `en-US`
+- Remove duplicated bundled native modules
+- Run `asar` packing
+Goal: trimmed installer under 200 MB.
+
+### 7. Three new animated themes — Sky, Snowy, Hills
+Following the `space` pattern:
+- Add tokens in `index.css` (`[data-theme="sky"]`, `snowy`, `hills`)
+- Add `ThemeName` entries in `ThemeContext`
+- Build dedicated background components (`SkyBackground`, `SnowyBackground`, `HillsBackground`) under `src/components/app/`, mounted alongside `SpaceBackground`
+- Sky: drifting clouds, soft day-to-dusk gradient
+- Snowy: falling snowflakes, frosted blue tint
+- Hills: nighttime moonlit silhouette of layered hills, stars, parallax
+- Add corresponding Shop entries + iOS `AnimatedThemeGradient` previews
+
+### 8. Server voice call presence
+Two gaps:
+- **Inside the server**: under the voice channel (e.g. "General"), render the list of connected participants (avatar + display name + mute/deafen icons), like Discord. Pull from existing voice presence channel.
+- **Across the app**: when in a server voice call, the bottom-of-DM-sidebar "current call" pill should appear with the server + channel name as location, ping/connection indicator, and quick-leave button — same component used for DM calls.
+
+### 9. Server owner crown icon
+Replace the 👑 emoji in the server members list with a proper Lucide `Crown` icon (gold accent color), matching the app's icon style.
+
+### 10. Hide message-requests inbox on server pages
+In the top-right header, conditionally hide the message requests / inbox button when the current route matches `/server/*`.
+
+### Technical notes
+- All theme changes: HSL tokens in `index.css`, no hardcoded colors in components
+- New backgrounds: respect `prefers-reduced-motion`
+- Call timer source-of-truth migration may need a tiny schema/realtime tweak (track `started_at` on the call row, not per-participant)
+- Crown icon: `<Crown className="w-4 h-4 text-yellow-400" />` (use semantic token)
+- Files likely touched: `src/index.css`, `src/contexts/ThemeContext.tsx`, `src/components/app/SpaceBackground.tsx` (+ 3 new bg components), `src/contexts/VoiceContext.tsx`, `src/contexts/ActivityContext.tsx`, notes editor component, server sidebar + members list components, top header component, `scripts/build-electron.cjs` / packager config.

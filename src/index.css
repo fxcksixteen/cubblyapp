@@ -146,6 +146,9 @@
 [data-theme="synthwave"] .app-themed { --app-bg-primary: #150a2e; --app-bg-secondary: #1c0d3a; --app-bg-tertiary: #0c0520; --app-bg-accent: #210f44; --app-text-primary: #f4e8ff; --app-text-secondary: #c0a8e8; --app-text-muted: #7e6aa8; --app-border: #2a1455; --app-hover: #2a1455; --app-active: #361a6c; --app-input: #2a1455; --app-toggle-on: #d946ef; --app-toggle-off: #2a1455; --scrollbar-thumb: rgba(192,168,232,0.22); --scrollbar-thumb-hover: rgba(192,168,232,0.4); }
 [data-theme="lava"] .app-themed { --app-bg-primary: #1f0a06; --app-bg-secondary: #2a0c06; --app-bg-tertiary: #150603; --app-bg-accent: #2e110a; --app-text-primary: #f7e1d2; --app-text-secondary: #d09077; --app-text-muted: #8e5a45; --app-border: #3a160c; --app-hover: #3a160c; --app-active: #4a1c10; --app-input: #3a160c; --app-toggle-on: #ff7a3a; --app-toggle-off: #3a160c; --scrollbar-thumb: rgba(255,140,80,0.22); --scrollbar-thumb-hover: rgba(255,140,80,0.4); }
 [data-theme="borealis"] .app-themed { --app-bg-primary: #08131c; --app-bg-secondary: #0a1a26; --app-bg-tertiary: #050d14; --app-bg-accent: #0e2230; --app-text-primary: #e0f5ee; --app-text-secondary: #7fb9b0; --app-text-muted: #4d7d77; --app-border: #122a36; --app-hover: #122a36; --app-active: #173848; --app-input: #122a36; --app-toggle-on: #6ee7b7; --app-toggle-off: #122a36; --scrollbar-thumb: rgba(110,231,183,0.22); --scrollbar-thumb-hover: rgba(110,231,183,0.4); }
+[data-theme="sky"] .app-themed { --app-bg-primary: #0f2238; --app-bg-secondary: #142a44; --app-bg-tertiary: #0a1828; --app-bg-accent: #1a3458; --app-text-primary: #e6f1ff; --app-text-secondary: #9bb5d3; --app-text-muted: #5f7794; --app-border: #1d3a5c; --app-hover: #1d3a5c; --app-active: #254a73; --app-input: #1d3a5c; --app-toggle-on: #60a5fa; --app-toggle-off: #1d3a5c; --scrollbar-thumb: rgba(155,181,211,0.22); --scrollbar-thumb-hover: rgba(155,181,211,0.4); }
+[data-theme="snowy"] .app-themed { --app-bg-primary: #1a2735; --app-bg-secondary: #1f2e3e; --app-bg-tertiary: #121b25; --app-bg-accent: #25364a; --app-text-primary: #eaf3ff; --app-text-secondary: #a7bdd4; --app-text-muted: #6b7e94; --app-border: #2a3d52; --app-hover: #2a3d52; --app-active: #344a63; --app-input: #2a3d52; --app-toggle-on: #93c5fd; --app-toggle-off: #2a3d52; --scrollbar-thumb: rgba(167,189,212,0.22); --scrollbar-thumb-hover: rgba(167,189,212,0.4); }
+[data-theme="hills"] .app-themed { --app-bg-primary: #0d1426; --app-bg-secondary: #111a30; --app-bg-tertiary: #070b18; --app-bg-accent: #15203c; --app-text-primary: #e8ecff; --app-text-secondary: #9fa8c8; --app-text-muted: #5a6388; --app-border: #1a2444; --app-hover: #1a2444; --app-active: #213057; --app-input: #1a2444; --app-toggle-on: #a78bfa; --app-toggle-off: #1a2444; --scrollbar-thumb: rgba(159,168,200,0.22); --scrollbar-thumb-hover: rgba(159,168,200,0.4); }
 
 /* Animated theme overlays */
 [data-theme="synthwave"] .app-themed { background-image: linear-gradient(125deg, #150a2e, #2a0e5e, #5b1f8e, #2a0e5e, #150a2e); background-size: 400% 400%; animation: cb-theme-shift 22s ease infinite; }
@@ -162,10 +165,16 @@
 [data-theme="borealis"] .app-themed .sidebar-tertiary,
 [data-theme="borealis"] .app-themed .user-panel { backdrop-filter: blur(10px); background-color: color-mix(in srgb, var(--app-bg-secondary) 78%, transparent); }
 
-/* Space theme — animated star field + shooting stars */
-[data-theme="space"] .app-themed { position: relative; background-color: transparent; }
-[data-theme="space"] .app-themed .sidebar-primary, [data-theme="space"] .app-themed .sidebar-tertiary, [data-theme="space"] .app-themed .user-panel { background-color: rgba(12, 14, 20, 0.72); backdrop-filter: blur(8px); }
-[data-theme="space"] .app-themed > * { position: relative; z-index: 1; }
+/* Space theme — animated star field + shooting stars.
+   IMPORTANT: only apply the transparent background to the ROOT app surface
+   (the AppLayout container has `.h-screen`), NOT to nested `.app-themed`
+   modal/dialog backdrops — otherwise popups become see-through and look broken. */
+[data-theme="space"] body { background-color: #04050a; }
+[data-theme="space"] .app-themed.h-screen { position: relative; background-color: transparent !important; }
+[data-theme="space"] .app-themed.h-screen .sidebar-primary,
+[data-theme="space"] .app-themed.h-screen .sidebar-tertiary,
+[data-theme="space"] .app-themed.h-screen .user-panel { background-color: rgba(12, 14, 20, 0.72); backdrop-filter: blur(8px); }
+[data-theme="space"] .app-themed.h-screen > * { position: relative; z-index: 1; }
 .cb-space-bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; background: radial-gradient(ellipse at 20% 0%, #0d1224 0%, #07080c 55%, #04050a 100%); }
 .cb-space-stars, .cb-space-stars-2, .cb-space-stars-3 { position: absolute; inset: -50%; background-repeat: repeat; opacity: 0.85; }
 .cb-space-stars   { background-image: radial-gradient(1px 1px at 25px 5px, #fff, transparent), radial-gradient(1px 1px at 50px 25px, #fff, transparent), radial-gradient(1px 1px at 125px 20px, #fff, transparent), radial-gradient(1.5px 1.5px at 50px 75px, #fff, transparent), radial-gradient(1px 1px at 15px 125px, #fff, transparent), radial-gradient(1px 1px at 110px 80px, #fff, transparent); background-size: 200px 200px; animation: cb-space-drift 240s linear infinite; opacity: 0.7; }
@@ -174,12 +183,99 @@
 @keyframes cb-space-drift { from { transform: translate(0,0); } to { transform: translate(-200px, -200px); } }
 @keyframes cb-space-twinkle { 0%,100% { opacity: 0.35; } 50% { opacity: 0.75; } }
 
-.cb-shooting-star { position: absolute; width: 140px; height: 1.5px; background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.9) 60%, #fff 100%); border-radius: 999px; filter: drop-shadow(0 0 6px rgba(255,255,255,0.85)); opacity: 0; transform: rotate(202deg); }
-.cb-shooting-star.s1 { top: -2%;  right: -10%; left: auto; animation: cb-shoot 1.6s ease-in 6s infinite; }
-.cb-shooting-star.s2 { top: 8%;   right: -10%; left: auto; animation: cb-shoot 1.4s ease-in 14s infinite; }
-.cb-shooting-star.s3 { top: 22%;  right: -10%; left: auto; animation: cb-shoot 1.8s ease-in 22s infinite; }
-.cb-shooting-star.s4 { top: 36%;  right: -10%; left: auto; animation: cb-shoot 1.5s ease-in 30s infinite; }
-@keyframes cb-shoot { 0% { opacity: 0; transform: translate(0,0) rotate(202deg); } 10% { opacity: 1; } 70% { opacity: 1; } 100% { opacity: 0; transform: translate(-120vw, 60vh) rotate(202deg); } }
+/* Shooting stars — slow, graceful, rare. Long delays and tapered tails. */
+.cb-shooting-star {
+  position: absolute;
+  width: 180px;
+  height: 2px;
+  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.15) 40%, rgba(255,255,255,0.9) 90%, #fff 100%);
+  border-radius: 999px;
+  filter: drop-shadow(0 0 8px rgba(180,210,255,0.9)) drop-shadow(0 0 16px rgba(120,160,255,0.5));
+  opacity: 0;
+  transform: rotate(205deg);
+  will-change: transform, opacity;
+}
+.cb-shooting-star.s1 { top: 5%;  right: -15%; animation: cb-shoot 2.8s ease-out 12s infinite; }
+.cb-shooting-star.s2 { top: 18%; right: -15%; animation: cb-shoot 3.2s ease-out 38s infinite; }
+.cb-shooting-star.s3 { top: 32%; right: -15%; animation: cb-shoot 3.0s ease-out 64s infinite; }
+.cb-shooting-star.s4 { top: 48%; right: -15%; animation: cb-shoot 3.4s ease-out 92s infinite; }
+@keyframes cb-shoot {
+  0%   { opacity: 0; transform: translate(0,0) rotate(205deg) scaleX(0.6); }
+  8%   { opacity: 1; transform: translate(-10vw, 4vh) rotate(205deg) scaleX(1); }
+  85%  { opacity: 1; }
+  100% { opacity: 0; transform: translate(-110vw, 50vh) rotate(205deg) scaleX(1); }
+}
+
+/* ── Sky / Snowy / Hills animated themes ─────────────────────────────────
+   Same isolation pattern as Space: only the ROOT app surface (`.h-screen`)
+   becomes transparent so modals stay opaque. */
+[data-theme="sky"] body,
+[data-theme="snowy"] body,
+[data-theme="hills"] body { background-color: #0d1426; }
+[data-theme="sky"] .app-themed.h-screen,
+[data-theme="snowy"] .app-themed.h-screen,
+[data-theme="hills"] .app-themed.h-screen { position: relative; background-color: transparent !important; }
+[data-theme="sky"] .app-themed.h-screen .sidebar-primary,
+[data-theme="sky"] .app-themed.h-screen .sidebar-tertiary,
+[data-theme="sky"] .app-themed.h-screen .user-panel,
+[data-theme="snowy"] .app-themed.h-screen .sidebar-primary,
+[data-theme="snowy"] .app-themed.h-screen .sidebar-tertiary,
+[data-theme="snowy"] .app-themed.h-screen .user-panel,
+[data-theme="hills"] .app-themed.h-screen .sidebar-primary,
+[data-theme="hills"] .app-themed.h-screen .sidebar-tertiary,
+[data-theme="hills"] .app-themed.h-screen .user-panel { background-color: rgba(10, 16, 30, 0.72); backdrop-filter: blur(8px); }
+[data-theme="sky"] .app-themed.h-screen > *,
+[data-theme="snowy"] .app-themed.h-screen > *,
+[data-theme="hills"] .app-themed.h-screen > * { position: relative; z-index: 1; }
+
+/* Sky — drifting clouds over soft dusk gradient */
+.cb-sky-bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+  background: linear-gradient(180deg, #1a3a6e 0%, #3a5a8e 35%, #6b7fa8 65%, #d4a373 100%); }
+.cb-sky-cloud { position: absolute; height: 60px; width: 220px; border-radius: 999px;
+  background: radial-gradient(ellipse at 30% 60%, rgba(255,255,255,0.65), rgba(255,255,255,0.18) 60%, transparent 75%);
+  filter: blur(8px); opacity: 0.85; will-change: transform; }
+.cb-sky-cloud.c1 { top: 12%; left: -25%; transform: scale(1.2); animation: cb-cloud-drift 120s linear infinite; }
+.cb-sky-cloud.c2 { top: 28%; left: -25%; transform: scale(0.8); animation: cb-cloud-drift 180s linear infinite; animation-delay: -40s; }
+.cb-sky-cloud.c3 { top: 45%; left: -25%; transform: scale(1.4); animation: cb-cloud-drift 220s linear infinite; animation-delay: -80s; }
+.cb-sky-cloud.c4 { top: 62%; left: -25%; transform: scale(0.9); animation: cb-cloud-drift 160s linear infinite; animation-delay: -120s; }
+@keyframes cb-cloud-drift { from { transform: translateX(0); } to { transform: translateX(150vw); } }
+
+/* Snowy — falling snowflakes over frosted blue */
+.cb-snowy-bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+  background: linear-gradient(180deg, #1a2735 0%, #243a52 60%, #3a5470 100%); }
+.cb-snow-layer { position: absolute; inset: 0;
+  background-image:
+    radial-gradient(2px 2px at 20px 30px, #fff, transparent),
+    radial-gradient(1.5px 1.5px at 80px 120px, #fff, transparent),
+    radial-gradient(2px 2px at 160px 60px, #fff, transparent),
+    radial-gradient(1px 1px at 220px 200px, #fff, transparent),
+    radial-gradient(2.5px 2.5px at 100px 250px, #fff, transparent);
+  background-size: 280px 320px; opacity: 0.85; }
+.cb-snow-layer.l1 { animation: cb-snow-fall 14s linear infinite; }
+.cb-snow-layer.l2 { background-size: 360px 400px; animation: cb-snow-fall 22s linear infinite; opacity: 0.6; }
+.cb-snow-layer.l3 { background-size: 480px 540px; animation: cb-snow-fall 32s linear infinite; opacity: 0.4; }
+@keyframes cb-snow-fall { from { transform: translateY(-320px); } to { transform: translateY(0); } }
+
+/* Hills — moonlit night with layered silhouettes */
+.cb-hills-bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+  background: linear-gradient(180deg, #050818 0%, #0d1426 35%, #1a2244 70%, #2a3358 100%); }
+.cb-hills-stars { position: absolute; inset: 0;
+  background-image: radial-gradient(1px 1px at 30px 40px, #fff, transparent),
+    radial-gradient(1px 1px at 120px 90px, #fff, transparent),
+    radial-gradient(1.5px 1.5px at 200px 30px, #fff, transparent),
+    radial-gradient(1px 1px at 280px 130px, rgba(200,210,255,0.9), transparent),
+    radial-gradient(0.5px 0.5px at 90px 160px, #fff, transparent);
+  background-size: 320px 220px; opacity: 0.7; animation: cb-space-twinkle 8s ease-in-out infinite; }
+.cb-hills-moon { position: absolute; top: 8%; right: 12%; width: 90px; height: 90px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #fef9e7, #e8dcb8 60%, #c9b78a);
+  box-shadow: 0 0 60px rgba(255,240,200,0.4), 0 0 140px rgba(255,240,200,0.2); }
+.cb-hills-layer { position: absolute; left: 0; right: 0; bottom: 0; pointer-events: none; }
+.cb-hills-layer.h1 { height: 38%; background: #1f2a4a;
+  clip-path: polygon(0 60%, 8% 45%, 18% 55%, 28% 30%, 40% 50%, 52% 35%, 65% 55%, 78% 40%, 90% 55%, 100% 45%, 100% 100%, 0 100%); opacity: 0.85; }
+.cb-hills-layer.h2 { height: 28%; background: #141a36;
+  clip-path: polygon(0 70%, 10% 50%, 22% 65%, 35% 40%, 48% 60%, 60% 45%, 72% 65%, 85% 50%, 100% 60%, 100% 100%, 0 100%); }
+.cb-hills-layer.h3 { height: 18%; background: #08091a;
+  clip-path: polygon(0 80%, 15% 60%, 30% 75%, 45% 55%, 60% 70%, 75% 60%, 90% 75%, 100% 65%, 100% 100%, 0 100%); }
 
 /* Cubbly theme 3D shadow effects */
 [data-theme="cubbly"] .app-themed .cubbly-3d-circle {

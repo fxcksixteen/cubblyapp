@@ -1527,6 +1527,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       // was the source of "two Ongoing Call pills" after a restart.
       let callEventId: string | null = null;
       let isJoiningExisting = false;
+      // When rejoining, preserve the ORIGINAL call start time from the DB so
+      // the elapsed timer (UI + chat pill) doesn't reset to 0 just because
+      // one participant briefly dropped out. The call only truly "ends" when
+      // the last participant leaves (state flips to "ended").
+      let existingStartedAtMs: number | undefined;
       try {
         const { data: existing } = await supabase
           .from("call_events")
@@ -1557,6 +1562,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           if (otherActive) {
             callEventId = existing.id;
             isJoiningExisting = true;
+            if (existing.started_at) {
+              const t = Date.parse(existing.started_at);
+              if (!Number.isNaN(t)) existingStartedAtMs = t;
+            }
             console.log("[Voice] 🔁 Joining existing ongoing call_event:", callEventId);
           } else {
             // No real peer present — close this stale event via the RPC
@@ -1594,7 +1603,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         // Pretending we're connected before the handshake completed was the
         // root cause of "rejoin lands you in a fake call with no audio".
         state: "calling",
-        startedAt: undefined,
+        startedAt: existingStartedAtMs,
         isMuted: false,
         isDeafened: false,
         isVideoOn: false,
@@ -1605,7 +1614,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         peerId,
         peerName,
         state: "calling",
-        startedAt: undefined,
+        startedAt: existingStartedAtMs,
         isMuted: false,
         isDeafened: false,
         isVideoOn: false,

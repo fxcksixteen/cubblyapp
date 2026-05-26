@@ -6,6 +6,9 @@ export type ThemeName =
   | "white"
   | "cubbly"
   | "space"
+  | "sky"
+  | "snowy"
+  | "hills"
   | "ocean"
   | "blossom"
   | "forest"
@@ -19,6 +22,9 @@ const VALID_THEMES: ThemeName[] = [
   "white",
   "cubbly",
   "space",
+  "sky",
+  "snowy",
+  "hills",
   "ocean",
   "blossom",
   "forest",

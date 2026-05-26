@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Hash, Volume2, Plus, Settings, UserPlus, LogOut, Copy, Loader2, ChevronDown, type LucideIcon } from "lucide-react";
+import { Hash, Volume2, Plus, Settings, UserPlus, LogOut, Copy, Loader2, ChevronDown, Crown, type LucideIcon } from "lucide-react";
 import { useServers, type ServerChannel } from "@/contexts/ServersContext";
 import { useServerChannels, useServerMembers } from "@/hooks/useServerChannels";
 import type { Conversation } from "@/hooks/useConversations";
@@ -192,7 +192,7 @@ const ServerView = () => {
                 <div className="min-w-0 flex-1 flex items-center gap-1">
                   <UserDisplayName userId={m.user_id} name={m.display_name} className="truncate text-sm font-medium" />
                   <UserBadges userId={m.user_id} size={12} />
-                  {m.role === "owner" && <span title="Owner" className="text-[10px]">👑</span>}
+                  {m.role === "owner" && <Crown aria-label="Owner" className="h-3.5 w-3.5 shrink-0" style={{ color: "#faa61a" }} />}
                 </div>
               </div>
             );
