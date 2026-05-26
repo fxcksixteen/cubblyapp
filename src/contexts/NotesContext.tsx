@@ -255,15 +255,29 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
     return { id, name: file.name, mime: file.type || "application/octet-stream", size: file.size, storagePath, iv };
   }, [user, key]);
 
-  const downloadAttachment = useCallback(async (att: { storagePath?: string; storage_path?: string; path?: string; iv: string; mime: string; name: string }) => {
+  const downloadAttachment = useCallback(async (att: { storagePath?: string; storage_path?: string; path?: string; iv?: string; mime: string; name: string }) => {
     if (!key) throw new Error("Locked");
     const storagePath = att.storagePath || att.storage_path || att.path;
     if (!storagePath) throw new Error("Missing attachment path");
     const { data, error } = await supabase.storage.from("notes-attachments").download(storagePath);
     if (error || !data) throw error || new Error("Download failed");
     const buf = await data.arrayBuffer();
-    const plain = await decryptBytes(key, att.iv, buf);
-    return new Blob([plain], { type: att.mime });
+    // Legacy fallback: very old attachments were uploaded unencrypted (no
+    // iv was stored). If we have no iv, just return the raw blob so the
+    // user can still view their image / video / file.
+    if (!att.iv) {
+      return new Blob([buf], { type: att.mime });
+    }
+    try {
+      const plain = await decryptBytes(key, att.iv, buf);
+      return new Blob([plain], { type: att.mime });
+    } catch (e) {
+      // Decryption failed — most likely a legacy blob that was never
+      // encrypted with this key. Fall back to the raw bytes so the user
+      // at least sees the original file instead of a broken tile.
+      console.warn("[Notes] decrypt failed, serving raw blob:", e);
+      return new Blob([buf], { type: att.mime });
+    }
   }, [key]);
 
   const value = useMemo<NotesContextValue>(() => ({
