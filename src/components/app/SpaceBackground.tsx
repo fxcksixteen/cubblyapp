@@ -14,8 +14,10 @@ const SpaceBackground = () => {
 
     let cancelled = false;
     let timer: number | undefined;
+    const SHOOT_DURATION_MS = 5200;
     const schedule = () => {
-      const delay = 30_000 + Math.random() * 90_000;
+      // One graceful streak every 15–30 seconds.
+      const delay = 15_000 + Math.random() * 15_000;
       timer = window.setTimeout(() => {
         if (cancelled) return;
         setShooting(true);
@@ -23,7 +25,7 @@ const SpaceBackground = () => {
           if (cancelled) return;
           setShooting(false);
           schedule();
-        }, 3_200);
+        }, SHOOT_DURATION_MS);
       }, delay);
     };
 
