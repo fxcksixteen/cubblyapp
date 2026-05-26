@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { X, Check, LogOut, Pencil, Camera, ChevronLeft, ChevronRight } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme, ThemeName } from "@/contexts/ThemeContext";
@@ -601,10 +602,10 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
 
   // === MOBILE: Discord-style full-screen sheet with two-pane navigation ===
   if (isMobile) {
-    return (
+    return createPortal(
       <div
         ref={backdropRef}
-        className="app-themed fixed inset-0 z-50 transition-all duration-200 ease-out"
+        className="app-themed fixed inset-0 z-[1000] transition-all duration-200 ease-out"
         style={{
           backgroundColor: animating ? "var(--app-bg-primary)" : "rgba(0,0,0,0)",
           opacity: animating ? 1 : 0,
@@ -718,15 +719,16 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
             </div>
           )}
         </div>
-      </div>
+      </div>,
+      document.body,
     );
   }
 
-  // === DESKTOP (unchanged) ===
-  return (
+  // === DESKTOP ===
+  return createPortal(
     <div
       ref={backdropRef}
-      className="app-themed fixed inset-0 z-50 flex items-center justify-center p-4 transition-all duration-250 ease-out"
+      className="app-themed fixed inset-0 z-[1000] flex items-center justify-center p-4 transition-all duration-250 ease-out"
       style={{
         backgroundColor: animating ? "rgba(0, 0, 0, 0.6)" : "rgba(0, 0, 0, 0)",
         backdropFilter: animating ? "blur(12px)" : "blur(0px)",
@@ -846,7 +848,8 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 };
 
