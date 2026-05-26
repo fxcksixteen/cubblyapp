@@ -153,7 +153,7 @@ struct CubblyNameText: View {
             Text(text).font(font)
                 .foregroundStyle(LinearGradient(colors: [from, to], startPoint: .leading, endPoint: .trailing))
         case .some(.animated(let stops)):
-            AnimatedGradientNameText(name: text, colors: stops, font: font)
+            AnimatedGradientText(name: text, colors: stops, font: font)
         default:
             Text(text).font(font).foregroundStyle(fallback)
                 .onAppear { if let id = userId { store.request(id) } }
@@ -161,27 +161,3 @@ struct CubblyNameText: View {
     }
 }
 
-/// Shifting linear gradient — same visual treatment as the web
-/// `.shop-animated-name` CSS animation and the Shop preview card.
-struct AnimatedGradientNameText: View {
-    let name: String
-    let colors: [Color]
-    var font: Font = Theme.Fonts.bodyMedium
-    @State private var phase: CGFloat = 0
-    var body: some View {
-        Text(name)
-            .font(font)
-            .foregroundStyle(
-                LinearGradient(
-                    colors: colors + [colors.first ?? .white],
-                    startPoint: UnitPoint(x: phase, y: 0.5),
-                    endPoint: UnitPoint(x: phase + 1, y: 0.5)
-                )
-            )
-            .onAppear {
-                withAnimation(.linear(duration: 6).repeatForever(autoreverses: false)) {
-                    phase = -1
-                }
-            }
-    }
-}
