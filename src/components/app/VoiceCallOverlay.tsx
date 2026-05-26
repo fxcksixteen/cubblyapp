@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Maximize2, Minimize2, Monitor } from "lucide-react";
+import { Maximize2, Minimize2, Monitor, Pause } from "lucide-react";
 import { useVoice, CallEvent } from "@/contexts/VoiceContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
