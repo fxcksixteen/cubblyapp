@@ -1235,8 +1235,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           console.log("[Voice] 👋 Peer left — keeping call alive locally; hard-resetting signaling state");
           try { pcRef.current?.close(); } catch {}
           pcRef.current = null;
-          try { screenPcRef.current?.close(); } catch {}
-          screenPcRef.current = null;
+          try { screenPcOutRef.current?.close(); } catch {}
+          screenPcOutRef.current = null;
+          try { screenPcInRef.current?.close(); } catch {}
+          screenPcInRef.current = null;
           setRemoteStream(null);
           setRemoteScreenStream(null);
           setRemoteVideoStream(null);
