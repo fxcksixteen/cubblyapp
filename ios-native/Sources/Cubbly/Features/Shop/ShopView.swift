@@ -533,28 +533,8 @@ private struct SpaceThemePreview: View {
     }
 }
 
-private struct AnimatedGradientText: View {
-    let name: String
-    let colors: [Color]
-    @State private var phase: CGFloat = 0
-    var body: some View {
-        Text(name)
-            .font(.cubbly(16, .heavy))
-            .foregroundStyle(
-                LinearGradient(
-                    colors: colors + [colors.first ?? .white],
-                    startPoint: UnitPoint(x: phase, y: 0.5),
-                    endPoint: UnitPoint(x: phase + 1, y: 0.5)
-                )
-            )
-            .lineLimit(1)
-            .onAppear {
-                withAnimation(.linear(duration: 6).repeatForever(autoreverses: false)) {
-                    phase = -1
-                }
-            }
-    }
-}
+// Note: AnimatedGradientText now lives in Shared/AnimatedThemeGradient.swift
+// so the Shop preview and CubblyNameText share one implementation.
 
 // MARK: - Coins info sheet
 
