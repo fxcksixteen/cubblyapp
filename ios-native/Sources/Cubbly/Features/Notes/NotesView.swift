@@ -342,7 +342,7 @@ private struct NoteEditorView: View {
                         attachments: attachments,
                         store: store,
                         onImageTap: { previewImageData = IdentifiedData(id: UUID(), data: $0) },
-                        onVideoTap: { previewVideoURL = IdentifiedURL(id: UUID(), url: $0) },
+                        onVideoTap: { previewVideoURL = IdentifiedURL(url: $0) },
                         onRemove: { removeAttachment(id: $0) }
                     )
                     .padding(.horizontal, 12)
