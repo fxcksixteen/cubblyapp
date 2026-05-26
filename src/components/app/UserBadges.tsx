@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Sparkles, Mic, Crown, MessageCircle, Gamepad2, Moon, Heart, Star, Flower2 } from "lucide-react";
 import { BadgeData, useUserBadges } from "@/contexts/UserBadgesContext";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 // 3D badge artwork — keyed by shop_items.id. When an entry exists we render
 // the artwork directly (Discord-style — no chip, just the icon). Otherwise we
