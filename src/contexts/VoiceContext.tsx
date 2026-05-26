@@ -359,7 +359,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
   const iceServersRef = useRef<RTCIceServer[]>(STUN_ONLY_SERVERS);
   const pcRef = useRef<RTCPeerConnection | null>(null);
-  const screenPcRef = useRef<RTCPeerConnection | null>(null);
+  // Two independent screen-share PCs so MY outgoing share and the PEER's
+  // incoming share can coexist (Discord-style multi-share). Previously a
+  // single `screenPcRef` was reused for both directions — when the peer
+  // started sharing while I was already sharing, the incoming offer
+  // overwrote my outgoing PC's ref, breaking ICE routing for both streams.
+  const screenPcOutRef = useRef<RTCPeerConnection | null>(null);
+  const screenPcInRef = useRef<RTCPeerConnection | null>(null);
   /** Cleanup fn for an active native (WASAPI) per-window audio capture, if any. */
   const nativeWindowAudioStopRef = useRef<(() => void) | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
@@ -1229,8 +1235,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           console.log("[Voice] 👋 Peer left — keeping call alive locally; hard-resetting signaling state");
           try { pcRef.current?.close(); } catch {}
           pcRef.current = null;
-          try { screenPcRef.current?.close(); } catch {}
-          screenPcRef.current = null;
+          try { screenPcOutRef.current?.close(); } catch {}
+          screenPcOutRef.current = null;
+          try { screenPcInRef.current?.close(); } catch {}
+          screenPcInRef.current = null;
           setRemoteStream(null);
           setRemoteScreenStream(null);
           setRemoteVideoStream(null);
@@ -1333,11 +1341,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               channel.send({
                 type: "broadcast",
                 event: "voice-signal",
-                payload: { type: "screen-ice-candidate", candidate: event.candidate, senderId: user.id },
+                // role:"in" → this candidate was gathered on OUR incoming PC,
+                // so the peer must apply it to THEIR outgoing PC.
+                payload: { type: "screen-ice-candidate", role: "in", candidate: event.candidate, senderId: user.id },
               });
             }
           };
-          screenPcRef.current = screenPc;
+          screenPcInRef.current = screenPc;
           await screenPc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
           const answer = await screenPc.createAnswer();
           await screenPc.setLocalDescription(answer);
@@ -1349,24 +1359,34 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           return;
         }
 
-        if (payload.type === "screen-answer" && screenPcRef.current) {
-          await screenPcRef.current.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+        if (payload.type === "screen-answer" && screenPcOutRef.current) {
+          await screenPcOutRef.current.setRemoteDescription(new RTCSessionDescription(payload.sdp));
           return;
         }
 
-        if (payload.type === "screen-ice-candidate" && screenPcRef.current) {
-          try {
-            await screenPcRef.current.addIceCandidate(new RTCIceCandidate(payload.candidate));
-          } catch (e) {
-            console.error("Failed to add screen ICE candidate:", e);
+        if (payload.type === "screen-ice-candidate") {
+          // role "in" came from peer's incoming PC → goes to our OUT PC.
+          // role "out" came from peer's outgoing PC → goes to our IN PC.
+          // Missing role (legacy) → try out first, then in.
+          const target =
+            payload.role === "in" ? screenPcOutRef.current :
+            payload.role === "out" ? screenPcInRef.current :
+            (screenPcOutRef.current || screenPcInRef.current);
+          if (target) {
+            try {
+              await target.addIceCandidate(new RTCIceCandidate(payload.candidate));
+            } catch (e) {
+              console.error("Failed to add screen ICE candidate:", e);
+            }
           }
           return;
         }
 
         if (payload.type === "screen-stop") {
+          // Peer stopped THEIR share — only tear down our incoming PC.
           setRemoteScreenStream(null);
-          screenPcRef.current?.close();
-          screenPcRef.current = null;
+          screenPcInRef.current?.close();
+          screenPcInRef.current = null;
         }
 
         // Instant peer state (mute/deafen/video) — bypasses DB realtime lag.
@@ -2070,7 +2090,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         await localPc.setRemoteDescription({ type: answer.type, sdp: answer.sdp } as RTCSessionDescriptionInit);
 
         screenLoopbackPcRef.current = { local: localPc, remote: remotePc };
-        screenPcRef.current = localPc;
+        screenPcOutRef.current = localPc;
         return;
       }
 
@@ -2078,7 +2098,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       if (!channelRef.current) return;
 
       const screenPc = new RTCPeerConnection({ iceServers: iceServersRef.current });
-      screenPcRef.current = screenPc;
+      screenPcOutRef.current = screenPc;
 
       stream.getTracks().forEach(track => {
         const sender = screenPc.addTrack(track, stream);
@@ -2094,7 +2114,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           channelRef.current?.send({
             type: "broadcast",
             event: "voice-signal",
-            payload: { type: "screen-ice-candidate", candidate: event.candidate, senderId: user.id },
+            payload: { type: "screen-ice-candidate", role: "out", candidate: event.candidate, senderId: user.id },
           });
         }
       };

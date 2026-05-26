@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Maximize2, Minimize2, Monitor } from "lucide-react";
+import { Maximize2, Minimize2, Monitor, Pause } from "lucide-react";
 import { useVoice, CallEvent } from "@/contexts/VoiceContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -128,6 +128,38 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
     }
   }, [remoteScreenStream]);
 
+  // Pause the LOCAL inline screenshare preview when the Cubbly window loses
+  // focus / goes into the background. The outgoing MediaStream tracks are
+  // untouched — the peer still sees your screen normally — we just stop
+  // painting our own preview to save GPU/decoder cycles. Mirrors what the
+  // fullscreen viewer already does for local previews.
+  const [localPreviewPaused, setLocalPreviewPaused] = useState(false);
+  useEffect(() => {
+    if (!isScreenSharing) { setLocalPreviewPaused(false); return; }
+    const onBlur = () => setLocalPreviewPaused(true);
+    const onFocus = () => setLocalPreviewPaused(false);
+    const onVis = () => {
+      if (document.visibilityState === "hidden") setLocalPreviewPaused(true);
+      else if (document.hasFocus()) setLocalPreviewPaused(false);
+    };
+    if (typeof document !== "undefined" && !document.hasFocus()) setLocalPreviewPaused(true);
+    window.addEventListener("blur", onBlur);
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.removeEventListener("blur", onBlur);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [isScreenSharing]);
+
+  useEffect(() => {
+    const v = screenVideoRef.current;
+    if (!v) return;
+    if (localPreviewPaused) { try { v.pause(); } catch {} }
+    else { v.play().catch(() => {}); }
+  }, [localPreviewPaused]);
+
   // Wire camera streams to <video> elements. ALWAYS call play() after
   // setting srcObject — autoplay alone fails silently when srcObject is
   // assigned after the element mounts (which is exactly what happens when
@@ -181,43 +213,75 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
           <div className="flex items-center gap-1.5">
             <Monitor className="h-3.5 w-3.5" style={{ color: "#3ba55c" }} />
             <span className="text-[11px] font-semibold" style={{ color: "#3ba55c" }}>
-              {isScreenSharing ? "You're sharing" : "Screen shared"}
+              {isScreenSharing && remoteScreenStream ? "Both sharing" : isScreenSharing ? "You're sharing" : "Screen shared"}
             </span>
           </div>
         )}
       </div>
 
-      {/* Screen share view */}
+      {/* Screen share view — shows MY share and the PEER's share independently
+          so when both of us are sharing at the same time, both previews are
+          visible (Discord-style multi-share). */}
       {hasScreenShare && (
-        <div className="relative bg-black">
+        <div className={`flex flex-col gap-2 bg-black ${isScreenSharing && remoteScreenStream ? "p-2" : ""}`}>
           {isScreenSharing && screenStream && (
-            <video ref={screenVideoRef} autoPlay muted playsInline className="w-full max-h-[400px] object-contain" />
+            <div className="relative bg-black">
+              <video
+                ref={screenVideoRef}
+                autoPlay
+                muted
+                playsInline
+                className="w-full max-h-[400px] object-contain transition-[filter,opacity] duration-200"
+                style={{
+                  filter: localPreviewPaused ? "blur(14px) saturate(0.85)" : "none",
+                  opacity: localPreviewPaused ? 0.55 : 1,
+                }}
+              />
+              {localPreviewPaused && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 pointer-events-none">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/15 backdrop-blur-md border border-white/15">
+                    <Pause className="h-5 w-5 text-white" />
+                  </div>
+                  <p className="text-sm font-semibold text-white/95 drop-shadow">Stream paused</p>
+                  <p className="text-[11px] text-white/70 max-w-xs text-center px-4 drop-shadow">
+                    Your stream is still working — this preview is paused to save resources while Cubbly isn't focused.
+                  </p>
+                </div>
+              )}
+              <div className="absolute top-3 right-3 flex gap-2">
+                <button
+                  onClick={() => screenStream && setFullscreenView({ stream: screenStream, name: displayName, type: "screen", isLocal: true })}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg bg-black/60 text-white hover:bg-black/80 transition-colors"
+                  title="Fullscreen"
+                >
+                  <Maximize2 className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="absolute top-3 left-3 px-2 py-0.5 rounded bg-black/55 text-[10px] font-semibold text-white/90 uppercase tracking-wide">
+                You
+              </div>
+            </div>
           )}
-          {!isScreenSharing && remoteScreenStream && (
-            // muted: audio is routed through the per-peer GainNode (see
-            // VoiceContext screen-pc ontrack), so the right-click "User Volume"
-            // and the fullscreen viewer's volume slider both control it.
-            <video ref={remoteScreenVideoRef} autoPlay muted playsInline className="w-full max-h-[400px] object-contain" />
+          {remoteScreenStream && (
+            <div className="relative bg-black">
+              {/* muted: audio is routed through the per-peer GainNode (see
+                  VoiceContext screen-pc ontrack), so the right-click "User Volume"
+                  and the fullscreen viewer's volume slider both control it. */}
+              <video ref={remoteScreenVideoRef} autoPlay muted playsInline className="w-full max-h-[400px] object-contain" />
+              <div className="absolute top-3 right-3 flex gap-2">
+                <button
+                  onClick={() => remoteScreenStream && setFullscreenView({ stream: remoteScreenStream, name: recipientName, type: "screen", isLocal: false })}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg bg-black/60 text-white hover:bg-black/80 transition-colors"
+                  title="Fullscreen"
+                >
+                  <Maximize2 className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="absolute top-3 left-3 px-2 py-0.5 rounded bg-black/55 text-[10px] font-semibold text-white/90 uppercase tracking-wide">
+                {recipientName}
+              </div>
+            </div>
           )}
-          <div className="absolute top-3 right-3 flex gap-2">
-            <button
-              onClick={() => {
-                const stream = isScreenSharing ? screenStream : remoteScreenStream;
-                if (stream) {
-                  setFullscreenView({
-                    stream,
-                    name: isScreenSharing ? displayName : recipientName,
-                    type: "screen",
-                    isLocal: isScreenSharing,
-                  });
-                }
-              }}
-              className="flex h-8 w-8 items-center justify-center rounded-lg bg-black/60 text-white hover:bg-black/80 transition-colors"
-              title="Fullscreen"
-            >
-              <Maximize2 className="h-4 w-4" />
-            </button>
-          </div>
         </div>
       )}
 
