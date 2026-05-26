@@ -25,14 +25,20 @@ export interface NotePlaintext {
 }
 
 function normalizeNotePlaintext(plain: NotePlaintext): NotePlaintext {
+  // Be VERY liberal with legacy attachment shapes from earlier desktop/web
+  // versions and from third-party clients. We accept several common key
+  // aliases for the storage path AND the IV. We only drop entries that have
+  // no resolvable storage path at all — entries missing an IV are still
+  // surfaced so the user can see they exist (downloadAttachment will fall
+  // back to fetching the raw blob without decryption in that case).
   const attachments = (plain.attachments || []).map((a: any) => ({
     id: String(a.id || crypto.randomUUID()),
-    name: String(a.name || a.filename || "Attachment"),
-    mime: String(a.mime || a.type || a.contentType || "application/octet-stream"),
-    size: Number(a.size || a.byteSize || 0),
-    storagePath: String(a.storagePath || a.storage_path || a.path || ""),
-    iv: String(a.iv || ""),
-  })).filter((a) => a.storagePath && a.iv);
+    name: String(a.name || a.filename || a.fileName || "Attachment"),
+    mime: String(a.mime || a.type || a.contentType || a.mimeType || "application/octet-stream"),
+    size: Number(a.size || a.byteSize || a.bytes || 0),
+    storagePath: String(a.storagePath || a.storage_path || a.path || a.key || a.objectKey || ""),
+    iv: String(a.iv || a.IV || a.nonce || a.initVector || ""),
+  })).filter((a) => !!a.storagePath);
   return { ...plain, attachments };
 }
 
@@ -72,7 +78,7 @@ interface NotesContextValue {
   togglePin: (id: string, pinned: boolean) => Promise<void>;
   // attachments
   uploadAttachment: (file: File) => Promise<{ id: string; name: string; mime: string; size: number; storagePath: string; iv: string }>;
-  downloadAttachment: (att: { storagePath: string; iv: string; mime: string; name: string }) => Promise<Blob>;
+  downloadAttachment: (att: { storagePath: string; iv?: string; mime: string; name: string }) => Promise<Blob>;
 }
 
 const NotesContext = createContext<NotesContextValue | null>(null);
@@ -249,15 +255,29 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
     return { id, name: file.name, mime: file.type || "application/octet-stream", size: file.size, storagePath, iv };
   }, [user, key]);
 
-  const downloadAttachment = useCallback(async (att: { storagePath?: string; storage_path?: string; path?: string; iv: string; mime: string; name: string }) => {
+  const downloadAttachment = useCallback(async (att: { storagePath?: string; storage_path?: string; path?: string; iv?: string; mime: string; name: string }) => {
     if (!key) throw new Error("Locked");
     const storagePath = att.storagePath || att.storage_path || att.path;
     if (!storagePath) throw new Error("Missing attachment path");
     const { data, error } = await supabase.storage.from("notes-attachments").download(storagePath);
     if (error || !data) throw error || new Error("Download failed");
     const buf = await data.arrayBuffer();
-    const plain = await decryptBytes(key, att.iv, buf);
-    return new Blob([plain], { type: att.mime });
+    // Legacy fallback: very old attachments were uploaded unencrypted (no
+    // iv was stored). If we have no iv, just return the raw blob so the
+    // user can still view their image / video / file.
+    if (!att.iv) {
+      return new Blob([buf], { type: att.mime });
+    }
+    try {
+      const plain = await decryptBytes(key, att.iv, buf);
+      return new Blob([plain], { type: att.mime });
+    } catch (e) {
+      // Decryption failed — most likely a legacy blob that was never
+      // encrypted with this key. Fall back to the raw bytes so the user
+      // at least sees the original file instead of a broken tile.
+      console.warn("[Notes] decrypt failed, serving raw blob:", e);
+      return new Blob([buf], { type: att.mime });
+    }
   }, [key]);
 
   const value = useMemo<NotesContextValue>(() => ({

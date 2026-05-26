@@ -23,9 +23,22 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.3.5";
+export const CURRENT_VERSION = "0.3.6";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.3.6",
+    title: "Hotfix: voice calls, server header & legacy notes attachments",
+    date: "2026-05-26",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Fixed call pills in chat instantly showing 'Call Ended -1:-1' the moment a call started. Tiny clock drift between your device and the server made the calculated duration briefly negative — durations are now clamped so a just-started call never renders as ended with garbage time.",
+      "Server tabs no longer show the Friends header (Online / All / Pending / Blocked / Add Friend) across the top — that bar is now hidden inside a server, since the server view already has its own server-name and channel chrome.",
+      "Old personal-notes attachments (images and files saved from earlier desktop versions, or with slightly different metadata shapes) now show up again. The loader accepts more legacy key names for storage path and IV, no longer drops attachments missing an IV, and falls back to serving the raw bytes when an old blob can't be decrypted — so your old photos and files in Private Notes are visible and downloadable instead of silently disappearing.",
+    ],
+  },
+
   {
     version: "0.3.5",
     title: "Hotfix: desktop app boots again",
