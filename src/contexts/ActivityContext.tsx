@@ -63,6 +63,12 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
   const lastSentRef = useRef<string | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollIntervalMsRef = useRef<number>(0);
+  // # of consecutive ticks where we saw NO matching game. Used to debounce
+  // transient `tasklist` misses (one bad sample shouldn't yank the activity),
+  // but force-clear after a couple of clean misses so ghost-detection doesn't
+  // keep awarding gaming coins after the user has closed their game.
+  const missStreakRef = useRef<number>(0);
+  const currentlyDetectedRef = useRef<boolean>(false);
 
   // ---- Fetch all visible activities + subscribe to realtime changes ----
   useEffect(() => {
