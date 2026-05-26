@@ -1562,6 +1562,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           if (otherActive) {
             callEventId = existing.id;
             isJoiningExisting = true;
+            if (existing.started_at) {
+              const t = Date.parse(existing.started_at);
+              if (!Number.isNaN(t)) existingStartedAtMs = t;
+            }
             console.log("[Voice] 🔁 Joining existing ongoing call_event:", callEventId);
           } else {
             // No real peer present — close this stale event via the RPC
