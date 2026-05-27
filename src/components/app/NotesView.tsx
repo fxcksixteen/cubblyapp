@@ -1366,7 +1366,7 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
           style={{ borderColor: "var(--app-border)", paddingBottom: "max(0.5rem, env(safe-area-inset-bottom, 0px))" }}
         >
           {attachments.map((att) => {
-            const isMedia = att.mime.startsWith("image/") || att.mime.startsWith("video/");
+            const isMedia = isMediaAtt(att);
             const isInlined = inlinedIds.has(att.id);
             if (isMedia && !isInlined) {
               return (
