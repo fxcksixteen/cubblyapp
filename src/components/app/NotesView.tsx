@@ -713,6 +713,7 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     el.setAttribute("data-att-name", att.name || "Attachment");
     el.setAttribute("data-att-mime", att.mime || "application/octet-stream");
     el.setAttribute("data-att-size", String(att.size || 0));
+    el.setAttribute("data-note-id", note.id);
   };
 
   const buildInlineImg = (att: NoteAttachment, blobUrl: string) => {
@@ -777,7 +778,7 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     if (file.size > 25 * 1024 * 1024) { toast.error("File too large (25MB max)"); return; }
     setUploading(true);
     try {
-      const att = await n.uploadAttachment(file);
+      const att = await n.uploadAttachment(file, note.id);
       setAttachments((prev) => [...prev, att]);
       dirty.current = true;
       // Pre-cache blob URL from the original file (cheaper than redownloading).
