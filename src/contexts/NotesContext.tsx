@@ -385,33 +385,12 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
     const id = crypto.randomUUID();
     const storagePath = `${user.id}/${id}.bin`;
     const blob = new Blob([ciphertext], { type: "application/octet-stream" });
-    const { error } = await supabase.storage.from("notes-attachments").upload(storagePath, blob, { upsert: false, metadata: { iv } });
+    const { error } = await supabase.storage.from("notes-attachments").upload(storagePath, blob, {
+      upsert: false,
+      metadata: { iv, originalName: file.name, mime: file.type || "application/octet-stream", size: file.size },
+    });
     if (error) throw error;
     return { id, name: file.name, mime: file.type || "application/octet-stream", size: file.size, storagePath, iv };
-  }, [user, key]);
-
-  const listStoredAttachments = useCallback(async (): Promise<NoteAttachment[]> => {
-    if (!user || !key) return [];
-    const { data, error } = await supabase.storage.from("notes-attachments").list(user.id, {
-      limit: 1000,
-      sortBy: { column: "created_at", order: "desc" },
-    });
-    if (error || !data) return [];
-    return data
-      .filter((file) => !!file.name && !file.name.endsWith("/"))
-      .map((file) => {
-        const id = file.name.replace(/\.bin$/i, "");
-        const metadata = (file.metadata || {}) as Record<string, unknown>;
-        const size = Number(metadata.size || metadata.contentLength || metadata.contentLengthExact || 0);
-        return {
-          id,
-          name: String(metadata.originalName || metadata.name || `Recovered file ${id.slice(0, 8)}`),
-          mime: String(metadata.mime || metadata.mimetype || metadata.contentType || "application/octet-stream"),
-          size: Number.isFinite(size) ? size : 0,
-          storagePath: `${user.id}/${file.name}`,
-          iv: String(metadata.iv || ""),
-        };
-      });
   }, [user, key]);
 
   const downloadAttachment = useCallback(async (att: { storagePath?: string; storage_path?: string; path?: string; iv?: string; mime: string; name: string }) => {
