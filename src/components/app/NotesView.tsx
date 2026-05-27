@@ -27,6 +27,28 @@ import {
 
 const PIN_LENGTH = 4;
 
+// Infer a mime type from the filename extension when the stored mime is
+// missing or generic (e.g. "application/octet-stream"). Recovered legacy
+// attachments often have no mime, but their filename is preserved — this
+// lets us still show Insert / preview controls for images and videos.
+const IMAGE_EXT = new Set(["png","jpg","jpeg","gif","webp","heic","heif","bmp","avif","svg"]);
+const VIDEO_EXT = new Set(["mp4","mov","m4v","webm","mkv","avi"]);
+const effectiveMime = (att: { name?: string; mime?: string }): string => {
+  const m = (att.mime || "").toLowerCase();
+  if (m.startsWith("image/") || m.startsWith("video/")) return m;
+  const name = att.name || "";
+  const dot = name.lastIndexOf(".");
+  if (dot < 0) return m;
+  const ext = name.slice(dot + 1).toLowerCase();
+  if (IMAGE_EXT.has(ext)) return ext === "svg" ? "image/svg+xml" : `image/${ext === "jpg" ? "jpeg" : ext}`;
+  if (VIDEO_EXT.has(ext)) return `video/${ext === "mov" ? "quicktime" : ext}`;
+  return m;
+};
+const isMediaAtt = (att: { name?: string; mime?: string }) => {
+  const m = effectiveMime(att);
+  return m.startsWith("image/") || m.startsWith("video/");
+};
+
 const NotesView = () => {
   const n = useNotes();
 
@@ -869,16 +891,20 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
   // Insert an existing attachment at the end of the body (used by the
   // "Insert into note" button on attachment cards).
   const insertExistingAttIntoBody = async (att: typeof attachments[0]) => {
-    if (!att.mime.startsWith("image/") && !att.mime.startsWith("video/")) return;
+    const mime = effectiveMime(att);
+    if (!mime.startsWith("image/") && !mime.startsWith("video/")) return;
     let url = blobUrlCacheRef.current.get(att.id);
     if (!url) {
       try {
         const blob = await n.downloadAttachment(att);
-        url = URL.createObjectURL(blob);
+        // Re-type the blob if the stored mime was generic so <img>/<video> picks the right decoder.
+        const typed = blob.type && blob.type !== "application/octet-stream" ? blob : new Blob([blob], { type: mime });
+        url = URL.createObjectURL(typed);
         blobUrlCacheRef.current.set(att.id, url);
-      } catch { toast.error("Couldn't load image"); return; }
+      } catch { toast.error("Couldn't load file"); return; }
     }
-    const node = att.mime.startsWith("image/") ? buildInlineImg(att, url) : buildInlineVideo(att, url);
+    const attWithMime = { ...att, mime };
+    const node = mime.startsWith("image/") ? buildInlineImg(attWithMime, url) : buildInlineVideo(attWithMime, url);
     let range: Range | null = null;
     if (bodyRef.current) {
       range = document.createRange();
@@ -1340,7 +1366,7 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
           style={{ borderColor: "var(--app-border)", paddingBottom: "max(0.5rem, env(safe-area-inset-bottom, 0px))" }}
         >
           {attachments.map((att) => {
-            const isMedia = att.mime.startsWith("image/") || att.mime.startsWith("video/");
+            const isMedia = isMediaAtt(att);
             const isInlined = inlinedIds.has(att.id);
             if (isMedia && !isInlined) {
               return (
@@ -1438,7 +1464,9 @@ const InlineAttachment = ({
       try {
         const blob = await n.downloadAttachment(att);
         if (cancelled) return;
-        createdUrl = URL.createObjectURL(blob);
+        const mime = effectiveMime(att);
+        const typed = blob.type && blob.type !== "application/octet-stream" ? blob : new Blob([blob], { type: mime });
+        createdUrl = URL.createObjectURL(typed);
         setUrl(createdUrl);
       } catch {
         if (!cancelled) setError(true);
@@ -1451,9 +1479,10 @@ const InlineAttachment = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [att.id, att.storagePath, att.iv]);
 
-  const isImage = att.mime.startsWith("image/");
-  const isVideo = att.mime.startsWith("video/");
-  const isPdf = att.mime === "application/pdf";
+  const mime = effectiveMime(att);
+  const isImage = mime.startsWith("image/");
+  const isVideo = mime.startsWith("video/");
+  const isPdf = mime === "application/pdf";
 
   return (
     <div
