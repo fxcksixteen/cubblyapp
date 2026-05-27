@@ -1477,9 +1477,10 @@ const InlineAttachment = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [att.id, att.storagePath, att.iv]);
 
-  const isImage = att.mime.startsWith("image/");
-  const isVideo = att.mime.startsWith("video/");
-  const isPdf = att.mime === "application/pdf";
+  const mime = effectiveMime(att);
+  const isImage = mime.startsWith("image/");
+  const isVideo = mime.startsWith("video/");
+  const isPdf = mime === "application/pdf";
 
   return (
     <div
