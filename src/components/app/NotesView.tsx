@@ -741,7 +741,6 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     (async () => {
       const fixed: typeof attachments = [];
       for (const att of latestRef.current.attachments) {
-        const currentMime = effectiveMime(att);
         if (isInsertableAtt(att) && hasExtension(att.name)) {
           fixed.push(att);
           continue;
