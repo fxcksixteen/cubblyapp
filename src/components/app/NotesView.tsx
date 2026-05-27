@@ -891,16 +891,20 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
   // Insert an existing attachment at the end of the body (used by the
   // "Insert into note" button on attachment cards).
   const insertExistingAttIntoBody = async (att: typeof attachments[0]) => {
-    if (!att.mime.startsWith("image/") && !att.mime.startsWith("video/")) return;
+    const mime = effectiveMime(att);
+    if (!mime.startsWith("image/") && !mime.startsWith("video/")) return;
     let url = blobUrlCacheRef.current.get(att.id);
     if (!url) {
       try {
         const blob = await n.downloadAttachment(att);
-        url = URL.createObjectURL(blob);
+        // Re-type the blob if the stored mime was generic so <img>/<video> picks the right decoder.
+        const typed = blob.type && blob.type !== "application/octet-stream" ? blob : new Blob([blob], { type: mime });
+        url = URL.createObjectURL(typed);
         blobUrlCacheRef.current.set(att.id, url);
-      } catch { toast.error("Couldn't load image"); return; }
+      } catch { toast.error("Couldn't load file"); return; }
     }
-    const node = att.mime.startsWith("image/") ? buildInlineImg(att, url) : buildInlineVideo(att, url);
+    const attWithMime = { ...att, mime };
+    const node = mime.startsWith("image/") ? buildInlineImg(attWithMime, url) : buildInlineVideo(attWithMime, url);
     let range: Range | null = null;
     if (bodyRef.current) {
       range = document.createRange();
