@@ -1231,6 +1231,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         // The call_event row is only marked ended once the last participant
         // leaves (see endCall).
         if (payload.type === "hangup" || payload.type === "peer-leave") {
+          // v0.3.8: ignore stale peer-leaves from a *previous* call_event in
+          // the same conversation. Without this scoping, a delayed broadcast
+          // from a hung-up attempt could instantly kick us out of the brand-
+          // new call we just joined (the "girlfriend joins and we both get
+          // hung up" bug).
+          if (payload.callEventId && callEventIdSnapshot && payload.callEventId !== callEventIdSnapshot) {
+            console.log(`[Voice] 🛑 Ignoring stale peer-leave for ${payload.callEventId} (current=${callEventIdSnapshot})`);
+            return;
+          }
           console.log("[Voice] 👋 Peer left — keeping call alive locally; hard-resetting signaling state");
           try { pcRef.current?.close(); } catch {}
           pcRef.current = null;
@@ -2281,7 +2290,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       channelRef.current.send({
         type: "broadcast",
         event: "voice-signal",
-        payload: { type: "peer-leave", senderId: user.id },
+        // v0.3.8: stamp the callEventId so peers can ignore stale leaves
+        // from a previous call attempt in the same conversation.
+        payload: { type: "peer-leave", senderId: user.id, callEventId: currentCallEventIdRef.current },
       });
     }
 
