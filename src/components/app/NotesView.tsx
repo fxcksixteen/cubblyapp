@@ -668,7 +668,9 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
       if (!att) continue;
       try {
         const blob = await n.downloadAttachment(att);
-        const url = URL.createObjectURL(blob);
+        const mime = effectiveMime(att);
+        const typed = blob.type && !GENERIC_MIME.has(blob.type.toLowerCase()) ? blob : new Blob([blob], { type: mime });
+        const url = URL.createObjectURL(typed);
         blobUrlCacheRef.current.set(id, url);
         (el as HTMLImageElement).src = url;
       } catch { /* ignore */ }
@@ -883,14 +885,18 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
   const downloadAtt = async (att: typeof attachments[0]) => {
     try {
       const blob = await n.downloadAttachment(att);
-      const url = URL.createObjectURL(blob);
+      const sniffedMime = await sniffPreviewableMime(blob);
+      const mime = isInsertableAtt({ ...att, mime: sniffedMime }) ? sniffedMime : effectiveMime(att);
+      const typed = blob.type && !GENERIC_MIME.has(blob.type.toLowerCase()) ? blob : new Blob([blob], { type: mime || "application/octet-stream" });
+      const url = URL.createObjectURL(typed);
+      const fileName = typedAttachmentFileName(att, mime);
       // iOS standalone PWAs ignore the `download` attribute — open in a new tab
       // so the user can long-press → save instead of getting nothing.
       if (isStandalonePWA()) {
         window.open(url, "_blank");
       } else {
         const a = document.createElement("a");
-        a.href = url; a.download = att.name; a.click();
+        a.href = url; a.download = fileName; a.click();
       }
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch {
@@ -920,28 +926,17 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     dirty.current = true;
   };
 
-  // Insert an existing attachment at the end of the body (used by the
-  // "Insert into note" button on attachment cards).
+  // Insert an existing previewable attachment at the end of the body (used by
+  // the "Insert into note" button on image/video/PDF attachment cards).
   const insertExistingAttIntoBody = async (att: typeof attachments[0]) => {
-    // Always allow insert — we'll sniff the actual bytes to pick image/video/file.
     let url = blobUrlCacheRef.current.get(att.id);
     let sniffedMime = effectiveMime(att);
     if (!url) {
       try {
         const blob = await n.downloadAttachment(att);
-        // Sniff magic bytes when stored mime is missing/generic.
-        if (!sniffedMime.startsWith("image/") && !sniffedMime.startsWith("video/")) {
-          const head = new Uint8Array(await blob.slice(0, 16).arrayBuffer());
-          const hex = Array.from(head).map((b) => b.toString(16).padStart(2, "0")).join("");
-          const ascii = String.fromCharCode(...head);
-          if (hex.startsWith("89504e47")) sniffedMime = "image/png";
-          else if (hex.startsWith("ffd8ff")) sniffedMime = "image/jpeg";
-          else if (hex.startsWith("47494638")) sniffedMime = "image/gif";
-          else if (ascii.startsWith("RIFF") && ascii.slice(8, 12) === "WEBP") sniffedMime = "image/webp";
-          else if (hex.startsWith("00000018") || hex.startsWith("00000020") || hex.includes("66747970")) sniffedMime = "video/mp4";
-          else if (hex.startsWith("1a45dfa3")) sniffedMime = "video/webm";
-        }
-        const typed = blob.type && blob.type !== "application/octet-stream" ? blob : new Blob([blob], { type: sniffedMime || "application/octet-stream" });
+        sniffedMime = isInsertableAtt(att) ? sniffedMime : await sniffPreviewableMime(blob);
+        if (!isInsertableAtt({ ...att, mime: sniffedMime })) return;
+        const typed = blob.type && !GENERIC_MIME.has(blob.type.toLowerCase()) ? blob : new Blob([blob], { type: sniffedMime });
         url = URL.createObjectURL(typed);
         blobUrlCacheRef.current.set(att.id, url);
       } catch { toast.error("Couldn't load file"); return; }
@@ -953,15 +948,15 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     } else if (sniffedMime.startsWith("video/")) {
       node = buildInlineVideo(attWithMime, url!);
     } else {
-      // Generic file: insert a download link so it's still visible inline.
+      // PDF: insert a download/open link inline.
       const a = document.createElement("a");
       stampInlineAttachmentMetadata(a, attWithMime);
       a.setAttribute("data-cubbly-movable", "1");
       a.href = url!;
-      a.download = att.name || "attachment";
+      a.download = typedAttachmentFileName(att, sniffedMime);
       a.target = "_blank";
       a.rel = "noopener noreferrer";
-      a.textContent = `📎 ${att.name || "Attachment"}`;
+      a.textContent = `📄 ${typedAttachmentFileName(att, sniffedMime)}`;
       a.style.display = "inline-block";
       a.style.margin = "4px 0";
       a.style.padding = "4px 8px";
