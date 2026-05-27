@@ -21,7 +21,7 @@ import {
 export interface NotePlaintext {
   title: string;
   body: string; // HTML
-  attachments?: Array<{ id: string; name: string; mime: string; size: number; storagePath: string; iv: string }>;
+  attachments?: Array<{ id: string; name: string; mime: string; size: number; storagePath: string; iv: string; noteId?: string }>;
 }
 
 export interface NoteAttachment {
@@ -31,6 +31,7 @@ export interface NoteAttachment {
   size: number;
   storagePath: string;
   iv: string;
+  noteId?: string;
 }
 
 type StoredAttachmentIndex = Map<string, Partial<NoteAttachment>>;
@@ -84,6 +85,7 @@ function extractLegacyInlineAttachments(body?: string): unknown[] {
         size: Number(attrs["data-att-size"] || 0),
         storagePath: srcPath,
         iv: attrs["data-iv"] || attrs["data-att-iv"] || "",
+        noteId: attrs["data-note-id"] || "",
       });
     }
   }
@@ -99,7 +101,7 @@ function getStoredCandidate(index: StoredAttachmentIndex | undefined, id: string
   return (storagePath && index?.get(storagePath)) || (id && index?.get(id)) || undefined;
 }
 
-function normalizeNotePlaintext(plain: NotePlaintext, ownerUserId?: string, storageIndex?: StoredAttachmentIndex): NotePlaintext {
+function normalizeNotePlaintext(plain: NotePlaintext, ownerUserId?: string, storageIndex?: StoredAttachmentIndex, noteId?: string): NotePlaintext {
   // Be VERY liberal with legacy attachment shapes from earlier desktop/web
   // versions and from third-party clients. We accept several common key
   // aliases for the storage path AND the IV. We handle both array and
@@ -132,6 +134,8 @@ function normalizeNotePlaintext(plain: NotePlaintext, ownerUserId?: string, stor
     const stored = getStoredCandidate(storageIndex, id, storagePath);
     const finalId = String(id || stored?.id || storagePath.split("/").pop()?.replace(/\.bin$/i, "") || crypto.randomUUID());
     const finalPath = extractNotesStoragePath(storagePath || stored?.storagePath || "");
+    const attachmentNoteId = String(a.noteId || a.note_id || (stored as any)?.noteId || "");
+    if (noteId && attachmentNoteId && attachmentNoteId !== noteId) return null;
     if (!isOwnedAttachmentPath(finalPath, ownerUserId)) return null;
     const key = finalPath || finalId;
     if (seen.has(key)) return null;
@@ -143,6 +147,7 @@ function normalizeNotePlaintext(plain: NotePlaintext, ownerUserId?: string, stor
       size: Number(a.size || a.byteSize || a.bytes || stored?.size || 0),
       storagePath: finalPath,
       iv: String(a.iv || a.IV || a.nonce || a.initVector || a.initializationVector || a.init_vector || stored?.iv || ""),
+      noteId: attachmentNoteId || noteId,
     };
   }).filter((a): a is NoteAttachment => !!a?.storagePath);
 
