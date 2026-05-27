@@ -295,6 +295,7 @@ const NotesEditor = () => {
       title: (note.decrypted.title || "Untitled") + " (copy)",
       body: note.decrypted.body || "",
       attachments: note.decrypted.attachments || [],
+    });
     if (copy) toast.success("Note duplicated");
   };
 
