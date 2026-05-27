@@ -757,44 +757,10 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     return () => { cancelled = true; };
   }, [note.id, n]);
 
-  // Legacy recovered files can be stored as generic .bin objects with generic
-  // names. Sniff only this note's attached files, then persist the corrected
-  // image/video/PDF type + extension back into the encrypted note metadata.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const source = latestRef.current.attachments;
-      const fixed: typeof attachments = [];
-      let changed = false;
-      for (const att of source) {
-        if (isInsertableAtt(att) && hasExtension(att.name)) {
-          fixed.push(att);
-          continue;
-        }
-        try {
-          const blob = await n.downloadAttachment(att);
-          if (cancelled) return;
-          const sniffedMime = await sniffPreviewableMime(blob);
-          if (isInsertableAtt({ ...att, mime: sniffedMime })) {
-            const next = { ...att, mime: sniffedMime, name: typedAttachmentFileName(att, sniffedMime) };
-            if (next.mime !== att.mime || next.name !== att.name) changed = true;
-            fixed.push(next);
-          } else {
-            fixed.push(att);
-          }
-        } catch {
-          fixed.push(att);
-        }
-      }
-      if (cancelled) return;
-      if (!changed) return;
-      setAttachments(fixed);
-      latestRef.current = { ...latestRef.current, attachments: fixed };
-      dirty.current = true;
-      setTimeout(() => void hydrateInlineMedia(), 0);
-    })();
-    return () => { cancelled = true; };
-  }, [note.id, attachments.length, n]);
+  // Classification of generic / legacy attachments now happens at the data
+  // layer in NotesContext (decryptAll + listRecoverableAttachmentsForNote),
+  // so the UI receives correct image/video/PDF metadata on first render.
+
 
   const flush = async () => {
     if (!dirty.current) return;
