@@ -189,7 +189,7 @@ interface NotesContextValue {
   deleteNote: (id: string) => Promise<void>;
   togglePin: (id: string, pinned: boolean) => Promise<void>;
   // attachments
-  uploadAttachment: (file: File) => Promise<NoteAttachment>;
+  uploadAttachment: (file: File, noteId?: string) => Promise<NoteAttachment>;
   downloadAttachment: (att: { storagePath: string; iv?: string; mime: string; name: string }) => Promise<Blob>;
 }
 
@@ -383,7 +383,7 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
     );
   }, []);
 
-  const uploadAttachment = useCallback(async (file: File) => {
+  const uploadAttachment = useCallback(async (file: File, noteId?: string) => {
     if (!user || !key) throw new Error("Locked");
     const buf = await file.arrayBuffer();
     const { iv, ciphertext } = await encryptBytes(key, buf);
@@ -392,10 +392,10 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
     const blob = new Blob([ciphertext], { type: "application/octet-stream" });
     const { error } = await supabase.storage.from("notes-attachments").upload(storagePath, blob, {
       upsert: false,
-      metadata: { iv, originalName: file.name, mime: file.type || "application/octet-stream", size: file.size },
+      metadata: { iv, originalName: file.name, mime: file.type || "application/octet-stream", size: file.size, noteId: noteId || "" },
     });
     if (error) throw error;
-    return { id, name: file.name, mime: file.type || "application/octet-stream", size: file.size, storagePath, iv };
+    return { id, name: file.name, mime: file.type || "application/octet-stream", size: file.size, storagePath, iv, noteId };
   }, [user, key]);
 
   const downloadAttachment = useCallback(async (att: { storagePath?: string; storage_path?: string; path?: string; iv?: string; mime: string; name: string }) => {
