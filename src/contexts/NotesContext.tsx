@@ -186,10 +186,36 @@ interface NotesContextValue {
   // attachments
   uploadAttachment: (file: File) => Promise<NoteAttachment>;
   downloadAttachment: (att: { storagePath: string; iv?: string; mime: string; name: string }) => Promise<Blob>;
-  listStoredAttachments: () => Promise<NoteAttachment[]>;
 }
 
 const NotesContext = createContext<NotesContextValue | null>(null);
+
+async function loadStoredAttachmentIndex(ownerUserId: string): Promise<StoredAttachmentIndex> {
+  const index: StoredAttachmentIndex = new Map();
+  const { data, error } = await supabase.storage.from("notes-attachments").list(ownerUserId, {
+    limit: 1000,
+    sortBy: { column: "created_at", order: "desc" },
+  });
+  if (error || !data) return index;
+  for (const file of data) {
+    if (!file.name || file.name.endsWith("/")) continue;
+    const id = file.name.replace(/\.bin$/i, "");
+    const metadata = (file.metadata || {}) as Record<string, unknown>;
+    const storagePath = `${ownerUserId}/${file.name}`;
+    const size = Number(metadata.size || metadata.contentLength || metadata.contentLengthExact || 0);
+    const att: Partial<NoteAttachment> = {
+      id,
+      name: String(metadata.originalName || metadata.name || `Attachment ${id.slice(0, 8)}`),
+      mime: String(metadata.mime || metadata.mimetype || metadata.contentType || "application/octet-stream"),
+      size: Number.isFinite(size) ? size : 0,
+      storagePath,
+      iv: String(metadata.iv || ""),
+    };
+    index.set(id, att);
+    index.set(storagePath, att);
+  }
+  return index;
+}
 
 export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
   const { user } = useAuth();
