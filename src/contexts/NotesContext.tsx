@@ -58,10 +58,17 @@ function normalizeNotePlaintext(plain: NotePlaintext): NotePlaintext {
   // versions and from third-party clients. We accept several common key
   // aliases for the storage path AND the IV. We handle both array and
   // object-based attachment collections.
-  let raw = plain.attachments;
-  if (raw && !Array.isArray(raw) && typeof raw === "object") {
-    raw = Object.values(raw);
+  // Recover attachments from MULTIPLE top-level legacy keys. Older clients
+  // saved them under `files`, `media`, `images`, or `attached`. Without
+  // pulling them in too, those attachments looked permanently gone.
+  const buckets: any[] = [];
+  const p: any = plain || {};
+  for (const k of ["attachments", "files", "media", "images", "attached"]) {
+    const v = p[k];
+    if (Array.isArray(v)) buckets.push(...v);
+    else if (v && typeof v === "object") buckets.push(...Object.values(v));
   }
+  let raw: any[] = buckets;
   if (!Array.isArray(raw)) raw = [];
 
   const attachments = raw.map((a: any) => {
