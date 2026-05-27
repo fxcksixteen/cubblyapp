@@ -324,7 +324,7 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
       .filter((file) => !!file.name && !file.name.endsWith("/"))
       .map((file) => {
         const id = file.name.replace(/\.bin$/i, "");
-        const metadata = (file.metadata || {}) as Record<string, any>;
+        const metadata = (file.metadata || {}) as Record<string, unknown>;
         const size = Number(metadata.size || metadata.contentLength || metadata.contentLengthExact || 0);
         return {
           id,
