@@ -29,24 +29,64 @@ const PIN_LENGTH = 4;
 
 // Infer a mime type from the filename extension when the stored mime is
 // missing or generic (e.g. "application/octet-stream"). Recovered legacy
-// attachments often have no mime, but their filename is preserved — this
-// lets us still show Insert / preview controls for images and videos.
+// attachments often have no mime, but their filename is preserved.
 const IMAGE_EXT = new Set(["png","jpg","jpeg","gif","webp","heic","heif","bmp","avif","svg"]);
 const VIDEO_EXT = new Set(["mp4","mov","m4v","webm","mkv","avi"]);
+const GENERIC_MIME = new Set(["", "application/octet-stream", "binary/octet-stream"]);
 const effectiveMime = (att: { name?: string; mime?: string }): string => {
   const m = (att.mime || "").toLowerCase();
-  if (m.startsWith("image/") || m.startsWith("video/")) return m;
+  if (m.startsWith("image/") || m.startsWith("video/") || m === "application/pdf") return m;
   const name = att.name || "";
   const dot = name.lastIndexOf(".");
   if (dot < 0) return m;
   const ext = name.slice(dot + 1).toLowerCase();
   if (IMAGE_EXT.has(ext)) return ext === "svg" ? "image/svg+xml" : `image/${ext === "jpg" ? "jpeg" : ext}`;
   if (VIDEO_EXT.has(ext)) return `video/${ext === "mov" ? "quicktime" : ext}`;
+  if (ext === "pdf") return "application/pdf";
   return m;
 };
-const isMediaAtt = (att: { name?: string; mime?: string }) => {
+const isInsertableAtt = (att: { name?: string; mime?: string }) => {
   const m = effectiveMime(att);
-  return m.startsWith("image/") || m.startsWith("video/");
+  return m.startsWith("image/") || m.startsWith("video/") || m === "application/pdf";
+};
+const extensionForMime = (mime: string) => {
+  const m = mime.toLowerCase();
+  if (m === "image/jpeg") return "jpg";
+  if (m === "image/svg+xml") return "svg";
+  if (m.startsWith("image/")) return m.slice(6);
+  if (m === "video/quicktime") return "mov";
+  if (m.startsWith("video/")) return m.slice(6);
+  if (m === "application/pdf") return "pdf";
+  return "";
+};
+const hasExtension = (name?: string) => /\.[a-z0-9]{2,5}$/i.test(name || "");
+const sniffPreviewableMime = async (blob: Blob): Promise<string> => {
+  const head = new Uint8Array(await blob.slice(0, 32).arrayBuffer());
+  const hex = Array.from(head).map((b) => b.toString(16).padStart(2, "0")).join("");
+  const ascii = String.fromCharCode(...head);
+  if (hex.startsWith("89504e47")) return "image/png";
+  if (hex.startsWith("ffd8ff")) return "image/jpeg";
+  if (hex.startsWith("47494638")) return "image/gif";
+  if (ascii.startsWith("RIFF") && ascii.slice(8, 12) === "WEBP") return "image/webp";
+  if (ascii.trimStart().startsWith("<svg")) return "image/svg+xml";
+  if (hex.startsWith("25504446")) return "application/pdf";
+  if (hex.startsWith("00000018") || hex.startsWith("00000020") || hex.includes("66747970")) return "video/mp4";
+  if (hex.startsWith("1a45dfa3")) return "video/webm";
+  return blob.type && !GENERIC_MIME.has(blob.type.toLowerCase()) ? blob.type : "application/octet-stream";
+};
+const typedAttachmentFileName = (att: { id?: string; name?: string }, mime: string) => {
+  const base = (att.name || `Attachment ${att.id?.slice(0, 8) || "file"}`).trim() || "Attachment";
+  if (hasExtension(base)) return base;
+  const ext = extensionForMime(mime);
+  return ext ? `${base}.${ext}` : base;
+};
+const normalizeIncomingAttachmentFile = async (file: File): Promise<File> => {
+  const declaredMime = file.type || "";
+  const mime = GENERIC_MIME.has(declaredMime.toLowerCase()) ? await sniffPreviewableMime(file) : declaredMime;
+  if (!isInsertableAtt({ name: file.name, mime })) return file;
+  const name = typedAttachmentFileName({ name: file.name }, mime);
+  if (name === file.name && file.type === mime) return file;
+  return new File([file], name, { type: mime, lastModified: file.lastModified });
 };
 
 const NotesView = () => {
@@ -607,6 +647,9 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     clone.querySelectorAll("img[data-att-id], video[data-att-id]").forEach((el) => {
       el.removeAttribute("src");
     });
+    clone.querySelectorAll("a[data-att-id]").forEach((el) => {
+      el.removeAttribute("href");
+    });
     return clone.innerHTML;
   };
 
@@ -629,16 +672,20 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
       if (!id) continue;
       const cached = blobUrlCacheRef.current.get(id);
       if (cached) {
-        (el as HTMLImageElement).src = cached;
+        if (tag === "a") (el as HTMLAnchorElement).href = cached;
+        else (el as HTMLImageElement).src = cached;
         continue;
       }
       const att = latestRef.current.attachments.find((a) => a.id === id);
       if (!att) continue;
       try {
         const blob = await n.downloadAttachment(att);
-        const url = URL.createObjectURL(blob);
+        const mime = effectiveMime(att);
+        const typed = blob.type && !GENERIC_MIME.has(blob.type.toLowerCase()) ? blob : new Blob([blob], { type: mime });
+        const url = URL.createObjectURL(typed);
         blobUrlCacheRef.current.set(id, url);
-        (el as HTMLImageElement).src = url;
+        if (tag === "a") (el as HTMLAnchorElement).href = url;
+        else (el as HTMLImageElement).src = url;
       } catch { /* ignore */ }
     }
   };
@@ -690,6 +737,41 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     })();
     return () => { cancelled = true; };
   }, [note.id, n]);
+
+  // Legacy recovered files can be stored as generic .bin objects with generic
+  // names. Sniff only this note's attached files, then persist the corrected
+  // image/video/PDF type + extension back into the encrypted note metadata.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const fixed: typeof attachments = [];
+      for (const att of latestRef.current.attachments) {
+        if (isInsertableAtt(att) && hasExtension(att.name)) {
+          fixed.push(att);
+          continue;
+        }
+        try {
+          const blob = await n.downloadAttachment(att);
+          if (cancelled) return;
+          const sniffedMime = await sniffPreviewableMime(blob);
+          if (isInsertableAtt({ ...att, mime: sniffedMime })) {
+            fixed.push({ ...att, mime: sniffedMime, name: typedAttachmentFileName(att, sniffedMime) });
+          } else {
+            fixed.push(att);
+          }
+        } catch {
+          fixed.push(att);
+        }
+      }
+      if (cancelled) return;
+      const changed = fixed.some((att, i) => att.mime !== latestRef.current.attachments[i]?.mime || att.name !== latestRef.current.attachments[i]?.name);
+      if (!changed) return;
+      setAttachments(fixed);
+      latestRef.current = { ...latestRef.current, attachments: fixed };
+      dirty.current = true;
+    })();
+    return () => { cancelled = true; };
+  }, [attachments, n]);
 
   const flush = async () => {
     if (!dirty.current) return;
@@ -821,12 +903,13 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     if (file.size > 25 * 1024 * 1024) { toast.error("File too large (25MB max)"); return; }
     setUploading(true);
     try {
-      const att = await n.uploadAttachment(file, note.id);
+      const normalizedFile = await normalizeIncomingAttachmentFile(file);
+      const att = await n.uploadAttachment(normalizedFile, note.id);
       setAttachments((prev) => [...prev, att]);
       dirty.current = true;
       // Pre-cache blob URL from the original file (cheaper than redownloading).
       if (att.mime.startsWith("image/") || att.mime.startsWith("video/")) {
-        const url = URL.createObjectURL(file);
+        const url = URL.createObjectURL(normalizedFile);
         blobUrlCacheRef.current.set(att.id, url);
         if (opts.insertInline) {
           const node = att.mime.startsWith("image/")
@@ -851,14 +934,18 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
   const downloadAtt = async (att: typeof attachments[0]) => {
     try {
       const blob = await n.downloadAttachment(att);
-      const url = URL.createObjectURL(blob);
+      const sniffedMime = await sniffPreviewableMime(blob);
+      const mime = isInsertableAtt({ ...att, mime: sniffedMime }) ? sniffedMime : effectiveMime(att);
+      const typed = blob.type && !GENERIC_MIME.has(blob.type.toLowerCase()) ? blob : new Blob([blob], { type: mime || "application/octet-stream" });
+      const url = URL.createObjectURL(typed);
+      const fileName = typedAttachmentFileName(att, mime);
       // iOS standalone PWAs ignore the `download` attribute — open in a new tab
       // so the user can long-press → save instead of getting nothing.
       if (isStandalonePWA()) {
         window.open(url, "_blank");
       } else {
         const a = document.createElement("a");
-        a.href = url; a.download = att.name; a.click();
+        a.href = url; a.download = fileName; a.click();
       }
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch {
@@ -888,28 +975,17 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     dirty.current = true;
   };
 
-  // Insert an existing attachment at the end of the body (used by the
-  // "Insert into note" button on attachment cards).
+  // Insert an existing previewable attachment at the end of the body (used by
+  // the "Insert into note" button on image/video/PDF attachment cards).
   const insertExistingAttIntoBody = async (att: typeof attachments[0]) => {
-    // Always allow insert — we'll sniff the actual bytes to pick image/video/file.
     let url = blobUrlCacheRef.current.get(att.id);
     let sniffedMime = effectiveMime(att);
     if (!url) {
       try {
         const blob = await n.downloadAttachment(att);
-        // Sniff magic bytes when stored mime is missing/generic.
-        if (!sniffedMime.startsWith("image/") && !sniffedMime.startsWith("video/")) {
-          const head = new Uint8Array(await blob.slice(0, 16).arrayBuffer());
-          const hex = Array.from(head).map((b) => b.toString(16).padStart(2, "0")).join("");
-          const ascii = String.fromCharCode(...head);
-          if (hex.startsWith("89504e47")) sniffedMime = "image/png";
-          else if (hex.startsWith("ffd8ff")) sniffedMime = "image/jpeg";
-          else if (hex.startsWith("47494638")) sniffedMime = "image/gif";
-          else if (ascii.startsWith("RIFF") && ascii.slice(8, 12) === "WEBP") sniffedMime = "image/webp";
-          else if (hex.startsWith("00000018") || hex.startsWith("00000020") || hex.includes("66747970")) sniffedMime = "video/mp4";
-          else if (hex.startsWith("1a45dfa3")) sniffedMime = "video/webm";
-        }
-        const typed = blob.type && blob.type !== "application/octet-stream" ? blob : new Blob([blob], { type: sniffedMime || "application/octet-stream" });
+        sniffedMime = isInsertableAtt(att) ? sniffedMime : await sniffPreviewableMime(blob);
+        if (!isInsertableAtt({ ...att, mime: sniffedMime })) return;
+        const typed = blob.type && !GENERIC_MIME.has(blob.type.toLowerCase()) ? blob : new Blob([blob], { type: sniffedMime });
         url = URL.createObjectURL(typed);
         blobUrlCacheRef.current.set(att.id, url);
       } catch { toast.error("Couldn't load file"); return; }
@@ -921,15 +997,15 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     } else if (sniffedMime.startsWith("video/")) {
       node = buildInlineVideo(attWithMime, url!);
     } else {
-      // Generic file: insert a download link so it's still visible inline.
+      // PDF: insert a download/open link inline.
       const a = document.createElement("a");
       stampInlineAttachmentMetadata(a, attWithMime);
       a.setAttribute("data-cubbly-movable", "1");
       a.href = url!;
-      a.download = att.name || "attachment";
+      a.download = typedAttachmentFileName(att, sniffedMime);
       a.target = "_blank";
       a.rel = "noopener noreferrer";
-      a.textContent = `📎 ${att.name || "Attachment"}`;
+      a.textContent = `📄 ${typedAttachmentFileName(att, sniffedMime)}`;
       a.style.display = "inline-block";
       a.style.margin = "4px 0";
       a.style.padding = "4px 8px";
@@ -1394,16 +1470,16 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
 
 
       {/* Unified attachment strip — every attached file appears here with
-          quick actions (insert/uninsert for media, download, delete). */}
+          insert controls only for images, videos, and PDFs. */}
       {attachments.length > 0 && (
         <div
           className="border-t px-4 py-2 flex flex-wrap gap-2"
           style={{ borderColor: "var(--app-border)", paddingBottom: "max(0.5rem, env(safe-area-inset-bottom, 0px))" }}
         >
           {attachments.map((att) => {
-            const isMedia = isMediaAtt(att);
+            const canInsert = isInsertableAtt(att);
             const isInlined = inlinedIds.has(att.id);
-            if (isMedia && !isInlined) {
+            if (canInsert && !isInlined) {
               return (
                 <InlineAttachment
                   key={att.id}
@@ -1432,7 +1508,7 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
                   >
                     Uninsert
                   </button>
-                ) : (
+                ) : canInsert ? (
                   <button
                     onClick={() => insertExistingAttIntoBody(att)}
                     title="Insert into note body"
@@ -1441,7 +1517,7 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
                   >
                     Insert
                   </button>
-                )}
+                ) : null}
                 <button onClick={() => downloadAtt(att)} title="Download" className="ml-0.5 p-0.5 rounded hover:bg-[var(--app-hover)]">
                   <Download className="h-3.5 w-3.5" style={{ color: "var(--app-text-secondary)" }} />
                 </button>
@@ -1497,8 +1573,8 @@ const InlineAttachment = ({
       try {
         const blob = await n.downloadAttachment(att);
         if (cancelled) return;
-        const mime = effectiveMime(att);
-        const typed = blob.type && blob.type !== "application/octet-stream" ? blob : new Blob([blob], { type: mime });
+        const mime = isInsertableAtt(att) ? effectiveMime(att) : await sniffPreviewableMime(blob);
+        const typed = blob.type && !GENERIC_MIME.has(blob.type.toLowerCase()) ? blob : new Blob([blob], { type: mime });
         createdUrl = URL.createObjectURL(typed);
         setUrl(createdUrl);
       } catch {
