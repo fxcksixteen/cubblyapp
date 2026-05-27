@@ -785,23 +785,21 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           } catch (e) { console.warn("[Voice] getStats failed:", e); }
         }, 1500);
       }
-      if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed") {
-        console.warn("[Voice] ICE connection failed/disconnected");
-        setTimeout(() => {
-          if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed") {
-            console.error("[Voice] ICE permanently failed, ending call");
-            pc.close();
-            pcRef.current = null;
-            setActiveCall(null);
-            setIncomingCall(null);
-            setCurrentCallEventId(null);
-            setRemoteStream(null);
-            setRemoteAudioLevel(0);
-            document.querySelectorAll("audio").forEach((el: any) => {
-              if (el.__cubblyRemote) { el.pause(); el.srcObject = null; el.remove(); }
-            });
-          }
-        }, 3000);
+      if (pc.iceConnectionState === "disconnected") {
+        // Transient — WebRTC will try to recover on its own. DO NOT kick the
+        // user out. (v0.3.8 fix: previously this path also called
+        // setActiveCall(null) on "failed", which was making the second peer
+        // joining look like an instant hangup whenever ICE took a moment to
+        // settle. Now we only log and let WebRTC recover; the user can hang
+        // up manually if it never comes back.)
+        console.warn("[Voice] ICE disconnected — waiting for recovery (not ending call)");
+      }
+      if (pc.iceConnectionState === "failed") {
+        // Even "failed" doesn't kill the call UI anymore — many browsers fire
+        // this once during renegotiation/join races and then recover. Try an
+        // ICE restart instead of tearing down the call.
+        console.warn("[Voice] ICE failed — attempting restart, keeping call alive");
+        try { (pc as any).restartIce?.(); } catch {}
       }
     };
 
