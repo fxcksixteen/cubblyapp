@@ -1021,8 +1021,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             }
             await initializeOutgoingConnection(channel, conversationId);
           } catch (e) {
-            console.error("[Voice] Failed to initialize outgoing connection:", e);
-            endCallRef.current();
+            console.error("[Voice] Failed to initialize outgoing connection (keeping call alive):", e);
+            // v0.3.8: do NOT endCall on signaling errors — they're often
+            // transient races on join. The user can hang up manually.
           }
           return;
         }
@@ -1113,8 +1114,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               acceptedIncomingCallRef.current = null;
               setIncomingCall(null);
             } catch (e) {
-              console.error("[Voice] Failed handling accepted offer:", e);
-              endCallRef.current();
+              console.error("[Voice] Failed handling accepted offer (keeping call alive):", e);
+              // v0.3.8: don't tear down the call on a single SDP failure.
             }
             return;
           }
@@ -1178,8 +1179,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               } : prev);
               peerIdRef.current = payload.senderId || peerIdRef.current;
             } catch (e) {
-              console.error("[Voice] Rejoin auto-accept failed:", e);
-              endCallRef.current();
+              console.error("[Voice] Rejoin auto-accept failed (keeping call alive):", e);
+              // v0.3.8: don't endCall — leave it to the user.
             }
             return;
           }
