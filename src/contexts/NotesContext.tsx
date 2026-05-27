@@ -33,6 +33,8 @@ export interface NoteAttachment {
   iv: string;
 }
 
+type StoredAttachmentIndex = Map<string, Partial<NoteAttachment>>;
+
 function extractNotesStoragePath(value?: string | null): string {
   if (!value) return "";
   // Strip query parameters for comparison and path extraction
@@ -77,8 +79,9 @@ function extractLegacyInlineAttachments(body?: string): unknown[] {
     if (id || srcPath) {
       out.push({
         id,
-        name: attrs.alt || attrs.title || "Attachment",
-        mime: tagMatch[1].toLowerCase() === "video" ? "video/mp4" : "image/*",
+        name: attrs["data-att-name"] || attrs.alt || attrs.title || "Attachment",
+        mime: attrs["data-att-mime"] || (tagMatch[1].toLowerCase() === "video" ? "video/mp4" : "image/*"),
+        size: Number(attrs["data-att-size"] || 0),
         storagePath: srcPath,
         iv: attrs["data-iv"] || attrs["data-att-iv"] || "",
       });
@@ -87,7 +90,16 @@ function extractLegacyInlineAttachments(body?: string): unknown[] {
   return out;
 }
 
-function normalizeNotePlaintext(plain: NotePlaintext): NotePlaintext {
+function isOwnedAttachmentPath(path: string, ownerUserId?: string): boolean {
+  if (!path || !ownerUserId) return !!path;
+  return path === ownerUserId || path.startsWith(`${ownerUserId}/`);
+}
+
+function getStoredCandidate(index: StoredAttachmentIndex | undefined, id: string, storagePath: string) {
+  return (storagePath && index?.get(storagePath)) || (id && index?.get(id)) || undefined;
+}
+
+function normalizeNotePlaintext(plain: NotePlaintext, ownerUserId?: string, storageIndex?: StoredAttachmentIndex): NotePlaintext {
   // Be VERY liberal with legacy attachment shapes from earlier desktop/web
   // versions and from third-party clients. We accept several common key
   // aliases for the storage path AND the IV. We handle both array and
@@ -106,21 +118,33 @@ function normalizeNotePlaintext(plain: NotePlaintext): NotePlaintext {
   let raw: any[] = buckets;
   if (!Array.isArray(raw)) raw = [];
 
+  const seen = new Set<string>();
   const attachments = raw.map((a: any) => {
-    const storagePath = extractNotesStoragePath(
+    const id = String(a.id || a.uuid || a.uid || "");
+    let storagePath = extractNotesStoragePath(
       a.storagePath || a.storage_path || a.path || a.fullPath || a.full_path ||
       a.key || a.objectKey || a.url || a.signedUrl || a.signed_url || a.attachment_path ||
       a.attachment_url || a.file_path || a.filePath || ""
     );
+    if (!storagePath && ownerUserId && id) {
+      storagePath = String(storageIndex?.get(id)?.storagePath || `${ownerUserId}/${id}.bin`);
+    }
+    const stored = getStoredCandidate(storageIndex, id, storagePath);
+    const finalId = String(id || stored?.id || storagePath.split("/").pop()?.replace(/\.bin$/i, "") || crypto.randomUUID());
+    const finalPath = extractNotesStoragePath(storagePath || stored?.storagePath || "");
+    if (!isOwnedAttachmentPath(finalPath, ownerUserId)) return null;
+    const key = finalPath || finalId;
+    if (seen.has(key)) return null;
+    seen.add(key);
     return {
-      id: String(a.id || a.uuid || a.uid || storagePath || crypto.randomUUID()),
-      name: String(a.name || a.filename || a.fileName || "Attachment"),
-      mime: String(a.mime || a.type || a.contentType || a.mimeType || "application/octet-stream"),
-      size: Number(a.size || a.byteSize || a.bytes || 0),
-      storagePath,
-      iv: String(a.iv || a.IV || a.nonce || a.initVector || a.initializationVector || a.init_vector || ""),
+      id: finalId,
+      name: String(a.name || a.filename || a.fileName || stored?.name || "Attachment"),
+      mime: String(a.mime || a.type || a.contentType || a.mimeType || stored?.mime || "application/octet-stream"),
+      size: Number(a.size || a.byteSize || a.bytes || stored?.size || 0),
+      storagePath: finalPath,
+      iv: String(a.iv || a.IV || a.nonce || a.initVector || a.initializationVector || a.init_vector || stored?.iv || ""),
     };
-  }).filter((a) => !!a.storagePath || !!a.name);
+  }).filter((a): a is NoteAttachment => !!a?.storagePath);
 
   return { ...plain, attachments };
 }
