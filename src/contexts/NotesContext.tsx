@@ -209,6 +209,30 @@ interface NotesContextValue {
 
 const NotesContext = createContext<NotesContextValue | null>(null);
 
+function parseMetadataRecord(value: unknown): Record<string, unknown> {
+  if (!value) return {};
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+    } catch {
+      return {};
+    }
+  }
+  return typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function normalizeStorageMetadata(raw: unknown): Record<string, unknown> {
+  const base = parseMetadataRecord(raw);
+  const custom = {
+    ...parseMetadataRecord(base.metadata),
+    ...parseMetadataRecord(base.customMetadata),
+    ...parseMetadataRecord(base.custom_metadata),
+    ...parseMetadataRecord(base.user_metadata),
+  };
+  return { ...base, ...custom };
+}
+
 async function loadStoredAttachmentRecords(ownerUserId: string): Promise<StoredAttachmentRecord[]> {
   const records: StoredAttachmentRecord[] = [];
   const { data, error } = await supabase.storage.from("notes-attachments").list(ownerUserId, {
@@ -219,7 +243,7 @@ async function loadStoredAttachmentRecords(ownerUserId: string): Promise<StoredA
   for (const file of data) {
     if (!file.name || file.name.endsWith("/")) continue;
     const id = file.name.replace(/\.bin$/i, "");
-    const metadata = (file.metadata || {}) as Record<string, unknown>;
+    const metadata = normalizeStorageMetadata(file.metadata || {});
     const storagePath = `${ownerUserId}/${file.name}`;
     const size = Number(metadata.size || metadata.contentLength || metadata.contentLengthExact || 0);
     const noteId = String(metadata.noteId || metadata.note_id || metadata.note || "");
