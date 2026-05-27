@@ -648,6 +648,27 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     };
   }, []);
 
+  // Restore only attachments that are provably tied to this note: either the
+  // storage object carries this note id, or an old object was uploaded right
+  // after this note was created. Never list the whole vault in every note.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const recovered = await n.listRecoverableAttachmentsForNote(note.id);
+      if (cancelled || recovered.length === 0) return;
+      setAttachments((prev) => {
+        const seen = new Set(prev.flatMap((att) => [att.id, att.storagePath]));
+        const missing = recovered.filter((att) => !seen.has(att.id) && !seen.has(att.storagePath));
+        if (missing.length === 0) return prev;
+        const merged = [...prev, ...missing];
+        latestRef.current = { ...latestRef.current, attachments: merged };
+        dirty.current = true;
+        return merged;
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [note.id, n]);
+
   const flush = async () => {
     if (!dirty.current) return;
     const t = latestRef.current.title;
