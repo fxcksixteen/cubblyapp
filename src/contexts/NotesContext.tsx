@@ -34,7 +34,8 @@ export interface NoteAttachment {
   noteId?: string;
 }
 
-type StoredAttachmentIndex = Map<string, Partial<NoteAttachment>>;
+type StoredAttachmentRecord = NoteAttachment & { createdAt?: string; updatedAt?: string; hasNoteBinding?: boolean };
+type StoredAttachmentIndex = Map<string, Partial<StoredAttachmentRecord>>;
 
 function extractNotesStoragePath(value?: string | null): string {
   if (!value) return "";
@@ -101,6 +102,15 @@ function getStoredCandidate(index: StoredAttachmentIndex | undefined, id: string
   return (storagePath && index?.get(storagePath)) || (id && index?.get(id)) || undefined;
 }
 
+function attachmentKeys(att: { id?: string; storagePath?: string }) {
+  return [att.id || "", extractNotesStoragePath(att.storagePath || "")].filter(Boolean);
+}
+
+function timeMs(value?: string) {
+  const t = value ? Date.parse(value) : Number.NaN;
+  return Number.isFinite(t) ? t : 0;
+}
+
 function normalizeNotePlaintext(plain: NotePlaintext, ownerUserId?: string, storageIndex?: StoredAttachmentIndex, noteId?: string): NotePlaintext {
   // Be VERY liberal with legacy attachment shapes from earlier desktop/web
   // versions and from third-party clients. We accept several common key
@@ -122,6 +132,9 @@ function normalizeNotePlaintext(plain: NotePlaintext, ownerUserId?: string, stor
 
   const seen = new Set<string>();
   const attachments = raw.map((a: any) => {
+    if (typeof a === "string") {
+      a = { storagePath: a };
+    }
     const id = String(a.id || a.uuid || a.uid || "");
     let storagePath = extractNotesStoragePath(
       a.storagePath || a.storage_path || a.path || a.fullPath || a.full_path ||
@@ -191,33 +204,47 @@ interface NotesContextValue {
   // attachments
   uploadAttachment: (file: File, noteId?: string) => Promise<NoteAttachment>;
   downloadAttachment: (att: { storagePath: string; iv?: string; mime: string; name: string }) => Promise<Blob>;
+  listRecoverableAttachmentsForNote: (noteId: string) => Promise<NoteAttachment[]>;
 }
 
 const NotesContext = createContext<NotesContextValue | null>(null);
 
-async function loadStoredAttachmentIndex(ownerUserId: string): Promise<StoredAttachmentIndex> {
-  const index: StoredAttachmentIndex = new Map();
+async function loadStoredAttachmentRecords(ownerUserId: string): Promise<StoredAttachmentRecord[]> {
+  const records: StoredAttachmentRecord[] = [];
   const { data, error } = await supabase.storage.from("notes-attachments").list(ownerUserId, {
     limit: 1000,
     sortBy: { column: "created_at", order: "desc" },
   });
-  if (error || !data) return index;
+  if (error || !data) return records;
   for (const file of data) {
     if (!file.name || file.name.endsWith("/")) continue;
     const id = file.name.replace(/\.bin$/i, "");
     const metadata = (file.metadata || {}) as Record<string, unknown>;
     const storagePath = `${ownerUserId}/${file.name}`;
     const size = Number(metadata.size || metadata.contentLength || metadata.contentLengthExact || 0);
-    const att: Partial<NoteAttachment> = {
+    const noteId = String(metadata.noteId || metadata.note_id || metadata.note || "");
+    records.push({
       id,
       name: String(metadata.originalName || metadata.name || `Attachment ${id.slice(0, 8)}`),
       mime: String(metadata.mime || metadata.mimetype || metadata.contentType || "application/octet-stream"),
       size: Number.isFinite(size) ? size : 0,
       storagePath,
       iv: String(metadata.iv || ""),
-    };
-    index.set(id, att);
-    index.set(storagePath, att);
+      noteId: noteId || undefined,
+      createdAt: String((file as any).created_at || (file as any).createdAt || metadata.lastModified || ""),
+      updatedAt: String((file as any).updated_at || (file as any).updatedAt || ""),
+      hasNoteBinding: !!noteId,
+    });
+  }
+  return records;
+}
+
+async function loadStoredAttachmentIndex(ownerUserId: string): Promise<StoredAttachmentIndex> {
+  const index: StoredAttachmentIndex = new Map();
+  const records = await loadStoredAttachmentRecords(ownerUserId);
+  for (const att of records) {
+    index.set(att.id, att);
+    index.set(att.storagePath, att);
   }
   return index;
 }
@@ -424,6 +451,42 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
     }
   }, [user, key]);
 
+  const listRecoverableAttachmentsForNote = useCallback(async (noteId: string) => {
+    if (!user || !noteId) return [];
+    const note = notes.find((n) => n.id === noteId);
+    if (!note?.decrypted) return [];
+
+    const existing = new Set<string>();
+    for (const att of note.decrypted.attachments || []) {
+      for (const k of attachmentKeys(att)) existing.add(k);
+    }
+
+    const records = await loadStoredAttachmentRecords(user.id);
+    const sortedNotes = [...notes].sort((a, b) => timeMs(a.created_at) - timeMs(b.created_at));
+    const LEGACY_ATTACH_WINDOW_MS = 10 * 60 * 1000;
+
+    return records.filter((att) => {
+      if (!isOwnedAttachmentPath(att.storagePath, user.id)) return false;
+      if (attachmentKeys(att).some((k) => existing.has(k))) return false;
+
+      if (att.noteId) return att.noteId === noteId;
+
+      // Old uploads did not store noteId. To avoid the previous scary bug,
+      // never show all vault files in every note: only infer a note when the
+      // file was uploaded immediately after that note was created.
+      const created = timeMs(att.createdAt || att.updatedAt);
+      if (!created) return false;
+      let inferred: NoteRow | undefined;
+      for (const candidate of sortedNotes) {
+        const noteCreated = timeMs(candidate.created_at);
+        if (noteCreated <= created && created - noteCreated <= LEGACY_ATTACH_WINDOW_MS) {
+          if (!inferred || noteCreated > timeMs(inferred.created_at)) inferred = candidate;
+        }
+      }
+      return inferred?.id === noteId;
+    }).map((att) => ({ ...att, noteId }));
+  }, [user, notes]);
+
   const value = useMemo<NotesContextValue>(() => ({
     hasKey: !!key,
     isLocked: !key,
@@ -443,7 +506,8 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
     togglePin,
     uploadAttachment,
     downloadAttachment,
-  }), [key, isInitializing, hasExistingVault, trustedHere, setupVault, unlock, lock, forgetDevice, notes, loading, refresh, createNote, updateNote, deleteNote, togglePin, uploadAttachment, downloadAttachment]);
+    listRecoverableAttachmentsForNote,
+  }), [key, isInitializing, hasExistingVault, trustedHere, setupVault, unlock, lock, forgetDevice, notes, loading, refresh, createNote, updateNote, deleteNote, togglePin, uploadAttachment, downloadAttachment, listRecoverableAttachmentsForNote]);
 
   return <NotesContext.Provider value={value}>{children}</NotesContext.Provider>;
 };
