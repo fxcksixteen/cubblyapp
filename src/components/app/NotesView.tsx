@@ -763,8 +763,10 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      const source = latestRef.current.attachments;
       const fixed: typeof attachments = [];
-      for (const att of latestRef.current.attachments) {
+      let changed = false;
+      for (const att of source) {
         if (isInsertableAtt(att) && hasExtension(att.name)) {
           fixed.push(att);
           continue;
@@ -774,7 +776,9 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
           if (cancelled) return;
           const sniffedMime = await sniffPreviewableMime(blob);
           if (isInsertableAtt({ ...att, mime: sniffedMime })) {
-            fixed.push({ ...att, mime: sniffedMime, name: typedAttachmentFileName(att, sniffedMime) });
+            const next = { ...att, mime: sniffedMime, name: typedAttachmentFileName(att, sniffedMime) };
+            if (next.mime !== att.mime || next.name !== att.name) changed = true;
+            fixed.push(next);
           } else {
             fixed.push(att);
           }
@@ -783,14 +787,14 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
         }
       }
       if (cancelled) return;
-      const changed = fixed.some((att, i) => att.mime !== latestRef.current.attachments[i]?.mime || att.name !== latestRef.current.attachments[i]?.name);
       if (!changed) return;
       setAttachments(fixed);
       latestRef.current = { ...latestRef.current, attachments: fixed };
       dirty.current = true;
+      setTimeout(() => void hydrateInlineMedia(), 0);
     })();
     return () => { cancelled = true; };
-  }, [attachments, n]);
+  }, [note.id, attachments.length, n]);
 
   const flush = async () => {
     if (!dirty.current) return;
