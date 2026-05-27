@@ -437,8 +437,7 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
     togglePin,
     uploadAttachment,
     downloadAttachment,
-    listStoredAttachments,
-  }), [key, isInitializing, hasExistingVault, trustedHere, setupVault, unlock, lock, forgetDevice, notes, loading, refresh, createNote, updateNote, deleteNote, togglePin, uploadAttachment, downloadAttachment, listStoredAttachments]);
+  }), [key, isInitializing, hasExistingVault, trustedHere, setupVault, unlock, lock, forgetDevice, notes, loading, refresh, createNote, updateNote, deleteNote, togglePin, uploadAttachment, downloadAttachment]);
 
   return <NotesContext.Provider value={value}>{children}</NotesContext.Provider>;
 };
