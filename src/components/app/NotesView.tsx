@@ -1457,16 +1457,16 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
 
 
       {/* Unified attachment strip — every attached file appears here with
-          quick actions (insert/uninsert for media, download, delete). */}
+          insert controls only for images, videos, and PDFs. */}
       {attachments.length > 0 && (
         <div
           className="border-t px-4 py-2 flex flex-wrap gap-2"
           style={{ borderColor: "var(--app-border)", paddingBottom: "max(0.5rem, env(safe-area-inset-bottom, 0px))" }}
         >
           {attachments.map((att) => {
-            const isMedia = isMediaAtt(att);
+            const canInsert = isInsertableAtt(att);
             const isInlined = inlinedIds.has(att.id);
-            if (isMedia && !isInlined) {
+            if (canInsert && !isInlined) {
               return (
                 <InlineAttachment
                   key={att.id}
@@ -1495,7 +1495,7 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
                   >
                     Uninsert
                   </button>
-                ) : (
+                ) : canInsert ? (
                   <button
                     onClick={() => insertExistingAttIntoBody(att)}
                     title="Insert into note body"
@@ -1504,7 +1504,7 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
                   >
                     Insert
                   </button>
-                )}
+                ) : null}
                 <button onClick={() => downloadAtt(att)} title="Download" className="ml-0.5 p-0.5 rounded hover:bg-[var(--app-hover)]">
                   <Download className="h-3.5 w-3.5" style={{ color: "var(--app-text-secondary)" }} />
                 </button>
