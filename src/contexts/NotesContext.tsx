@@ -308,7 +308,7 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
     const id = crypto.randomUUID();
     const storagePath = `${user.id}/${id}.bin`;
     const blob = new Blob([ciphertext], { type: "application/octet-stream" });
-    const { error } = await supabase.storage.from("notes-attachments").upload(storagePath, blob, { upsert: false });
+    const { error } = await supabase.storage.from("notes-attachments").upload(storagePath, blob, { upsert: false, metadata: { iv } });
     if (error) throw error;
     return { id, name: file.name, mime: file.type || "application/octet-stream", size: file.size, storagePath, iv };
   }, [user, key]);
