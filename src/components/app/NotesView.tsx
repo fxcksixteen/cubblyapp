@@ -1423,26 +1423,24 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
                 <FileText className="h-3.5 w-3.5" style={{ color: "var(--app-text-secondary)" }} />
                 <span className="max-w-[160px] truncate" style={{ color: "var(--app-text-primary)" }}>{att.name}</span>
                 <span style={{ color: "var(--app-text-secondary)" }}>({formatSize(att.size)})</span>
-                {isMedia && (
-                  isInlined ? (
-                    <button
-                      onClick={() => uninsertAtt(att.id)}
-                      title="Remove from note body (keeps file attached)"
-                      className="ml-1 px-1.5 py-0.5 rounded text-[11px] hover:bg-[var(--app-hover)]"
-                      style={{ color: "var(--app-text-secondary)", border: "1px solid var(--app-border)" }}
-                    >
-                      Uninsert
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => insertExistingAttIntoBody(att)}
-                      title="Insert into note body"
-                      className="ml-1 px-1.5 py-0.5 rounded text-[11px] hover:bg-[var(--app-hover)]"
-                      style={{ color: "hsl(var(--primary))", border: "1px solid hsl(var(--primary) / 0.4)" }}
-                    >
-                      Insert
-                    </button>
-                  )
+                {isInlined ? (
+                  <button
+                    onClick={() => uninsertAtt(att.id)}
+                    title="Remove from note body (keeps file attached)"
+                    className="ml-1 px-1.5 py-0.5 rounded text-[11px] hover:bg-[var(--app-hover)]"
+                    style={{ color: "var(--app-text-secondary)", border: "1px solid var(--app-border)" }}
+                  >
+                    Uninsert
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => insertExistingAttIntoBody(att)}
+                    title="Insert into note body"
+                    className="ml-1 px-1.5 py-0.5 rounded text-[11px] hover:bg-[var(--app-hover)]"
+                    style={{ color: "hsl(var(--primary))", border: "1px solid hsl(var(--primary) / 0.4)" }}
+                  >
+                    Insert
+                  </button>
                 )}
                 <button onClick={() => downloadAtt(att)} title="Download" className="ml-0.5 p-0.5 rounded hover:bg-[var(--app-hover)]">
                   <Download className="h-3.5 w-3.5" style={{ color: "var(--app-text-secondary)" }} />
