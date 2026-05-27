@@ -70,7 +70,13 @@ const sniffPreviewableMime = async (blob: Blob): Promise<string> => {
   if (ascii.startsWith("RIFF") && ascii.slice(8, 12) === "WEBP") return "image/webp";
   if (ascii.trimStart().startsWith("<svg")) return "image/svg+xml";
   if (hex.startsWith("25504446")) return "application/pdf";
-  if (hex.startsWith("00000018") || hex.startsWith("00000020") || hex.includes("66747970")) return "video/mp4";
+  if (ascii.slice(4, 8) === "ftyp") {
+    const brandData = ascii.slice(8).toLowerCase();
+    if (brandData.includes("avif")) return "image/avif";
+    if (["heic", "heix", "hevc", "hevx", "mif1", "msf1"].some((brand) => brandData.includes(brand))) return "image/heic";
+    if (brandData.startsWith("qt  ")) return "video/quicktime";
+    return "video/mp4";
+  }
   if (hex.startsWith("1a45dfa3")) return "video/webm";
   return blob.type && !GENERIC_MIME.has(blob.type.toLowerCase()) ? blob.type : "application/octet-stream";
 };
