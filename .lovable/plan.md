@@ -1,24 +1,14 @@
+I’ll undo the bad UI behavior and fix the recovered-file path directly.
+
 Plan:
+1. Restore Insert button visibility so it only appears for attachments whose metadata says they are an image, video, or PDF.
+2. Tighten `insertExistingAttIntoBody` so it only inserts confirmed images/videos/PDFs; unknown files will not be inserted as generic attachment links.
+3. Keep the data-layer byte sniffing in `NotesContext.tsx`, but improve it where needed so recovered encrypted/raw attachments get classified as image/video/PDF and renamed with the correct extension before the attachment strip renders.
+4. Ensure downloads use the corrected filename and MIME, so recovered images no longer download as a generic `file` when they are recognized.
+5. Verify the UI logic by checking the attachment strip code: media/PDF attachments show Insert, non-media files only show Download/Delete.
 
-1. Move recovered-file classification into the notes data flow
-   - Add byte-signature MIME detection in `NotesContext.tsx`, where the encrypted attachment bytes can be downloaded/decrypted with the current vault key.
-   - When `listRecoverableAttachmentsForNote(noteId)` returns recovered files, it will classify each recovered object before the UI receives it.
-   - This avoids relying on the attachment strip rendering first and then hoping a later effect updates it.
-
-2. Classify existing generic attachments on note load
-   - During note normalization/decryption, detect attachments with generic MIME/name values like `application/octet-stream`, `Attachment abc123`, or no extension.
-   - For those, download/decrypt the file, sniff the actual bytes, and update the attachment object to `image/png`, `image/jpeg`, `image/webp`, `video/mp4`, `application/pdf`, etc.
-   - Add the correct file extension to the display/download name when missing.
-
-3. Make Insert button logic depend on classified metadata only
-   - Keep Insert buttons limited to images, videos, and PDFs.
-   - Remove the delayed UI-only classification path as the main source of truth.
-   - If a file is still truly unknown after sniffing, it remains a normal downloadable attachment with no Insert button.
-
-4. Persist the correction back into the encrypted note
-   - Once a recovered attachment is classified, save the updated attachment metadata in the note’s encrypted payload.
-   - This makes the fix permanent so the same files don’t show up as generic `file` again after refresh.
-
-5. Preserve the security fix
-   - Keep recovery scoped to the current signed-in user and the current note only.
-   - Do not reintroduce the old global attachment listing behavior that showed files across notes.
+Technical details:
+- `NotesView.tsx` should render `<InlineAttachment>` with Insert only when `isInsertableAtt(att)` is true.
+- The generic attachment row should show `Uninsert` only for already-inlined attachments, otherwise no Insert button.
+- `insertExistingAttIntoBody` should fail with a toast if sniffing still cannot confirm image/video/PDF, instead of adding an inline generic link.
+- `NotesContext.tsx` remains the source of truth for recovered attachment metadata classification.
