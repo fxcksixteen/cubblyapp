@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, lazy, Suspense } from "react";
-import { useNotes, NoteRow, NotePlaintext } from "@/contexts/NotesContext";
+import { useNotes, NoteAttachment, NoteRow, NotePlaintext } from "@/contexts/NotesContext";
 import { Pin, PinOff, Trash2, Plus, Paperclip, ShieldCheck, Loader2, FileText, Download, X, EyeOff, ArrowLeft, KeyRound, Edit3, Copy, AlertTriangle, Play, Maximize2, Undo2, Redo2 } from "lucide-react";
 import { toast } from "sonner";
 import notesIcon from "@/assets/password-lock.svg";
@@ -563,6 +563,7 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
   const [attachments, setAttachments] = useState(note.decrypted?.attachments || []);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [storedAttachments, setStoredAttachments] = useState<NoteAttachment[]>([]);
   const [editorDragOver, setEditorDragOver] = useState(false);
   const [lightbox, setLightbox] = useState<{ kind: "image" | "video"; url: string; name: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -822,6 +823,25 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     const cached = blobUrlCacheRef.current.get(id);
     if (cached) { try { URL.revokeObjectURL(cached); } catch {} blobUrlCacheRef.current.delete(id); }
     dirty.current = true;
+  };
+
+  const refreshStoredAttachments = async () => {
+    const files = await n.listStoredAttachments();
+    setStoredAttachments(files);
+  };
+
+  useEffect(() => {
+    void refreshStoredAttachments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [note.id, n.notes.length]);
+
+  const attachedPaths = new Set(attachments.map((a) => a.storagePath));
+  const recoverableAttachments = storedAttachments.filter((att) => !attachedPaths.has(att.storagePath));
+
+  const attachRecoveredFile = (att: NoteAttachment) => {
+    setAttachments((prev) => prev.some((a) => a.storagePath === att.storagePath) ? prev : [...prev, att]);
+    dirty.current = true;
+    toast.success("Recovered file attached to this note");
   };
 
   // Remove an attachment's inline references from the body but keep it
