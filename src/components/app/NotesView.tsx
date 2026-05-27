@@ -825,24 +825,6 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     dirty.current = true;
   };
 
-  const refreshStoredAttachments = async () => {
-    const files = await n.listStoredAttachments();
-    setStoredAttachments(files);
-  };
-
-  useEffect(() => {
-    void refreshStoredAttachments();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [note.id, n.notes.length]);
-
-  const attachedPaths = new Set(attachments.map((a) => a.storagePath));
-  const recoverableAttachments = storedAttachments.filter((att) => !attachedPaths.has(att.storagePath));
-
-  const attachRecoveredFile = (att: NoteAttachment) => {
-    setAttachments((prev) => prev.some((a) => a.storagePath === att.storagePath) ? prev : [...prev, att]);
-    dirty.current = true;
-    toast.success("Recovered file attached to this note");
-  };
 
   // Remove an attachment's inline references from the body but keep it
   // in the attachment list so the user can re-insert it later.
