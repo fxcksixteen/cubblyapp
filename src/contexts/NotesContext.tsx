@@ -394,9 +394,10 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
   }, [user, key]);
 
   const downloadAttachment = useCallback(async (att: { storagePath?: string; storage_path?: string; path?: string; iv?: string; mime: string; name: string }) => {
-    if (!key) throw new Error("Locked");
+    if (!user || !key) throw new Error("Locked");
     const storagePath = extractNotesStoragePath(att.storagePath || att.storage_path || att.path || (att as any).fullPath || (att as any).full_path || (att as any).key || (att as any).objectKey || (att as any).url || (att as any).signedUrl || (att as any).signed_url);
     if (!storagePath) throw new Error("Missing attachment path");
+    if (!isOwnedAttachmentPath(storagePath, user.id)) throw new Error("Attachment does not belong to this vault");
     const { data, error } = await supabase.storage.from("notes-attachments").download(storagePath);
     if (error || !data) throw error || new Error("Download failed");
     const buf = await data.arrayBuffer();
@@ -416,7 +417,7 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
       console.warn("[Notes] decrypt failed, serving raw blob:", e);
       return new Blob([buf], { type: att.mime });
     }
-  }, [key]);
+  }, [user, key]);
 
   const value = useMemo<NotesContextValue>(() => ({
     hasKey: !!key,
