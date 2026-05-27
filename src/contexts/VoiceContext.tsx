@@ -1866,16 +1866,34 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         acceptedIncomingCallRef.current = null;
         setActiveCall(prev => prev ? { ...prev, state: "calling" } : prev);
       } else {
-        console.log("[Voice] 📡 No offer yet, sending ready-for-offer to caller...");
-        channel.send({
-          type: "broadcast",
-          event: "voice-signal",
-          payload: {
-            type: "ready-for-offer",
-            senderId: user.id,
-            senderName: user.user_metadata?.display_name || "User",
-            callEventId: acceptedCallEventId,
-          },
+        console.log("[Voice] 📡 No offer yet, sending ready-for-offer to caller (with retries)...");
+        const sendReady = () => {
+          channel.send({
+            type: "broadcast",
+            event: "voice-signal",
+            payload: {
+              type: "ready-for-offer",
+              senderId: user.id,
+              senderName: user.user_metadata?.display_name || "User",
+              callEventId: acceptedCallEventId,
+            },
+          });
+        };
+        sendReady();
+        // v0.3.9: the very first ready-for-offer often races the caller's
+        // signaling subscribe / our own subscribe ack. Retry a few times so
+        // the second peer reliably gets placed in the call instead of
+        // hanging forever in "ringing" with no offer ever arriving.
+        const retryDelays = [600, 1400, 2800, 5000];
+        retryDelays.forEach((ms) => {
+          setTimeout(() => {
+            // Stop retrying once we actually have a remote description set.
+            if (remoteDescriptionSet.current) return;
+            // Or if the call was ended / changed.
+            if (activeCallRef.current?.conversationId !== acceptedCall.conversationId) return;
+            console.log(`[Voice] 🔁 Re-sending ready-for-offer (+${ms}ms)`);
+            try { sendReady(); } catch {}
+          }, ms);
         });
       }
 
