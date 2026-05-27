@@ -891,20 +891,55 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
   // Insert an existing attachment at the end of the body (used by the
   // "Insert into note" button on attachment cards).
   const insertExistingAttIntoBody = async (att: typeof attachments[0]) => {
-    const mime = effectiveMime(att);
-    if (!mime.startsWith("image/") && !mime.startsWith("video/")) return;
+    // Always allow insert — we'll sniff the actual bytes to pick image/video/file.
     let url = blobUrlCacheRef.current.get(att.id);
+    let sniffedMime = effectiveMime(att);
     if (!url) {
       try {
         const blob = await n.downloadAttachment(att);
-        // Re-type the blob if the stored mime was generic so <img>/<video> picks the right decoder.
-        const typed = blob.type && blob.type !== "application/octet-stream" ? blob : new Blob([blob], { type: mime });
+        // Sniff magic bytes when stored mime is missing/generic.
+        if (!sniffedMime.startsWith("image/") && !sniffedMime.startsWith("video/")) {
+          const head = new Uint8Array(await blob.slice(0, 16).arrayBuffer());
+          const hex = Array.from(head).map((b) => b.toString(16).padStart(2, "0")).join("");
+          const ascii = String.fromCharCode(...head);
+          if (hex.startsWith("89504e47")) sniffedMime = "image/png";
+          else if (hex.startsWith("ffd8ff")) sniffedMime = "image/jpeg";
+          else if (hex.startsWith("47494638")) sniffedMime = "image/gif";
+          else if (ascii.startsWith("RIFF") && ascii.slice(8, 12) === "WEBP") sniffedMime = "image/webp";
+          else if (hex.startsWith("00000018") || hex.startsWith("00000020") || hex.includes("66747970")) sniffedMime = "video/mp4";
+          else if (hex.startsWith("1a45dfa3")) sniffedMime = "video/webm";
+        }
+        const typed = blob.type && blob.type !== "application/octet-stream" ? blob : new Blob([blob], { type: sniffedMime || "application/octet-stream" });
         url = URL.createObjectURL(typed);
         blobUrlCacheRef.current.set(att.id, url);
       } catch { toast.error("Couldn't load file"); return; }
     }
-    const attWithMime = { ...att, mime };
-    const node = mime.startsWith("image/") ? buildInlineImg(attWithMime, url) : buildInlineVideo(attWithMime, url);
+    const attWithMime = { ...att, mime: sniffedMime || att.mime };
+    let node: HTMLElement;
+    if (sniffedMime.startsWith("image/")) {
+      node = buildInlineImg(attWithMime, url!);
+    } else if (sniffedMime.startsWith("video/")) {
+      node = buildInlineVideo(attWithMime, url!);
+    } else {
+      // Generic file: insert a download link so it's still visible inline.
+      const a = document.createElement("a");
+      stampInlineAttachmentMetadata(a, attWithMime);
+      a.setAttribute("data-cubbly-movable", "1");
+      a.href = url!;
+      a.download = att.name || "attachment";
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.textContent = `📎 ${att.name || "Attachment"}`;
+      a.style.display = "inline-block";
+      a.style.margin = "4px 0";
+      a.style.padding = "4px 8px";
+      a.style.borderRadius = "6px";
+      a.style.border = "1px solid var(--app-border)";
+      a.style.backgroundColor = "var(--app-bg-secondary)";
+      a.style.color = "hsl(var(--primary))";
+      a.style.textDecoration = "none";
+      node = a;
+    }
     let range: Range | null = null;
     if (bodyRef.current) {
       range = document.createRange();
