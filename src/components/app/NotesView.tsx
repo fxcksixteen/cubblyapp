@@ -985,6 +985,10 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
         blobUrlCacheRef.current.set(att.id, url);
       } catch { toast.error("Couldn't load file"); return; }
     }
+    if (!isInlineRenderableMime(sniffedMime)) {
+      toast.error("Only images, videos, and PDFs can be inserted");
+      return;
+    }
     const attWithMime = { ...att, mime: sniffedMime || att.mime };
     let node: HTMLElement;
     if (sniffedMime.startsWith("image/")) {
@@ -992,8 +996,6 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     } else if (sniffedMime.startsWith("video/")) {
       node = buildInlineVideo(attWithMime, url!);
     } else {
-      // PDF or unknown: insert a download/open link inline so the user can
-      // still place the file in the note body.
       const a = document.createElement("a");
       stampInlineAttachmentMetadata(a, attWithMime);
       a.setAttribute("data-cubbly-movable", "1");
@@ -1001,8 +1003,7 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
       a.download = typedAttachmentFileName(att, sniffedMime);
       a.target = "_blank";
       a.rel = "noopener noreferrer";
-      const icon = sniffedMime === "application/pdf" ? "📄" : "📎";
-      a.textContent = `${icon} ${typedAttachmentFileName(att, sniffedMime)}`;
+      a.textContent = `📄 ${typedAttachmentFileName(att, sniffedMime)}`;
       a.style.display = "inline-block";
       a.style.margin = "4px 0";
       a.style.padding = "4px 8px";
