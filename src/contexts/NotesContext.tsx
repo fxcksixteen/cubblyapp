@@ -24,6 +24,15 @@ export interface NotePlaintext {
   attachments?: Array<{ id: string; name: string; mime: string; size: number; storagePath: string; iv: string }>;
 }
 
+export interface NoteAttachment {
+  id: string;
+  name: string;
+  mime: string;
+  size: number;
+  storagePath: string;
+  iv: string;
+}
+
 function extractNotesStoragePath(value?: string | null): string {
   if (!value) return "";
   // Strip query parameters for comparison and path extraction
@@ -125,8 +134,9 @@ interface NotesContextValue {
   deleteNote: (id: string) => Promise<void>;
   togglePin: (id: string, pinned: boolean) => Promise<void>;
   // attachments
-  uploadAttachment: (file: File) => Promise<{ id: string; name: string; mime: string; size: number; storagePath: string; iv: string }>;
+  uploadAttachment: (file: File) => Promise<NoteAttachment>;
   downloadAttachment: (att: { storagePath: string; iv?: string; mime: string; name: string }) => Promise<Blob>;
+  listStoredAttachments: () => Promise<NoteAttachment[]>;
 }
 
 const NotesContext = createContext<NotesContextValue | null>(null);
@@ -303,6 +313,29 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
     return { id, name: file.name, mime: file.type || "application/octet-stream", size: file.size, storagePath, iv };
   }, [user, key]);
 
+  const listStoredAttachments = useCallback(async (): Promise<NoteAttachment[]> => {
+    if (!user || !key) return [];
+    const { data, error } = await supabase.storage.from("notes-attachments").list(user.id, {
+      limit: 1000,
+      sortBy: { column: "created_at", order: "desc" },
+    });
+    if (error || !data) return [];
+    return data
+      .filter((file) => !!file.name && !file.name.endsWith("/"))
+      .map((file) => {
+        const id = file.name.replace(/\.bin$/i, "");
+        const metadata = (file.metadata || {}) as Record<string, any>;
+        return {
+          id,
+          name: String(metadata.originalName || metadata.name || `Recovered file ${id.slice(0, 8)}`),
+          mime: String(metadata.mime || metadata.mimetype || metadata.contentType || "application/octet-stream"),
+          size: Number(metadata.size || metadata.contentLength || 0),
+          storagePath: `${user.id}/${file.name}`,
+          iv: String(metadata.iv || ""),
+        };
+      });
+  }, [user, key]);
+
   const downloadAttachment = useCallback(async (att: { storagePath?: string; storage_path?: string; path?: string; iv?: string; mime: string; name: string }) => {
     if (!key) throw new Error("Locked");
     const storagePath = extractNotesStoragePath(att.storagePath || att.storage_path || att.path || (att as any).fullPath || (att as any).full_path || (att as any).key || (att as any).objectKey || (att as any).url || (att as any).signedUrl || (att as any).signed_url);
@@ -347,7 +380,8 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
     togglePin,
     uploadAttachment,
     downloadAttachment,
-  }), [key, isInitializing, hasExistingVault, trustedHere, setupVault, unlock, lock, forgetDevice, notes, loading, refresh, createNote, updateNote, deleteNote, togglePin, uploadAttachment, downloadAttachment]);
+    listStoredAttachments,
+  }), [key, isInitializing, hasExistingVault, trustedHere, setupVault, unlock, lock, forgetDevice, notes, loading, refresh, createNote, updateNote, deleteNote, togglePin, uploadAttachment, downloadAttachment, listStoredAttachments]);
 
   return <NotesContext.Provider value={value}>{children}</NotesContext.Provider>;
 };
