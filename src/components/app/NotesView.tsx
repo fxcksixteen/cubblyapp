@@ -70,10 +70,17 @@ const sniffPreviewableMime = async (blob: Blob): Promise<string> => {
   if (ascii.startsWith("RIFF") && ascii.slice(8, 12) === "WEBP") return "image/webp";
   if (ascii.trimStart().startsWith("<svg")) return "image/svg+xml";
   if (hex.startsWith("25504446")) return "application/pdf";
-  if (hex.startsWith("00000018") || hex.startsWith("00000020") || hex.includes("66747970")) return "video/mp4";
+  if (ascii.slice(4, 8) === "ftyp") {
+    const brandData = ascii.slice(8).toLowerCase();
+    if (brandData.includes("avif")) return "image/avif";
+    if (["heic", "heix", "hevc", "hevx", "mif1", "msf1"].some((brand) => brandData.includes(brand))) return "image/heic";
+    if (brandData.startsWith("qt  ")) return "video/quicktime";
+    return "video/mp4";
+  }
   if (hex.startsWith("1a45dfa3")) return "video/webm";
   return blob.type && !GENERIC_MIME.has(blob.type.toLowerCase()) ? blob.type : "application/octet-stream";
 };
+const isInlineRenderableMime = (mime: string) => mime.startsWith("image/") || mime.startsWith("video/") || mime === "application/pdf";
 const typedAttachmentFileName = (att: { id?: string; name?: string }, mime: string) => {
   const base = (att.name || `Attachment ${att.id?.slice(0, 8) || "file"}`).trim() || "Attachment";
   if (hasExtension(base)) return base;
@@ -984,6 +991,10 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
         blobUrlCacheRef.current.set(att.id, url);
       } catch { toast.error("Couldn't load file"); return; }
     }
+    if (!isInlineRenderableMime(sniffedMime)) {
+      toast.error("Only images, videos, and PDFs can be inserted");
+      return;
+    }
     const attWithMime = { ...att, mime: sniffedMime || att.mime };
     let node: HTMLElement;
     if (sniffedMime.startsWith("image/")) {
@@ -991,8 +1002,6 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     } else if (sniffedMime.startsWith("video/")) {
       node = buildInlineVideo(attWithMime, url!);
     } else {
-      // PDF or unknown: insert a download/open link inline so the user can
-      // still place the file in the note body.
       const a = document.createElement("a");
       stampInlineAttachmentMetadata(a, attWithMime);
       a.setAttribute("data-cubbly-movable", "1");
@@ -1000,8 +1009,7 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
       a.download = typedAttachmentFileName(att, sniffedMime);
       a.target = "_blank";
       a.rel = "noopener noreferrer";
-      const icon = sniffedMime === "application/pdf" ? "📄" : "📎";
-      a.textContent = `${icon} ${typedAttachmentFileName(att, sniffedMime)}`;
+      a.textContent = `📄 ${typedAttachmentFileName(att, sniffedMime)}`;
       a.style.display = "inline-block";
       a.style.margin = "4px 0";
       a.style.padding = "4px 8px";
@@ -1495,7 +1503,7 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
                 <FileText className="h-3.5 w-3.5" style={{ color: "var(--app-text-secondary)" }} />
                 <span className="max-w-[160px] truncate" style={{ color: "var(--app-text-primary)" }}>{att.name}</span>
                 <span style={{ color: "var(--app-text-secondary)" }}>({formatSize(att.size)})</span>
-                {isInlined ? (
+                {isInlined && (
                   <button
                     onClick={() => uninsertAtt(att.id)}
                     title="Remove from note body (keeps file attached)"
@@ -1503,15 +1511,6 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
                     style={{ color: "var(--app-text-secondary)", border: "1px solid var(--app-border)" }}
                   >
                     Uninsert
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => insertExistingAttIntoBody(att)}
-                    title="Insert into note body"
-                    className="ml-1 px-1.5 py-0.5 rounded text-[11px] hover:bg-[var(--app-hover)]"
-                    style={{ color: "hsl(var(--primary))", border: "1px solid hsl(var(--primary) / 0.4)" }}
-                  >
-                    Insert
                   </button>
                 )}
                 <button onClick={() => downloadAtt(att)} title="Download" className="ml-0.5 p-0.5 rounded hover:bg-[var(--app-hover)]">
