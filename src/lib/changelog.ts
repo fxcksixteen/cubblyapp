@@ -23,9 +23,22 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.3.7";
+export const CURRENT_VERSION = "0.3.8";
 
 export const CHANGELOG: ChangelogEntry[] = [
+
+  {
+    version: "0.3.8",
+    title: "Hotfix: instant call kicks",
+    date: "2026-05-27",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Fixed a deadly bug where joining or being joined on a 1:1 voice call would instantly hang you up. A transient WebRTC ICE 'disconnected/failed' during the join handshake was tearing down the whole call; now we keep the call alive and try an ICE restart instead of kicking either side out.",
+      "Stale 'peer-leave' broadcasts from a previous call attempt in the same chat can no longer end your brand-new call — leave signals are now scoped to the specific call event id, so a delayed broadcast from the old attempt is ignored.",
+      "Signaling errors during accept/join/rejoin no longer auto-end the call. Transient SDP failures are logged and the call stays up so WebRTC can recover or you can hang up manually — instead of getting yanked out mid-handshake.",
+    ],
+  },
 
   {
     version: "0.3.7",

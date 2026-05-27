@@ -785,23 +785,21 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           } catch (e) { console.warn("[Voice] getStats failed:", e); }
         }, 1500);
       }
-      if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed") {
-        console.warn("[Voice] ICE connection failed/disconnected");
-        setTimeout(() => {
-          if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed") {
-            console.error("[Voice] ICE permanently failed, ending call");
-            pc.close();
-            pcRef.current = null;
-            setActiveCall(null);
-            setIncomingCall(null);
-            setCurrentCallEventId(null);
-            setRemoteStream(null);
-            setRemoteAudioLevel(0);
-            document.querySelectorAll("audio").forEach((el: any) => {
-              if (el.__cubblyRemote) { el.pause(); el.srcObject = null; el.remove(); }
-            });
-          }
-        }, 3000);
+      if (pc.iceConnectionState === "disconnected") {
+        // Transient — WebRTC will try to recover on its own. DO NOT kick the
+        // user out. (v0.3.8 fix: previously this path also called
+        // setActiveCall(null) on "failed", which was making the second peer
+        // joining look like an instant hangup whenever ICE took a moment to
+        // settle. Now we only log and let WebRTC recover; the user can hang
+        // up manually if it never comes back.)
+        console.warn("[Voice] ICE disconnected — waiting for recovery (not ending call)");
+      }
+      if (pc.iceConnectionState === "failed") {
+        // Even "failed" doesn't kill the call UI anymore — many browsers fire
+        // this once during renegotiation/join races and then recover. Try an
+        // ICE restart instead of tearing down the call.
+        console.warn("[Voice] ICE failed — attempting restart, keeping call alive");
+        try { (pc as any).restartIce?.(); } catch {}
       }
     };
 
@@ -1023,8 +1021,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             }
             await initializeOutgoingConnection(channel, conversationId);
           } catch (e) {
-            console.error("[Voice] Failed to initialize outgoing connection:", e);
-            endCallRef.current();
+            console.error("[Voice] Failed to initialize outgoing connection (keeping call alive):", e);
+            // v0.3.8: do NOT endCall on signaling errors — they're often
+            // transient races on join. The user can hang up manually.
           }
           return;
         }
@@ -1115,8 +1114,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               acceptedIncomingCallRef.current = null;
               setIncomingCall(null);
             } catch (e) {
-              console.error("[Voice] Failed handling accepted offer:", e);
-              endCallRef.current();
+              console.error("[Voice] Failed handling accepted offer (keeping call alive):", e);
+              // v0.3.8: don't tear down the call on a single SDP failure.
             }
             return;
           }
@@ -1180,8 +1179,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               } : prev);
               peerIdRef.current = payload.senderId || peerIdRef.current;
             } catch (e) {
-              console.error("[Voice] Rejoin auto-accept failed:", e);
-              endCallRef.current();
+              console.error("[Voice] Rejoin auto-accept failed (keeping call alive):", e);
+              // v0.3.8: don't endCall — leave it to the user.
             }
             return;
           }
@@ -1232,6 +1231,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         // The call_event row is only marked ended once the last participant
         // leaves (see endCall).
         if (payload.type === "hangup" || payload.type === "peer-leave") {
+          // v0.3.8: ignore stale peer-leaves from a *previous* call_event in
+          // the same conversation. Without this scoping, a delayed broadcast
+          // from a hung-up attempt could instantly kick us out of the brand-
+          // new call we just joined (the "girlfriend joins and we both get
+          // hung up" bug).
+          if (payload.callEventId && callEventIdSnapshot && payload.callEventId !== callEventIdSnapshot) {
+            console.log(`[Voice] 🛑 Ignoring stale peer-leave for ${payload.callEventId} (current=${callEventIdSnapshot})`);
+            return;
+          }
           console.log("[Voice] 👋 Peer left — keeping call alive locally; hard-resetting signaling state");
           try { pcRef.current?.close(); } catch {}
           pcRef.current = null;
@@ -2282,7 +2290,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       channelRef.current.send({
         type: "broadcast",
         event: "voice-signal",
-        payload: { type: "peer-leave", senderId: user.id },
+        // v0.3.8: stamp the callEventId so peers can ignore stale leaves
+        // from a previous call attempt in the same conversation.
+        payload: { type: "peer-leave", senderId: user.id, callEventId: currentCallEventIdRef.current },
       });
     }
 
