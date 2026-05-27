@@ -647,6 +647,9 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     clone.querySelectorAll("img[data-att-id], video[data-att-id]").forEach((el) => {
       el.removeAttribute("src");
     });
+    clone.querySelectorAll("a[data-att-id]").forEach((el) => {
+      el.removeAttribute("href");
+    });
     return clone.innerHTML;
   };
 
@@ -669,7 +672,8 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
       if (!id) continue;
       const cached = blobUrlCacheRef.current.get(id);
       if (cached) {
-        (el as HTMLImageElement).src = cached;
+        if (tag === "a") (el as HTMLAnchorElement).href = cached;
+        else (el as HTMLImageElement).src = cached;
         continue;
       }
       const att = latestRef.current.attachments.find((a) => a.id === id);
@@ -680,7 +684,8 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
         const typed = blob.type && !GENERIC_MIME.has(blob.type.toLowerCase()) ? blob : new Blob([blob], { type: mime });
         const url = URL.createObjectURL(typed);
         blobUrlCacheRef.current.set(id, url);
-        (el as HTMLImageElement).src = url;
+        if (tag === "a") (el as HTMLAnchorElement).href = url;
+        else (el as HTMLImageElement).src = url;
       } catch { /* ignore */ }
     }
   };
