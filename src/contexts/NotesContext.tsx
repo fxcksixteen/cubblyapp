@@ -582,7 +582,7 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
     const sortedNotes = [...notes].sort((a, b) => timeMs(a.created_at) - timeMs(b.created_at));
     const LEGACY_ATTACH_WINDOW_MS = 10 * 60 * 1000;
 
-    return records.filter((att) => {
+    const filtered = records.filter((att) => {
       if (!isOwnedAttachmentPath(att.storagePath, user.id)) return false;
       if (attachmentKeys(att).some((k) => existing.has(k))) return false;
 
@@ -601,8 +601,14 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
         }
       }
       return inferred?.id === noteId;
-    }).map((att) => ({ ...att, noteId }));
-  }, [user, notes]);
+    }).map<NoteAttachment>((att) => ({ ...att, noteId }));
+
+    // Classify recovered attachments BEFORE returning so the UI gets correct
+    // image/video/PDF metadata on the very first render and shows Insert.
+    if (!key) return filtered;
+    const { list } = await classifyAttachments(filtered, key);
+    return list;
+  }, [user, notes, key]);
 
   const value = useMemo<NotesContextValue>(() => ({
     hasKey: !!key,
