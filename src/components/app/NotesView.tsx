@@ -27,6 +27,28 @@ import {
 
 const PIN_LENGTH = 4;
 
+// Infer a mime type from the filename extension when the stored mime is
+// missing or generic (e.g. "application/octet-stream"). Recovered legacy
+// attachments often have no mime, but their filename is preserved — this
+// lets us still show Insert / preview controls for images and videos.
+const IMAGE_EXT = new Set(["png","jpg","jpeg","gif","webp","heic","heif","bmp","avif","svg"]);
+const VIDEO_EXT = new Set(["mp4","mov","m4v","webm","mkv","avi"]);
+const effectiveMime = (att: { name?: string; mime?: string }): string => {
+  const m = (att.mime || "").toLowerCase();
+  if (m.startsWith("image/") || m.startsWith("video/")) return m;
+  const name = att.name || "";
+  const dot = name.lastIndexOf(".");
+  if (dot < 0) return m;
+  const ext = name.slice(dot + 1).toLowerCase();
+  if (IMAGE_EXT.has(ext)) return ext === "svg" ? "image/svg+xml" : `image/${ext === "jpg" ? "jpeg" : ext}`;
+  if (VIDEO_EXT.has(ext)) return `video/${ext === "mov" ? "quicktime" : ext}`;
+  return m;
+};
+const isMediaAtt = (att: { name?: string; mime?: string }) => {
+  const m = effectiveMime(att);
+  return m.startsWith("image/") || m.startsWith("video/");
+};
+
 const NotesView = () => {
   const n = useNotes();
 
