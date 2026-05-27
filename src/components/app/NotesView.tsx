@@ -653,11 +653,13 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     return clone.innerHTML;
   };
 
-  // Hydrate every <img data-att-id> / <video data-att-id> in the editor
-  // by downloading and decrypting the matching attachment.
+  // Hydrate every inline attachment in the editor by downloading/decrypting
+  // it. Also upgrades old generic file links into real image/video embeds
+  // once the bytes prove what they are.
   const hydrateInlineMedia = async () => {
     const root = bodyRef.current;
     if (!root) return;
+    let upgraded = false;
     const els = Array.from(root.querySelectorAll<HTMLElement>("[data-att-id]"));
     for (const el of els) {
       const tag = el.tagName.toLowerCase();
@@ -680,13 +682,30 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
       if (!att) continue;
       try {
         const blob = await n.downloadAttachment(att);
-        const mime = effectiveMime(att);
+        const mime = isInsertableAtt(att) ? effectiveMime(att) : await sniffPreviewableMime(blob);
         const typed = blob.type && !GENERIC_MIME.has(blob.type.toLowerCase()) ? blob : new Blob([blob], { type: mime });
         const url = URL.createObjectURL(typed);
         blobUrlCacheRef.current.set(id, url);
-        if (tag === "a") (el as HTMLAnchorElement).href = url;
-        else (el as HTMLImageElement).src = url;
+        const hydratedAtt = { ...att, mime, name: typedAttachmentFileName(att, mime) };
+        if (tag === "a" && mime.startsWith("image/")) {
+          el.replaceWith(buildInlineImg(hydratedAtt, url));
+          upgraded = true;
+        } else if (tag === "a" && mime.startsWith("video/")) {
+          el.replaceWith(buildInlineVideo(hydratedAtt, url));
+          upgraded = true;
+        } else if (tag === "a") {
+          const link = el as HTMLAnchorElement;
+          link.href = url;
+          link.download = typedAttachmentFileName(att, mime);
+          if (mime === "application/pdf") link.textContent = `📄 ${typedAttachmentFileName(att, mime)}`;
+        } else {
+          (el as HTMLImageElement).src = url;
+        }
       } catch { /* ignore */ }
+    }
+    if (upgraded && bodyRef.current) {
+      setBody(bodyRef.current.innerHTML);
+      dirty.current = true;
     }
   };
 
