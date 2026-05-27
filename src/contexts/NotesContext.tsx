@@ -21,7 +21,7 @@ import {
 export interface NotePlaintext {
   title: string;
   body: string; // HTML
-  attachments?: Array<{ id: string; name: string; mime: string; size: number; storagePath: string; iv: string }>;
+  attachments?: Array<{ id: string; name: string; mime: string; size: number; storagePath: string; iv: string; noteId?: string }>;
 }
 
 export interface NoteAttachment {
@@ -31,7 +31,10 @@ export interface NoteAttachment {
   size: number;
   storagePath: string;
   iv: string;
+  noteId?: string;
 }
+
+type StoredAttachmentIndex = Map<string, Partial<NoteAttachment>>;
 
 function extractNotesStoragePath(value?: string | null): string {
   if (!value) return "";
@@ -77,17 +80,28 @@ function extractLegacyInlineAttachments(body?: string): unknown[] {
     if (id || srcPath) {
       out.push({
         id,
-        name: attrs.alt || attrs.title || "Attachment",
-        mime: tagMatch[1].toLowerCase() === "video" ? "video/mp4" : "image/*",
+        name: attrs["data-att-name"] || attrs.alt || attrs.title || "Attachment",
+        mime: attrs["data-att-mime"] || (tagMatch[1].toLowerCase() === "video" ? "video/mp4" : "image/*"),
+        size: Number(attrs["data-att-size"] || 0),
         storagePath: srcPath,
         iv: attrs["data-iv"] || attrs["data-att-iv"] || "",
+        noteId: attrs["data-note-id"] || "",
       });
     }
   }
   return out;
 }
 
-function normalizeNotePlaintext(plain: NotePlaintext): NotePlaintext {
+function isOwnedAttachmentPath(path: string, ownerUserId?: string): boolean {
+  if (!path || !ownerUserId) return !!path;
+  return path === ownerUserId || path.startsWith(`${ownerUserId}/`);
+}
+
+function getStoredCandidate(index: StoredAttachmentIndex | undefined, id: string, storagePath: string) {
+  return (storagePath && index?.get(storagePath)) || (id && index?.get(id)) || undefined;
+}
+
+function normalizeNotePlaintext(plain: NotePlaintext, ownerUserId?: string, storageIndex?: StoredAttachmentIndex, noteId?: string): NotePlaintext {
   // Be VERY liberal with legacy attachment shapes from earlier desktop/web
   // versions and from third-party clients. We accept several common key
   // aliases for the storage path AND the IV. We handle both array and
@@ -106,21 +120,36 @@ function normalizeNotePlaintext(plain: NotePlaintext): NotePlaintext {
   let raw: any[] = buckets;
   if (!Array.isArray(raw)) raw = [];
 
+  const seen = new Set<string>();
   const attachments = raw.map((a: any) => {
-    const storagePath = extractNotesStoragePath(
+    const id = String(a.id || a.uuid || a.uid || "");
+    let storagePath = extractNotesStoragePath(
       a.storagePath || a.storage_path || a.path || a.fullPath || a.full_path ||
       a.key || a.objectKey || a.url || a.signedUrl || a.signed_url || a.attachment_path ||
       a.attachment_url || a.file_path || a.filePath || ""
     );
+    if (!storagePath && ownerUserId && id) {
+      storagePath = String(storageIndex?.get(id)?.storagePath || `${ownerUserId}/${id}.bin`);
+    }
+    const stored = getStoredCandidate(storageIndex, id, storagePath);
+    const finalId = String(id || stored?.id || storagePath.split("/").pop()?.replace(/\.bin$/i, "") || crypto.randomUUID());
+    const finalPath = extractNotesStoragePath(storagePath || stored?.storagePath || "");
+    const attachmentNoteId = String(a.noteId || a.note_id || (stored as any)?.noteId || "");
+    if (noteId && attachmentNoteId && attachmentNoteId !== noteId) return null;
+    if (!isOwnedAttachmentPath(finalPath, ownerUserId)) return null;
+    const key = finalPath || finalId;
+    if (seen.has(key)) return null;
+    seen.add(key);
     return {
-      id: String(a.id || a.uuid || a.uid || storagePath || crypto.randomUUID()),
-      name: String(a.name || a.filename || a.fileName || "Attachment"),
-      mime: String(a.mime || a.type || a.contentType || a.mimeType || "application/octet-stream"),
-      size: Number(a.size || a.byteSize || a.bytes || 0),
-      storagePath,
-      iv: String(a.iv || a.IV || a.nonce || a.initVector || a.initializationVector || a.init_vector || ""),
+      id: finalId,
+      name: String(a.name || a.filename || a.fileName || stored?.name || "Attachment"),
+      mime: String(a.mime || a.type || a.contentType || a.mimeType || stored?.mime || "application/octet-stream"),
+      size: Number(a.size || a.byteSize || a.bytes || stored?.size || 0),
+      storagePath: finalPath,
+      iv: String(a.iv || a.IV || a.nonce || a.initVector || a.initializationVector || a.init_vector || stored?.iv || ""),
+      noteId: attachmentNoteId || noteId,
     };
-  }).filter((a) => !!a.storagePath || !!a.name);
+  }).filter((a): a is NonNullable<typeof a> => !!a?.storagePath) as NoteAttachment[];
 
   return { ...plain, attachments };
 }
@@ -160,12 +189,38 @@ interface NotesContextValue {
   deleteNote: (id: string) => Promise<void>;
   togglePin: (id: string, pinned: boolean) => Promise<void>;
   // attachments
-  uploadAttachment: (file: File) => Promise<NoteAttachment>;
+  uploadAttachment: (file: File, noteId?: string) => Promise<NoteAttachment>;
   downloadAttachment: (att: { storagePath: string; iv?: string; mime: string; name: string }) => Promise<Blob>;
-  listStoredAttachments: () => Promise<NoteAttachment[]>;
 }
 
 const NotesContext = createContext<NotesContextValue | null>(null);
+
+async function loadStoredAttachmentIndex(ownerUserId: string): Promise<StoredAttachmentIndex> {
+  const index: StoredAttachmentIndex = new Map();
+  const { data, error } = await supabase.storage.from("notes-attachments").list(ownerUserId, {
+    limit: 1000,
+    sortBy: { column: "created_at", order: "desc" },
+  });
+  if (error || !data) return index;
+  for (const file of data) {
+    if (!file.name || file.name.endsWith("/")) continue;
+    const id = file.name.replace(/\.bin$/i, "");
+    const metadata = (file.metadata || {}) as Record<string, unknown>;
+    const storagePath = `${ownerUserId}/${file.name}`;
+    const size = Number(metadata.size || metadata.contentLength || metadata.contentLengthExact || 0);
+    const att: Partial<NoteAttachment> = {
+      id,
+      name: String(metadata.originalName || metadata.name || `Attachment ${id.slice(0, 8)}`),
+      mime: String(metadata.mime || metadata.mimetype || metadata.contentType || "application/octet-stream"),
+      size: Number.isFinite(size) ? size : 0,
+      storagePath,
+      iv: String(metadata.iv || ""),
+    };
+    index.set(id, att);
+    index.set(storagePath, att);
+  }
+  return index;
+}
 
 export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
   const { user } = useAuth();
@@ -204,11 +259,12 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
     return () => { cancelled = true; };
   }, [user]);
 
-  const decryptAll = useCallback(async (rows: NoteRow[], k: CryptoKey) => {
+  const decryptAll = useCallback(async (rows: NoteRow[], k: CryptoKey, ownerUserId: string) => {
+    const storageIndex = await loadStoredAttachmentIndex(ownerUserId);
     const out: NoteRow[] = [];
     for (const r of rows) {
       try {
-        const plain = normalizeNotePlaintext(await decryptJson<NotePlaintext>(k, r.iv, r.ciphertext));
+        const plain = normalizeNotePlaintext(await decryptJson<NotePlaintext>(k, r.iv, r.ciphertext), ownerUserId, storageIndex, r.id);
         out.push({ ...r, decrypted: plain });
       } catch {
         out.push({ ...r, decrypted: null, decryptError: true });
@@ -227,7 +283,7 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
       .order("pinned", { ascending: false })
       .order("updated_at", { ascending: false });
     if (!error && data) {
-      const dec = await decryptAll(data as NoteRow[], key);
+      const dec = await decryptAll(data as NoteRow[], key, user.id);
       setNotes(dec);
     }
     setLoading(false);
@@ -291,7 +347,7 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
       .select("*")
       .single();
     if (error || !data) return null;
-    const row: NoteRow = { ...(data as NoteRow), decrypted: normalizeNotePlaintext(plain) };
+    const row: NoteRow = { ...(data as NoteRow), decrypted: normalizeNotePlaintext(plain, user.id, undefined, data.id) };
     setNotes((prev) => [row, ...prev]);
     return row;
   }, [user, key]);
@@ -304,7 +360,7 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
       .update({ iv, ciphertext, byte_size: ciphertext.length, updated_at: new Date().toISOString() })
       .eq("id", id);
     if (error) throw error;
-    setNotes((prev) => prev.map((n) => (n.id === id ? { ...n, iv, ciphertext, byte_size: ciphertext.length, decrypted: normalizeNotePlaintext(plain), updated_at: new Date().toISOString() } : n)));
+    setNotes((prev) => prev.map((n) => (n.id === id ? { ...n, iv, ciphertext, byte_size: ciphertext.length, decrypted: normalizeNotePlaintext(plain, user.id, undefined, id), updated_at: new Date().toISOString() } : n)));
   }, [user, key]);
 
   const deleteNote = useCallback(async (id: string) => {
@@ -327,46 +383,26 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
     );
   }, []);
 
-  const uploadAttachment = useCallback(async (file: File) => {
+  const uploadAttachment = useCallback(async (file: File, noteId?: string) => {
     if (!user || !key) throw new Error("Locked");
     const buf = await file.arrayBuffer();
     const { iv, ciphertext } = await encryptBytes(key, buf);
     const id = crypto.randomUUID();
     const storagePath = `${user.id}/${id}.bin`;
     const blob = new Blob([ciphertext], { type: "application/octet-stream" });
-    const { error } = await supabase.storage.from("notes-attachments").upload(storagePath, blob, { upsert: false, metadata: { iv } });
-    if (error) throw error;
-    return { id, name: file.name, mime: file.type || "application/octet-stream", size: file.size, storagePath, iv };
-  }, [user, key]);
-
-  const listStoredAttachments = useCallback(async (): Promise<NoteAttachment[]> => {
-    if (!user || !key) return [];
-    const { data, error } = await supabase.storage.from("notes-attachments").list(user.id, {
-      limit: 1000,
-      sortBy: { column: "created_at", order: "desc" },
+    const { error } = await supabase.storage.from("notes-attachments").upload(storagePath, blob, {
+      upsert: false,
+      metadata: { iv, originalName: file.name, mime: file.type || "application/octet-stream", size: file.size, noteId: noteId || "" },
     });
-    if (error || !data) return [];
-    return data
-      .filter((file) => !!file.name && !file.name.endsWith("/"))
-      .map((file) => {
-        const id = file.name.replace(/\.bin$/i, "");
-        const metadata = (file.metadata || {}) as Record<string, unknown>;
-        const size = Number(metadata.size || metadata.contentLength || metadata.contentLengthExact || 0);
-        return {
-          id,
-          name: String(metadata.originalName || metadata.name || `Recovered file ${id.slice(0, 8)}`),
-          mime: String(metadata.mime || metadata.mimetype || metadata.contentType || "application/octet-stream"),
-          size: Number.isFinite(size) ? size : 0,
-          storagePath: `${user.id}/${file.name}`,
-          iv: String(metadata.iv || ""),
-        };
-      });
+    if (error) throw error;
+    return { id, name: file.name, mime: file.type || "application/octet-stream", size: file.size, storagePath, iv, noteId };
   }, [user, key]);
 
   const downloadAttachment = useCallback(async (att: { storagePath?: string; storage_path?: string; path?: string; iv?: string; mime: string; name: string }) => {
-    if (!key) throw new Error("Locked");
+    if (!user || !key) throw new Error("Locked");
     const storagePath = extractNotesStoragePath(att.storagePath || att.storage_path || att.path || (att as any).fullPath || (att as any).full_path || (att as any).key || (att as any).objectKey || (att as any).url || (att as any).signedUrl || (att as any).signed_url);
     if (!storagePath) throw new Error("Missing attachment path");
+    if (!isOwnedAttachmentPath(storagePath, user.id)) throw new Error("Attachment does not belong to this vault");
     const { data, error } = await supabase.storage.from("notes-attachments").download(storagePath);
     if (error || !data) throw error || new Error("Download failed");
     const buf = await data.arrayBuffer();
@@ -386,7 +422,7 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
       console.warn("[Notes] decrypt failed, serving raw blob:", e);
       return new Blob([buf], { type: att.mime });
     }
-  }, [key]);
+  }, [user, key]);
 
   const value = useMemo<NotesContextValue>(() => ({
     hasKey: !!key,
@@ -407,8 +443,7 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
     togglePin,
     uploadAttachment,
     downloadAttachment,
-    listStoredAttachments,
-  }), [key, isInitializing, hasExistingVault, trustedHere, setupVault, unlock, lock, forgetDevice, notes, loading, refresh, createNote, updateNote, deleteNote, togglePin, uploadAttachment, downloadAttachment, listStoredAttachments]);
+  }), [key, isInitializing, hasExistingVault, trustedHere, setupVault, unlock, lock, forgetDevice, notes, loading, refresh, createNote, updateNote, deleteNote, togglePin, uploadAttachment, downloadAttachment]);
 
   return <NotesContext.Provider value={value}>{children}</NotesContext.Provider>;
 };

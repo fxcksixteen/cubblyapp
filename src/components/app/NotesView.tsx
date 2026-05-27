@@ -706,12 +706,22 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     return null;
   };
 
-  const buildInlineImg = (attId: string, blobUrl: string, alt: string) => {
+  const stampInlineAttachmentMetadata = (el: HTMLElement, att: NoteAttachment) => {
+    el.setAttribute("data-att-id", att.id);
+    el.setAttribute("data-storage-path", att.storagePath);
+    el.setAttribute("data-att-iv", att.iv || "");
+    el.setAttribute("data-att-name", att.name || "Attachment");
+    el.setAttribute("data-att-mime", att.mime || "application/octet-stream");
+    el.setAttribute("data-att-size", String(att.size || 0));
+    el.setAttribute("data-note-id", note.id);
+  };
+
+  const buildInlineImg = (att: NoteAttachment, blobUrl: string) => {
     const img = document.createElement("img");
-    img.setAttribute("data-att-id", attId);
+    stampInlineAttachmentMetadata(img, att);
     img.setAttribute("data-cubbly-movable", "1");
     img.src = blobUrl;
-    img.alt = alt;
+    img.alt = att.name;
     // Disable native drag — we use pointer events for reliable movement inside contenteditable.
     img.draggable = false;
     img.style.maxWidth = "100%";
@@ -724,9 +734,9 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     (img.style as any).webkitUserDrag = "none";
     return img;
   };
-  const buildInlineVideo = (attId: string, blobUrl: string) => {
+  const buildInlineVideo = (att: NoteAttachment, blobUrl: string) => {
     const v = document.createElement("video");
-    v.setAttribute("data-att-id", attId);
+    stampInlineAttachmentMetadata(v, att);
     v.setAttribute("data-cubbly-movable", "1");
     v.src = blobUrl;
     v.controls = true;
@@ -768,7 +778,7 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     if (file.size > 25 * 1024 * 1024) { toast.error("File too large (25MB max)"); return; }
     setUploading(true);
     try {
-      const att = await n.uploadAttachment(file);
+      const att = await n.uploadAttachment(file, note.id);
       setAttachments((prev) => [...prev, att]);
       dirty.current = true;
       // Pre-cache blob URL from the original file (cheaper than redownloading).
@@ -777,8 +787,8 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
         blobUrlCacheRef.current.set(att.id, url);
         if (opts.insertInline) {
           const node = att.mime.startsWith("image/")
-            ? buildInlineImg(att.id, url, file.name)
-            : buildInlineVideo(att.id, url);
+            ? buildInlineImg(att, url)
+            : buildInlineVideo(att, url);
           insertNodeAtCaret(node, opts.range ?? null);
           setBody(bodyRef.current?.innerHTML || "");
         }
@@ -847,7 +857,7 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
         blobUrlCacheRef.current.set(att.id, url);
       } catch { toast.error("Couldn't load image"); return; }
     }
-    const node = att.mime.startsWith("image/") ? buildInlineImg(att.id, url, att.name) : buildInlineVideo(att.id, url);
+    const node = att.mime.startsWith("image/") ? buildInlineImg(att, url) : buildInlineVideo(att, url);
     let range: Range | null = null;
     if (bodyRef.current) {
       range = document.createRange();
