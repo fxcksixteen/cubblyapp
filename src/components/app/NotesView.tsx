@@ -1504,7 +1504,7 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
                   >
                     Uninsert
                   </button>
-                ) : canInsert ? (
+                ) : (
                   <button
                     onClick={() => insertExistingAttIntoBody(att)}
                     title="Insert into note body"
@@ -1513,7 +1513,7 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
                   >
                     Insert
                   </button>
-                ) : null}
+                )}
                 <button onClick={() => downloadAtt(att)} title="Download" className="ml-0.5 p-0.5 rounded hover:bg-[var(--app-hover)]">
                   <Download className="h-3.5 w-3.5" style={{ color: "var(--app-text-secondary)" }} />
                 </button>
