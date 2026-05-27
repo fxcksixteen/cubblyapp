@@ -123,6 +123,9 @@ function normalizeNotePlaintext(plain: NotePlaintext, ownerUserId?: string, stor
 
   const seen = new Set<string>();
   const attachments = raw.map((a: any) => {
+    if (typeof a === "string") {
+      a = { storagePath: a };
+    }
     const id = String(a.id || a.uuid || a.uid || "");
     let storagePath = extractNotesStoragePath(
       a.storagePath || a.storage_path || a.path || a.fullPath || a.full_path ||
@@ -131,9 +134,6 @@ function normalizeNotePlaintext(plain: NotePlaintext, ownerUserId?: string, stor
     );
     if (!storagePath && ownerUserId && id) {
       storagePath = String(storageIndex?.get(id)?.storagePath || `${ownerUserId}/${id}.bin`);
-    }
-    if (typeof a === "string") {
-      a = { storagePath: a };
     }
     const stored = getStoredCandidate(storageIndex, id, storagePath);
     const finalId = String(id || stored?.id || storagePath.split("/").pop()?.replace(/\.bin$/i, "") || crypto.randomUUID());
@@ -234,8 +234,8 @@ async function loadStoredAttachmentIndex(ownerUserId: string): Promise<StoredAtt
   const index: StoredAttachmentIndex = new Map();
   const records = await loadStoredAttachmentRecords(ownerUserId);
   for (const att of records) {
-    index.set(id, att);
-    index.set(storagePath, att);
+    index.set(att.id, att);
+    index.set(att.storagePath, att);
   }
   return index;
 }
