@@ -725,6 +725,42 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     return () => { cancelled = true; };
   }, [note.id, n]);
 
+  // Legacy recovered files can be stored as generic .bin objects with generic
+  // names. Sniff only this note's attached files, then persist the corrected
+  // image/video/PDF type + extension back into the encrypted note metadata.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const fixed: typeof attachments = [];
+      for (const att of latestRef.current.attachments) {
+        const currentMime = effectiveMime(att);
+        if (isInsertableAtt(att) && hasExtension(att.name)) {
+          fixed.push(att);
+          continue;
+        }
+        try {
+          const blob = await n.downloadAttachment(att);
+          if (cancelled) return;
+          const sniffedMime = await sniffPreviewableMime(blob);
+          if (isInsertableAtt({ ...att, mime: sniffedMime })) {
+            fixed.push({ ...att, mime: sniffedMime, name: typedAttachmentFileName(att, sniffedMime) });
+          } else {
+            fixed.push(att);
+          }
+        } catch {
+          fixed.push(att);
+        }
+      }
+      if (cancelled) return;
+      const changed = fixed.some((att, i) => att.mime !== latestRef.current.attachments[i]?.mime || att.name !== latestRef.current.attachments[i]?.name);
+      if (!changed) return;
+      setAttachments(fixed);
+      latestRef.current = { ...latestRef.current, attachments: fixed };
+      dirty.current = true;
+    })();
+    return () => { cancelled = true; };
+  }, [attachments, n]);
+
   const flush = async () => {
     if (!dirty.current) return;
     const t = latestRef.current.title;
