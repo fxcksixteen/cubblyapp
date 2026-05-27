@@ -249,6 +249,106 @@ async function loadStoredAttachmentIndex(ownerUserId: string): Promise<StoredAtt
   return index;
 }
 
+// ---- MIME classification for recovered / legacy attachments ----
+// Old uploads were stored with `application/octet-stream` and generic names
+// like "Attachment c9354dbf". To make Insert (image/video/PDF) work we sniff
+// the actual decrypted bytes and rewrite the attachment metadata at the
+// data layer so the UI sees a correctly-typed attachment from first render.
+const PREVIEWABLE_IMAGE_EXT = new Set(["png","jpg","jpeg","gif","webp","heic","heif","bmp","avif","svg"]);
+const PREVIEWABLE_VIDEO_EXT = new Set(["mp4","mov","m4v","webm","mkv","avi"]);
+const GENERIC_ATTACHMENT_MIME = new Set(["", "application/octet-stream", "binary/octet-stream"]);
+const hasNameExtension = (name?: string) => /\.[a-z0-9]{2,5}$/i.test(name || "");
+const isPreviewableMime = (mime?: string) => {
+  const m = (mime || "").toLowerCase();
+  return m.startsWith("image/") || m.startsWith("video/") || m === "application/pdf";
+};
+function attachmentMimeFromName(name?: string): string {
+  const n = name || "";
+  const dot = n.lastIndexOf(".");
+  if (dot < 0) return "";
+  const ext = n.slice(dot + 1).toLowerCase();
+  if (PREVIEWABLE_IMAGE_EXT.has(ext)) return ext === "svg" ? "image/svg+xml" : `image/${ext === "jpg" ? "jpeg" : ext}`;
+  if (PREVIEWABLE_VIDEO_EXT.has(ext)) return `video/${ext === "mov" ? "quicktime" : ext}`;
+  if (ext === "pdf") return "application/pdf";
+  return "";
+}
+function attachmentExtensionForMime(mime: string): string {
+  const m = mime.toLowerCase();
+  if (m === "image/jpeg") return "jpg";
+  if (m === "image/svg+xml") return "svg";
+  if (m.startsWith("image/")) return m.slice(6);
+  if (m === "video/quicktime") return "mov";
+  if (m.startsWith("video/")) return m.slice(6);
+  if (m === "application/pdf") return "pdf";
+  return "";
+}
+function attachmentNameWithExt(name: string, mime: string): string {
+  if (hasNameExtension(name)) return name;
+  const ext = attachmentExtensionForMime(mime);
+  return ext ? `${name}.${ext}` : name;
+}
+async function sniffAttachmentMimeFromBlob(blob: Blob): Promise<string> {
+  const head = new Uint8Array(await blob.slice(0, 32).arrayBuffer());
+  const hex = Array.from(head).map((b) => b.toString(16).padStart(2, "0")).join("");
+  const ascii = String.fromCharCode(...head);
+  if (hex.startsWith("89504e47")) return "image/png";
+  if (hex.startsWith("ffd8ff")) return "image/jpeg";
+  if (hex.startsWith("47494638")) return "image/gif";
+  if (ascii.startsWith("RIFF") && ascii.slice(8, 12) === "WEBP") return "image/webp";
+  if (ascii.trimStart().startsWith("<svg")) return "image/svg+xml";
+  if (hex.startsWith("25504446")) return "application/pdf";
+  if (hex.startsWith("00000018") || hex.startsWith("00000020") || hex.includes("66747970")) return "video/mp4";
+  if (hex.startsWith("1a45dfa3")) return "video/webm";
+  return "";
+}
+function needsClassification(att: { mime?: string; name?: string }): boolean {
+  const m = (att.mime || "").toLowerCase();
+  if (isPreviewableMime(m) && hasNameExtension(att.name)) return false;
+  if (GENERIC_ATTACHMENT_MIME.has(m)) return true;
+  if (!hasNameExtension(att.name)) return true;
+  return false;
+}
+async function classifyAttachment(att: NoteAttachment, k: CryptoKey): Promise<NoteAttachment> {
+  // First try the filename — cheap and avoids a network round-trip.
+  const fromName = attachmentMimeFromName(att.name);
+  if (fromName) {
+    return { ...att, mime: fromName, name: attachmentNameWithExt(att.name, fromName) };
+  }
+  try {
+    const { data, error } = await supabase.storage.from("notes-attachments").download(att.storagePath);
+    if (error || !data) return att;
+    const buf = await data.arrayBuffer();
+    let plainBlob: Blob;
+    if (!att.iv) {
+      plainBlob = new Blob([buf]);
+    } else {
+      try {
+        const plain = await decryptBytes(k, att.iv, buf);
+        plainBlob = new Blob([plain]);
+      } catch {
+        plainBlob = new Blob([buf]);
+      }
+    }
+    const sniffed = await sniffAttachmentMimeFromBlob(plainBlob);
+    if (!sniffed) return att;
+    const safeName = att.name || `Attachment ${att.id.slice(0, 8)}`;
+    return { ...att, mime: sniffed, name: attachmentNameWithExt(safeName, sniffed) };
+  } catch {
+    return att;
+  }
+}
+async function classifyAttachments(list: NoteAttachment[], k: CryptoKey): Promise<{ list: NoteAttachment[]; changed: boolean }> {
+  let changed = false;
+  const out: NoteAttachment[] = [];
+  for (const att of list) {
+    if (!needsClassification(att)) { out.push(att); continue; }
+    const next = await classifyAttachment(att, k);
+    if (next.mime !== att.mime || next.name !== att.name) changed = true;
+    out.push(next);
+  }
+  return { list: out, changed };
+}
+
 export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
   const { user } = useAuth();
   const [key, setKey] = useState<CryptoKey | null>(null);
