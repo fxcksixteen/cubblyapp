@@ -899,12 +899,13 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     if (file.size > 25 * 1024 * 1024) { toast.error("File too large (25MB max)"); return; }
     setUploading(true);
     try {
-      const att = await n.uploadAttachment(file, note.id);
+      const normalizedFile = await normalizeIncomingAttachmentFile(file);
+      const att = await n.uploadAttachment(normalizedFile, note.id);
       setAttachments((prev) => [...prev, att]);
       dirty.current = true;
       // Pre-cache blob URL from the original file (cheaper than redownloading).
       if (att.mime.startsWith("image/") || att.mime.startsWith("video/")) {
-        const url = URL.createObjectURL(file);
+        const url = URL.createObjectURL(normalizedFile);
         blobUrlCacheRef.current.set(att.id, url);
         if (opts.insertInline) {
           const node = att.mime.startsWith("image/")
