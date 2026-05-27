@@ -915,8 +915,37 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
   const initializeOutgoingConnection = useCallback(async (channel: ReturnType<typeof supabase.channel>, conversationId: string) => {
     if (!user) return;
+    const outgoingCallMeta = outgoingCallMetaRef.current;
+    if (!outgoingCallMeta || outgoingCallMeta.conversationId !== conversationId) {
+      console.log("[Voice] ⚠️ initializeOutgoingConnection skipped — no outgoing meta for", conversationId);
+      return;
+    }
+    // v0.3.9: if we ALREADY have a PC + a pending offer (from a prior attempt
+    // or a duplicate ready-for-offer), just re-broadcast that offer instead
+    // of silently returning. This is what was making the second peer "never
+    // get placed in the call" — their ready-for-offer was being dropped on
+    // the caller side and no offer ever reached them.
+    if (pcRef.current && pendingOfferRef.current && pendingOfferRef.current.conversationId === conversationId) {
+      console.log("[Voice] 🔁 PC already exists — re-broadcasting pending offer for late joiner");
+      channel.send({
+        type: "broadcast",
+        event: "voice-signal",
+        payload: {
+          type: "offer",
+          sdp: pendingOfferRef.current.offer,
+          senderId: user.id,
+          senderName: user.user_metadata?.display_name || "User",
+          callerAvatarUrl: outgoingCallMeta.callerAvatarUrl,
+          callEventId: outgoingCallMeta.callEventId,
+        },
+      });
+      return;
+    }
     if (pcRef.current) {
-      console.log("[Voice] ⚠️ initializeOutgoingConnection skipped — PC already exists");
+      // PC exists but no pending offer (e.g. mid-renegotiation). Don't blow it
+      // away — just bail. The peer's next ready-for-offer retry will hit one
+      // of the paths above once we have something to send.
+      console.log("[Voice] ⚠️ initializeOutgoingConnection skipped — PC exists, no pending offer");
       return;
     }
     // Stale pending offer (left over from a previous call/peer-leave) must
@@ -925,9 +954,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       console.log("[Voice] 🧹 Clearing stale pendingOfferRef before fresh negotiation");
       pendingOfferRef.current = null;
     }
-
-    const outgoingCallMeta = outgoingCallMetaRef.current;
-    if (!outgoingCallMeta || outgoingCallMeta.conversationId !== conversationId) return;
 
     console.log("[Voice] 📤 Initializing outgoing connection...");
     const stream = await getUserMedia();
@@ -1840,16 +1866,34 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         acceptedIncomingCallRef.current = null;
         setActiveCall(prev => prev ? { ...prev, state: "calling" } : prev);
       } else {
-        console.log("[Voice] 📡 No offer yet, sending ready-for-offer to caller...");
-        channel.send({
-          type: "broadcast",
-          event: "voice-signal",
-          payload: {
-            type: "ready-for-offer",
-            senderId: user.id,
-            senderName: user.user_metadata?.display_name || "User",
-            callEventId: acceptedCallEventId,
-          },
+        console.log("[Voice] 📡 No offer yet, sending ready-for-offer to caller (with retries)...");
+        const sendReady = () => {
+          channel.send({
+            type: "broadcast",
+            event: "voice-signal",
+            payload: {
+              type: "ready-for-offer",
+              senderId: user.id,
+              senderName: user.user_metadata?.display_name || "User",
+              callEventId: acceptedCallEventId,
+            },
+          });
+        };
+        sendReady();
+        // v0.3.9: the very first ready-for-offer often races the caller's
+        // signaling subscribe / our own subscribe ack. Retry a few times so
+        // the second peer reliably gets placed in the call instead of
+        // hanging forever in "ringing" with no offer ever arriving.
+        const retryDelays = [600, 1400, 2800, 5000];
+        retryDelays.forEach((ms) => {
+          setTimeout(() => {
+            // Stop retrying once we actually have a remote description set.
+            if (remoteDescriptionSet.current) return;
+            // Or if the call was ended / changed.
+            if (activeCallRef.current?.conversationId !== acceptedCall.conversationId) return;
+            console.log(`[Voice] 🔁 Re-sending ready-for-offer (+${ms}ms)`);
+            try { sendReady(); } catch {}
+          }, ms);
         });
       }
 

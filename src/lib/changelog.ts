@@ -23,9 +23,23 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.3.8";
+export const CURRENT_VERSION = "0.3.9";
 
 export const CHANGELOG: ChangelogEntry[] = [
+
+  {
+    version: "0.3.9",
+    title: "Hotfix: girlfriend can actually join the call now",
+    date: "2026-05-27",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Fixed the deadly bug where accepting a 1:1 call would leave the second person stuck and never actually placed in the call with the caller. The first ready-for-offer broadcast was racing the signaling subscribe and getting lost, so the caller's offer never made it back. The accepting side now retries ready-for-offer up to 4 times in the first 5 seconds, and the caller re-broadcasts the existing offer instead of silently dropping a duplicate ready-for-offer.",
+      "Personal Notes attachments are now recovered from even more legacy shapes — including notes that saved their files under 'files', 'media', 'images' or 'attached' keys instead of 'attachments'. Old notes with those metadata shapes will surface their attachments in the attachment strip again instead of staying invisible.",
+      "Desktop installer is now drastically smaller. The previous build was sweeping the entire dev tree into the installer; the new allow-list packages only the renderer build, the Electron runtime files, the WASAPI audio prebuilds, and the runtime dependencies the auto-updater + settings store actually need.",
+    ],
+  },
+
 
   {
     version: "0.3.8",

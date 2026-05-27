@@ -26,33 +26,67 @@ export interface NotePlaintext {
 
 function extractNotesStoragePath(value?: string | null): string {
   if (!value) return "";
+  // Strip query parameters for comparison and path extraction
+  const clean = String(value).split("?")[0];
   try {
-    const u = new URL(value);
-    const match = u.pathname.match(/\/storage\/v1\/object\/(?:sign|public|authenticated)\/notes-attachments\/(.+)$/);
+    const u = new URL(clean);
+    // Handle Supabase storage URLs (signed/public/authenticated)
+    const match = u.pathname.match(/\/storage\/v1\/object\/(?:sign|public|authenticated)\/(?:notes-attachments|attachments)\/(.+)$/);
     if (match) return decodeURIComponent(match[1]);
+
+    // Fallback for other Supabase-like paths containing the bucket name
+    if (u.pathname.includes("notes-attachments/")) {
+      return decodeURIComponent(u.pathname.split("notes-attachments/").pop() || "");
+    } else if (u.pathname.includes("attachments/")) {
+      return decodeURIComponent(u.pathname.split("attachments/").pop() || "");
+    }
   } catch {
-    // Plain storage paths are not valid URLs; keep handling them below.
+    // Plain storage paths are not valid URLs
   }
-  return value.includes("notes-attachments/")
-    ? decodeURIComponent(value.split("notes-attachments/").pop() || "")
-    : value;
+
+  // For non-URL strings, strip bucket prefix if present
+  if (clean.includes("notes-attachments/")) {
+    return decodeURIComponent(clean.split("notes-attachments/").pop() || "");
+  } else if (clean.includes("attachments/")) {
+    return decodeURIComponent(clean.split("attachments/").pop() || "");
+  }
+  return clean;
 }
 
 function normalizeNotePlaintext(plain: NotePlaintext): NotePlaintext {
   // Be VERY liberal with legacy attachment shapes from earlier desktop/web
   // versions and from third-party clients. We accept several common key
-  // aliases for the storage path AND the IV. We only drop entries that have
-  // no resolvable storage path at all — entries missing an IV are still
-  // surfaced so the user can see they exist (downloadAttachment will fall
-  // back to fetching the raw blob without decryption in that case).
-  const attachments = (plain.attachments || []).map((a: any) => ({
-    id: String(a.id || crypto.randomUUID()),
-    name: String(a.name || a.filename || a.fileName || "Attachment"),
-    mime: String(a.mime || a.type || a.contentType || a.mimeType || "application/octet-stream"),
-    size: Number(a.size || a.byteSize || a.bytes || 0),
-    storagePath: extractNotesStoragePath(a.storagePath || a.storage_path || a.path || a.key || a.objectKey || a.url || a.signedUrl || a.signed_url || ""),
-    iv: String(a.iv || a.IV || a.nonce || a.initVector || ""),
-  })).filter((a) => !!a.storagePath);
+  // aliases for the storage path AND the IV. We handle both array and
+  // object-based attachment collections.
+  // Recover attachments from MULTIPLE top-level legacy keys. Older clients
+  // saved them under `files`, `media`, `images`, or `attached`. Without
+  // pulling them in too, those attachments looked permanently gone.
+  const buckets: any[] = [];
+  const p: any = plain || {};
+  for (const k of ["attachments", "files", "media", "images", "attached"]) {
+    const v = p[k];
+    if (Array.isArray(v)) buckets.push(...v);
+    else if (v && typeof v === "object") buckets.push(...Object.values(v));
+  }
+  let raw: any[] = buckets;
+  if (!Array.isArray(raw)) raw = [];
+
+  const attachments = raw.map((a: any) => {
+    const storagePath = extractNotesStoragePath(
+      a.storagePath || a.storage_path || a.path || a.fullPath || a.full_path ||
+      a.key || a.objectKey || a.url || a.signedUrl || a.signed_url || a.attachment_path ||
+      a.attachment_url || a.file_path || a.filePath || ""
+    );
+    return {
+      id: String(a.id || a.uuid || a.uid || storagePath || crypto.randomUUID()),
+      name: String(a.name || a.filename || a.fileName || "Attachment"),
+      mime: String(a.mime || a.type || a.contentType || a.mimeType || "application/octet-stream"),
+      size: Number(a.size || a.byteSize || a.bytes || 0),
+      storagePath,
+      iv: String(a.iv || a.IV || a.nonce || a.initVector || a.initializationVector || a.init_vector || ""),
+    };
+  }).filter((a) => !!a.storagePath || !!a.name);
+
   return { ...plain, attachments };
 }
 
@@ -221,7 +255,7 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
       .select("*")
       .single();
     if (error || !data) return null;
-    const row: NoteRow = { ...(data as NoteRow), decrypted: plain };
+    const row: NoteRow = { ...(data as NoteRow), decrypted: normalizeNotePlaintext(plain) };
     setNotes((prev) => [row, ...prev]);
     return row;
   }, [user, key]);
@@ -234,7 +268,7 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
       .update({ iv, ciphertext, byte_size: ciphertext.length, updated_at: new Date().toISOString() })
       .eq("id", id);
     if (error) throw error;
-    setNotes((prev) => prev.map((n) => (n.id === id ? { ...n, iv, ciphertext, byte_size: ciphertext.length, decrypted: plain, updated_at: new Date().toISOString() } : n)));
+    setNotes((prev) => prev.map((n) => (n.id === id ? { ...n, iv, ciphertext, byte_size: ciphertext.length, decrypted: normalizeNotePlaintext(plain), updated_at: new Date().toISOString() } : n)));
   }, [user, key]);
 
   const deleteNote = useCallback(async (id: string) => {
@@ -271,7 +305,7 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
 
   const downloadAttachment = useCallback(async (att: { storagePath?: string; storage_path?: string; path?: string; iv?: string; mime: string; name: string }) => {
     if (!key) throw new Error("Locked");
-    const storagePath = extractNotesStoragePath(att.storagePath || att.storage_path || att.path || (att as any).url || (att as any).signedUrl || (att as any).signed_url);
+    const storagePath = extractNotesStoragePath(att.storagePath || att.storage_path || att.path || (att as any).fullPath || (att as any).full_path || (att as any).key || (att as any).objectKey || (att as any).url || (att as any).signedUrl || (att as any).signed_url);
     if (!storagePath) throw new Error("Missing attachment path");
     const { data, error } = await supabase.storage.from("notes-attachments").download(storagePath);
     if (error || !data) throw error || new Error("Download failed");
