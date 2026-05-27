@@ -34,7 +34,8 @@ export interface NoteAttachment {
   noteId?: string;
 }
 
-type StoredAttachmentIndex = Map<string, Partial<NoteAttachment>>;
+type StoredAttachmentRecord = NoteAttachment & { createdAt?: string; updatedAt?: string; hasNoteBinding?: boolean };
+type StoredAttachmentIndex = Map<string, Partial<StoredAttachmentRecord>>;
 
 function extractNotesStoragePath(value?: string | null): string {
   if (!value) return "";
@@ -131,6 +132,9 @@ function normalizeNotePlaintext(plain: NotePlaintext, ownerUserId?: string, stor
     if (!storagePath && ownerUserId && id) {
       storagePath = String(storageIndex?.get(id)?.storagePath || `${ownerUserId}/${id}.bin`);
     }
+    if (typeof a === "string") {
+      a = { storagePath: a };
+    }
     const stored = getStoredCandidate(storageIndex, id, storagePath);
     const finalId = String(id || stored?.id || storagePath.split("/").pop()?.replace(/\.bin$/i, "") || crypto.randomUUID());
     const finalPath = extractNotesStoragePath(storagePath || stored?.storagePath || "");
@@ -191,31 +195,45 @@ interface NotesContextValue {
   // attachments
   uploadAttachment: (file: File, noteId?: string) => Promise<NoteAttachment>;
   downloadAttachment: (att: { storagePath: string; iv?: string; mime: string; name: string }) => Promise<Blob>;
+  listRecoverableAttachmentsForNote: (noteId: string) => Promise<NoteAttachment[]>;
 }
 
 const NotesContext = createContext<NotesContextValue | null>(null);
 
-async function loadStoredAttachmentIndex(ownerUserId: string): Promise<StoredAttachmentIndex> {
-  const index: StoredAttachmentIndex = new Map();
+async function loadStoredAttachmentRecords(ownerUserId: string): Promise<StoredAttachmentRecord[]> {
+  const records: StoredAttachmentRecord[] = [];
   const { data, error } = await supabase.storage.from("notes-attachments").list(ownerUserId, {
     limit: 1000,
     sortBy: { column: "created_at", order: "desc" },
   });
-  if (error || !data) return index;
+  if (error || !data) return records;
   for (const file of data) {
     if (!file.name || file.name.endsWith("/")) continue;
     const id = file.name.replace(/\.bin$/i, "");
     const metadata = (file.metadata || {}) as Record<string, unknown>;
     const storagePath = `${ownerUserId}/${file.name}`;
     const size = Number(metadata.size || metadata.contentLength || metadata.contentLengthExact || 0);
-    const att: Partial<NoteAttachment> = {
+    const noteId = String(metadata.noteId || metadata.note_id || metadata.note || "");
+    records.push({
       id,
       name: String(metadata.originalName || metadata.name || `Attachment ${id.slice(0, 8)}`),
       mime: String(metadata.mime || metadata.mimetype || metadata.contentType || "application/octet-stream"),
       size: Number.isFinite(size) ? size : 0,
       storagePath,
       iv: String(metadata.iv || ""),
-    };
+      noteId: noteId || undefined,
+      createdAt: String((file as any).created_at || (file as any).createdAt || metadata.lastModified || ""),
+      updatedAt: String((file as any).updated_at || (file as any).updatedAt || ""),
+      hasNoteBinding: !!noteId,
+    });
+  }
+  return records;
+}
+
+async function loadStoredAttachmentIndex(ownerUserId: string): Promise<StoredAttachmentIndex> {
+  const index: StoredAttachmentIndex = new Map();
+  const records = await loadStoredAttachmentRecords(ownerUserId);
+  for (const att of records) {
     index.set(id, att);
     index.set(storagePath, att);
   }
