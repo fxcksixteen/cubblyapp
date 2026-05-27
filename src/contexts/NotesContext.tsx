@@ -221,7 +221,7 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
       verifier_iv: data.verifier_iv,
       verifier_ciphertext: data.verifier_ciphertext,
       iterations: data.iterations,
-    const row: NoteRow = { ...(data as NoteRow), decrypted: normalizeNotePlaintext(plain) };
+    };
     const k = await unlockKey(pin, material);
     if (!k) return false;
     setKey(k);
@@ -234,7 +234,7 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
   const forgetDevice = useCallback(async () => {
     if (!user) return;
     await revokeDeviceTrust(user.id);
-    setNotes((prev) => prev.map((n) => (n.id === id ? { ...n, iv, ciphertext, byte_size: ciphertext.length, decrypted: normalizeNotePlaintext(plain), updated_at: new Date().toISOString() } : n)));
+    setKey(null);
     setNotes([]);
   }, [user]);
 
@@ -248,7 +248,7 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
       .select("*")
       .single();
     if (error || !data) return null;
-    const row: NoteRow = { ...(data as NoteRow), decrypted: plain };
+    const row: NoteRow = { ...(data as NoteRow), decrypted: normalizeNotePlaintext(plain) };
     setNotes((prev) => [row, ...prev]);
     return row;
   }, [user, key]);
@@ -261,7 +261,7 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
       .update({ iv, ciphertext, byte_size: ciphertext.length, updated_at: new Date().toISOString() })
       .eq("id", id);
     if (error) throw error;
-    setNotes((prev) => prev.map((n) => (n.id === id ? { ...n, iv, ciphertext, byte_size: ciphertext.length, decrypted: plain, updated_at: new Date().toISOString() } : n)));
+    setNotes((prev) => prev.map((n) => (n.id === id ? { ...n, iv, ciphertext, byte_size: ciphertext.length, decrypted: normalizeNotePlaintext(plain), updated_at: new Date().toISOString() } : n)));
   }, [user, key]);
 
   const deleteNote = useCallback(async (id: string) => {
@@ -271,7 +271,7 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
     const paths = target?.decrypted?.attachments?.map((a) => a.storagePath) || [];
     if (paths.length) {
       try { await supabase.storage.from("notes-attachments").remove(paths); } catch {/* ignore */}
-    const storagePath = extractNotesStoragePath(att.storagePath || att.storage_path || att.path || (att as any).fullPath || (att as any).full_path || (att as any).key || (att as any).objectKey || (att as any).url || (att as any).signedUrl || (att as any).signed_url);
+    }
     await supabase.from("notes").delete().eq("id", id);
     setNotes((prev) => prev.filter((n) => n.id !== id));
   }, [user, notes]);
@@ -298,7 +298,7 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
 
   const downloadAttachment = useCallback(async (att: { storagePath?: string; storage_path?: string; path?: string; iv?: string; mime: string; name: string }) => {
     if (!key) throw new Error("Locked");
-    const storagePath = extractNotesStoragePath(att.storagePath || att.storage_path || att.path || (att as any).url || (att as any).signedUrl || (att as any).signed_url);
+    const storagePath = extractNotesStoragePath(att.storagePath || att.storage_path || att.path || (att as any).fullPath || (att as any).full_path || (att as any).key || (att as any).objectKey || (att as any).url || (att as any).signedUrl || (att as any).signed_url);
     if (!storagePath) throw new Error("Missing attachment path");
     const { data, error } = await supabase.storage.from("notes-attachments").download(storagePath);
     if (error || !data) throw error || new Error("Download failed");
