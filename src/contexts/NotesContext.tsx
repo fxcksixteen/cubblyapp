@@ -325,11 +325,12 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
       .map((file) => {
         const id = file.name.replace(/\.bin$/i, "");
         const metadata = (file.metadata || {}) as Record<string, any>;
+        const size = Number(metadata.size || metadata.contentLength || metadata.contentLengthExact || 0);
         return {
           id,
           name: String(metadata.originalName || metadata.name || `Recovered file ${id.slice(0, 8)}`),
           mime: String(metadata.mime || metadata.mimetype || metadata.contentType || "application/octet-stream"),
-          size: Number(metadata.size || metadata.contentLength || 0),
+          size: Number.isFinite(size) ? size : 0,
           storagePath: `${user.id}/${file.name}`,
           iv: String(metadata.iv || ""),
         };
