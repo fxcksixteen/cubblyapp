@@ -972,8 +972,13 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     if (!url) {
       try {
         const blob = await n.downloadAttachment(att);
-        sniffedMime = isInsertableAtt(att) ? sniffedMime : await sniffPreviewableMime(blob);
-        if (!isInsertableAtt({ ...att, mime: sniffedMime })) return;
+        // Always sniff bytes when the stored mime is generic/unknown — this is
+        // how recovered "Attachment xxxx" files get correctly identified at
+        // insert time even if data-layer classification couldn't decrypt them.
+        if (!isInsertableAtt(att) || GENERIC_MIME.has((blob.type || "").toLowerCase())) {
+          const s = await sniffPreviewableMime(blob);
+          if (s) sniffedMime = s;
+        }
         const typed = blob.type && !GENERIC_MIME.has(blob.type.toLowerCase()) ? blob : new Blob([blob], { type: sniffedMime });
         url = URL.createObjectURL(typed);
         blobUrlCacheRef.current.set(att.id, url);
@@ -986,7 +991,8 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
     } else if (sniffedMime.startsWith("video/")) {
       node = buildInlineVideo(attWithMime, url!);
     } else {
-      // PDF: insert a download/open link inline.
+      // PDF or unknown: insert a download/open link inline so the user can
+      // still place the file in the note body.
       const a = document.createElement("a");
       stampInlineAttachmentMetadata(a, attWithMime);
       a.setAttribute("data-cubbly-movable", "1");
@@ -994,7 +1000,8 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
       a.download = typedAttachmentFileName(att, sniffedMime);
       a.target = "_blank";
       a.rel = "noopener noreferrer";
-      a.textContent = `📄 ${typedAttachmentFileName(att, sniffedMime)}`;
+      const icon = sniffedMime === "application/pdf" ? "📄" : "📎";
+      a.textContent = `${icon} ${typedAttachmentFileName(att, sniffedMime)}`;
       a.style.display = "inline-block";
       a.style.margin = "4px 0";
       a.style.padding = "4px 8px";
