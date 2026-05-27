@@ -62,6 +62,31 @@ function extractNotesStoragePath(value?: string | null): string {
   return clean;
 }
 
+function extractLegacyInlineAttachments(body?: string): unknown[] {
+  if (!body) return [];
+  const out: unknown[] = [];
+  const tagRe = /<(img|video)\b[^>]*>/gi;
+  const attrRe = /([\w:-]+)\s*=\s*(["'])(.*?)\2/g;
+  let tagMatch: RegExpExecArray | null;
+  while ((tagMatch = tagRe.exec(body))) {
+    const attrs: Record<string, string> = {};
+    let attrMatch: RegExpExecArray | null;
+    while ((attrMatch = attrRe.exec(tagMatch[0]))) attrs[attrMatch[1].toLowerCase()] = attrMatch[3];
+    const srcPath = extractNotesStoragePath(attrs.src || attrs["data-src"] || attrs["data-storage-path"] || attrs["data-path"]);
+    const id = attrs["data-att-id"] || attrs["data-attachment-id"] || srcPath.split("/").pop()?.replace(/\.bin$/i, "") || "";
+    if (id || srcPath) {
+      out.push({
+        id,
+        name: attrs.alt || attrs.title || "Attachment",
+        mime: tagMatch[1].toLowerCase() === "video" ? "video/mp4" : "image/*",
+        storagePath: srcPath,
+        iv: attrs["data-iv"] || attrs["data-att-iv"] || "",
+      });
+    }
+  }
+  return out;
+}
+
 function normalizeNotePlaintext(plain: NotePlaintext): NotePlaintext {
   // Be VERY liberal with legacy attachment shapes from earlier desktop/web
   // versions and from third-party clients. We accept several common key
@@ -77,6 +102,7 @@ function normalizeNotePlaintext(plain: NotePlaintext): NotePlaintext {
     if (Array.isArray(v)) buckets.push(...v);
     else if (v && typeof v === "object") buckets.push(...Object.values(v));
   }
+  buckets.push(...extractLegacyInlineAttachments(p.body));
   let raw: any[] = buckets;
   if (!Array.isArray(raw)) raw = [];
 
