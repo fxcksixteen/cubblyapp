@@ -29,24 +29,56 @@ const PIN_LENGTH = 4;
 
 // Infer a mime type from the filename extension when the stored mime is
 // missing or generic (e.g. "application/octet-stream"). Recovered legacy
-// attachments often have no mime, but their filename is preserved — this
-// lets us still show Insert / preview controls for images and videos.
+// attachments often have no mime, but their filename is preserved.
 const IMAGE_EXT = new Set(["png","jpg","jpeg","gif","webp","heic","heif","bmp","avif","svg"]);
 const VIDEO_EXT = new Set(["mp4","mov","m4v","webm","mkv","avi"]);
+const GENERIC_MIME = new Set(["", "application/octet-stream", "binary/octet-stream"]);
 const effectiveMime = (att: { name?: string; mime?: string }): string => {
   const m = (att.mime || "").toLowerCase();
-  if (m.startsWith("image/") || m.startsWith("video/")) return m;
+  if (m.startsWith("image/") || m.startsWith("video/") || m === "application/pdf") return m;
   const name = att.name || "";
   const dot = name.lastIndexOf(".");
   if (dot < 0) return m;
   const ext = name.slice(dot + 1).toLowerCase();
   if (IMAGE_EXT.has(ext)) return ext === "svg" ? "image/svg+xml" : `image/${ext === "jpg" ? "jpeg" : ext}`;
   if (VIDEO_EXT.has(ext)) return `video/${ext === "mov" ? "quicktime" : ext}`;
+  if (ext === "pdf") return "application/pdf";
   return m;
 };
-const isMediaAtt = (att: { name?: string; mime?: string }) => {
+const isInsertableAtt = (att: { name?: string; mime?: string }) => {
   const m = effectiveMime(att);
-  return m.startsWith("image/") || m.startsWith("video/");
+  return m.startsWith("image/") || m.startsWith("video/") || m === "application/pdf";
+};
+const extensionForMime = (mime: string) => {
+  const m = mime.toLowerCase();
+  if (m === "image/jpeg") return "jpg";
+  if (m === "image/svg+xml") return "svg";
+  if (m.startsWith("image/")) return m.slice(6);
+  if (m === "video/quicktime") return "mov";
+  if (m.startsWith("video/")) return m.slice(6);
+  if (m === "application/pdf") return "pdf";
+  return "";
+};
+const hasExtension = (name?: string) => /\.[a-z0-9]{2,5}$/i.test(name || "");
+const sniffPreviewableMime = async (blob: Blob): Promise<string> => {
+  const head = new Uint8Array(await blob.slice(0, 32).arrayBuffer());
+  const hex = Array.from(head).map((b) => b.toString(16).padStart(2, "0")).join("");
+  const ascii = String.fromCharCode(...head);
+  if (hex.startsWith("89504e47")) return "image/png";
+  if (hex.startsWith("ffd8ff")) return "image/jpeg";
+  if (hex.startsWith("47494638")) return "image/gif";
+  if (ascii.startsWith("RIFF") && ascii.slice(8, 12) === "WEBP") return "image/webp";
+  if (ascii.trimStart().startsWith("<svg")) return "image/svg+xml";
+  if (hex.startsWith("25504446")) return "application/pdf";
+  if (hex.startsWith("00000018") || hex.startsWith("00000020") || hex.includes("66747970")) return "video/mp4";
+  if (hex.startsWith("1a45dfa3")) return "video/webm";
+  return blob.type && !GENERIC_MIME.has(blob.type.toLowerCase()) ? blob.type : "application/octet-stream";
+};
+const typedAttachmentFileName = (att: { id?: string; name?: string }, mime: string) => {
+  const base = (att.name || `Attachment ${att.id?.slice(0, 8) || "file"}`).trim() || "Attachment";
+  if (hasExtension(base)) return base;
+  const ext = extensionForMime(mime);
+  return ext ? `${base}.${ext}` : base;
 };
 
 const NotesView = () => {
