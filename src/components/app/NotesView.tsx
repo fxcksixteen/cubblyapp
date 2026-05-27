@@ -1464,7 +1464,9 @@ const InlineAttachment = ({
       try {
         const blob = await n.downloadAttachment(att);
         if (cancelled) return;
-        createdUrl = URL.createObjectURL(blob);
+        const mime = effectiveMime(att);
+        const typed = blob.type && blob.type !== "application/octet-stream" ? blob : new Blob([blob], { type: mime });
+        createdUrl = URL.createObjectURL(typed);
         setUrl(createdUrl);
       } catch {
         if (!cancelled) setError(true);
