@@ -254,11 +254,12 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
     return () => { cancelled = true; };
   }, [user]);
 
-  const decryptAll = useCallback(async (rows: NoteRow[], k: CryptoKey) => {
+  const decryptAll = useCallback(async (rows: NoteRow[], k: CryptoKey, ownerUserId: string) => {
+    const storageIndex = await loadStoredAttachmentIndex(ownerUserId);
     const out: NoteRow[] = [];
     for (const r of rows) {
       try {
-        const plain = normalizeNotePlaintext(await decryptJson<NotePlaintext>(k, r.iv, r.ciphertext));
+        const plain = normalizeNotePlaintext(await decryptJson<NotePlaintext>(k, r.iv, r.ciphertext), ownerUserId, storageIndex);
         out.push({ ...r, decrypted: plain });
       } catch {
         out.push({ ...r, decrypted: null, decryptError: true });
@@ -277,7 +278,7 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
       .order("pinned", { ascending: false })
       .order("updated_at", { ascending: false });
     if (!error && data) {
-      const dec = await decryptAll(data as NoteRow[], key);
+      const dec = await decryptAll(data as NoteRow[], key, user.id);
       setNotes(dec);
     }
     setLoading(false);
@@ -341,7 +342,7 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
       .select("*")
       .single();
     if (error || !data) return null;
-    const row: NoteRow = { ...(data as NoteRow), decrypted: normalizeNotePlaintext(plain) };
+    const row: NoteRow = { ...(data as NoteRow), decrypted: normalizeNotePlaintext(plain, user.id) };
     setNotes((prev) => [row, ...prev]);
     return row;
   }, [user, key]);
@@ -354,7 +355,7 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
       .update({ iv, ciphertext, byte_size: ciphertext.length, updated_at: new Date().toISOString() })
       .eq("id", id);
     if (error) throw error;
-    setNotes((prev) => prev.map((n) => (n.id === id ? { ...n, iv, ciphertext, byte_size: ciphertext.length, decrypted: normalizeNotePlaintext(plain), updated_at: new Date().toISOString() } : n)));
+    setNotes((prev) => prev.map((n) => (n.id === id ? { ...n, iv, ciphertext, byte_size: ciphertext.length, decrypted: normalizeNotePlaintext(plain, user.id), updated_at: new Date().toISOString() } : n)));
   }, [user, key]);
 
   const deleteNote = useCallback(async (id: string) => {
