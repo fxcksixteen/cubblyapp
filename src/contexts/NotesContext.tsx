@@ -392,6 +392,23 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
     for (const r of rows) {
       try {
         const plain = normalizeNotePlaintext(await decryptJson<NotePlaintext>(k, r.iv, r.ciphertext), ownerUserId, storageIndex, r.id);
+        // Classify any legacy/generic attachments BEFORE the UI ever sees the
+        // note, so Insert buttons appear immediately for image/video/PDF.
+        const atts = plain.attachments || [];
+        if (atts.length) {
+          const { list, changed } = await classifyAttachments(atts, k);
+          plain.attachments = list;
+          if (changed) {
+            // Persist the corrected metadata back into the encrypted note so
+            // it stays fixed across refreshes. Fire-and-forget; ignore errors.
+            (async () => {
+              try {
+                const { iv, ciphertext } = await encryptJson(k, plain);
+                await supabase.from("notes").update({ iv, ciphertext, byte_size: ciphertext.length }).eq("id", r.id);
+              } catch { /* ignore */ }
+            })();
+          }
+        }
         out.push({ ...r, decrypted: plain });
       } catch {
         out.push({ ...r, decrypted: null, decryptError: true });
