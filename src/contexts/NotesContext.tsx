@@ -24,6 +24,15 @@ export interface NotePlaintext {
   attachments?: Array<{ id: string; name: string; mime: string; size: number; storagePath: string; iv: string }>;
 }
 
+export interface NoteAttachment {
+  id: string;
+  name: string;
+  mime: string;
+  size: number;
+  storagePath: string;
+  iv: string;
+}
+
 function extractNotesStoragePath(value?: string | null): string {
   if (!value) return "";
   // Strip query parameters for comparison and path extraction
@@ -53,6 +62,31 @@ function extractNotesStoragePath(value?: string | null): string {
   return clean;
 }
 
+function extractLegacyInlineAttachments(body?: string): unknown[] {
+  if (!body) return [];
+  const out: unknown[] = [];
+  const tagRe = /<(img|video)\b[^>]*>/gi;
+  const attrRe = /([\w:-]+)\s*=\s*(["'])(.*?)\2/g;
+  let tagMatch: RegExpExecArray | null;
+  while ((tagMatch = tagRe.exec(body))) {
+    const attrs: Record<string, string> = {};
+    let attrMatch: RegExpExecArray | null;
+    while ((attrMatch = attrRe.exec(tagMatch[0]))) attrs[attrMatch[1].toLowerCase()] = attrMatch[3];
+    const srcPath = extractNotesStoragePath(attrs.src || attrs["data-src"] || attrs["data-storage-path"] || attrs["data-path"]);
+    const id = attrs["data-att-id"] || attrs["data-attachment-id"] || srcPath.split("/").pop()?.replace(/\.bin$/i, "") || "";
+    if (id || srcPath) {
+      out.push({
+        id,
+        name: attrs.alt || attrs.title || "Attachment",
+        mime: tagMatch[1].toLowerCase() === "video" ? "video/mp4" : "image/*",
+        storagePath: srcPath,
+        iv: attrs["data-iv"] || attrs["data-att-iv"] || "",
+      });
+    }
+  }
+  return out;
+}
+
 function normalizeNotePlaintext(plain: NotePlaintext): NotePlaintext {
   // Be VERY liberal with legacy attachment shapes from earlier desktop/web
   // versions and from third-party clients. We accept several common key
@@ -68,6 +102,7 @@ function normalizeNotePlaintext(plain: NotePlaintext): NotePlaintext {
     if (Array.isArray(v)) buckets.push(...v);
     else if (v && typeof v === "object") buckets.push(...Object.values(v));
   }
+  buckets.push(...extractLegacyInlineAttachments(p.body));
   let raw: any[] = buckets;
   if (!Array.isArray(raw)) raw = [];
 
@@ -125,8 +160,9 @@ interface NotesContextValue {
   deleteNote: (id: string) => Promise<void>;
   togglePin: (id: string, pinned: boolean) => Promise<void>;
   // attachments
-  uploadAttachment: (file: File) => Promise<{ id: string; name: string; mime: string; size: number; storagePath: string; iv: string }>;
+  uploadAttachment: (file: File) => Promise<NoteAttachment>;
   downloadAttachment: (att: { storagePath: string; iv?: string; mime: string; name: string }) => Promise<Blob>;
+  listStoredAttachments: () => Promise<NoteAttachment[]>;
 }
 
 const NotesContext = createContext<NotesContextValue | null>(null);
@@ -298,9 +334,33 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
     const id = crypto.randomUUID();
     const storagePath = `${user.id}/${id}.bin`;
     const blob = new Blob([ciphertext], { type: "application/octet-stream" });
-    const { error } = await supabase.storage.from("notes-attachments").upload(storagePath, blob, { upsert: false });
+    const { error } = await supabase.storage.from("notes-attachments").upload(storagePath, blob, { upsert: false, metadata: { iv } });
     if (error) throw error;
     return { id, name: file.name, mime: file.type || "application/octet-stream", size: file.size, storagePath, iv };
+  }, [user, key]);
+
+  const listStoredAttachments = useCallback(async (): Promise<NoteAttachment[]> => {
+    if (!user || !key) return [];
+    const { data, error } = await supabase.storage.from("notes-attachments").list(user.id, {
+      limit: 1000,
+      sortBy: { column: "created_at", order: "desc" },
+    });
+    if (error || !data) return [];
+    return data
+      .filter((file) => !!file.name && !file.name.endsWith("/"))
+      .map((file) => {
+        const id = file.name.replace(/\.bin$/i, "");
+        const metadata = (file.metadata || {}) as Record<string, unknown>;
+        const size = Number(metadata.size || metadata.contentLength || metadata.contentLengthExact || 0);
+        return {
+          id,
+          name: String(metadata.originalName || metadata.name || `Recovered file ${id.slice(0, 8)}`),
+          mime: String(metadata.mime || metadata.mimetype || metadata.contentType || "application/octet-stream"),
+          size: Number.isFinite(size) ? size : 0,
+          storagePath: `${user.id}/${file.name}`,
+          iv: String(metadata.iv || ""),
+        };
+      });
   }, [user, key]);
 
   const downloadAttachment = useCallback(async (att: { storagePath?: string; storage_path?: string; path?: string; iv?: string; mime: string; name: string }) => {
@@ -347,7 +407,8 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
     togglePin,
     uploadAttachment,
     downloadAttachment,
-  }), [key, isInitializing, hasExistingVault, trustedHere, setupVault, unlock, lock, forgetDevice, notes, loading, refresh, createNote, updateNote, deleteNote, togglePin, uploadAttachment, downloadAttachment]);
+    listStoredAttachments,
+  }), [key, isInitializing, hasExistingVault, trustedHere, setupVault, unlock, lock, forgetDevice, notes, loading, refresh, createNote, updateNote, deleteNote, togglePin, uploadAttachment, downloadAttachment, listStoredAttachments]);
 
   return <NotesContext.Provider value={value}>{children}</NotesContext.Provider>;
 };
