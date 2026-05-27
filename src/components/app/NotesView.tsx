@@ -786,8 +786,8 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
         blobUrlCacheRef.current.set(att.id, url);
         if (opts.insertInline) {
           const node = att.mime.startsWith("image/")
-            ? buildInlineImg(att.id, url, file.name)
-            : buildInlineVideo(att.id, url);
+            ? buildInlineImg(att, url)
+            : buildInlineVideo(att, url);
           insertNodeAtCaret(node, opts.range ?? null);
           setBody(bodyRef.current?.innerHTML || "");
         }
@@ -856,7 +856,7 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
         blobUrlCacheRef.current.set(att.id, url);
       } catch { toast.error("Couldn't load image"); return; }
     }
-    const node = att.mime.startsWith("image/") ? buildInlineImg(att.id, url, att.name) : buildInlineVideo(att.id, url);
+    const node = att.mime.startsWith("image/") ? buildInlineImg(att, url) : buildInlineVideo(att, url);
     let range: Range | null = null;
     if (bodyRef.current) {
       range = document.createRange();
