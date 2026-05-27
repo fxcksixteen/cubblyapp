@@ -1382,6 +1382,41 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
         </div>
       )}
 
+      {recoverableAttachments.length > 0 && (
+        <div
+          className="border-t px-4 py-2"
+          style={{ borderColor: "var(--app-border)", paddingBottom: attachments.length ? undefined : "max(0.5rem, env(safe-area-inset-bottom, 0px))" }}
+        >
+          <div className="mb-2 flex items-center gap-2 text-xs" style={{ color: "var(--app-text-secondary)" }}>
+            <Paperclip className="h-3.5 w-3.5" />
+            {recoverableAttachments.length} stored note file{recoverableAttachments.length === 1 ? "" : "s"} found outside the visible attachment list
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {recoverableAttachments.map((att) => (
+              <div
+                key={att.storagePath}
+                className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs"
+                style={{ backgroundColor: "var(--app-bg-secondary)", border: "1px solid var(--app-border)" }}
+              >
+                <FileText className="h-3.5 w-3.5" style={{ color: "var(--app-text-secondary)" }} />
+                <span className="max-w-[180px] truncate" style={{ color: "var(--app-text-primary)" }}>{att.name}</span>
+                <span style={{ color: "var(--app-text-secondary)" }}>({formatSize(att.size)})</span>
+                <button
+                  onClick={() => attachRecoveredFile(att)}
+                  className="ml-1 px-1.5 py-0.5 rounded text-[11px] hover:bg-[var(--app-hover)]"
+                  style={{ color: "hsl(var(--primary))", border: "1px solid hsl(var(--primary) / 0.4)" }}
+                >
+                  Attach here
+                </button>
+                <button onClick={() => downloadAtt(att)} title="Download" className="p-0.5 rounded hover:bg-[var(--app-hover)]">
+                  <Download className="h-3.5 w-3.5" style={{ color: "var(--app-text-secondary)" }} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {lightbox && lightbox.kind === "image" && (
         <Suspense fallback={null}>
           <ImageLightbox url={lightbox.url} name={lightbox.name} onClose={() => setLightbox(null)} />
