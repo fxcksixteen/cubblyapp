@@ -80,6 +80,14 @@ const typedAttachmentFileName = (att: { id?: string; name?: string }, mime: stri
   const ext = extensionForMime(mime);
   return ext ? `${base}.${ext}` : base;
 };
+const normalizeIncomingAttachmentFile = async (file: File): Promise<File> => {
+  const declaredMime = file.type || "";
+  const mime = GENERIC_MIME.has(declaredMime.toLowerCase()) ? await sniffPreviewableMime(file) : declaredMime;
+  if (!isInsertableAtt({ name: file.name, mime })) return file;
+  const name = typedAttachmentFileName({ name: file.name }, mime);
+  if (name === file.name && file.type === mime) return file;
+  return new File([file], name, { type: mime, lastModified: file.lastModified });
+};
 
 const NotesView = () => {
   const n = useNotes();
