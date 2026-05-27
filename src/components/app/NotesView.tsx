@@ -74,6 +74,7 @@ const sniffPreviewableMime = async (blob: Blob): Promise<string> => {
   if (hex.startsWith("1a45dfa3")) return "video/webm";
   return blob.type && !GENERIC_MIME.has(blob.type.toLowerCase()) ? blob.type : "application/octet-stream";
 };
+const isInlineRenderableMime = (mime: string) => mime.startsWith("image/") || mime.startsWith("video/") || mime === "application/pdf";
 const typedAttachmentFileName = (att: { id?: string; name?: string }, mime: string) => {
   const base = (att.name || `Attachment ${att.id?.slice(0, 8) || "file"}`).trim() || "Attachment";
   if (hasExtension(base)) return base;
