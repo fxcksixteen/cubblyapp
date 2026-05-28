@@ -26,6 +26,7 @@ export default function ContentSocialSettings({ cardStyle }: Props) {
   const [autoplayVideos, setAutoplayVideos] = useLocalSetting("cubbly:content:autoplayVideos", false);
   const [previewLinks, setPreviewLinks] = useLocalSetting("cubbly:content:previewLinks", true);
   const [convertEmoticons, setConvertEmoticons] = useLocalSetting("cubbly:content:convertEmoticons", true);
+  const [autoInsertNotesMedia, setAutoInsertNotesMedia] = useLocalSetting("notes.autoInsertMedia", false);
 
   const [blocked, setBlocked] = useState<BlockedRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -86,6 +87,16 @@ export default function ContentSocialSettings({ cardStyle }: Props) {
         <SettingsToggleRow title="Autoplay videos" description="Embedded videos start playing without interaction." checked={autoplayVideos} onChange={setAutoplayVideos} />
         <SettingsToggleRow title="Show link previews" description="Display rich previews for links shared in chat." checked={previewLinks} onChange={setPreviewLinks} />
         <SettingsToggleRow title="Convert emoticons to emoji" description=":) becomes 🙂 when you send a message." checked={convertEmoticons} onChange={setConvertEmoticons} />
+      </SettingsCard>
+
+      <SettingsCard cardStyle={cardStyle}>
+        <SettingsSectionLabel>Personal Notes</SettingsSectionLabel>
+        <SettingsToggleRow
+          title="Automatically insert eligible files in notes"
+          description="When on, any image, video, or PDF you attach to a personal note is inserted into the note body automatically. Off by default — attachments stay in the strip until you press Insert."
+          checked={autoInsertNotesMedia}
+          onChange={setAutoInsertNotesMedia}
+        />
       </SettingsCard>
 
       <SettingsCard cardStyle={cardStyle}>

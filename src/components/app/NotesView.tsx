@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import notesIcon from "@/assets/password-lock.svg";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { isStandalonePWA } from "@/lib/pwa";
+import { useLocalSetting } from "@/hooks/useLocalSetting";
 const ImageLightbox = lazy(() => import("@/components/app/ImageLightbox"));
 const VideoLightbox = lazy(() => import("@/components/app/VideoLightbox"));
 import {
@@ -632,6 +633,7 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
   const [attachments, setAttachments] = useState(note.decrypted?.attachments || []);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [autoInsertMedia] = useLocalSetting<boolean>("notes.autoInsertMedia", false);
   
   const [editorDragOver, setEditorDragOver] = useState(false);
   const [lightbox, setLightbox] = useState<{ kind: "image" | "video"; url: string; name: string } | null>(null);
@@ -903,8 +905,10 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
       const att = await n.uploadAttachment(normalizedFile, note.id);
       setAttachments((prev) => [...prev, att]);
       dirty.current = true;
+      const isMedia = att.mime.startsWith("image/") || att.mime.startsWith("video/");
+      const isPdf = att.mime === "application/pdf";
       // Pre-cache blob URL from the original file (cheaper than redownloading).
-      if (att.mime.startsWith("image/") || att.mime.startsWith("video/")) {
+      if (isMedia) {
         const url = URL.createObjectURL(normalizedFile);
         blobUrlCacheRef.current.set(att.id, url);
         if (opts.insertInline) {
@@ -913,7 +917,12 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
             : buildInlineVideo(att, url);
           insertNodeAtCaret(node, opts.range ?? null);
           setBody(bodyRef.current?.innerHTML || "");
+          return;
         }
+      }
+      // Auto-insert eligible files when the user has opted in.
+      if (!opts.insertInline && autoInsertMedia && (isMedia || isPdf)) {
+        try { await insertExistingAttIntoBody(att); } catch {}
       }
     } catch (e: any) {
       toast.error(e?.message || "Upload failed");
@@ -1483,17 +1492,6 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
           {attachments.map((att) => {
             const canInsert = isInsertableAtt(att);
             const isInlined = inlinedIds.has(att.id);
-            if (canInsert && !isInlined) {
-              return (
-                <InlineAttachment
-                  key={att.id}
-                  att={att}
-                  onRemove={() => removeAtt(att.id)}
-                  onDownload={() => downloadAtt(att)}
-                  onInsertIntoBody={() => insertExistingAttIntoBody(att)}
-                />
-              );
-            }
             return (
               <div
                 key={att.id}
@@ -1503,6 +1501,16 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
                 <FileText className="h-3.5 w-3.5" style={{ color: "var(--app-text-secondary)" }} />
                 <span className="max-w-[160px] truncate" style={{ color: "var(--app-text-primary)" }}>{att.name}</span>
                 <span style={{ color: "var(--app-text-secondary)" }}>({formatSize(att.size)})</span>
+                {canInsert && !isInlined && (
+                  <button
+                    onClick={() => insertExistingAttIntoBody(att)}
+                    title="Insert into note"
+                    className="ml-1 px-1.5 py-0.5 rounded text-[11px] hover:bg-[var(--app-hover)]"
+                    style={{ color: "hsl(var(--primary))", border: "1px solid hsl(var(--primary) / 0.4)" }}
+                  >
+                    Insert
+                  </button>
+                )}
                 {isInlined && (
                   <button
                     onClick={() => uninsertAtt(att.id)}
