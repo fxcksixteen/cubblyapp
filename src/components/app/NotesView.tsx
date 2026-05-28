@@ -633,6 +633,7 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
   const [attachments, setAttachments] = useState(note.decrypted?.attachments || []);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [autoInsertMedia] = useLocalSetting<boolean>("notes.autoInsertMedia", false);
   
   const [editorDragOver, setEditorDragOver] = useState(false);
   const [lightbox, setLightbox] = useState<{ kind: "image" | "video"; url: string; name: string } | null>(null);
