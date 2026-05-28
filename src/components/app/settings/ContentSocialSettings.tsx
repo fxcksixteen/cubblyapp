@@ -26,6 +26,7 @@ export default function ContentSocialSettings({ cardStyle }: Props) {
   const [autoplayVideos, setAutoplayVideos] = useLocalSetting("cubbly:content:autoplayVideos", false);
   const [previewLinks, setPreviewLinks] = useLocalSetting("cubbly:content:previewLinks", true);
   const [convertEmoticons, setConvertEmoticons] = useLocalSetting("cubbly:content:convertEmoticons", true);
+  const [autoInsertNotesMedia, setAutoInsertNotesMedia] = useLocalSetting("notes.autoInsertMedia", false);
 
   const [blocked, setBlocked] = useState<BlockedRow[]>([]);
   const [loading, setLoading] = useState(true);
