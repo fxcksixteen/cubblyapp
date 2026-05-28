@@ -1492,17 +1492,6 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
           {attachments.map((att) => {
             const canInsert = isInsertableAtt(att);
             const isInlined = inlinedIds.has(att.id);
-            if (canInsert && !isInlined) {
-              return (
-                <InlineAttachment
-                  key={att.id}
-                  att={att}
-                  onRemove={() => removeAtt(att.id)}
-                  onDownload={() => downloadAtt(att)}
-                  onInsertIntoBody={() => insertExistingAttIntoBody(att)}
-                />
-              );
-            }
             return (
               <div
                 key={att.id}
@@ -1512,6 +1501,16 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
                 <FileText className="h-3.5 w-3.5" style={{ color: "var(--app-text-secondary)" }} />
                 <span className="max-w-[160px] truncate" style={{ color: "var(--app-text-primary)" }}>{att.name}</span>
                 <span style={{ color: "var(--app-text-secondary)" }}>({formatSize(att.size)})</span>
+                {canInsert && !isInlined && (
+                  <button
+                    onClick={() => insertExistingAttIntoBody(att)}
+                    title="Insert into note"
+                    className="ml-1 px-1.5 py-0.5 rounded text-[11px] hover:bg-[var(--app-hover)]"
+                    style={{ color: "hsl(var(--primary))", border: "1px solid hsl(var(--primary) / 0.4)" }}
+                  >
+                    Insert
+                  </button>
+                )}
                 {isInlined && (
                   <button
                     onClick={() => uninsertAtt(att.id)}
