@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import notesIcon from "@/assets/password-lock.svg";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { isStandalonePWA } from "@/lib/pwa";
+import { useLocalSetting } from "@/hooks/useLocalSetting";
 const ImageLightbox = lazy(() => import("@/components/app/ImageLightbox"));
 const VideoLightbox = lazy(() => import("@/components/app/VideoLightbox"));
 import {
