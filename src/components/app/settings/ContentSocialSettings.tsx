@@ -90,6 +90,16 @@ export default function ContentSocialSettings({ cardStyle }: Props) {
       </SettingsCard>
 
       <SettingsCard cardStyle={cardStyle}>
+        <SettingsSectionLabel>Personal Notes</SettingsSectionLabel>
+        <SettingsToggleRow
+          title="Automatically insert eligible files in notes"
+          description="When on, any image, video, or PDF you attach to a personal note is inserted into the note body automatically. Off by default — attachments stay in the strip until you press Insert."
+          checked={autoInsertNotesMedia}
+          onChange={setAutoInsertNotesMedia}
+        />
+      </SettingsCard>
+
+      <SettingsCard cardStyle={cardStyle}>
         <div className="flex items-center justify-between mb-3">
           <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: "var(--app-text-secondary)" }}>Blocked Users</p>
           <span className="text-xs" style={{ color: "var(--app-text-secondary)" }}>{blocked.length}</span>
