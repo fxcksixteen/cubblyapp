@@ -903,8 +903,10 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
       const att = await n.uploadAttachment(normalizedFile, note.id);
       setAttachments((prev) => [...prev, att]);
       dirty.current = true;
+      const isMedia = att.mime.startsWith("image/") || att.mime.startsWith("video/");
+      const isPdf = att.mime === "application/pdf";
       // Pre-cache blob URL from the original file (cheaper than redownloading).
-      if (att.mime.startsWith("image/") || att.mime.startsWith("video/")) {
+      if (isMedia) {
         const url = URL.createObjectURL(normalizedFile);
         blobUrlCacheRef.current.set(att.id, url);
         if (opts.insertInline) {
@@ -913,7 +915,12 @@ const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?:
             : buildInlineVideo(att, url);
           insertNodeAtCaret(node, opts.range ?? null);
           setBody(bodyRef.current?.innerHTML || "");
+          return;
         }
+      }
+      // Auto-insert eligible files when the user has opted in.
+      if (!opts.insertInline && autoInsertMedia && (isMedia || isPdf)) {
+        try { await insertExistingAttIntoBody(att); } catch {}
       }
     } catch (e: any) {
       toast.error(e?.message || "Upload failed");
