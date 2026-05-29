@@ -243,7 +243,10 @@ async function loadStoredAttachmentRecords(ownerUserId: string): Promise<StoredA
   for (const file of data) {
     if (!file.name || file.name.endsWith("/")) continue;
     const id = file.name.replace(/\.bin$/i, "");
-    const metadata = normalizeStorageMetadata(file.metadata || {});
+    const metadata = normalizeStorageMetadata({
+      ...(file.metadata || {}),
+      user_metadata: (file as { user_metadata?: unknown }).user_metadata,
+    });
     const storagePath = `${ownerUserId}/${file.name}`;
     const size = Number(metadata.size || metadata.contentLength || metadata.contentLengthExact || 0);
     const noteId = String(metadata.noteId || metadata.note_id || metadata.note || "");
