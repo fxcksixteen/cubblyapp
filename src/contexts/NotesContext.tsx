@@ -281,7 +281,11 @@ async function loadStoredAttachmentIndex(ownerUserId: string): Promise<StoredAtt
 const PREVIEWABLE_IMAGE_EXT = new Set(["png","jpg","jpeg","gif","webp","heic","heif","bmp","avif","svg"]);
 const PREVIEWABLE_VIDEO_EXT = new Set(["mp4","mov","m4v","webm","mkv","avi"]);
 const GENERIC_ATTACHMENT_MIME = new Set(["", "application/octet-stream", "binary/octet-stream"]);
-const hasNameExtension = (name?: string) => /\.[a-z0-9]{2,5}$/i.test(name || "");
+const GENERIC_ATTACHMENT_EXT = new Set(["bin", "binary"]);
+const hasNameExtension = (name?: string) => {
+  const match = (name || "").match(/\.([a-z0-9]{2,8})$/i);
+  return !!match && !GENERIC_ATTACHMENT_EXT.has(match[1].toLowerCase());
+};
 const isPreviewableMime = (mime?: string) => {
   const m = (mime || "").toLowerCase();
   return m.startsWith("image/") || m.startsWith("video/") || m === "application/pdf";
@@ -309,7 +313,9 @@ function attachmentExtensionForMime(mime: string): string {
 function attachmentNameWithExt(name: string, mime: string): string {
   if (hasNameExtension(name)) return name;
   const ext = attachmentExtensionForMime(mime);
-  return ext ? `${name}.${ext}` : name;
+  if (!ext) return name;
+  const base = (name || "Attachment").replace(/\.(?:bin|binary)$/i, "");
+  return `${base}.${ext}`;
 }
 async function sniffAttachmentMimeFromBlob(blob: Blob): Promise<string> {
   const head = new Uint8Array(await blob.slice(0, 32).arrayBuffer());

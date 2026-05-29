@@ -60,7 +60,11 @@ const extensionForMime = (mime: string) => {
   if (m === "application/pdf") return "pdf";
   return "";
 };
-const hasExtension = (name?: string) => /\.[a-z0-9]{2,5}$/i.test(name || "");
+const GENERIC_ATTACHMENT_EXT = new Set(["bin", "binary"]);
+const hasExtension = (name?: string) => {
+  const match = (name || "").match(/\.([a-z0-9]{2,8})$/i);
+  return !!match && !GENERIC_ATTACHMENT_EXT.has(match[1].toLowerCase());
+};
 const sniffPreviewableMime = async (blob: Blob): Promise<string> => {
   const head = new Uint8Array(await blob.slice(0, 32).arrayBuffer());
   const hex = Array.from(head).map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -86,7 +90,8 @@ const typedAttachmentFileName = (att: { id?: string; name?: string }, mime: stri
   const base = (att.name || `Attachment ${att.id?.slice(0, 8) || "file"}`).trim() || "Attachment";
   if (hasExtension(base)) return base;
   const ext = extensionForMime(mime);
-  return ext ? `${base}.${ext}` : base;
+  if (!ext) return base;
+  return `${base.replace(/\.(?:bin|binary)$/i, "")}.${ext}`;
 };
 const normalizeIncomingAttachmentFile = async (file: File): Promise<File> => {
   const declaredMime = file.type || "";
