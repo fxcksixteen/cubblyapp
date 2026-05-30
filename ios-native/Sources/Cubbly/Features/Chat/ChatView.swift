@@ -859,28 +859,19 @@ struct ChatView: View {
     /// Sending in this shape means web and iOS clients both render the files
     /// inline — previously we pushed bare URLs, which other platforms didn't
     /// recognize as attachments.
-    private func sendAttachments(urls: [URL]) async {
+    private func sendAttachments(urls: [URL], caption: String = "") async {
         guard !urls.isEmpty, let me = session.currentUserID else { return }
         let client = SupabaseManager.shared.client
         var attachments: [MessageAttachment] = []
 
         for u in urls {
             do {
-                // Re-encode locally so we never push raw 4K HEICs or 80MB
-                // 4K HDR clips into chat-attachments. Saves us bandwidth +
-                // storage cost without any user-visible quality loss.
                 let (data, ext) = await AttachmentCompressor.compress(url: u)
                 let name = u.lastPathComponent
-                // CRITICAL: chat-attachments RLS requires the FIRST folder
-                // segment to be the conversation_id (not the user_id) — the
-                // policy is `is_conversation_participant(folder[1], auth.uid())`.
-                // Uploading under <user_id>/... silently fails RLS, which is
-                // why "send image" appeared to do nothing in v0.1.0.
                 let path = "\(conversation.id.uuidString)/\(me.uuidString)-\(UUID().uuidString).\(ext)"
                 _ = try await client.storage
                     .from("chat-attachments")
                     .upload(path, data: data, options: FileOptions(upsert: false))
-                // Signed URL valid for 7 days — RLS keeps the bucket private.
                 let signed = try await client.storage
                     .from("chat-attachments")
                     .createSignedURL(path: path, expiresIn: 60 * 60 * 24 * 7)
@@ -902,7 +893,7 @@ struct ChatView: View {
             print("[Chat] no attachments uploaded — aborting send")
             return
         }
-        let payload = MessageAttachmentsParser.serialize(attachments)
+        let payload = MessageAttachmentsParser.serialize(attachments, caption: caption)
         await sendRaw(content: payload)
     }
 
