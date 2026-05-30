@@ -168,25 +168,17 @@ struct DMListView: View {
                                        ? Theme.Colors.bgHover : Theme.Colors.bgPrimary)
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 2, leading: 6, bottom: 2, trailing: 6))
-                    .contextMenu {
-                        Button {
-                            openConversation = conv
-                        } label: {
-                            Label("Open Chat", systemImage: "bubble.left.and.bubble.right")
-                        }
-                        if let other = conversation_otherUser(conv) {
-                            Button {
-                                profilePopupUserID = other.userID
-                            } label: {
-                                Label("View Profile", systemImage: "person.crop.circle")
+                    // Long-press now opens our branded Cubbly quick-menu
+                    // half-sheet instead of iOS's generic contextMenu, so the
+                    // surface matches the rest of the app (rounded grouped
+                    // cards, Nunito, Cubbly icons).
+                    .simultaneousGesture(
+                        LongPressGesture(minimumDuration: 0.32)
+                            .onEnded { _ in
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                quickMenuConversation = conv
                             }
-                            Button {
-                                UIPasteboard.general.string = other.username
-                            } label: {
-                                Label("Copy Username", systemImage: "doc.on.doc")
-                            }
-                        }
-                    }
+                    )
                 }
             }
             .listStyle(.plain)
