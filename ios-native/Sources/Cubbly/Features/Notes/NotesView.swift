@@ -389,7 +389,12 @@ private struct NoteEditorView: View {
             }
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
-                Button("Done") { bodyFocused = false }
+                Button("Done") {
+                    bodyFocused = false
+                    UIApplication.shared.sendAction(
+                        #selector(UIResponder.resignFirstResponder),
+                        to: nil, from: nil, for: nil)
+                }
             }
         }
         .onAppear {
