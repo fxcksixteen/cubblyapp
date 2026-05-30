@@ -204,17 +204,17 @@ struct InlineAttachPanel: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func actionPill(title: String, systemImage: String, action: @escaping () -> Void) -> some View {
+    /// Single segment of the floating Photos/Files pill.
+    private func pillButton(title: String, systemImage: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 6) {
                 Image(systemName: systemImage)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold))
                 Text(title).font(Theme.Fonts.bodyMedium)
             }
             .foregroundStyle(Theme.Colors.textPrimary)
-            .padding(.horizontal, 14).padding(.vertical, 9)
-            .background(Theme.Colors.bgTertiary)
-            .clipShape(Capsule())
+            .padding(.horizontal, 18).padding(.vertical, 11)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
