@@ -46,6 +46,7 @@ struct ChatView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            header
             ZStack {
                 if loading && messages.isEmpty {
                     ProgressView().tint(Theme.Colors.primary)
@@ -58,30 +59,19 @@ struct ChatView: View {
 
             typingBar
             replyBar
+            pendingAttachmentsBar
             composer
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.Colors.bgPrimary)
-        // Use the system navigation bar (same as Personal Notes) so the
-        // native left-edge interactive pop gesture works automatically —
-        // no proprietary swipe-back wiring required.
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(Theme.Colors.bgPrimary, for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
-        .toolbar {
-            ToolbarItem(placement: .principal) { chatTitleView }
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                Button { startVoiceCall() } label: {
-                    SVGIcon(name: "call", size: 20, tint: Theme.Colors.textSecondary)
-                }
-                .disabled(conversation.isGroup)
-                Button {} label: {
-                    SVGIcon(name: "video-camera", size: 20,
-                            tint: Theme.Colors.textSecondary.opacity(0.4))
-                }
-                .disabled(true)
-            }
-        }
+        .background(chatBackground)
+        // Custom header — fully hide the system nav bar so iOS 26 never
+        // paints its default Liquid Glass buttons / centered title here.
+        .navigationBarHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
+        // Re-enable Apple's native left-edge interactive-pop gesture even
+        // though the nav bar is hidden, so swipe-back to the DM sidebar
+        // matches Personal Notes 1:1.
+        .nativeEdgeSwipeBack()
         .sheet(isPresented: $showGifPicker) {
             GiphyPickerView { url in
                 showGifPicker = false
