@@ -84,6 +84,35 @@ struct DMListView: View {
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
             }
+            .sheet(item: $quickMenuConversation) { conv in
+                DMQuickMenuSheet(
+                    conversation: conv,
+                    isPinned: false,
+                    onOpen: { openConversation = conv },
+                    onViewProfile: {
+                        if let other = conv.otherUser { profilePopupUserID = other.userID }
+                    },
+                    onCloseDM: {
+                        // TODO: wire to ConversationsRepository().hide(...) once available
+                    },
+                    onTogglePin: {
+                        // TODO: per-user pin state — not yet stored on iOS
+                    },
+                    onMarkAsRead: {
+                        Task { try? await ConversationsRepository().markRead(conversationID: conv.id) }
+                        UnreadCountsStore.shared.clearLocal(conversationID: conv.id)
+                    },
+                    onMuteToggle: {
+                        // TODO: mute toggle — not yet stored on iOS
+                    },
+                    onCopyID: {
+                        UIPasteboard.general.string = conv.id.uuidString
+                    }
+                )
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(Theme.Colors.bgPrimary)
+            }
             .task {
                 if !didInitialLoad {
                     didInitialLoad = true
