@@ -334,15 +334,16 @@ struct ChatView: View {
             }
             .onChange(of: scrollToBottomTrigger) { _, _ in
                 // Forced jump to the true latest message after initial
-                // hydration / re-entry. Two passes so the bubble layout has
-                // settled (avatars, link previews) before the final snap.
+                // hydration / re-entry. Multiple passes so the bubble layout
+                // has settled (avatars, link previews, attachments loading
+                // asynchronously) before each retry, otherwise the chat
+                // appears "stuck" a few messages up from the latest.
                 guard let last = messages.last?.id else { return }
                 proxy.scrollTo(last, anchor: .bottom)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                    proxy.scrollTo(last, anchor: .bottom)
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                    proxy.scrollTo(last, anchor: .bottom)
+                for delay in [0.05, 0.18, 0.4, 0.8, 1.4] {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                        proxy.scrollTo(last, anchor: .bottom)
+                    }
                 }
             }
         }
