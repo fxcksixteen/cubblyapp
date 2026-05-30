@@ -366,13 +366,13 @@ struct ChatView: View {
                 }
             }
             .onChange(of: composerFocused) { _, focused in
-                // When the keyboard rises, snap to the latest message so the
-                // user never loses their place behind the keyboard.
-                if focused, let last = messages.last?.id {
-                    // Slight delay so the layout has finished resizing for
-                    // the keyboard before we scroll.
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                        withAnimation(.easeOut(duration: 0.2)) {
+                // When the keyboard rises OR drops, re-anchor to the newest
+                // message so dismissing the keyboard never leaves a phantom
+                // keyboard-sized gap below the last bubble.
+                if let last = messages.last?.id {
+                    let delay = focused ? 0.15 : 0.30
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                        withAnimation(.easeOut(duration: 0.22)) {
                             proxy.scrollTo(last, anchor: .bottom)
                         }
                     }
