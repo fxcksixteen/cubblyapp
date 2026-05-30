@@ -422,8 +422,12 @@ private struct DMRow: View {
                         font: Theme.Fonts.bodyMedium
                     )
                     .lineLimit(1)
+                    .layoutPriority(0)
+                    .frame(minWidth: 0, alignment: .leading)
                     if !conversation.isGroup, let other = conversation.otherUser {
                         UserBadgesRow(userID: other.userID, size: 13)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .layoutPriority(1)
                     }
                 }
                 .onAppear {
