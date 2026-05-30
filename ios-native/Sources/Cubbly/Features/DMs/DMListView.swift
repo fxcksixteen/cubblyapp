@@ -243,11 +243,25 @@ struct DMListView: View {
     }
 
     private var filtered: [ConversationSummary] {
-        guard !search.isEmpty else { return cache.conversations }
-        let q = search.lowercased()
-        return cache.conversations.filter {
-            $0.displayName.lowercased().contains(q) ||
-            ($0.lastMessage?.lowercased().contains(q) ?? false)
+        // Hide conversations the user has dismissed via "Close DM".
+        let visible = cache.conversations.filter { conv in
+            if let peer = conv.otherUser?.userID, dmPrefs.isHidden(peer) { return false }
+            return true
+        }
+        let searched: [ConversationSummary] = {
+            guard !search.isEmpty else { return visible }
+            let q = search.lowercased()
+            return visible.filter {
+                $0.displayName.lowercased().contains(q) ||
+                ($0.lastMessage?.lowercased().contains(q) ?? false)
+            }
+        }()
+        // Pinned conversations sort to the top, preserving recency within each bucket.
+        return searched.sorted { a, b in
+            let ap = a.otherUser.map { dmPrefs.isPinned($0.userID) } ?? false
+            let bp = b.otherUser.map { dmPrefs.isPinned($0.userID) } ?? false
+            if ap != bp { return ap && !bp }
+            return (a.lastMessageAt ?? .distantPast) > (b.lastMessageAt ?? .distantPast)
         }
     }
 
