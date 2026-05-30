@@ -80,17 +80,24 @@ struct ChatView: View {
         .toolbarBackground(Theme.Colors.bgPrimary, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbar {
-            ToolbarItem(placement: .principal) { chatToolbarTitle }
+            // LEFT-aligned avatar+name (Discord-style), placed next to the
+            // system back chevron. Using `.topBarLeading` instead of
+            // `.principal` so iOS does NOT center it in the bar.
+            ToolbarItem(placement: .topBarLeading) { chatToolbarTitle }
             if !conversation.isGroup {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button { startVoiceCall() } label: {
-                        SVGIcon(name: "call", size: 21, tint: Theme.Colors.textSecondary)
+                ToolbarItem(placement: .topBarTrailing) {
+                    HStack(spacing: 14) {
+                        Button(action: { startVoiceCall() }) {
+                            SVGIcon(name: "call", size: 21, tint: Theme.Colors.textSecondary)
+                        }
+                        .buttonStyle(.plain)
+                        Button(action: { }) {
+                            SVGIcon(name: "video-camera", size: 21,
+                                    tint: Theme.Colors.textSecondary.opacity(0.45))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(true)
                     }
-                    Button { } label: {
-                        SVGIcon(name: "video-camera", size: 21,
-                                tint: Theme.Colors.textSecondary.opacity(0.45))
-                    }
-                    .disabled(true)
                 }
             }
         }
@@ -1161,6 +1168,11 @@ private struct DiscordStyleBubble: View {
     /// we can give Discord-style visual feedback (row tint + slight scale) and
     /// make it obvious which message they're targeting.
     @State private var isPressing: Bool = false
+    /// Cancellable work item that flips `isPressing=true` after a short
+    /// hold-still. Cancelled the instant we see a rightward swipe so
+    /// messages don't visually "grab" when the user is navigating back.
+    @State private var pressDelayWork: DispatchWorkItem?
+    @State private var isSwipingBack: Bool = false
     /// Horizontal drag offset (only allowed leftwards). Drives the
     /// Discord-style swipe-to-reply animation.
     @State private var swipeOffset: CGFloat = 0
@@ -1200,11 +1212,43 @@ private struct DiscordStyleBubble: View {
         // thread. Long-press alone is enough; SwiftUI handles its own
         // scroll-vs-press disambiguation.
         .onLongPressGesture(minimumDuration: 0.28, maximumDistance: 12, perform: {
+            // If a rightward swipe-back is already in progress, do NOT fire
+            // the action menu — the user is navigating, not long-pressing.
+            guard !isSwipingBack else { return }
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             onLongPress()
         }, onPressingChanged: { pressing in
-            isPressing = pressing
+            // Only paint the press tint AFTER a short hold-still — this
+            // stops the bubble from looking "grabbed" the instant a finger
+            // lands while the user is actually trying to swipe back to the
+            // DM sidebar from on top of a message.
+            if pressing {
+                let work = DispatchWorkItem {
+                    if !isSwipingBack { isPressing = true }
+                }
+                pressDelayWork = work
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
+            } else {
+                pressDelayWork?.cancel(); pressDelayWork = nil
+                isPressing = false
+            }
         })
+        // Detect a rightward drag starting in the leftish half of the row
+        // and immediately cancel the press feedback so the system
+        // interactive-pop gesture wins cleanly.
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                    if value.translation.width > 6
+                        && abs(value.translation.width) > abs(value.translation.height)
+                        && value.startLocation.x < 200 {
+                        if !isSwipingBack { isSwipingBack = true }
+                        pressDelayWork?.cancel(); pressDelayWork = nil
+                        if isPressing { isPressing = false }
+                    }
+                }
+                .onEnded { _ in isSwipingBack = false }
+        )
         // Horizontal swipe-to-reply. minimumDistance:18 keeps vertical scroll
         // responsive — SwiftUI only routes the drag here once the gesture is
         // clearly horizontal. We also bail out when the touch starts within

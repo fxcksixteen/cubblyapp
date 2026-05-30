@@ -8,9 +8,14 @@ import UniformTypeIdentifiers
 /// Discord-style inline attachment panel. Replaces the keyboard region when
 /// the composer "+" is tapped: shows a grid of camera-roll recents with a
 /// camera tile at the start, plus a bottom bar with **Photos** (full system
-/// picker) and **Files** actions. Selecting a recent feeds straight back into
-/// the chat composer's pending attachments (so the user can add a caption
-/// before sending), mirroring Discord / Cubbly web + desktop.
+/// picker) and **Files** actions.
+///
+/// Multi-select: tapping a thumb toggles it into a pending selection map,
+/// numbered in tap order with a Discord-blue badge + ring on the tile.
+/// Tapping it again removes it (impossible to attach the same asset twice).
+/// Tapping "Add" exports all selected assets and feeds them into the
+/// composer's pending-attachments bar, where the user can add a caption
+/// before sending — exactly like Discord.
 struct InlineAttachPanel: View {
     /// Pixel height to occupy. Matches the keyboard height the composer just
     /// gave up; falls back to a Discord-like 300pt minimum.
@@ -28,6 +33,11 @@ struct InlineAttachPanel: View {
     @State private var showFilePicker = false
     @State private var systemPicked: [PhotosPickerItem] = []
 
+    /// Asset localIdentifier → 1-based selection order. Drives the badge
+    /// number, the selected-ring, and dedupe.
+    @State private var selected: [String: Int] = [:]
+    @State private var exporting = false
+
     private let columns: [GridItem] = Array(
         repeating: GridItem(.flexible(), spacing: 4), count: 3
     )
@@ -37,14 +47,37 @@ struct InlineAttachPanel: View {
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            // Bottom action bar — only "Photos" and "Files" per spec
-            // (Poll lives elsewhere in the composer menu on iOS).
-            HStack(spacing: 14) {
+            // Bottom action bar — Photos + Files always visible. When at
+            // least one tile is selected, a Discord-blue "Add (N)" pill
+            // appears on the right to commit the selection.
+            HStack(spacing: 10) {
                 actionPill(title: "Photos", systemImage: "photo.on.rectangle.angled") {
                     showSystemPhotos = true
                 }
                 actionPill(title: "Files", systemImage: "paperclip") {
                     showFilePicker = true
+                }
+                if !selected.isEmpty {
+                    Button {
+                        Task { await commitSelection() }
+                    } label: {
+                        HStack(spacing: 6) {
+                            if exporting {
+                                ProgressView().tint(.white).scaleEffect(0.8)
+                            } else {
+                                Image(systemName: "paperplane.fill")
+                                    .font(.system(size: 14, weight: .bold))
+                            }
+                            Text("Add (\(selected.count))")
+                                .font(Theme.Fonts.bodyMedium)
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 16).padding(.vertical, 9)
+                        .background(Theme.Colors.primary)
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(exporting)
                 }
             }
             .padding(.horizontal, 14)
@@ -110,9 +143,12 @@ struct InlineAttachPanel: View {
                     CameraTile { showCamera = true }
                         .aspectRatio(1, contentMode: .fit)
                     ForEach(assets, id: \.localIdentifier) { asset in
-                        AssetThumb(asset: asset)
-                            .aspectRatio(1, contentMode: .fit)
-                            .onTapGesture { Task { await pickAsset(asset) } }
+                        AssetThumb(
+                            asset: asset,
+                            selectionOrder: selected[asset.localIdentifier]
+                        )
+                        .aspectRatio(1, contentMode: .fit)
+                        .onTapGesture { toggle(asset: asset) }
                     }
                 }
                 .padding(.horizontal, 4)
@@ -163,12 +199,48 @@ struct InlineAttachPanel: View {
                 Text(title).font(Theme.Fonts.bodyMedium)
             }
             .foregroundStyle(Theme.Colors.textPrimary)
-            .padding(.horizontal, 16).padding(.vertical, 9)
-            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 14).padding(.vertical, 9)
             .background(Theme.Colors.bgTertiary)
             .clipShape(Capsule())
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: - Selection
+
+    private func toggle(asset: PHAsset) {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        let id = asset.localIdentifier
+        if selected[id] != nil {
+            // Deselect — renumber the rest to keep 1..N sequential.
+            selected.removeValue(forKey: id)
+            let ordered = selected.sorted(by: { $0.value < $1.value }).map(\.key)
+            var renum: [String: Int] = [:]
+            for (i, k) in ordered.enumerated() { renum[k] = i + 1 }
+            selected = renum
+        } else {
+            let nextOrder = (selected.values.max() ?? 0) + 1
+            selected[id] = nextOrder
+        }
+    }
+
+    @MainActor
+    private func commitSelection() async {
+        guard !selected.isEmpty else { return }
+        exporting = true
+        defer { exporting = false }
+        // Preserve user tap order.
+        let orderedIDs = selected.sorted(by: { $0.value < $1.value }).map(\.key)
+        let lookup = Dictionary(uniqueKeysWithValues: assets.map { ($0.localIdentifier, $0) })
+        var urls: [URL] = []
+        for id in orderedIDs {
+            guard let asset = lookup[id] else { continue }
+            if let url = await AttachmentsPicker.exportToTempURL(asset: asset) {
+                urls.append(url)
+            }
+        }
+        if !urls.isEmpty { onPickURLs(urls) }
+        selected.removeAll()
     }
 
     @MainActor
@@ -186,9 +258,6 @@ struct InlineAttachPanel: View {
     @MainActor
     private func loadRecents() async {
         guard authStatus == .authorized || authStatus == .limited else { return }
-        // Run the PhotoKit fetch on a background queue so we never block the
-        // main thread on first appearance (which was contributing to the
-        // perceived "crash" when opening the attach panel on slower devices).
         let arr: [PHAsset] = await withCheckedContinuation { cont in
             DispatchQueue.global(qos: .userInitiated).async {
                 let opts = PHFetchOptions()
@@ -201,14 +270,6 @@ struct InlineAttachPanel: View {
             }
         }
         assets = arr
-    }
-
-    @MainActor
-    private func pickAsset(_ asset: PHAsset) async {
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        if let url = await AttachmentsPicker.exportToTempURL(asset: asset) {
-            onPickURLs([url])
-        }
     }
 
     @MainActor
@@ -248,29 +309,68 @@ private struct CameraTile: View {
 
 private struct AssetThumb: View {
     let asset: PHAsset
+    /// `nil` when not selected; otherwise the 1-based tap order.
+    let selectionOrder: Int?
     @State private var image: UIImage?
 
+    private var isSelected: Bool { selectionOrder != nil }
+
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(Theme.Colors.bgTertiary)
-            if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        GeometryReader { geo in
+            let side = min(geo.size.width, geo.size.height)
+            ZStack(alignment: .topTrailing) {
+                // 1:1 square base — every asset, regardless of source aspect,
+                // is center-cropped into the same square shape for a clean
+                // Discord-style grid.
+                ZStack(alignment: .bottomTrailing) {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Theme.Colors.bgTertiary)
+                    if let image {
+                        Image(uiImage: image)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: side, height: side)
+                            .clipped()
+                    }
+                    if asset.mediaType == .video {
+                        let d = Int(asset.duration)
+                        Text(String(format: " %d:%02d ", d / 60, d % 60))
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(.white)
+                            .background(Color.black.opacity(0.55))
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                            .padding(4)
+                    }
+                }
+                .frame(width: side, height: side)
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .stroke(isSelected ? Theme.Colors.primary : Color.clear, lineWidth: 2.5)
+                )
+                .scaleEffect(isSelected ? 0.94 : 1.0)
+                .animation(.easeOut(duration: 0.12), value: isSelected)
+
+                // Selection badge — Discord blue circle with the order
+                // number so the user can see exactly what tap-order their
+                // attachments will be in.
+                if let order = selectionOrder {
+                    ZStack {
+                        Circle()
+                            .fill(Theme.Colors.primary)
+                            .frame(width: 22, height: 22)
+                            .overlay(Circle().stroke(Color.white, lineWidth: 1.5))
+                            .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
+                        Text("\(order)")
+                            .font(.system(size: 12, weight: .heavy))
+                            .foregroundStyle(.white)
+                    }
+                    .padding(6)
+                }
             }
-            if asset.mediaType == .video {
-                let d = Int(asset.duration)
-                Text(String(format: " %d:%02d ", d / 60, d % 60))
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(.white)
-                    .background(Color.black.opacity(0.55))
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
-                    .padding(4)
-            }
+            .frame(width: side, height: side)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
-        .clipped()
         .task { await loadThumb() }
     }
 
@@ -279,7 +379,7 @@ private struct AssetThumb: View {
         let opts = PHImageRequestOptions()
         opts.deliveryMode = .opportunistic
         opts.isNetworkAccessAllowed = true
-        let target = CGSize(width: 280, height: 280)
+        let target = CGSize(width: 400, height: 400)
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
             var didResume = false
             PHImageManager.default().requestImage(for: asset, targetSize: target,
@@ -357,8 +457,6 @@ final class KeyboardHeightTracker: ObservableObject {
             guard let self,
                   let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect
             else { return }
-            // Subtract the bottom safe area inset — the attach panel sits
-            // above the home-indicator inset already.
             let h = max(260, frame.height)
             self.lastHeight = h
         }

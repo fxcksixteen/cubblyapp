@@ -67,6 +67,11 @@ struct MainTabView: View {
                 Task { await PresenceService.shared.start(userID: uid, force: true) }
             }
         }
+        // Notification tap → switch to Home so DMListView's deep-link
+        // listener can push the chat thread.
+        .onReceive(NotificationCenter.default.publisher(for: .cubblyOpenConversation)) { _ in
+            if selection != .home { selection = .home }
+        }
         .task {
             if let uid = session.currentUserID {
                 await ThemeStore.shared.start(userId: uid)
