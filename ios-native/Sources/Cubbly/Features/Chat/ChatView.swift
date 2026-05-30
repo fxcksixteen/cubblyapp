@@ -3,6 +3,7 @@ import PhotosUI
 import Photos
 import Supabase
 import Realtime
+import UniformTypeIdentifiers
 
 /// Discord-iOS-style 1:1 / group chat. All messages left-aligned with avatar
 /// + display name (just like Discord's mobile app), automatic infinite scroll
@@ -25,6 +26,8 @@ struct ChatView: View {
     @State private var replyingTo: ChatMessage?
     @State private var showGifPicker = false
     @State private var showAttachments = false
+    @State private var showFilePicker = false
+    @State private var showComposerMenu = false
     @State private var typingUserNames: [String] = []
     @State private var channel: RealtimeChannelV2?
     @State private var typingChannel: RealtimeChannelV2?
@@ -468,14 +471,18 @@ struct ChatView: View {
         let hasDraft = !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         return HStack(spacing: 10) {
             Button {
-                showAttachments.toggle()
-                composerFocused = false
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                    showComposerMenu.toggle()
+                }
+                if showComposerMenu { composerFocused = false }
             } label: {
                 ZStack {
                     Circle().fill(Theme.Colors.bgTertiary).frame(width: 36, height: 36)
                     Image(systemName: "plus")
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(Theme.Colors.textSecondary)
+                        .rotationEffect(.degrees(showComposerMenu ? 45 : 0))
+                        .animation(.spring(response: 0.35, dampingFraction: 0.7), value: showComposerMenu)
                 }
             }
             .buttonStyle(.plain)
@@ -517,6 +524,44 @@ struct ChatView: View {
         .padding(.vertical, 8)
         .background(Theme.Colors.bgPrimary)
         .overlay(Rectangle().fill(Theme.Colors.divider).frame(height: 1), alignment: .top)
+        .confirmationDialog("Attach", isPresented: $showComposerMenu, titleVisibility: .hidden) {
+            Button("Photo Library") {
+                showComposerMenu = false
+                showAttachments = true
+            }
+            Button("Attach File") {
+                showComposerMenu = false
+                showFilePicker = true
+            }
+            Button("GIF") {
+                showComposerMenu = false
+                showGifPicker = true
+            }
+            Button("Cancel", role: .cancel) { showComposerMenu = false }
+        }
+        .fileImporter(isPresented: $showFilePicker,
+                      allowedContentTypes: [.item],
+                      allowsMultipleSelection: true) { result in
+            switch result {
+            case .success(let urls):
+                let copied: [URL] = urls.compactMap { src in
+                    let didStart = src.startAccessingSecurityScopedResource()
+                    defer { if didStart { src.stopAccessingSecurityScopedResource() } }
+                    let dest = FileManager.default.temporaryDirectory
+                        .appendingPathComponent("\(UUID().uuidString)-\(src.lastPathComponent)")
+                    do {
+                        try FileManager.default.copyItem(at: src, to: dest)
+                        return dest
+                    } catch {
+                        print("[Chat] file import copy failed:", error)
+                        return nil
+                    }
+                }
+                if !copied.isEmpty { Task { await sendAttachments(urls: copied) } }
+            case .failure(let err):
+                print("[Chat] file import failed:", err)
+            }
+        }
     }
 
     // MARK: - Voice call

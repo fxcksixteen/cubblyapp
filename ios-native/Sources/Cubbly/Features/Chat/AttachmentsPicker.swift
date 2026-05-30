@@ -31,7 +31,7 @@ struct AttachmentsPicker: View {
                 } label: {
                     if sending { ProgressView().tint(Theme.Colors.primary) }
                     else {
-                        Text("Send (\(selectedAssets.count))")
+                        Text(selectedAssets.isEmpty ? "Attach" : "Attach (\(selectedAssets.count))")
                             .foregroundStyle(selectedAssets.isEmpty ? Theme.Colors.textMuted : Theme.Colors.primary)
                     }
                 }
