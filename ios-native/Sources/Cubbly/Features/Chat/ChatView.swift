@@ -39,8 +39,11 @@ struct ChatView: View {
     @State private var profilePopupUserID: UUID?
     @State private var didInitialScroll = false
     @State private var scrollToBottomTrigger = UUID()
+    @State private var pendingAttachments: [PendingChatAttachment] = []
     @FocusState private var composerFocused: Bool
     @StateObject private var reactions = MessageReactionsStore()
+    @StateObject private var themeStore = ThemeStore.shared
+    @Environment(\.dismiss) private var navDismiss
 
     private let repo = MessagesRepository()
 
