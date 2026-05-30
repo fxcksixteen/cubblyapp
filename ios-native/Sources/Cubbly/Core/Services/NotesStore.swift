@@ -326,7 +326,7 @@ final class NotesStore: ObservableObject {
             .upload(storagePath, data: cipherWithTag,
                     options: FileOptions(
                         contentType: "application/octet-stream",
-                        upsert: false,
+                        upsert: true,
                         metadata: meta
                     ))
         return NoteAttachment(id: id, name: name, mime: mime, size: data.count,

@@ -25,9 +25,9 @@ struct ChatView: View {
     @State private var draft = ""
     @State private var replyingTo: ChatMessage?
     @State private var showGifPicker = false
-    @State private var showAttachments = false
+    @State private var attachPanelOpen = false
+    @StateObject private var kbTracker = KeyboardHeightTracker.shared
     @State private var showFilePicker = false
-    @State private var showComposerMenu = false
     @State private var typingUserNames: [String] = []
     @State private var channel: RealtimeChannelV2?
     @State private var typingChannel: RealtimeChannelV2?
@@ -63,6 +63,14 @@ struct ChatView: View {
             replyBar
             pendingAttachmentsBar
             composer
+            // Discord-style inline attachment panel — takes the keyboard's
+            // place when "+" is tapped. Slides up from below.
+            if attachPanelOpen {
+                InlineAttachPanel(height: kbTracker.lastHeight) { urls in
+                    enqueueAttachments(urls: urls)
+                }
+                .transition(.move(edge: .bottom))
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(chatBackground)
@@ -82,12 +90,9 @@ struct ChatView: View {
             .environmentObject(session)
             .presentationDetents([.medium, .large])
         }
-        .sheet(isPresented: $showAttachments) {
-            AttachmentsPicker { urls in
-                enqueueAttachments(urls: urls)
-            }
-            .presentationDetents([.fraction(0.55), .large])
-        }
+        // (Old AttachmentsPicker sheet removed — the inline attach panel now
+        // owns the primary attach flow. AttachmentsPicker still exists for
+        // edge-case fallbacks but is no longer presented here.)
         .sheet(item: $actionSheetMessage) { msg in
             MessageActionMenuView(
                 message: msg,
@@ -349,6 +354,13 @@ struct ChatView: View {
                             .id("call-\(e.id.uuidString)")
                         }
                     }
+                    // Bottom sentinel — invisible row anchored AFTER the
+                    // padding spacer, so `scrollTo("bottomSentinel")` lands
+                    // at the absolute bottom of the chat instead of clipping
+                    // to the last bubble's bottom edge.
+                    Color.clear
+                        .frame(height: 1)
+                        .id("bottomSentinel")
                 }
                 .padding(.top, 8)
                 .padding(.bottom, 28)
@@ -359,39 +371,43 @@ struct ChatView: View {
                 // Only snap to the new last message — NOT on every count
                 // change, otherwise prepending older messages while
                 // paginating yanks the user back down to the bottom.
-                if let last = messages.last?.id {
+                // Scroll past the last bubble into the bottom padding so the
+                // composer never appears to "kiss" the latest message.
+                if messages.last != nil {
                     withAnimation(.easeOut(duration: 0.18)) {
-                        proxy.scrollTo(last, anchor: .bottom)
+                        proxy.scrollTo("bottomSentinel", anchor: .bottom)
                     }
                 }
             }
             .onChange(of: composerFocused) { _, focused in
-                // When the keyboard rises OR drops, re-anchor to the newest
-                // message so dismissing the keyboard never leaves a phantom
+                // When the keyboard rises OR drops, re-anchor to the very
+                // bottom so dismissing the keyboard never leaves a phantom
                 // keyboard-sized gap below the last bubble.
-                if let last = messages.last?.id {
+                if messages.last != nil {
                     let delay = focused ? 0.15 : 0.30
                     DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
                         withAnimation(.easeOut(duration: 0.22)) {
-                            proxy.scrollTo(last, anchor: .bottom)
+                            proxy.scrollTo("bottomSentinel", anchor: .bottom)
                         }
                     }
                 }
             }
             .onAppear {
-                if let last = messages.last?.id { proxy.scrollTo(last, anchor: .bottom) }
+                if messages.last != nil {
+                    proxy.scrollTo("bottomSentinel", anchor: .bottom)
+                }
             }
             .onChange(of: scrollToBottomTrigger) { _, _ in
-                // Forced jump to the true latest message after initial
-                // hydration / re-entry. Multiple passes so the bubble layout
-                // has settled (avatars, link previews, attachments loading
-                // asynchronously) before each retry, otherwise the chat
-                // appears "stuck" a few messages up from the latest.
-                guard let last = messages.last?.id else { return }
-                proxy.scrollTo(last, anchor: .bottom)
+                // Forced jump to the true bottom after initial hydration /
+                // re-entry. Multiple passes so the bubble layout has settled
+                // (avatars, link previews, attachments loading asynchronously)
+                // before each retry, otherwise the chat appears "stuck" a few
+                // messages up from the latest.
+                guard messages.last != nil else { return }
+                proxy.scrollTo("bottomSentinel", anchor: .bottom)
                 for delay in [0.05, 0.18, 0.4, 0.8, 1.4] {
                     DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                        proxy.scrollTo(last, anchor: .bottom)
+                        proxy.scrollTo("bottomSentinel", anchor: .bottom)
                     }
                 }
             }
@@ -521,18 +537,26 @@ struct ChatView: View {
         let hasDraft = !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         return HStack(spacing: 10) {
             Button {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
-                    showComposerMenu.toggle()
+                // "+" rotates to "x" and swaps the keyboard for the inline
+                // attachment panel (Discord behavior). Tap again to collapse.
+                if attachPanelOpen {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                        attachPanelOpen = false
+                    }
+                } else {
+                    composerFocused = false
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                        attachPanelOpen = true
+                    }
                 }
-                if showComposerMenu { composerFocused = false }
             } label: {
                 ZStack {
                     Circle().fill(Theme.Colors.bgTertiary).frame(width: 36, height: 36)
                     Image(systemName: "plus")
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(Theme.Colors.textSecondary)
-                        .rotationEffect(.degrees(showComposerMenu ? 45 : 0))
-                        .animation(.spring(response: 0.35, dampingFraction: 0.7), value: showComposerMenu)
+                        .rotationEffect(.degrees(attachPanelOpen ? 45 : 0))
+                        .animation(.spring(response: 0.35, dampingFraction: 0.7), value: attachPanelOpen)
                 }
             }
             .buttonStyle(.plain)
@@ -576,20 +600,14 @@ struct ChatView: View {
         .padding(.bottom, 10)
         .background(Theme.Colors.bgPrimary)
         .overlay(Rectangle().fill(Theme.Colors.divider).frame(height: 1), alignment: .top)
-        .confirmationDialog("Attach", isPresented: $showComposerMenu, titleVisibility: .hidden) {
-            Button("Photo Library") {
-                showComposerMenu = false
-                showAttachments = true
+        // Tapping into the text field collapses the inline attach panel so
+        // the keyboard can rise in its place (Discord behavior).
+        .onChange(of: composerFocused) { _, focused in
+            if focused && attachPanelOpen {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                    attachPanelOpen = false
+                }
             }
-            Button("Attach File") {
-                showComposerMenu = false
-                showFilePicker = true
-            }
-            Button("GIF") {
-                showComposerMenu = false
-                showGifPicker = true
-            }
-            Button("Cancel", role: .cancel) { showComposerMenu = false }
         }
         .fileImporter(isPresented: $showFilePicker,
                       allowedContentTypes: [.item],

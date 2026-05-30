@@ -1,6 +1,9 @@
 import SwiftUI
 import PhotosUI
 import AVKit
+import UIKit
+import UniformTypeIdentifiers
+import CoreTransferable
 
 /// Personal Notes — encrypted with the same PIN-derived key as web/desktop
 /// so the same vault is unlocked by the same PIN across every platform.
@@ -321,6 +324,7 @@ private struct NoteEditorView: View {
     @State private var saveTask: Task<Void, Never>?
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var uploading = false
+    @State private var uploadError: String?
     @State private var previewVideoURL: IdentifiedURL?
     @State private var previewImageData: IdentifiedData?
     @FocusState private var bodyFocused: Bool
@@ -417,6 +421,15 @@ private struct NoteEditorView: View {
         .fullScreenCover(item: $previewImageData) { wrap in
             ImagePreview(data: wrap.data)
         }
+        .alert("Attachment failed",
+               isPresented: Binding(
+                get: { uploadError != nil },
+                set: { if !$0 { uploadError = nil } }
+               )) {
+            Button("OK", role: .cancel) { uploadError = nil }
+        } message: {
+            Text(uploadError ?? "")
+        }
     }
 
     private func loadIfNeeded() {
@@ -455,19 +468,38 @@ private struct NoteEditorView: View {
             uploading = false
             pickerItems = []
         }
+        var anySaved = false
         for item in items {
-            guard let data = try? await item.loadTransferable(type: Data.self) else { continue }
-            let ext = item.supportedContentTypes.first?.preferredFilenameExtension ?? "bin"
-            let mime = item.supportedContentTypes.first?.preferredMIMEType ?? "application/octet-stream"
+            // Try raw bytes first. HEIC and some video formats return nil
+            // here, so fall back to loading as UIImage and re-encoding to
+            // JPEG so the attachment still goes through.
+            var data: Data? = try? await item.loadTransferable(type: Data.self)
+            var ext = item.supportedContentTypes.first?.preferredFilenameExtension ?? "bin"
+            var mime = item.supportedContentTypes.first?.preferredMIMEType ?? "application/octet-stream"
+            if data == nil, let img = try? await item.loadTransferable(type: ImageDataTransferable.self) {
+                data = img.jpegData
+                ext = "jpg"
+                mime = "image/jpeg"
+            }
+            guard let bytes = data else {
+                await MainActor.run { uploadError = "Couldn't read that file from your library." }
+                continue
+            }
             let name = "attachment-\(Int(Date().timeIntervalSince1970)).\(ext)"
             do {
-                let att = try await store.uploadAttachment(data: data, name: name, mime: mime, noteId: noteID)
+                let att = try await store.uploadAttachment(data: bytes, name: name, mime: mime, noteId: noteID)
                 attachments.append(att)
-                scheduleSave()
+                anySaved = true
             } catch {
                 print("[Notes] upload failed:", error)
+                await MainActor.run {
+                    uploadError = "Upload failed: \(error.localizedDescription)"
+                }
             }
         }
+        // Persist now — don't wait for the 700ms debounce, because the user
+        // often backs out of the editor immediately after attaching.
+        if anySaved { flushSave() }
     }
 
     private func removeAttachment(id: String) {
@@ -656,3 +688,21 @@ private struct IdentifiedData: Identifiable {
 private extension String {
     var nonEmpty: String? { isEmpty ? nil : self }
 }
+
+/// HEIC + raw-Data fallback for `PhotosPickerItem.loadTransferable`. When the
+/// system can't hand us the original bytes (e.g. HEIC on a device whose
+/// library is in HEIF mode but our destination wants JPEG), we re-import the
+/// asset as a `UIImage` and re-encode to JPEG so the upload still succeeds.
+struct ImageDataTransferable: Transferable {
+    let jpegData: Data
+    static var transferRepresentation: some TransferRepresentation {
+        DataRepresentation(importedContentType: .image) { data in
+            guard let img = UIImage(data: data),
+                  let jpeg = img.jpegData(compressionQuality: 0.9) else {
+                throw NSError(domain: "ImageDataTransferable", code: 1)
+            }
+            return ImageDataTransferable(jpegData: jpeg)
+        }
+    }
+}
+

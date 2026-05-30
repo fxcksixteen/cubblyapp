@@ -117,7 +117,9 @@ struct DMListView: View {
                         UIPasteboard.general.string = conv.id.uuidString
                     }
                 )
-                .presentationDetents([.large])
+                // Half-sheet by default, drag up for full — matches Discord's
+                // long-press quick menu and avoids the iOS 26 full-cover look.
+                .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(Theme.Colors.bgPrimary)
             }
@@ -141,7 +143,9 @@ struct DMListView: View {
                     convChannel = nil
                 }
             }
-            .refreshable { await load(silently: false) }
+            // No pull-to-refresh — matches web/desktop. The strip above is
+            // horizontal-only and realtime + .task already cover refresh.
+
         }
     }
 
