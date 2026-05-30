@@ -46,9 +46,6 @@ struct ChatView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            Divider().background(Theme.Colors.divider)
-
             ZStack {
                 if loading && messages.isEmpty {
                     ProgressView().tint(Theme.Colors.primary)
@@ -65,10 +62,26 @@ struct ChatView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.Colors.bgPrimary)
-        .navigationBarHidden(true)
-        // Native iOS left-edge interactive pop — same gesture Personal Notes
-        // uses. No custom horizontal-swipe overlays.
-        .enableEdgeSwipeBack()
+        // Use the system navigation bar (same as Personal Notes) so the
+        // native left-edge interactive pop gesture works automatically —
+        // no proprietary swipe-back wiring required.
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Theme.Colors.bgPrimary, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .principal) { chatTitleView }
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button { startVoiceCall() } label: {
+                    SVGIcon(name: "call", size: 20, tint: Theme.Colors.textSecondary)
+                }
+                .disabled(conversation.isGroup)
+                Button {} label: {
+                    SVGIcon(name: "video-camera", size: 20,
+                            tint: Theme.Colors.textSecondary.opacity(0.4))
+                }
+                .disabled(true)
+            }
+        }
         .sheet(isPresented: $showGifPicker) {
             GiphyPickerView { url in
                 showGifPicker = false
@@ -187,64 +200,39 @@ struct ChatView: View {
 
     // MARK: - Header
 
-    private var header: some View {
-        HStack(spacing: 10) {
-            Button { dismiss() } label: {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(Theme.Colors.textPrimary)
-                    .frame(width: 36, height: 36)
-            }
-
+    /// Compact title block shown inside the standard UINavigationBar
+    /// (avatar + name + presence). The system supplies the back chevron
+    /// on the leading side and the native edge-swipe-back gesture for free.
+    private var chatTitleView: some View {
+        HStack(spacing: 8) {
             ZStack(alignment: .bottomTrailing) {
                 if conversation.isGroup && conversation.pictureURL == nil {
-                    GroupAvatar(members: conversation.members, size: 32)
+                    GroupAvatar(members: conversation.members, size: 28)
                 } else {
                     AvatarView(url: conversation.avatarURL,
-                               fallbackText: conversation.displayName, size: 32)
+                               fallbackText: conversation.displayName, size: 28)
                 }
                 if let other = conversation.otherUser {
                     let live = presence.effectiveStatus(for: other.userID, storedStatus: other.status)
                     StatusDot(rawStatus: live, isOnline: presence.isOnline(other.userID),
-                              size: 10, borderColor: Theme.Colors.bgPrimary)
+                              size: 9, borderColor: Theme.Colors.bgPrimary)
                         .offset(x: 2, y: 2)
                 }
             }
-
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: 0) {
                 Text(conversation.displayName)
                     .font(Theme.Fonts.bodyMedium)
                     .foregroundStyle(Theme.Colors.textPrimary)
+                    .lineLimit(1)
                 if let other = conversation.otherUser {
                     let live = presence.effectiveStatus(for: other.userID, storedStatus: other.status)
                     Text(live.capitalized)
-                        .font(.cubbly(11))
+                        .font(.cubbly(10))
                         .foregroundStyle(Theme.Colors.textSecondary)
+                        .lineLimit(1)
                 }
             }
-            Spacer()
-
-            // Voice + Video buttons — properly spaced apart and away from the
-            // device edge (matches Discord iOS).
-            HStack(spacing: 18) {
-                Button {
-                    startVoiceCall()
-                } label: {
-                    SVGIcon(name: "call", size: 20, tint: Theme.Colors.textSecondary)
-                        .frame(width: 36, height: 36)
-                }
-                .disabled(conversation.isGroup) // v0.1.0: 1:1 only
-                Button {} label: {
-                    SVGIcon(name: "video-camera", size: 20, tint: Theme.Colors.textSecondary.opacity(0.4))
-                        .frame(width: 36, height: 36)
-                }
-                .disabled(true) // v0.1.0: outgoing video not supported
-            }
-            .padding(.trailing, 12)
         }
-        .padding(.leading, 8)
-        .padding(.vertical, 6)
-        .background(Theme.Colors.bgPrimary)
     }
 
     // MARK: - Messages list
@@ -1147,10 +1135,14 @@ private struct DiscordStyleBubble: View {
         })
         // Horizontal swipe-to-reply. minimumDistance:18 keeps vertical scroll
         // responsive — SwiftUI only routes the drag here once the gesture is
-        // clearly horizontal.
+        // clearly horizontal. We also bail out when the touch starts within
+        // the leftmost 24pt so the system's left-edge interactive-pop gesture
+        // (swipe back to the DM sidebar) always wins on the edge strip.
         .gesture(
             DragGesture(minimumDistance: 18)
                 .onChanged { value in
+                    // Leave the left-edge strip to UIKit's pop gesture.
+                    guard value.startLocation.x >= 24 else { return }
                     // Only react to predominantly-horizontal leftward drags.
                     guard abs(value.translation.width) > abs(value.translation.height),
                           value.translation.width < 0 else { return }
@@ -1166,6 +1158,7 @@ private struct DiscordStyleBubble: View {
                     }
                 }
                 .onEnded { value in
+                    guard value.startLocation.x >= 24 else { return }
                     let triggered = value.translation.width <= -replyThreshold
                     withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
                         swipeOffset = 0
