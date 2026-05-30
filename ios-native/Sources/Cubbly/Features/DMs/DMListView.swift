@@ -65,6 +65,43 @@ struct DMListView: View {
             .onChange(of: openConversation?.id) { _, newID in
                 if let id = newID { lastChat.lastConversationID = id }
             }
+            // Discord-style: while on the DM sidebar, a leftward swipe
+            // anywhere on the list re-opens whichever chat was last viewed.
+            // Uses SwiftUI's built-in DragGesture (no third-party gesture
+            // engines, no UIScreenEdgePan subclasses) — bails out if the
+            // user is already inside a chat thread.
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 24)
+                    .onEnded { value in
+                        guard openConversation == nil else { return }
+                        let dx = value.translation.width
+                        let dy = value.translation.height
+                        guard dx < -60, abs(dx) > abs(dy) * 1.5 else { return }
+                        guard let id = lastChat.lastConversationID,
+                              let conv = cache.conversations.first(where: { $0.id == id })
+                        else { return }
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        openConversation = conv
+                    }
+            )
+            // Deep-link: tapping a push notification posts this name with
+            // the conversation_id. Resolve to a ConversationSummary and
+            // push it onto the sidebar's NavigationStack.
+            .onReceive(NotificationCenter.default.publisher(for: .cubblyOpenConversation)) { note in
+                guard let raw = note.userInfo?["conversation_id"] as? String,
+                      let uuid = UUID(uuidString: raw) else { return }
+                if let conv = cache.conversations.first(where: { $0.id == uuid }) {
+                    openConversation = conv
+                } else {
+                    // Cache miss — refresh, then push once available.
+                    Task {
+                        await load(silently: true)
+                        if let conv = cache.conversations.first(where: { $0.id == uuid }) {
+                            await MainActor.run { openConversation = conv }
+                        }
+                    }
+                }
+            }
             .sheet(isPresented: $showNewChat) {
                 NewChatSheet { newID in
                     Task {
