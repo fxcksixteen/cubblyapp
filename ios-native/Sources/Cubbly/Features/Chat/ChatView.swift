@@ -46,12 +46,6 @@ struct ChatView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Discord-style flat header — drawn inside the view so iOS 26
-            // does NOT wrap our buttons in liquid-glass capsules. Nav bar
-            // is hidden and the system back gesture is preserved by
-            // `nativeEdgeSwipeBack()`.
-            chatHeader
-
             ZStack {
                 if loading && messages.isEmpty {
                     ProgressView().tint(Theme.Colors.primary)
@@ -66,8 +60,6 @@ struct ChatView: View {
             replyBar
             pendingAttachmentsBar
             composer
-            // Discord-style inline attachment panel — takes the keyboard's
-            // place when "+" is tapped. Slides up from below.
             if attachPanelOpen {
                 InlineAttachPanel(height: kbTracker.lastHeight) { urls in
                     enqueueAttachments(urls: urls)
@@ -77,13 +69,13 @@ struct ChatView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(chatBackground)
-        // Hide the system nav bar entirely so we render a fully flat,
-        // Discord-style header with zero iOS-26 glass effects. The
-        // interactive pop gesture (swipe-back into the DM sidebar) is
-        // kept alive by `nativeEdgeSwipeBack()`.
-        .navigationBarHidden(true)
-        .toolbar(.hidden, for: .navigationBar)
-        .nativeEdgeSwipeBack()
+        // Use the REAL system navigation bar so iOS owns the interactive
+        // push/pop transition — same as Personal Notes. The Discord-style
+        // header lives in `.toolbar` below (flat icons, no glass capsules).
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Theme.Colors.bgPrimary, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbar { chatToolbar }
         .sheet(isPresented: $showGifPicker) {
             GiphyPickerView { url in
                 showGifPicker = false
