@@ -25,11 +25,9 @@ struct ChatView: View {
     @State private var draft = ""
     @State private var replyingTo: ChatMessage?
     @State private var showGifPicker = false
-    @State private var showAttachments = false
     @State private var attachPanelOpen = false
     @StateObject private var kbTracker = KeyboardHeightTracker.shared
     @State private var showFilePicker = false
-    @State private var showComposerMenu = false
     @State private var typingUserNames: [String] = []
     @State private var channel: RealtimeChannelV2?
     @State private var typingChannel: RealtimeChannelV2?
