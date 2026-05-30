@@ -315,12 +315,12 @@ final class NotesStore: ObservableObject {
         // if the note JSON ever loses its attachment list (e.g. after a body
         // re-encryption). Without this, "lost" .bin files can never be
         // decrypted because the iv is gone.
-        let meta: [String: String] = [
-            "iv": iv,
-            "originalName": name,
-            "mime": mime,
-            "size": String(data.count),
-            "noteId": noteId?.uuidString ?? ""
+        let meta: [String: AnyJSON] = [
+            "iv": .string(iv),
+            "originalName": .string(name),
+            "mime": .string(mime),
+            "size": .string(String(data.count)),
+            "noteId": .string(noteId?.uuidString ?? "")
         ]
         _ = try await client.storage.from("notes-attachments")
             .upload(storagePath, data: cipherWithTag,
