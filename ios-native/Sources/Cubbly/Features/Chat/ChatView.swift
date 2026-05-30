@@ -46,6 +46,12 @@ struct ChatView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Discord-style flat header — drawn inside the view so iOS 26
+            // does NOT wrap our buttons in liquid-glass capsules. Nav bar
+            // is hidden and the system back gesture is preserved by
+            // `nativeEdgeSwipeBack()`.
+            chatHeader
+
             ZStack {
                 if loading && messages.isEmpty {
                     ProgressView().tint(Theme.Colors.primary)
@@ -71,36 +77,13 @@ struct ChatView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(chatBackground)
-        // Keep ChatView as a completely normal pushed NavigationStack
-        // destination, exactly like NotesView. Do NOT hide the nav bar or the
-        // system back button: iOS only gives us the catchable interactive pop
-        // transition when its own navigation chrome remains in charge.
-        .navigationTitle(conversation.displayName)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(Theme.Colors.bgPrimary, for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
-        .toolbar {
-            // LEFT-aligned avatar+name (Discord-style), placed next to the
-            // system back chevron. Using `.topBarLeading` instead of
-            // `.principal` so iOS does NOT center it in the bar.
-            ToolbarItem(placement: .topBarLeading) { chatToolbarTitle }
-            if !conversation.isGroup {
-                ToolbarItem(placement: .topBarTrailing) {
-                    HStack(spacing: 14) {
-                        Button(action: { startVoiceCall() }) {
-                            SVGIcon(name: "call", size: 21, tint: Theme.Colors.textSecondary)
-                        }
-                        .buttonStyle(.plain)
-                        Button(action: { }) {
-                            SVGIcon(name: "video-camera", size: 21,
-                                    tint: Theme.Colors.textSecondary.opacity(0.45))
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(true)
-                    }
-                }
-            }
-        }
+        // Hide the system nav bar entirely so we render a fully flat,
+        // Discord-style header with zero iOS-26 glass effects. The
+        // interactive pop gesture (swipe-back into the DM sidebar) is
+        // kept alive by `nativeEdgeSwipeBack()`.
+        .navigationBarHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
+        .nativeEdgeSwipeBack()
         .sheet(isPresented: $showGifPicker) {
             GiphyPickerView { url in
                 showGifPicker = false
