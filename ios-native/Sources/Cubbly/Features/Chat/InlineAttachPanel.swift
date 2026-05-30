@@ -281,10 +281,14 @@ private struct AssetThumb: View {
         opts.isNetworkAccessAllowed = true
         let target = CGSize(width: 280, height: 280)
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            var didResume = false
             PHImageManager.default().requestImage(for: asset, targetSize: target,
                                                    contentMode: .aspectFill, options: opts) { img, _ in
                 if let img { Task { @MainActor in self.image = img } }
-                cont.resume()
+                if !didResume {
+                    didResume = true
+                    cont.resume()
+                }
             }
         }
     }
