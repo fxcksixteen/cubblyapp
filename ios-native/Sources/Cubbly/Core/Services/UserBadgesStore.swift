@@ -50,19 +50,6 @@ final class UserBadgesStore: ObservableObject {
         pending.removeAll()
         if ids.isEmpty { return }
 
-        struct Joined: Decodable {
-            let user_id: UUID
-            let item_id: String
-            let slot: Int?
-            let shop_items: ShopRow?
-        }
-        struct ShopRow: Decodable {
-            let category: String?
-            let config: AnyJSON?
-            let name: String?
-            let description: String?
-        }
-
         do {
             let rows: [Joined] = try await SupabaseManager.shared.client
                 .from("user_equipped")
