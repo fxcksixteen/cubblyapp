@@ -53,17 +53,28 @@ struct ProfilePopupView: View {
             VStack(alignment: .leading, spacing: 12) {
                 Spacer().frame(height: 44)
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(p.displayName)
-                        .font(.cubbly(20, .bold))
-                        .foregroundStyle(.white)
+                    CubblyNameText(
+                        userId: p.userID,
+                        text: p.displayName,
+                        font: .cubbly(20, .bold),
+                        fallback: .white
+                    )
                     let live = presence.effectiveStatus(for: p.userID, storedStatus: p.status)
                     StatusDot(rawStatus: live, isOnline: presence.isOnline(p.userID),
                               size: 10, borderColor: Theme.Colors.bgTertiary)
                     Spacer()
                 }
-                Text("@\(p.username)")
-                    .font(.cubbly(13))
-                    .foregroundStyle(Theme.Colors.textSecondary)
+                HStack(spacing: 6) {
+                    Text("@\(p.username)")
+                        .font(.cubbly(13))
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                    UserBadgesRow(userID: p.userID, size: 16)
+                }
+                .onAppear {
+                    UserBadgesStore.shared.request(p.userID)
+                    NameColorsStore.shared.request(p.userID)
+                }
+
 
                 if let bio = p.bio, !bio.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {

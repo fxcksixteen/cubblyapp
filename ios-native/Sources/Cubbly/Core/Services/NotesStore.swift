@@ -301,8 +301,19 @@ final class NotesStore: ObservableObject {
     /// Encrypt raw bytes with the vault key and upload to Supabase Storage.
     /// Returns metadata to attach to the note. Matches web shape exactly.
     func uploadAttachment(data: Data, name: String, mime: String, noteId: UUID? = nil) async throws -> NoteAttachment {
-        guard let key = key, let uid = currentUserId else {
+        // Always read the LIVE auth user at upload time — a stale cached id
+        // (from a session that has since refreshed) is what was triggering
+        // "new row violates row-level security policy" because the storage
+        // path's first segment no longer matched auth.uid().
+        let liveUser = client.auth.currentUser
+        guard let key = key, let uid = liveUser?.id ?? currentUserId else {
             throw NSError(domain: "Notes", code: 10, userInfo: [NSLocalizedDescriptionKey: "Locked"])
+        }
+        // Refresh the JWT if it expires soon so the storage REST call carries
+        // a fresh `sub` claim matching the path prefix.
+        if let exp = client.auth.currentSession?.expiresAt,
+           exp - Date().timeIntervalSince1970 < 60 {
+            _ = try? await client.auth.refreshSession()
         }
         let nonce = AES.GCM.Nonce()
         let sealed = try AES.GCM.seal(data, using: key, nonce: nonce)
@@ -312,9 +323,7 @@ final class NotesStore: ObservableObject {
         let storagePath = "\(uid.uuidString)/\(id).bin"
         // Mirror src/contexts/NotesContext.tsx — store iv + original metadata
         // as Storage user_metadata so a single attachment is still recoverable
-        // if the note JSON ever loses its attachment list (e.g. after a body
-        // re-encryption). Without this, "lost" .bin files can never be
-        // decrypted because the iv is gone.
+        // if the note JSON ever loses its attachment list.
         let meta: [String: AnyJSON] = [
             "iv": .string(iv),
             "originalName": .string(name),
@@ -322,11 +331,14 @@ final class NotesStore: ObservableObject {
             "size": .string(String(data.count)),
             "noteId": .string(noteId?.uuidString ?? "")
         ]
+        // upsert:false — path uses a fresh UUID, no collision risk. Avoids
+        // the upsert codepath that dispatches against the storage UPDATE
+        // policy with a potentially stale JWT.
         _ = try await client.storage.from("notes-attachments")
             .upload(storagePath, data: cipherWithTag,
                     options: FileOptions(
                         contentType: "application/octet-stream",
-                        upsert: true,
+                        upsert: false,
                         metadata: meta
                     ))
         return NoteAttachment(id: id, name: name, mime: mime, size: data.count,

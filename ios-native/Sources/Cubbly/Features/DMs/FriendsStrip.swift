@@ -133,6 +133,10 @@ private struct FriendTile: View {
             .frame(width: 68)
         }
         .contentShape(Rectangle())
+        .onAppear {
+            UserBadgesStore.shared.request(profile.userID)
+            NameColorsStore.shared.request(profile.userID)
+        }
     }
 }
 

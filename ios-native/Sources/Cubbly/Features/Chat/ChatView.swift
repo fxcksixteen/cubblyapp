@@ -146,7 +146,7 @@ struct ChatView: View {
             // Hide the global custom tab bar while we're on a chat thread —
             // matches Discord/Telegram and stops it from eating vertical
             // space + competing with the message composer.
-            ChromeStore.shared.tabBarHidden = true
+            ChromeStore.shared.pushHidden()
         }
         .onDisappear {
             if NotificationService.shared.activeConversationID == conversation.id {
@@ -155,7 +155,7 @@ struct ChatView: View {
             if UnreadCountsStore.shared.activeConversationID == conversation.id {
                 UnreadCountsStore.shared.activeConversationID = nil
             }
-            ChromeStore.shared.tabBarHidden = false
+            ChromeStore.shared.popHidden()
             Task {
                 await RealtimeChannelFactory.remove(channel)
                 await RealtimeChannelFactory.remove(typingChannel)
@@ -267,17 +267,14 @@ struct ChatView: View {
         .overlay(Rectangle().fill(Theme.Colors.divider).frame(height: 1), alignment: .bottom)
     }
 
-    /// Translucent chat background — when a Shop theme is equipped, drop the
-    /// solid `bgPrimary` so the animated theme behind the tab stack actually
-    /// shows through inside the chat thread.
+    /// Translucent chat background — when a Shop theme is equipped, the
+    /// animated theme background shows through inside the thread (matches
+    /// web/desktop). Otherwise paints the solid `bgPrimary`.
     @ViewBuilder
     private var chatBackground: some View {
-        if themeStore.equippedShopThemeId != nil {
-            Theme.Colors.bgPrimary.opacity(0.55)
-        } else {
-            Theme.Colors.bgPrimary
-        }
+        ThemedBackground(translucent: true)
     }
+
 
     /// Pending attachments preview — Discord-style chip strip that sits ABOVE
     /// the composer while the user is staging files. Tapping × removes one.

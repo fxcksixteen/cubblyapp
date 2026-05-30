@@ -1,86 +1,65 @@
-# v0.1.7 — round 3 fixes
+# v0.1.7 native iOS — fix pass
 
-Six concrete iOS-only changes. No backend / schema changes.
+## 1. Native horizontal swipe between DM sidebar ↔ chat threads (and bottom-bar disappearing bug)
 
-## 1. DM quick-menu = half-sheet, not full
+**Smoking gun (per your test):** going into Personal Notes and back doesn't fix the missing bottom bar, but going into a chat thread does. That means `ChromeStore.tabBarHidden` flipped to `true` and never flipped back — it's tied to `ChatView.onDisappear`, which iOS sometimes skips on rapid pop. NotesView also flips it but is reached so rarely it doesn't reset the flag set by chat. And Notes' edge swipe works because Notes does NOT call `.navigationBarHidden(true)` / `.toolbar(.hidden, …)` — UIKit's built-in interactive pop only stays smooth when the nav bar layout is intact. ChatView hides it, breaking the gesture.
 
-`DMListView.swift` opens `DMQuickMenuSheet` with `.presentationDetents([.large])`. Change to `.medium` as the default detent (with `.large` as a stretch option) and keep the drag indicator so it lifts like Discord's branded quick menu.
+Fix:
+- **ChatView.swift**: remove `.navigationBarHidden(true)` and `.toolbar(.hidden, for: .navigationBar)`. Replace with `.toolbar(.hidden, for: .navigationBar)` only at the `UINavigationBar` cosmetic level using `.toolbarBackground(.hidden, …)` + a custom `principal` `ToolbarItem` that hosts the existing `header` view. Keep `.nativeEdgeSwipeBack()`. This gives Notes-identical native pop AND keeps the custom Cubbly header.
+- **ChromeStore-driven tab bar** is brittle. Replace with derivation: in `MainTabView`, set `tabBarHidden` from the SwiftUI `NavigationStack` path emptiness instead of from ChatView/NotesView lifecycle. Concretely, hoist `openConversation` / `showNotes` state up via a thin `DMNavStore` observable (or simply read `chrome.pushedRouteCount` incremented by ChatView/NotesView `onAppear` and decremented in BOTH `onDisappear` AND in `DMListView`'s `onAppear` as a safety reset to 0). This guarantees returning to the DM sidebar always re-shows the bottom bar even if `onDisappear` is skipped.
+- **DMListView.onAppear**: defensively force `ChromeStore.shared.tabBarHidden = false` whenever the DM list reappears — fixes the "stuck invisible" state for free.
 
-```text
-DMListView.swift:120  .presentationDetents([.medium, .large])
-                          → default lands on .medium
-```
+## 2. Equipped badges & name colors in DM sidebar AND profile popups
 
-## 2. Native full-screen edge swipe on chat thread + DM sidebar
+- DMListView already calls `CubblyNameText` and `UserBadgesRow` but is being read from the store before realtime data lands. Add an explicit `.onAppear { UserBadgesStore.shared.request(uid); NameColorsStore.shared.request(uid) }` for every visible row, including FriendsStrip avatars.
+- `ProfilePopupView` currently renders a plain `Text(displayName)` and no badges. Replace with `CubblyNameText(userId:, text:)` and append `UserBadgesRow(userID:, size: 18)` under the name — same layout the web `ProfileCard` uses.
+- Make sure `UserBadgesStore.shared.startRealtime()` is awaited at session-start (already is in `SessionStore.swift`), and add the same `request(uid)` on the chat header avatar tap.
 
-`NativeEdgeSwipeBackEnabler` exists but currently:
-- Only sets `interactivePopGestureRecognizer.isEnabled = true` once in `makeUIViewController`.
-- Sets itself as the recognizer delegate, which on a hidden nav bar actually *blocks* the pop gesture in some iOS builds (UIKit refuses to begin the gesture if the recognizer's delegate returns false and there's no visible back button).
+## 3. "+" attachment button crashes the app
 
-Fixes inside `NativeEdgeSwipeBack.swift`:
-- Stop overriding the delegate. Leave UIKit's default delegate in place — it knows how to honour a hidden nav bar when `interactivePopGestureRecognizer.isEnabled = true`.
-- Re-assert `isEnabled = true` from `updateUIViewController` as well, because SwiftUI rebuilds the host during nav transitions.
-- Expand the gesture region to the full leading half of the screen with a custom `UIScreenEdgePanGestureRecognizer` mirroring iOS's native pop (Personal Notes works because it never hides its system nav bar; the chat header replaced ours, which is what disabled the swipe).
+Most likely cause: `InlineAttachPanel` calls `PHPhotoLibrary.authorizationStatus(for: .readWrite)` from a `@State` default-value initializer, which runs on a non-main thread on first body evaluation and trips PhotoKit's main-thread assertion on iOS 18/26 in release builds.
 
-Then attach `.nativeEdgeSwipeBack()` to:
-- `ChatView` root (already attached — confirm it survives the new custom header).
-- `NotesView` root (already inherited, no-op).
-- The DM list rows' pushed destinations are SwiftUI-managed, but verify by confirming the recogniser is enabled when `ChatView` appears (log `nav.interactivePopGestureRecognizer?.isEnabled`).
+Fix in `InlineAttachPanel.swift`:
+- Initialise `authStatus` to `.notDetermined` and read the real value inside `.task` only.
+- Wrap the `PHPhotoLibrary.authorizationStatus` and `requestAuthorization` calls in `await MainActor.run`.
+- Defer building `PHFetchOptions` / `PHAsset.fetchAssets` to `.task` too (never in `body`).
+- Guard `.photosPicker` and `.fileImporter` behind the `attachPanelOpen` parent so they only mount once visible.
+- Add `NSPhotoLibraryAddUsageDescription` to `Info.plist` (camera save path) — its absence crashes some PhotoKit flows even when only reading.
 
-The DM sidebar itself is the root of the `NavigationStack`, so there is no "back" from it — the user's "horizontal swipe on dm sidebar" likely refers to swiping back **into** the sidebar **from** a chat thread. That is the same gesture as above; fixing it on chat covers both.
+## 4. Animated chat-thread backgrounds (space, sky_dusk, snowy_drift, moonlit_hills, midnight_aurora, synthwave, lava_flow, borealis)
 
-## 3. Notes attachments persist
+`ChatView.chatBackground` currently only paints `Theme.Colors.bgPrimary` or its 55% variant. Mirror the `MainTabView` background ZStack here so the animated theme actually appears inside the thread:
+- Extract `MainTabView`'s background ZStack into a reusable `ThemedBackground` view (in `Shared/`).
+- Use it as the base layer of both `MainTabView` and `ChatView` (and inside `NotesEditorScreen` for parity). Overlay `Theme.Colors.bgPrimary.opacity(themed ? 0.55 : 1)` for legibility.
 
-In `NotesView.swift` `ingest(_:)`:
-- After each successful upload, call `flushSave()` directly instead of `scheduleSave()`. The current 700ms debounce loses attachments when the user backs out of the editor before the timer fires.
-- Wrap `store.uploadAttachment(...)` failures in a user-visible toast/banner so silent failures stop being invisible (right now they only log to console).
-- Guard against PhotosPickerItem returning `nil` for HEIC by retrying once with `loadTransferable(type: Data.self, preferredImageType: .jpeg)`-equivalent: request `UIImage` then re-encode to JPEG when raw `Data` is nil.
+## 5. Notes attachment upload — "new row violates row-level security policy"
 
-In `NotesStore.swift` `uploadAttachment`:
-- Switch the storage upload to `upsert: true` so a retry after a transient failure doesn't blow up on the duplicate object name.
+The bucket policy is `(auth.uid())::text = (storage.foldername(name))[1]` and our path is `<uid>/<id>.bin`, so the path is correct. The RLS error is coming from the `upsert: true` codepath: Supabase Swift sends a `POST … x-upsert: true` which is dispatched against the storage `UPDATE` policy when an object would be overwritten, and against `INSERT` otherwise — combined with our custom `metadata` dict it can hit a stale UID claim if the JWT is older than `auth.refresh_threshold`.
 
-## 4. FriendsStrip — lock to horizontal, no pull-to-refresh
+Fix in `NotesStore.swift uploadAttachment(...)`:
+- Switch back to `upsert: false` (the path uses a fresh UUID, no collision risk).
+- Before upload, `try await client.auth.refreshSession()` if the current `accessToken` expires within 60s, so the storage REST call carries a fresh `sub` claim that matches the path prefix.
+- Read `currentUserId` from `client.auth.currentUser?.id` at upload time rather than the cached value captured at vault-unlock.
+- Surface server error body verbatim in the existing toast so the next failure is debuggable.
 
-Two symptoms reported (vertical swipe + refresh in the strip area) come from the parent `List` having `.refreshable` and from the horizontal `ScrollView` not absorbing vertical drags cleanly.
+## 6. Misc
 
-Changes:
-- Remove `.refreshable { await load(silently: false) }` from the DM list — realtime + the existing `task` already cover refresh, and matches web/desktop which have no pull-to-refresh.
-- Wrap the FriendsStrip's `ScrollView(.horizontal)` in a `.simultaneousGesture(DragGesture(minimumDistance: 6).onChanged { _ in })` no-op limited to vertical translations, so vertical drags are eaten by the strip and never bubble up.
-- Keep `.scrollBounceBehavior(.basedOnSize, axes: .vertical)` for visual polish.
+- DM quick-menu sheet detents already `[.medium, .large]` — verify by re-reading line 120 area after Plan 1 lands.
+- `FriendsStrip` `.simultaneousGesture` from the prior pass stays.
 
-## 5. Discord-style inline attach picker (replaces sheet)
+## Technical detail
 
-Today the `+` button presents `AttachmentsPicker` as a sheet. Reference screenshot shows an inline panel that **replaces the keyboard region** below the composer, with a "Photos / Files" bottom bar and a camera tile inside the grid.
+Files to edit:
+- `ios-native/Sources/Cubbly/Features/Chat/ChatView.swift` (nav bar visibility, themed background, header into toolbar principal)
+- `ios-native/Sources/Cubbly/Features/MainTabView.swift` (use shared `ThemedBackground`, drive tabBarHidden from nav state)
+- `ios-native/Sources/Cubbly/Features/DMs/DMListView.swift` (force-reset tabBarHidden onAppear, request badges/colors per row)
+- `ios-native/Sources/Cubbly/Features/Chat/ProfilePopupView.swift` (CubblyNameText + UserBadgesRow)
+- `ios-native/Sources/Cubbly/Features/Chat/InlineAttachPanel.swift` (PhotoKit safety)
+- `ios-native/Sources/Cubbly/Features/Notes/NotesView.swift` (drive tab bar via shared mechanism)
+- `ios-native/Sources/Cubbly/Core/Services/NotesStore.swift` (upload: refresh session, upsert:false, fresh uid)
+- `ios-native/Resources/Info.plist` (add `NSPhotoLibraryAddUsageDescription`)
 
-Plan:
-- New file `ios-native/Sources/Cubbly/Features/Chat/InlineAttachPanel.swift`. Renders:
-  - A horizontally-scrolling `PhotoGrid` of the user's PhotoKit recents (reuse `PhotoGridViewController` from `AttachmentsPicker.swift`, refactored into a shared component).
-  - A leading camera tile (`UIImagePickerController` source `.camera`) that visually matches a photo cell but is a button — taps it to launch the camera.
-  - A bottom action bar with two pill buttons: **Photos** (opens system `PHPicker` for full library) and **Files** (opens `UIDocumentPickerViewController`).
-- Wire-up in `ChatView.swift`:
-  - Replace `@State showAttachments` sheet with `@State attachPanelOpen: Bool`.
-  - When the `+` button is tapped it toggles `attachPanelOpen`, rotates to `x`, **dismisses the keyboard** (`composerFocused = false`), and the panel slides up in the same vertical region the keyboard occupied (use `KeyboardObserver`'s last known keyboard height as the panel height; fall back to ~280pt).
-  - Selecting any photo from the inline grid feeds into the existing `enqueueAttachments(urls:)` flow (preview chip strip above composer). Photos and Files buttons feed into the same pipeline.
-  - Tapping `x` again (or sending) collapses the panel.
-- The existing `AttachmentsPicker` sheet remains for the rare "Pick from Library Instead" denied-state fallback but stops being the primary entry point.
+Files to create:
+- `ios-native/Sources/Cubbly/Shared/ThemedBackground.swift` (extracted animated/gradient theme stack)
 
-## 6. Auto-scroll past the latest message into the bottom padding
-
-In `ChatView.swift`, every `proxy.scrollTo(last, anchor: .bottom)` (lines 364, 376, 382, 391, 394) snaps the bottom **edge of the last message** to the bottom of the visible area, so the 28pt padding above the composer sits below it but feels invisible (no over-scroll allowed because nothing pulls scroll past the message).
-
-Fix: add a zero-height invisible sentinel `Color.clear.frame(height: 1).id("bottomSentinel")` inside the messages `LazyVStack` **after** the bottom padding spacer, and change all five `scrollTo(last, anchor: .bottom)` calls to `scrollTo("bottomSentinel", anchor: .bottom)`. That makes the scroll target the absolute bottom of the padding rather than the last bubble.
-
----
-
-## Files touched
-
-- `ios-native/Sources/Cubbly/Features/DMs/DMListView.swift` — quick-menu detent, drop `.refreshable`.
-- `ios-native/Sources/Cubbly/Shared/NativeEdgeSwipeBack.swift` — delegate / re-enable fix.
-- `ios-native/Sources/Cubbly/Features/Notes/NotesView.swift` — flushSave-after-upload, error surfacing, HEIC fallback.
-- `ios-native/Sources/Cubbly/Core/Services/NotesStore.swift` — `upsert: true`.
-- `ios-native/Sources/Cubbly/Features/DMs/FriendsStrip.swift` — vertical-drag swallow.
-- `ios-native/Sources/Cubbly/Features/Chat/AttachmentsPicker.swift` — extract reusable grid component.
-- `ios-native/Sources/Cubbly/Features/Chat/InlineAttachPanel.swift` — **new**, Discord-style inline panel.
-- `ios-native/Sources/Cubbly/Features/Chat/ChatView.swift` — swap sheet → inline panel, sentinel-based auto-scroll, kill `showAttachments` sheet.
-
-Final step: rebuild `Cubbly-iOS.zip` for download.
+No DB migrations needed — storage RLS is already correct.

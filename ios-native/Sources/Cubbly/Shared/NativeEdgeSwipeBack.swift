@@ -4,24 +4,32 @@ import UIKit
 /// Re-enables UIKit's built-in left-edge interactive-pop gesture even when
 /// the SwiftUI navigation bar is hidden. iOS disables that recognizer by
 /// default whenever a custom delegate refuses to begin it; this helper walks
-/// up to the hosting `UINavigationController` and forces it back on so chat
-/// threads inherit the same Apple-native swipe-back feel as Personal Notes —
-/// without us writing any custom DragGesture / page-transition code.
-///
-/// Implementation notes:
-///   * We do NOT install our own delegate. The previous version proxied the
-///     delegate, which actually blocks UIKit's native pop on iOS 17/18/26 in
-///     certain layouts (the system refuses to begin the recognizer when our
-///     delegate doesn't implement every optional method UIKit expects).
-///   * We re-assert `isEnabled = true` from both `viewDidAppear` and
-///     `updateUIViewController` because SwiftUI re-hosts the representable
-///     across navigation transitions.
+/// up to the hosting `UINavigationController`, swaps in a permissive
+/// delegate that always allows the gesture when the stack has > 1 view, and
+/// re-asserts on every appearance so chat threads inherit the same
+/// Apple-native swipe-back feel as Personal Notes.
 struct NativeEdgeSwipeBackEnabler: UIViewControllerRepresentable {
-    func makeUIViewController(context: Context) -> EnablerVC { EnablerVC() }
+    func makeUIViewController(context: Context) -> EnablerVC {
+        let vc = EnablerVC()
+        vc.coordinator = context.coordinator
+        return vc
+    }
     func updateUIViewController(_ vc: EnablerVC, context: Context) { vc.enable() }
+    func makeCoordinator() -> SwipeDelegate { SwipeDelegate() }
+}
+
+final class SwipeDelegate: NSObject, UIGestureRecognizerDelegate {
+    weak var nav: UINavigationController?
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        (nav?.viewControllers.count ?? 0) > 1
+    }
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                           shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { false }
 }
 
 final class EnablerVC: UIViewController {
+    var coordinator: SwipeDelegate?
+
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         enable()
@@ -32,10 +40,9 @@ final class EnablerVC: UIViewController {
     }
     func enable() {
         guard let nav = findNav() else { return }
+        coordinator?.nav = nav
         nav.interactivePopGestureRecognizer?.isEnabled = true
-        // Leave the recognizer's original delegate in place. UIKit's default
-        // delegate already knows how to honour a hidden nav bar as long as
-        // `isEnabled` is true and the stack has something to pop.
+        nav.interactivePopGestureRecognizer?.delegate = coordinator
     }
     private func findNav() -> UINavigationController? {
         var p: UIViewController? = self.parent
