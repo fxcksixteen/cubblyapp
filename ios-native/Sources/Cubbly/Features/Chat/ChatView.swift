@@ -284,7 +284,8 @@ struct ChatView: View {
                                 onLongPress: { actionSheetMessage = m },
                                 onPlayVideo: { url in videoURL = IdentifiedURL(url: url) },
                                 onTapImage: { url in lightboxURL = IdentifiedURL(url: url) },
-                                onTapAvatar: { profilePopupUserID = m.senderID }
+                                onTapAvatar: { profilePopupUserID = m.senderID },
+                                onSwipeReply: { replyingTo = m; composerFocused = true }
                             )
                             .id(m.id)
                             .padding(.horizontal, 10)
