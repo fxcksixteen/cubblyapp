@@ -86,25 +86,32 @@ struct DMListView: View {
                     .presentationDragIndicator(.visible)
             }
             .sheet(item: $quickMenuConversation) { conv in
+                let peerID = conv.otherUser?.userID
                 DMQuickMenuSheet(
                     conversation: conv,
-                    isPinned: false,
+                    isPinned: peerID.map { dmPrefs.isPinned($0) } ?? false,
                     onOpen: { openConversation = conv },
                     onViewProfile: {
                         if let other = conv.otherUser { profilePopupUserID = other.userID }
                     },
                     onCloseDM: {
-                        // TODO: wire to ConversationsRepository().hide(...) once available
+                        if let me = session.currentUserID, let peer = peerID {
+                            Task { await dmPrefs.setHidden(userID: me, peer: peer, hidden: true) }
+                        }
                     },
                     onTogglePin: {
-                        // TODO: per-user pin state — not yet stored on iOS
+                        if let me = session.currentUserID, let peer = peerID {
+                            Task { await dmPrefs.togglePin(userID: me, peer: peer) }
+                        }
                     },
                     onMarkAsRead: {
                         Task { try? await ConversationsRepository().markRead(conversationID: conv.id) }
                         UnreadCountsStore.shared.clearLocal(conversationID: conv.id)
                     },
                     onMuteToggle: {
-                        // TODO: mute toggle — not yet stored on iOS
+                        if let me = session.currentUserID, let peer = peerID {
+                            Task { await dmPrefs.toggleMute(userID: me, peer: peer) }
+                        }
                     },
                     onCopyID: {
                         UIPasteboard.general.string = conv.id.uuidString
