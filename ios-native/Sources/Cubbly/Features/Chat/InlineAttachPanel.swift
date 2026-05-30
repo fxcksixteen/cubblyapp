@@ -18,7 +18,11 @@ struct InlineAttachPanel: View {
     var onPickURLs: ([URL]) -> Void
 
     @State private var assets: [PHAsset] = []
-    @State private var authStatus: PHAuthorizationStatus = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+    // IMPORTANT: do NOT call PHPhotoLibrary.authorizationStatus(...) here as
+    // a default value — SwiftUI evaluates @State initializers off the main
+    // thread on first render and PhotoKit's main-thread assertion crashes
+    // the app in release builds on iOS 18+. Read it inside `.task` instead.
+    @State private var authStatus: PHAuthorizationStatus = .notDetermined
     @State private var showCamera = false
     @State private var showSystemPhotos = false
     @State private var showFilePicker = false
@@ -169,9 +173,10 @@ struct InlineAttachPanel: View {
 
     @MainActor
     private func ensureAuthAndLoad() async {
-        let current = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        let current = await MainActor.run { PHPhotoLibrary.authorizationStatus(for: .readWrite) }
         if current == .notDetermined {
-            authStatus = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+            let next = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+            await MainActor.run { authStatus = next }
         } else {
             authStatus = current
         }
@@ -181,12 +186,20 @@ struct InlineAttachPanel: View {
     @MainActor
     private func loadRecents() async {
         guard authStatus == .authorized || authStatus == .limited else { return }
-        let opts = PHFetchOptions()
-        opts.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-        opts.fetchLimit = 120
-        let result = PHAsset.fetchAssets(with: opts)
-        var arr: [PHAsset] = []
-        result.enumerateObjects { a, _, _ in arr.append(a) }
+        // Run the PhotoKit fetch on a background queue so we never block the
+        // main thread on first appearance (which was contributing to the
+        // perceived "crash" when opening the attach panel on slower devices).
+        let arr: [PHAsset] = await withCheckedContinuation { cont in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let opts = PHFetchOptions()
+                opts.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+                opts.fetchLimit = 120
+                let result = PHAsset.fetchAssets(with: opts)
+                var out: [PHAsset] = []
+                result.enumerateObjects { a, _, _ in out.append(a) }
+                cont.resume(returning: out)
+            }
+        }
         assets = arr
     }
 
