@@ -8,7 +8,6 @@ struct MainTabView: View {
     @StateObject private var presence = PresenceService.shared
     @ObservedObject private var callStore = CallStore.shared
     @ObservedObject private var chrome = ChromeStore.shared
-    @ObservedObject private var theme = ThemeStore.shared
     @EnvironmentObject private var session: SessionStore
     @Environment(\.scenePhase) private var scenePhase
 
@@ -35,44 +34,13 @@ struct MainTabView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .environmentObject(presence)
 
-                // Hide the custom tab bar entirely on chat threads —
-                // ChatView toggles `chrome.tabBarHidden` in onAppear/onDisappear.
+                // Hide the custom tab bar entirely on chat threads / notes
+                // editor — pushed routes increment ChromeStore's counter.
                 if !chrome.tabBarHidden {
                     CubblyTabBar(selection: $selection)
                 }
             }
-            .background(
-                ZStack {
-                    Theme.Colors.bgPrimary
-                    if let id = theme.equippedShopThemeId,
-                       ["theme_midnight_aurora","theme_synthwave","theme_lava_flow","theme_borealis"].contains(id) {
-                        AnimatedThemeGradient(colors: theme.backgroundGradient)
-                            .opacity(0.35)
-                            .allowsHitTesting(false)
-                    } else if theme.equippedShopThemeId == "theme_space" {
-                        // Render the animated space scene at full opacity so
-                        // the equipped Space theme actually looks like the
-                        // Shop preview instead of a dim wash over the base.
-                        SpaceThemeAnimated()
-                            .allowsHitTesting(false)
-                    } else if theme.equippedShopThemeId == "theme_sky_dusk" {
-                        SkyDuskAnimated()
-                            .allowsHitTesting(false)
-                    } else if theme.equippedShopThemeId == "theme_snowy_drift" {
-                        SnowyDriftAnimated()
-                            .allowsHitTesting(false)
-                    } else if theme.equippedShopThemeId == "theme_moonlit_hills" {
-                        MoonlitHillsAnimated()
-                            .allowsHitTesting(false)
-                    } else {
-                        LinearGradient(colors: theme.backgroundGradient,
-                                       startPoint: .topLeading, endPoint: .bottomTrailing)
-                            .opacity(theme.equippedShopThemeId != nil ? 0.35 : 0.18)
-                            .allowsHitTesting(false)
-                    }
-                }
-                .ignoresSafeArea()
-            )
+            .background(ThemedBackground())
 
             // Active call overlay (only when NOT minimized)
             if callStore.state != .idle && !callStore.isMinimized {
