@@ -1172,7 +1172,7 @@ private struct DiscordStyleBubble: View {
     /// hold-still. Cancelled the instant we see a rightward swipe so
     /// messages don't visually "grab" when the user is navigating back.
     @State private var pressDelayWork: DispatchWorkItem?
-    @State private var isSwipingBack: Bool = false
+    
     /// Horizontal drag offset (only allowed leftwards). Drives the
     /// Discord-style swipe-to-reply animation.
     @State private var swipeOffset: CGFloat = 0
