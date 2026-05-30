@@ -405,11 +405,11 @@ private struct NoteEditorView: View {
             loadIfNeeded()
             // Match ChatView — when a single note is open, hide the global
             // bottom tab bar so the editor gets the full screen.
-            ChromeStore.shared.tabBarHidden = true
+            ChromeStore.shared.pushHidden()
         }
         .onDisappear {
             flushSave()
-            ChromeStore.shared.tabBarHidden = false
+            ChromeStore.shared.popHidden()
         }
         .onChange(of: pickerItems) { _, items in
             guard !items.isEmpty else { return }

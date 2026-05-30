@@ -124,6 +124,10 @@ struct DMListView: View {
                 .presentationBackground(Theme.Colors.bgPrimary)
             }
             .task {
+                // Defensive: whenever the DM sidebar reappears, force-reset
+                // the pushed-route counter so the bottom tab bar is never
+                // permanently stuck hidden after a rapid push/pop.
+                ChromeStore.shared.resetForRoot()
                 if !didInitialLoad {
                     didInitialLoad = true
                     await load(silently: !cache.conversations.isEmpty)
