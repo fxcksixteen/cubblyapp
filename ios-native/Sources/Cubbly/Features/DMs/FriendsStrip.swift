@@ -41,9 +41,21 @@ struct FriendsStrip: View {
         }
         .frame(height: 92)
         // Lock to horizontal-only — vertical drags inside the strip must not
-        // scroll/pull-to-refresh the DM sidebar underneath.
+        // scroll/pull-to-refresh the DM sidebar underneath. The simultaneous
+        // gesture eats vertical translation so it never bubbles up to the
+        // List below.
         .scrollBounceBehavior(.basedOnSize, axes: .vertical)
         .scrollIndicators(.hidden)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 4)
+                .onChanged { value in
+                    let dx = abs(value.translation.width)
+                    let dy = abs(value.translation.height)
+                    // Vertical-dominant drag: swallow it so the parent List's
+                    // pull gesture (if any) and outer scroll don't see it.
+                    if dy > dx { /* swallowed */ }
+                }
+        )
         .task { await load() }
     }
 
