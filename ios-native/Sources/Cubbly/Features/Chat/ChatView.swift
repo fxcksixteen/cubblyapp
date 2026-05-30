@@ -1168,6 +1168,11 @@ private struct DiscordStyleBubble: View {
     /// we can give Discord-style visual feedback (row tint + slight scale) and
     /// make it obvious which message they're targeting.
     @State private var isPressing: Bool = false
+    /// Cancellable work item that flips `isPressing=true` after a short
+    /// hold-still. Cancelled the instant we see a rightward swipe so
+    /// messages don't visually "grab" when the user is navigating back.
+    @State private var pressDelayWork: DispatchWorkItem?
+    @State private var isSwipingBack: Bool = false
     /// Horizontal drag offset (only allowed leftwards). Drives the
     /// Discord-style swipe-to-reply animation.
     @State private var swipeOffset: CGFloat = 0
