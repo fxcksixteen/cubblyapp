@@ -465,19 +465,38 @@ private struct NoteEditorView: View {
             uploading = false
             pickerItems = []
         }
+        var anySaved = false
         for item in items {
-            guard let data = try? await item.loadTransferable(type: Data.self) else { continue }
-            let ext = item.supportedContentTypes.first?.preferredFilenameExtension ?? "bin"
-            let mime = item.supportedContentTypes.first?.preferredMIMEType ?? "application/octet-stream"
+            // Try raw bytes first. HEIC and some video formats return nil
+            // here, so fall back to loading as UIImage and re-encoding to
+            // JPEG so the attachment still goes through.
+            var data: Data? = try? await item.loadTransferable(type: Data.self)
+            var ext = item.supportedContentTypes.first?.preferredFilenameExtension ?? "bin"
+            var mime = item.supportedContentTypes.first?.preferredMIMEType ?? "application/octet-stream"
+            if data == nil, let img = try? await item.loadTransferable(type: ImageDataTransferable.self) {
+                data = img.jpegData
+                ext = "jpg"
+                mime = "image/jpeg"
+            }
+            guard let bytes = data else {
+                await MainActor.run { uploadError = "Couldn't read that file from your library." }
+                continue
+            }
             let name = "attachment-\(Int(Date().timeIntervalSince1970)).\(ext)"
             do {
-                let att = try await store.uploadAttachment(data: data, name: name, mime: mime, noteId: noteID)
+                let att = try await store.uploadAttachment(data: bytes, name: name, mime: mime, noteId: noteID)
                 attachments.append(att)
-                scheduleSave()
+                anySaved = true
             } catch {
                 print("[Notes] upload failed:", error)
+                await MainActor.run {
+                    uploadError = "Upload failed: \(error.localizedDescription)"
+                }
             }
         }
+        // Persist now — don't wait for the 700ms debounce, because the user
+        // often backs out of the editor immediately after attaching.
+        if anySaved { flushSave() }
     }
 
     private func removeAttachment(id: String) {
