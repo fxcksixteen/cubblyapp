@@ -63,12 +63,13 @@ struct ServerRail: View {
         }
         .frame(width: 64)
         .background(
-            // When a Shop theme is equipped, let the animated theme
-            // background show through the rail so we don't get a flat
-            // Cubbly-colored bar on top of (e.g.) Space / Sky Dusk.
+            // When ANY shop theme is equipped, drop the flat Cubbly-colored
+            // rail entirely so the animated theme background (Space / Sky /
+            // Snowy / Hills / Aurora / Synthwave / Lava / Borealis) shows
+            // through. A faint dark wash keeps text contrast readable.
             Group {
                 if theme.equippedShopThemeId != nil {
-                    Theme.Colors.bgTertiary.opacity(0.45)
+                    Color.black.opacity(0.18)
                 } else {
                     Theme.Colors.bgTertiary
                 }

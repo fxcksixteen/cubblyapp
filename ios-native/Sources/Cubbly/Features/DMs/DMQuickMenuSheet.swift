@@ -21,25 +21,28 @@ struct DMQuickMenuSheet: View {
     private var other: Profile? { conversation.otherUser }
 
     var body: some View {
-        VStack(spacing: 14) {
-            // Header — avatar + @handle, matching Discord's branded sheet.
-            HStack(spacing: 12) {
-                ZStack(alignment: .bottomTrailing) {
-                    if conversation.isGroup && conversation.pictureURL == nil {
-                        GroupAvatar(members: conversation.members, size: 52)
-                    } else {
-                        AvatarView(url: conversation.avatarURL,
-                                   fallbackText: conversation.displayName, size: 52)
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 14) {
+                // Header — avatar + @handle, matching Discord's branded sheet.
+                HStack(spacing: 12) {
+                    ZStack(alignment: .bottomTrailing) {
+                        if conversation.isGroup && conversation.pictureURL == nil {
+                            GroupAvatar(members: conversation.members, size: 52)
+                        } else {
+                            AvatarView(url: conversation.avatarURL,
+                                       fallbackText: conversation.displayName, size: 52)
+                        }
                     }
+                    Text(headerTitle)
+                        .font(.cubbly(22, .heavy))
+                        .foregroundStyle(Theme.Colors.textPrimary)
+                        .lineLimit(1)
+                    Spacer()
                 }
-                Text(headerTitle)
-                    .font(.cubbly(22, .heavy))
-                    .foregroundStyle(Theme.Colors.textPrimary)
-                    .lineLimit(1)
-                Spacer()
-            }
-            .padding(.horizontal, 4)
-            .padding(.top, 10)
+                .padding(.horizontal, 4)
+                // Extra top padding so the avatar/name is never crowded by the
+                // sheet's grab indicator on shorter detents.
+                .padding(.top, 22)
 
             // Profile + Close DM
             groupedCard {

@@ -40,6 +40,10 @@ struct FriendsStrip: View {
             .padding(.vertical, 6)
         }
         .frame(height: 92)
+        // Lock to horizontal-only — vertical drags inside the strip must not
+        // scroll/pull-to-refresh the DM sidebar underneath.
+        .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+        .scrollIndicators(.hidden)
         .task { await load() }
     }
 

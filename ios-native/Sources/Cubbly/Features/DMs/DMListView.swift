@@ -117,7 +117,7 @@ struct DMListView: View {
                         UIPasteboard.general.string = conv.id.uuidString
                     }
                 )
-                .presentationDetents([.medium, .large])
+                .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(Theme.Colors.bgPrimary)
             }

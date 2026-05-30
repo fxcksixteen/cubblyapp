@@ -39,13 +39,16 @@ struct ChatView: View {
     @State private var profilePopupUserID: UUID?
     @State private var didInitialScroll = false
     @State private var scrollToBottomTrigger = UUID()
+    @State private var pendingAttachments: [PendingChatAttachment] = []
     @FocusState private var composerFocused: Bool
     @StateObject private var reactions = MessageReactionsStore()
+    @ObservedObject private var themeStore = ThemeStore.shared
 
     private let repo = MessagesRepository()
 
     var body: some View {
         VStack(spacing: 0) {
+            header
             ZStack {
                 if loading && messages.isEmpty {
                     ProgressView().tint(Theme.Colors.primary)
@@ -58,30 +61,19 @@ struct ChatView: View {
 
             typingBar
             replyBar
+            pendingAttachmentsBar
             composer
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.Colors.bgPrimary)
-        // Use the system navigation bar (same as Personal Notes) so the
-        // native left-edge interactive pop gesture works automatically —
-        // no proprietary swipe-back wiring required.
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(Theme.Colors.bgPrimary, for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
-        .toolbar {
-            ToolbarItem(placement: .principal) { chatTitleView }
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                Button { startVoiceCall() } label: {
-                    SVGIcon(name: "call", size: 20, tint: Theme.Colors.textSecondary)
-                }
-                .disabled(conversation.isGroup)
-                Button {} label: {
-                    SVGIcon(name: "video-camera", size: 20,
-                            tint: Theme.Colors.textSecondary.opacity(0.4))
-                }
-                .disabled(true)
-            }
-        }
+        .background(chatBackground)
+        // Custom header — fully hide the system nav bar so iOS 26 never
+        // paints its default Liquid Glass buttons / centered title here.
+        .navigationBarHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
+        // Re-enable Apple's native left-edge interactive-pop gesture even
+        // though the nav bar is hidden, so swipe-back to the DM sidebar
+        // matches Personal Notes 1:1.
+        .nativeEdgeSwipeBack()
         .sheet(isPresented: $showGifPicker) {
             GiphyPickerView { url in
                 showGifPicker = false
@@ -92,7 +84,7 @@ struct ChatView: View {
         }
         .sheet(isPresented: $showAttachments) {
             AttachmentsPicker { urls in
-                Task { await sendAttachments(urls: urls) }
+                enqueueAttachments(urls: urls)
             }
             .presentationDetents([.fraction(0.55), .large])
         }
@@ -200,25 +192,34 @@ struct ChatView: View {
 
     // MARK: - Header
 
-    /// Compact title block shown inside the standard UINavigationBar
-    /// (avatar + name + presence). The system supplies the back chevron
-    /// on the leading side and the native edge-swipe-back gesture for free.
-    private var chatTitleView: some View {
+    /// Fully custom Discord-style chat header. We render this OURSELVES
+    /// (no `.toolbar`) so iOS 26 never paints its default Liquid Glass
+    /// buttons or centered nav title into the chat thread.
+    private var header: some View {
         HStack(spacing: 8) {
+            Button { dismiss() } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(Theme.Colors.textPrimary)
+                    .frame(width: 32, height: 36)
+            }
+            .buttonStyle(.plain)
+
             ZStack(alignment: .bottomTrailing) {
                 if conversation.isGroup && conversation.pictureURL == nil {
-                    GroupAvatar(members: conversation.members, size: 28)
+                    GroupAvatar(members: conversation.members, size: 32)
                 } else {
                     AvatarView(url: conversation.avatarURL,
-                               fallbackText: conversation.displayName, size: 28)
+                               fallbackText: conversation.displayName, size: 32)
                 }
                 if let other = conversation.otherUser {
                     let live = presence.effectiveStatus(for: other.userID, storedStatus: other.status)
                     StatusDot(rawStatus: live, isOnline: presence.isOnline(other.userID),
-                              size: 9, borderColor: Theme.Colors.bgPrimary)
+                              size: 10, borderColor: Theme.Colors.bgPrimary)
                         .offset(x: 2, y: 2)
                 }
             }
+
             VStack(alignment: .leading, spacing: 0) {
                 Text(conversation.displayName)
                     .font(Theme.Fonts.bodyMedium)
@@ -232,6 +233,65 @@ struct ChatView: View {
                         .lineLimit(1)
                 }
             }
+
+            Spacer(minLength: 4)
+
+            if !conversation.isGroup {
+                Button { startVoiceCall() } label: {
+                    SVGIcon(name: "call", size: 22, tint: Theme.Colors.textSecondary)
+                        .frame(width: 36, height: 36)
+                }
+                .buttonStyle(.plain)
+
+                Button { } label: {
+                    SVGIcon(name: "video-camera", size: 22,
+                            tint: Theme.Colors.textSecondary.opacity(0.45))
+                        .frame(width: 36, height: 36)
+                }
+                .buttonStyle(.plain)
+                .disabled(true)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(
+            themeStore.equippedShopThemeId != nil
+                ? AnyView(Theme.Colors.bgPrimary.opacity(0.55))
+                : AnyView(Theme.Colors.bgPrimary)
+        )
+        .overlay(Rectangle().fill(Theme.Colors.divider).frame(height: 1), alignment: .bottom)
+    }
+
+    /// Translucent chat background — when a Shop theme is equipped, drop the
+    /// solid `bgPrimary` so the animated theme behind the tab stack actually
+    /// shows through inside the chat thread.
+    @ViewBuilder
+    private var chatBackground: some View {
+        if themeStore.equippedShopThemeId != nil {
+            Theme.Colors.bgPrimary.opacity(0.55)
+        } else {
+            Theme.Colors.bgPrimary
+        }
+    }
+
+    /// Pending attachments preview — Discord-style chip strip that sits ABOVE
+    /// the composer while the user is staging files. Tapping × removes one.
+    @ViewBuilder
+    private var pendingAttachmentsBar: some View {
+        if !pendingAttachments.isEmpty {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(pendingAttachments) { p in
+                        PendingAttachmentChip(item: p) {
+                            pendingAttachments.removeAll { $0.id == p.id }
+                        }
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+            }
+            .background(Theme.Colors.bgSecondary)
+            .overlay(Rectangle().fill(Theme.Colors.divider).frame(height: 1), alignment: .top)
         }
     }
 
@@ -291,7 +351,7 @@ struct ChatView: View {
                     }
                 }
                 .padding(.top, 8)
-                .padding(.bottom, 16)
+                .padding(.bottom, 28)
             }
             .scrollDismissesKeyboard(.interactively)
             .simultaneousGesture(TapGesture().onEnded { composerFocused = false })
@@ -306,13 +366,13 @@ struct ChatView: View {
                 }
             }
             .onChange(of: composerFocused) { _, focused in
-                // When the keyboard rises, snap to the latest message so the
-                // user never loses their place behind the keyboard.
-                if focused, let last = messages.last?.id {
-                    // Slight delay so the layout has finished resizing for
-                    // the keyboard before we scroll.
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                        withAnimation(.easeOut(duration: 0.2)) {
+                // When the keyboard rises OR drops, re-anchor to the newest
+                // message so dismissing the keyboard never leaves a phantom
+                // keyboard-sized gap below the last bubble.
+                if let last = messages.last?.id {
+                    let delay = focused ? 0.15 : 0.30
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                        withAnimation(.easeOut(duration: 0.22)) {
                             proxy.scrollTo(last, anchor: .bottom)
                         }
                     }
@@ -497,21 +557,23 @@ struct ChatView: View {
             .background(Theme.Colors.bgTertiary)
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
 
+            let canSend = hasDraft || !pendingAttachments.isEmpty
             Button { Task { await send() } } label: {
                 ZStack {
                     Circle()
-                        .fill(hasDraft ? Theme.Colors.primary : Theme.Colors.bgTertiary)
+                        .fill(canSend ? Theme.Colors.primary : Theme.Colors.bgTertiary)
                         .frame(width: 36, height: 36)
                     Image(systemName: "arrow.up")
                         .font(.system(size: 17, weight: .bold))
-                        .foregroundStyle(hasDraft ? .white : Theme.Colors.textMuted)
+                        .foregroundStyle(canSend ? .white : Theme.Colors.textMuted)
                 }
             }
             .buttonStyle(.plain)
-            .disabled(!hasDraft)
+            .disabled(!canSend)
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.top, 8)
+        .padding(.bottom, 10)
         .background(Theme.Colors.bgPrimary)
         .overlay(Rectangle().fill(Theme.Colors.divider).frame(height: 1), alignment: .top)
         .confirmationDialog("Attach", isPresented: $showComposerMenu, titleVisibility: .hidden) {
@@ -547,7 +609,7 @@ struct ChatView: View {
                         return nil
                     }
                 }
-                if !copied.isEmpty { Task { await sendAttachments(urls: copied) } }
+                if !copied.isEmpty { enqueueAttachments(urls: copied) }
             case .failure(let err):
                 print("[Chat] file import failed:", err)
             }
@@ -710,9 +772,24 @@ struct ChatView: View {
 
     private func send() async {
         let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        let staged = pendingAttachments
+        guard !trimmed.isEmpty || !staged.isEmpty else { return }
         draft = ""
-        await sendRaw(content: trimmed)
+        pendingAttachments = []
+        if !staged.isEmpty {
+            await sendAttachments(urls: staged.map(\.url), caption: trimmed)
+        } else {
+            await sendRaw(content: trimmed)
+        }
+    }
+
+    /// Queue files for the user to review/caption before sending — Discord-,
+    /// web-, and desktop-style behavior. Tapping send sends them all in a
+    /// single message (with optional text caption).
+    fileprivate func enqueueAttachments(urls: [URL]) {
+        for url in urls {
+            pendingAttachments.append(PendingChatAttachment(id: UUID(), url: url))
+        }
     }
 
     private func sendRaw(content: String) async {
@@ -782,28 +859,19 @@ struct ChatView: View {
     /// Sending in this shape means web and iOS clients both render the files
     /// inline — previously we pushed bare URLs, which other platforms didn't
     /// recognize as attachments.
-    private func sendAttachments(urls: [URL]) async {
+    private func sendAttachments(urls: [URL], caption: String = "") async {
         guard !urls.isEmpty, let me = session.currentUserID else { return }
         let client = SupabaseManager.shared.client
         var attachments: [MessageAttachment] = []
 
         for u in urls {
             do {
-                // Re-encode locally so we never push raw 4K HEICs or 80MB
-                // 4K HDR clips into chat-attachments. Saves us bandwidth +
-                // storage cost without any user-visible quality loss.
                 let (data, ext) = await AttachmentCompressor.compress(url: u)
                 let name = u.lastPathComponent
-                // CRITICAL: chat-attachments RLS requires the FIRST folder
-                // segment to be the conversation_id (not the user_id) — the
-                // policy is `is_conversation_participant(folder[1], auth.uid())`.
-                // Uploading under <user_id>/... silently fails RLS, which is
-                // why "send image" appeared to do nothing in v0.1.0.
                 let path = "\(conversation.id.uuidString)/\(me.uuidString)-\(UUID().uuidString).\(ext)"
                 _ = try await client.storage
                     .from("chat-attachments")
                     .upload(path, data: data, options: FileOptions(upsert: false))
-                // Signed URL valid for 7 days — RLS keeps the bucket private.
                 let signed = try await client.storage
                     .from("chat-attachments")
                     .createSignedURL(path: path, expiresIn: 60 * 60 * 24 * 7)
@@ -825,7 +893,7 @@ struct ChatView: View {
             print("[Chat] no attachments uploaded — aborting send")
             return
         }
-        let payload = MessageAttachmentsParser.serialize(attachments)
+        let payload = MessageAttachmentsParser.serialize(attachments, caption: caption)
         await sendRaw(content: payload)
     }
 
@@ -1645,5 +1713,73 @@ struct ChatThreadPreview: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.Colors.bgPrimary)
         .allowsHitTesting(false)
+    }
+}
+
+// MARK: - Pending attachments (staged before send)
+
+/// One file the user has picked from the photo library or files app but has
+/// NOT yet sent. Mirrors Discord/web/desktop behavior: attachments queue up
+/// in the composer so the user can add a caption and then tap send, instead
+/// of auto-firing the moment a photo is selected.
+struct PendingChatAttachment: Identifiable, Hashable {
+    let id: UUID
+    let url: URL
+    var name: String { url.lastPathComponent }
+    var isImage: Bool {
+        ["png","jpg","jpeg","gif","webp","heic","heif"].contains(url.pathExtension.lowercased())
+    }
+    var isVideo: Bool {
+        ["mp4","mov","m4v","webm"].contains(url.pathExtension.lowercased())
+    }
+}
+
+struct PendingAttachmentChip: View {
+    let item: PendingChatAttachment
+    let onRemove: () -> Void
+
+    @State private var thumb: UIImage?
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Group {
+                if let thumb {
+                    Image(uiImage: thumb)
+                        .resizable()
+                        .scaledToFill()
+                } else if item.isVideo {
+                    ZStack {
+                        Theme.Colors.bgTertiary
+                        Image(systemName: "play.circle.fill")
+                            .font(.system(size: 26))
+                            .foregroundStyle(.white.opacity(0.9))
+                    }
+                } else {
+                    ZStack {
+                        Theme.Colors.bgTertiary
+                        Image(systemName: "doc.fill")
+                            .foregroundStyle(Theme.Colors.textSecondary)
+                    }
+                }
+            }
+            .frame(width: 64, height: 64)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            Button(action: onRemove) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 18))
+                    .foregroundStyle(.white, .black.opacity(0.65))
+                    .padding(2)
+            }
+            .buttonStyle(.plain)
+        }
+        .task {
+            if item.isImage {
+                if let data = try? Data(contentsOf: item.url),
+                   let img = UIImage(data: data) {
+                    thumb = img
+                }
+            }
+        }
     }
 }
