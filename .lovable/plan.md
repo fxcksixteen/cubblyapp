@@ -1,59 +1,35 @@
-# Cubbly iOS v0.1.7
+## Why Notes already works and chat doesn't
 
-Scope is iOS-native only (`ios-native/`). No web/desktop changes. Tackled as one cohesive release.
+`NotesView` / `NoteEditorView` push via a plain `NavigationStack` + standard `navigationTitle` + `.toolbar`. Because the system nav bar is visible, UIKit's `interactivePopGestureRecognizer` is wired up automatically — that's the silky edge swipe you like.
 
-## 1. Calls (still broken)
-- Add verbose logging across `WebRTCClient`, `CallSignaling`, `CallStore`, `CallKitService` so we can see exactly where the flow dies (signaling channel join, offer/answer exchange, ICE, CallKit reporting).
-- Verify TURN credentials fetch path on device, and that the mic permission prompt actually fires before peer connection setup.
-- Re-test 1:1 audio call path end-to-end; fix whichever stage logs reveal (most likely missing CallKit `reportNewIncomingCall` on push, or peer connection never getting remote SDP).
-- This is the highest-risk item — may need a follow-up pass once first round of logs comes back.
+`ChatView` (the chat thread) is different:
+1. It calls `.navigationBarHidden(true)` and draws its own `header` view.
+2. To get edge-swipe back it patches a `UIViewControllerRepresentable` (`EdgeSwipeBack.swift` → `enableEdgeSwipeBack()`) that pokes `interactivePopGestureRecognizer.delegate`. This works ~partially, but…
+3. Every message bubble installs a `DragGesture(minimumDistance: 18)` for swipe-to-reply (`ChatView.swift` ~L1148-1171). On the left edge those bubble drags start "winning" the gesture race, so the system pop gesture either never fires or fires inconsistently — exactly the bug you're describing.
 
-## 2. Note attachments don't actually attach
-- In `NotesView.swift` / `NotesStore`, the iOS picker currently shows an image but never uploads it to `notes-attachments` storage nor appends the attachment id to the note's encrypted body the way web does.
-- Mirror the web flow: encrypt blob with per-file key + IV → upload to `notes-attachments/<user_id>/<note_id>/<uuid>.bin` with IV in `user_metadata` → append attachment reference into note content → re-encrypt + save note.
-- On render, decrypt + sniff MIME the same way web does (matches the fix we already shipped to web).
+The DM sidebar (`DMListView`) is the root of the `NavigationStack`, so there's nothing to swipe back to from it; the swipe you want there is really "from chat thread back to DM sidebar," which is the same fix.
 
-## 3. Notes — full link support
-- Make sure URLs in note bodies on iOS render as tappable links (open in Safari), matching web/desktop behavior. Use `AttributedString` with automatic link detection in the note viewer/editor render path.
+## The fix — match Notes, delete the hack
 
-## 4. Notes — hide bottom tab bar when a note is open
-- Wrap the open-note destination so `MainTabView`'s `TabView` bar is hidden while a single note is being viewed/edited (use `.toolbar(.hidden, for: .tabBar)` on the destination).
+1. **`ChatView.swift`**
+   - Remove `.navigationBarHidden(true)` and `.enableEdgeSwipeBack()`.
+   - Move the current custom `header` (avatar + name + presence + call button + menu) into a `.toolbar` with a `ToolbarItem(.principal)` for the title block and `.topBarTrailing` items for call + menu. Use `.navigationBarTitleDisplayMode(.inline)` so it stays compact like Notes/Discord.
+   - The system back chevron will appear automatically; we can hide just the back-button label with `.toolbar(.visible, for: .navigationBar)` + a custom `.topBarLeading` chevron only if we want the icon to stay Cubbly-branded. (Default chevron is fine — that's what Notes uses.)
+   - Result: zero custom code, the gesture is the OS's, identical to Notes.
 
-## 5. Chat composer — new plus/X attachment flow
-Redesign the `+` button in `ChatView` message input:
-- Tap `+` → smoothly rotates 45° into an `×` (spring animation).
-- Opens a small action sheet/menu with: **Photo Library**, **Attach File**, **GIF** (keep existing Giphy entry), maybe **Camera** later.
-- **Photo Library** → presents a half-height sheet (`.presentationDetents([.medium, .large])`) previewing recent photos/videos from `PHPhotoLibrary`, multi-select supported.
-- Top-right button label is **Attach** (not Send) — dismisses the sheet and stages the selected items as pending attachments above the input.
-- User can then type a caption and hit Send to post text + attachments together (currently attachments send alone). Update send pipeline to accept `(text, [attachments])`.
+2. **Stop the per-bubble swipe-to-reply from stealing the left edge**
+   - In `DiscordStyleBubble` (`ChatView.swift` ~L1148), gate the reply `DragGesture` so it only begins when the touch starts **outside the leftmost 24 pt** of the bubble's frame. Easiest implementation: track the gesture's `startLocation.x` in `onChanged` and bail out (`return`) if `startLocation.x < 24`. This guarantees the system edge-pop always wins on the left strip.
 
-## 6. Chat media optimization
-- Run images through `AttachmentCompressor` before upload (downscale large dimensions, re-encode to HEIC/JPEG ~80% quality, strip EXIF).
-- Generate + upload a small poster/thumbnail for videos so chat threads load fast; lazy-load full video only on tap.
-- In `SignedAttachmentView`, use the thumbnail first and fade to full-res, with proper `AsyncImage`-style caching so scrolling back doesn't re-fetch.
+3. **Delete `ios-native/Sources/Cubbly/Shared/EdgeSwipeBack.swift`**
+   - No longer referenced after step 1; removing it makes future contributors stop reaching for the workaround.
 
-## 7. Server sidebar unread blips not clearing properly
-- In `ServerRail.swift` (iOS equivalent of web `ServerSidebar`), the red unread dot lingers after opening the conversation. Hook clear-on-view into the same `UnreadCountsStore` mutation the web app uses (mark conversation read on `ChatView.onAppear` AND on returning to the DM list), and force a SwiftUI refresh.
+4. **No DM sidebar changes needed.** It's the root view; the navigation you want is "chat → back to DM sidebar," which step 1 fixes. If you later push other screens from the DM sidebar (settings, profile, etc.), they will all inherit the same default swipe-back automatically as long as they don't hide the nav bar.
 
-## 8. Server sidebar `+` button on mobile
-- Replace the current behavior with a Cubbly-branded modal sheet: rounded card, Cubbly logo, copy along the lines of *"Servers aren't on Cubbly iOS just yet — stay tuned!"*, single dismiss button. No server-create flow on iOS for now.
+## Files touched
 
-## 9. Space theme background on app
-- The Space theme is selectable but the animated background (matching the Shop preview) never renders behind the app. Wire `SpaceThemeAnimated` from `AnimatedThemeGradient.swift` into `RootView` as a background layer when `ThemeStore.current == .space`, sitting behind the main `TabView`.
+- `ios-native/Sources/Cubbly/Features/Chat/ChatView.swift` — toolbar-ify header, drop `.navigationBarHidden` / `.enableEdgeSwipeBack`, gate bubble drag.
+- `ios-native/Sources/Cubbly/Shared/EdgeSwipeBack.swift` — delete.
 
-## 10. Three new animated themes — Sky Dusk, Moonlit Hills, Snowy Drift
-For each:
-- Build a SwiftUI animated view (mirroring the web `cb-sky-bg`, `cb-hills-bg`, `cb-snowy-bg` CSS animations) using `TimelineView` + `Canvas` so animations actually run.
-- Hook into the Shop tab preview tile so users see the live animation before equipping.
-- Hook into `RootView` background layer (same mechanism as Space) so equipping actually applies the animated background app-wide.
+## Visual impact
 
-## Technical notes
-- All iOS animated backgrounds go through `TimelineView(.animation)` — `withAnimation` on gradient stops is a no-op (already documented in `AnimatedThemeGradient.swift`).
-- Photo library access needs `NSPhotoLibraryUsageDescription` in `Info.plist` (verify it's there).
-- Note attachment encryption must read/write IV in storage `user_metadata` — matches the recent web fix so iOS uploads stay recoverable.
-- No DB migrations expected; this is all client work in `ios-native/`.
-
-## Out of scope
-- Web/desktop changes.
-- Server creation on iOS (deferred, replaced with the "coming soon" modal).
-- Recovering the 10 older `.bin` note attachments (already established as unrecoverable).
+The chat header layout stays visually the same (same avatar, name, presence, call, menu), but it lives inside the standard `UINavigationBar` and gets the system back chevron on the leading side. This matches Notes exactly and unlocks the native edge swipe with zero proprietary gesture code.
