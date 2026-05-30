@@ -1135,10 +1135,14 @@ private struct DiscordStyleBubble: View {
         })
         // Horizontal swipe-to-reply. minimumDistance:18 keeps vertical scroll
         // responsive — SwiftUI only routes the drag here once the gesture is
-        // clearly horizontal.
+        // clearly horizontal. We also bail out when the touch starts within
+        // the leftmost 24pt so the system's left-edge interactive-pop gesture
+        // (swipe back to the DM sidebar) always wins on the edge strip.
         .gesture(
             DragGesture(minimumDistance: 18)
                 .onChanged { value in
+                    // Leave the left-edge strip to UIKit's pop gesture.
+                    guard value.startLocation.x >= 24 else { return }
                     // Only react to predominantly-horizontal leftward drags.
                     guard abs(value.translation.width) > abs(value.translation.height),
                           value.translation.width < 0 else { return }
@@ -1154,6 +1158,7 @@ private struct DiscordStyleBubble: View {
                     }
                 }
                 .onEnded { value in
+                    guard value.startLocation.x >= 24 else { return }
                     let triggered = value.translation.width <= -replyThreshold
                     withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
                         swipeOffset = 0
