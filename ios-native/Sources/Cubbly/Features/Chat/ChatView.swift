@@ -609,7 +609,7 @@ struct ChatView: View {
                         return nil
                     }
                 }
-                if !copied.isEmpty { Task { await sendAttachments(urls: copied) } }
+                if !copied.isEmpty { enqueueAttachments(urls: copied) }
             case .failure(let err):
                 print("[Chat] file import failed:", err)
             }
