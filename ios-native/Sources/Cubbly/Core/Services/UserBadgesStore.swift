@@ -109,18 +109,6 @@ final class UserBadgesStore: ObservableObject {
         }
     }
 
-    private struct Joined: Decodable {
-        let user_id: UUID
-        let item_id: String
-        let slot: Int?
-        let shop_items: ShopRow?
-    }
-    private struct ShopRow: Decodable {
-        let category: String?
-        let config: AnyJSON?
-        let name: String?
-        let description: String?
-    }
 
     func startRealtime() async {
         if channel != nil { return }
