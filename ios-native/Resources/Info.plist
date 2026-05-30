@@ -28,6 +28,8 @@
 	<string>Cubbly needs the microphone for voice calls.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Cubbly needs photo access so you can share images in chats.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Cubbly saves photos and videos you capture in chats to your library.</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>Fonts/Nunito-Black.ttf</string>
