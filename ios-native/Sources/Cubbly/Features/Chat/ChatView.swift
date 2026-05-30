@@ -1715,3 +1715,71 @@ struct ChatThreadPreview: View {
         .allowsHitTesting(false)
     }
 }
+
+// MARK: - Pending attachments (staged before send)
+
+/// One file the user has picked from the photo library or files app but has
+/// NOT yet sent. Mirrors Discord/web/desktop behavior: attachments queue up
+/// in the composer so the user can add a caption and then tap send, instead
+/// of auto-firing the moment a photo is selected.
+struct PendingChatAttachment: Identifiable, Hashable {
+    let id: UUID
+    let url: URL
+    var name: String { url.lastPathComponent }
+    var isImage: Bool {
+        ["png","jpg","jpeg","gif","webp","heic","heif"].contains(url.pathExtension.lowercased())
+    }
+    var isVideo: Bool {
+        ["mp4","mov","m4v","webm"].contains(url.pathExtension.lowercased())
+    }
+}
+
+struct PendingAttachmentChip: View {
+    let item: PendingChatAttachment
+    let onRemove: () -> Void
+
+    @State private var thumb: UIImage?
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Group {
+                if let thumb {
+                    Image(uiImage: thumb)
+                        .resizable()
+                        .scaledToFill()
+                } else if item.isVideo {
+                    ZStack {
+                        Theme.Colors.bgTertiary
+                        Image(systemName: "play.circle.fill")
+                            .font(.system(size: 26))
+                            .foregroundStyle(.white.opacity(0.9))
+                    }
+                } else {
+                    ZStack {
+                        Theme.Colors.bgTertiary
+                        Image(systemName: "doc.fill")
+                            .foregroundStyle(Theme.Colors.textSecondary)
+                    }
+                }
+            }
+            .frame(width: 64, height: 64)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            Button(action: onRemove) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 18))
+                    .foregroundStyle(.white, .black.opacity(0.65))
+                    .padding(2)
+            }
+            .buttonStyle(.plain)
+        }
+        .task {
+            if item.isImage {
+                if let data = try? Data(contentsOf: item.url),
+                   let img = UIImage(data: data) {
+                    thumb = img
+                }
+            }
+        }
+    }
+}
