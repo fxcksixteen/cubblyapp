@@ -4,6 +4,7 @@ import SwiftUI
 /// avatars with red message-count bubbles, mirroring the web server sidebar.
 struct ServerRail: View {
     @ObservedObject private var unread = UnreadCountsStore.shared
+    @State private var showComingSoon = false
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -43,12 +44,17 @@ struct ServerRail: View {
                 }
 
                 Rectangle().fill(Theme.Colors.divider).frame(width: 24, height: 1)
-                ZStack {
-                    Circle().fill(Theme.Colors.bgSecondary).frame(width: 44, height: 44)
-                    Image(systemName: "plus")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(Theme.Colors.success)
+                Button {
+                    showComingSoon = true
+                } label: {
+                    ZStack {
+                        Circle().fill(Theme.Colors.bgSecondary).frame(width: 44, height: 44)
+                        Image(systemName: "plus")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(Theme.Colors.success)
+                    }
                 }
+                .buttonStyle(.plain)
 
                 Spacer(minLength: 16)
             }
@@ -56,6 +62,11 @@ struct ServerRail: View {
         }
         .frame(width: 64)
         .background(Theme.Colors.bgTertiary.ignoresSafeArea(edges: .vertical))
+        .sheet(isPresented: $showComingSoon) {
+            ServerComingSoonSheet()
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+        }
     }
 
     struct UnreadAvatarItem {
