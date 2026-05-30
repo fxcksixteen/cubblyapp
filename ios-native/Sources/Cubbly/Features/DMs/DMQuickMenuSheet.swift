@@ -22,6 +22,14 @@ struct DMQuickMenuSheet: View {
 
     var body: some View {
         VStack(spacing: 14) {
+            // Drag grabber — gives the sheet its own visible top affordance so
+            // the avatar/header row is never crowded by the sheet edge or
+            // clipped under the system grab indicator.
+            Capsule()
+                .fill(Color.white.opacity(0.18))
+                .frame(width: 38, height: 5)
+                .padding(.top, 8)
+
             // Header — avatar + @handle, matching Discord's branded sheet.
             HStack(spacing: 12) {
                 ZStack(alignment: .bottomTrailing) {
@@ -39,7 +47,7 @@ struct DMQuickMenuSheet: View {
                 Spacer()
             }
             .padding(.horizontal, 4)
-            .padding(.top, 10)
+            .padding(.top, 6)
 
             // Profile + Close DM
             groupedCard {
