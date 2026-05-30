@@ -1210,7 +1210,7 @@ private struct DiscordStyleBubble: View {
         // clearly horizontal. We also bail out when the touch starts within
         // the leftmost 24pt so the system's left-edge interactive-pop gesture
         // (swipe back to the DM sidebar) always wins on the edge strip.
-        .gesture(
+        .simultaneousGesture(
             DragGesture(minimumDistance: 18)
                 .onChanged { value in
                     // Leave the left-edge strip to UIKit's pop gesture.
