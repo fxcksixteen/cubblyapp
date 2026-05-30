@@ -4,6 +4,7 @@ import SwiftUI
 /// avatars with red message-count bubbles, mirroring the web server sidebar.
 struct ServerRail: View {
     @ObservedObject private var unread = UnreadCountsStore.shared
+    @ObservedObject private var theme = ThemeStore.shared
     @State private var showComingSoon = false
 
     var body: some View {
