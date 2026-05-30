@@ -51,42 +51,62 @@ final class UserBadgesStore: ObservableObject {
         if ids.isEmpty { return }
 
         do {
-            let rows: [Joined] = try await SupabaseManager.shared.client
+            // 1) Fetch equipped badge rows for the requested users.
+            struct EquippedRow: Decodable {
+                let user_id: UUID
+                let item_id: String
+                let slot: Int?
+            }
+            let equipped: [EquippedRow] = try await SupabaseManager.shared.client
                 .from("user_equipped")
-                .select("user_id, item_id, slot, shop_items(category, config, name, description)")
+                .select("user_id,item_id,slot")
                 .eq("category", value: "badge")
                 .in("user_id", values: ids.map { $0.uuidString })
                 .order("slot", ascending: true)
                 .execute()
                 .value
 
+            // 2) Fetch the matching shop_items in one batch.
+            let itemIDs = Array(Set(equipped.map(\.item_id)))
+            struct ShopItemRow: Decodable {
+                let id: String
+                let category: String?
+                let config: AnyJSON?
+                let name: String?
+                let description: String?
+            }
+            var itemByID: [String: ShopItemRow] = [:]
+            if !itemIDs.isEmpty {
+                let items: [ShopItemRow] = try await SupabaseManager.shared.client
+                    .from("shop_items")
+                    .select("id,category,config,name,description")
+                    .in("id", values: itemIDs)
+                    .execute()
+                    .value
+                itemByID = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
+            }
+
+            // 3) Build per-user badge lists.
             var update = badges
             for id in ids { update[id] = [] }
-            var grouped: [UUID: [Joined]] = [:]
-            for r in rows {
-                grouped[r.user_id, default: []].append(r)
-            }
-            for (uid, list) in grouped {
-                update[uid] = list.compactMap { Self.toBadge($0) }
+            for row in equipped {
+                guard let item = itemByID[row.item_id], item.category == "badge" else { continue }
+                let cfg = item.config?.jsonDictionary ?? [:]
+                let badge = BadgeData(
+                    id: row.item_id,
+                    icon: (cfg["icon"] as? String) ?? "star",
+                    bg: (cfg["bg"] as? String) ?? "#3f4147",
+                    fg: (cfg["fg"] as? String) ?? "#ffffff",
+                    glow: cfg["glow"] as? String,
+                    label: (cfg["label"] as? String) ?? item.name ?? "Badge",
+                    description: item.description ?? (cfg["description"] as? String)
+                )
+                update[row.user_id, default: []].append(badge)
             }
             badges = update
         } catch {
             print("[UserBadges] fetch failed:", error)
         }
-    }
-
-    private static func toBadge(_ row: Joined) -> BadgeData? {
-        guard let item = row.shop_items, item.category == "badge" else { return nil }
-        let cfg = item.config?.jsonDictionary ?? [:]
-        return BadgeData(
-            id: row.item_id,
-            icon: (cfg["icon"] as? String) ?? "star",
-            bg: (cfg["bg"] as? String) ?? "#3f4147",
-            fg: (cfg["fg"] as? String) ?? "#ffffff",
-            glow: cfg["glow"] as? String,
-            label: (cfg["label"] as? String) ?? item.name ?? "Badge",
-            description: item.description ?? (cfg["description"] as? String)
-        )
     }
 
     private struct Joined: Decodable {
