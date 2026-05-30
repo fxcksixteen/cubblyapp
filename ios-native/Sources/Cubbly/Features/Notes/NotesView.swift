@@ -685,3 +685,21 @@ private struct IdentifiedData: Identifiable {
 private extension String {
     var nonEmpty: String? { isEmpty ? nil : self }
 }
+
+/// HEIC + raw-Data fallback for `PhotosPickerItem.loadTransferable`. When the
+/// system can't hand us the original bytes (e.g. HEIC on a device whose
+/// library is in HEIF mode but our destination wants JPEG), we re-import the
+/// asset as a `UIImage` and re-encode to JPEG so the upload still succeeds.
+struct ImageDataTransferable: Transferable {
+    let jpegData: Data
+    static var transferRepresentation: some TransferRepresentation {
+        DataRepresentation(importedContentType: .image) { data in
+            guard let img = UIImage(data: data),
+                  let jpeg = img.jpegData(compressionQuality: 0.9) else {
+                throw NSError(domain: "ImageDataTransferable", code: 1)
+            }
+            return ImageDataTransferable(jpegData: jpeg)
+        }
+    }
+}
+
