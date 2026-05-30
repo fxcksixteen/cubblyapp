@@ -284,7 +284,8 @@ struct ChatView: View {
                                 onLongPress: { actionSheetMessage = m },
                                 onPlayVideo: { url in videoURL = IdentifiedURL(url: url) },
                                 onTapImage: { url in lightboxURL = IdentifiedURL(url: url) },
-                                onTapAvatar: { profilePopupUserID = m.senderID }
+                                onTapAvatar: { profilePopupUserID = m.senderID },
+                                onSwipeReply: { replyingTo = m; composerFocused = true }
                             )
                             .id(m.id)
                             .padding(.horizontal, 10)
@@ -302,7 +303,7 @@ struct ChatView: View {
                     }
                 }
                 .padding(.top, 8)
-                .padding(.bottom, 6)
+                .padding(.bottom, 16)
             }
             .scrollDismissesKeyboard(.interactively)
             .simultaneousGesture(TapGesture().onEnded { composerFocused = false })
@@ -334,15 +335,16 @@ struct ChatView: View {
             }
             .onChange(of: scrollToBottomTrigger) { _, _ in
                 // Forced jump to the true latest message after initial
-                // hydration / re-entry. Two passes so the bubble layout has
-                // settled (avatars, link previews) before the final snap.
+                // hydration / re-entry. Multiple passes so the bubble layout
+                // has settled (avatars, link previews, attachments loading
+                // asynchronously) before each retry, otherwise the chat
+                // appears "stuck" a few messages up from the latest.
                 guard let last = messages.last?.id else { return }
                 proxy.scrollTo(last, anchor: .bottom)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                    proxy.scrollTo(last, anchor: .bottom)
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                    proxy.scrollTo(last, anchor: .bottom)
+                for delay in [0.05, 0.18, 0.4, 0.8, 1.4] {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                        proxy.scrollTo(last, anchor: .bottom)
+                    }
                 }
             }
         }
@@ -1093,11 +1095,19 @@ private struct DiscordStyleBubble: View {
     let onPlayVideo: (URL) -> Void
     let onTapImage: (URL) -> Void
     let onTapAvatar: () -> Void
+    let onSwipeReply: () -> Void
 
     /// True while the user's finger is down during a potential long-press, so
     /// we can give Discord-style visual feedback (row tint + slight scale) and
     /// make it obvious which message they're targeting.
     @State private var isPressing: Bool = false
+    /// Horizontal drag offset (only allowed leftwards). Drives the
+    /// Discord-style swipe-to-reply animation.
+    @State private var swipeOffset: CGFloat = 0
+    @State private var didFireReplyHaptic = false
+
+    /// Drag distance past which release fires the reply action.
+    private let replyThreshold: CGFloat = 60
 
     private var msgUUID: UUID? { UUID(uuidString: message.id) }
     private var aggregated: [AggregatedReaction] {
@@ -1106,6 +1116,67 @@ private struct DiscordStyleBubble: View {
     }
 
     var body: some View {
+        ZStack(alignment: .trailing) {
+            // Reply arrow that fades in as the user drags leftwards.
+            let progress = min(1, max(0, -swipeOffset / replyThreshold))
+            ZStack {
+                Circle()
+                    .fill(Theme.Colors.primary.opacity(0.18 + 0.4 * Double(progress)))
+                    .frame(width: 34, height: 34)
+                Image(systemName: "arrowshape.turn.up.left.fill")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(progress >= 1 ? Color.white : Theme.Colors.primary)
+            }
+            .opacity(progress)
+            .scaleEffect(0.7 + 0.4 * progress)
+            .padding(.trailing, 8)
+
+            bubbleRow
+                .offset(x: swipeOffset)
+        }
+        .contentShape(Rectangle())
+        // Long-press only — a 0-distance DragGesture for "press feedback"
+        // was eating every vertical scroll touch and freezing the chat
+        // thread. Long-press alone is enough; SwiftUI handles its own
+        // scroll-vs-press disambiguation.
+        .onLongPressGesture(minimumDuration: 0.28, maximumDistance: 12, perform: {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            onLongPress()
+        }, onPressingChanged: { pressing in
+            isPressing = pressing
+        })
+        // Horizontal swipe-to-reply. minimumDistance:18 keeps vertical scroll
+        // responsive — SwiftUI only routes the drag here once the gesture is
+        // clearly horizontal.
+        .gesture(
+            DragGesture(minimumDistance: 18)
+                .onChanged { value in
+                    // Only react to predominantly-horizontal leftward drags.
+                    guard abs(value.translation.width) > abs(value.translation.height),
+                          value.translation.width < 0 else { return }
+                    // Rubber-band past the threshold.
+                    let raw = value.translation.width
+                    let capped = max(raw, -120)
+                    swipeOffset = capped
+                    if !didFireReplyHaptic && capped <= -replyThreshold {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        didFireReplyHaptic = true
+                    } else if capped > -replyThreshold {
+                        didFireReplyHaptic = false
+                    }
+                }
+                .onEnded { value in
+                    let triggered = value.translation.width <= -replyThreshold
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+                        swipeOffset = 0
+                    }
+                    didFireReplyHaptic = false
+                    if triggered { onSwipeReply() }
+                }
+        )
+    }
+
+    private var bubbleRow: some View {
         HStack(alignment: .top, spacing: 10) {
             // Avatar (or spacer for grouped continuations)
             if grouped {
@@ -1193,17 +1264,6 @@ private struct DiscordStyleBubble: View {
         )
         .scaleEffect(isPressing ? 0.97 : 1.0)
         .animation(.spring(response: 0.25, dampingFraction: 0.75), value: isPressing)
-        .contentShape(Rectangle())
-        // Long-press only — a 0-distance DragGesture for "press feedback"
-        // was eating every vertical scroll touch and freezing the chat
-        // thread. Long-press alone is enough; SwiftUI handles its own
-        // scroll-vs-press disambiguation.
-        .onLongPressGesture(minimumDuration: 0.28, maximumDistance: 12, perform: {
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            onLongPress()
-        }, onPressingChanged: { pressing in
-            isPressing = pressing
-        })
     }
 
     @ViewBuilder
