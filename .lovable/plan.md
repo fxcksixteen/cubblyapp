@@ -1,35 +1,64 @@
-## Why Notes already works and chat doesn't
+## v0.1.7 fix plan
 
-`NotesView` / `NoteEditorView` push via a plain `NavigationStack` + standard `navigationTitle` + `.toolbar`. Because the system nav bar is visible, UIKit's `interactivePopGestureRecognizer` is wired up automatically — that's the silky edge swipe you like.
+### 1. Restore Discord-style chat header without iOS 26 default glass
+- Remove the SwiftUI `.toolbar` chat header that centered the avatar/name and introduced default system `Button` styling.
+- Bring back a fully custom Cubbly/Discord-style top bar inside `ChatView`:
+  - back chevron on the left
+  - avatar + name/status left-aligned next to it
+  - custom plain call/video icon buttons on the right
+  - no default toolbar buttons or centered title
+- Keep all buttons `.buttonStyle(.plain)` and visually custom so iOS 26 does not apply Liquid Glass/default button styling.
 
-`ChatView` (the chat thread) is different:
-1. It calls `.navigationBarHidden(true)` and draws its own `header` view.
-2. To get edge-swipe back it patches a `UIViewControllerRepresentable` (`EdgeSwipeBack.swift` → `enableEdgeSwipeBack()`) that pokes `interactivePopGestureRecognizer.delegate`. This works ~partially, but…
-3. Every message bubble installs a `DragGesture(minimumDistance: 18)` for swipe-to-reply (`ChatView.swift` ~L1148-1171). On the left edge those bubble drags start "winning" the gesture race, so the system pop gesture either never fires or fires inconsistently — exactly the bug you're describing.
+### 2. Make chat thread swipe-back use the native iOS gesture, not a fake swipe
+- Hide the system navigation bar again for the custom header.
+- Add a tiny UIKit bridge that only re-enables Apple’s built-in `interactivePopGestureRecognizer` while the chat is pushed in the `NavigationStack`.
+- Do not add a proprietary `DragGesture`/custom horizontal navigation animation.
+- Keep message swipe-to-reply from stealing the left edge by ignoring drags that begin in the edge-pop zone.
 
-The DM sidebar (`DMListView`) is the root of the `NavigationStack`, so there's nothing to swipe back to from it; the swipe you want there is really "from chat thread back to DM sidebar," which is the same fix.
+### 3. Fix chat layout/keyboard bottom reset
+- When the keyboard dismisses after tapping outside the composer, force the timeline to re-anchor to the newest message after the keyboard animation completes.
+- Keep the extra bottom breathing room above the input, but prevent the “empty keyboard-sized gap” from lingering.
+- Also retry the bottom scroll after initial load/content reflow so chat opens at the true newest message.
 
-## The fix — match Notes, delete the hack
+### 4. Change iOS chat attachments to queue before sending
+- Stop `AttachmentsPicker` and `fileImporter` from immediately sending files.
+- Store selected images/videos/files as pending attachments in `ChatView`.
+- Show a pending attachment preview strip above the composer with remove buttons.
+- Send attachments only when the user taps send, optionally with the typed caption, matching Discord/web/desktop behavior.
+- Upload then serialize with the existing `[attachments]...[/attachments]` format so all clients render the message correctly.
 
-1. **`ChatView.swift`**
-   - Remove `.navigationBarHidden(true)` and `.enableEdgeSwipeBack()`.
-   - Move the current custom `header` (avatar + name + presence + call button + menu) into a `.toolbar` with a `ToolbarItem(.principal)` for the title block and `.topBarTrailing` items for call + menu. Use `.navigationBarTitleDisplayMode(.inline)` so it stays compact like Notes/Discord.
-   - The system back chevron will appear automatically; we can hide just the back-button label with `.toolbar(.visible, for: .navigationBar)` + a custom `.topBarLeading` chevron only if we want the icon to stay Cubbly-branded. (Default chevron is fine — that's what Notes uses.)
-   - Result: zero custom code, the gesture is the OS's, identical to Notes.
+### 5. Fix personal notes image attachments
+- Make note image/video ingestion persist attachment metadata immediately after upload instead of relying only on the debounced note save.
+- Add a stronger PhotosPicker fallback path for images that do not load cleanly as raw `Data`.
+- Keep the attachment grid visible immediately after adding, and avoid later title/body autosaves overwriting the attachment list.
 
-2. **Stop the per-bubble swipe-to-reply from stealing the left edge**
-   - In `DiscordStyleBubble` (`ChatView.swift` ~L1148), gate the reply `DragGesture` so it only begins when the touch starts **outside the leftmost 24 pt** of the bubble's frame. Easiest implementation: track the gesture's `startLocation.x` in `onChanged` and bail out (`return`) if `startLocation.x < 24`. This guarantees the system edge-pop always wins on the left strip.
+### 6. Fix DM quick-menu sheet top cropping
+- Add safe top spacing/content padding inside `DMQuickMenuSheet` and tune the sheet detents so the header/avatar row is never clipped by the grabber or sheet top edge.
+- Keep the custom branded half-sheet; no return to generic iOS context menus.
 
-3. **Delete `ios-native/Sources/Cubbly/Shared/EdgeSwipeBack.swift`**
-   - No longer referenced after step 1; removing it makes future contributors stop reaching for the workaround.
+### 7. Lock the FriendsStrip to horizontal-only behavior
+- Move pull-to-refresh/vertical scrolling behavior off the entire DM screen and onto the conversation list only.
+- Keep the friend strip as a fixed-height horizontal `ScrollView(.horizontal)` so vertical swipes over it do not scroll/pull the DM sidebar.
 
-4. **No DM sidebar changes needed.** It's the root view; the navigation you want is "chat → back to DM sidebar," which step 1 fixes. If you later push other screens from the DM sidebar (settings, profile, etc.), they will all inherit the same default swipe-back automatically as long as they don't hide the nav bar.
+### 8. Make animated themes actually visible in iOS and web/desktop surfaces
+- iOS: add a reusable themed animated background layer and use it behind chat threads/DM sidebar/main surfaces, then make appropriate surfaces slightly translucent so Space/Sky/Snowy/Hills animations are visible instead of hidden by opaque `bgPrimary`.
+- Web/desktop/mobile: broaden the theme CSS selectors so animated backgrounds apply to the mobile root as well as the desktop `h-screen` root.
+- Ensure chat, DM/sidebar, and user-panel surfaces use translucent themed backgrounds for Space/Sky/Snowy/Hills without making modals/dialogs transparent.
+- Keep the server rail from reverting to flat Cubbly coloring when an animated shop theme is equipped.
 
-## Files touched
+### 9. Update displayed iOS version
+- Change `CubblyConfig.appVersion` from `0.1.6` to `0.1.7` so the You tab footer displays the correct version.
 
-- `ios-native/Sources/Cubbly/Features/Chat/ChatView.swift` — toolbar-ify header, drop `.navigationBarHidden` / `.enableEdgeSwipeBack`, gate bubble drag.
-- `ios-native/Sources/Cubbly/Shared/EdgeSwipeBack.swift` — delete.
-
-## Visual impact
-
-The chat header layout stays visually the same (same avatar, name, presence, call, menu), but it lives inside the standard `UINavigationBar` and gets the system back chevron on the leading side. This matches Notes exactly and unlocks the native edge swipe with zero proprietary gesture code.
+### Files expected to change
+- `ios-native/Sources/Cubbly/Features/Chat/ChatView.swift`
+- `ios-native/Sources/Cubbly/Features/Chat/AttachmentsPicker.swift`
+- `ios-native/Sources/Cubbly/Features/DMs/DMListView.swift`
+- `ios-native/Sources/Cubbly/Features/DMs/DMQuickMenuSheet.swift`
+- `ios-native/Sources/Cubbly/Features/DMs/FriendsStrip.swift`
+- `ios-native/Sources/Cubbly/Features/DMs/ServerRail.swift`
+- `ios-native/Sources/Cubbly/Features/Notes/NotesView.swift`
+- `ios-native/Sources/Cubbly/Core/Services/NotesStore.swift`
+- `ios-native/Sources/Cubbly/App/CubblyConfig.swift`
+- likely one small new shared iOS helper for the native pop gesture/background layer
+- `src/index.css`
+- possibly `src/pages/AppLayout.tsx` / theme background wrapper classes if CSS alone is not enough
