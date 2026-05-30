@@ -3,6 +3,7 @@ import PhotosUI
 import Photos
 import Supabase
 import Realtime
+import UniformTypeIdentifiers
 
 /// Discord-iOS-style 1:1 / group chat. All messages left-aligned with avatar
 /// + display name (just like Discord's mobile app), automatic infinite scroll
