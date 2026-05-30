@@ -1207,48 +1207,24 @@ private struct DiscordStyleBubble: View {
                 .offset(x: swipeOffset)
         }
         .contentShape(Rectangle())
-        // Long-press only — a 0-distance DragGesture for "press feedback"
-        // was eating every vertical scroll touch and freezing the chat
-        // thread. Long-press alone is enough; SwiftUI handles its own
-        // scroll-vs-press disambiguation.
+        // Long-press only. A 0-distance DragGesture here was eating every
+        // vertical scroll touch AND fighting with the system swipe-back —
+        // long-press alone is enough; SwiftUI handles scroll/press
+        // disambiguation cleanly and the press tint is delayed so a quick
+        // rightward swipe never "grabs" the bubble.
         .onLongPressGesture(minimumDuration: 0.28, maximumDistance: 12, perform: {
-            // If a rightward swipe-back is already in progress, do NOT fire
-            // the action menu — the user is navigating, not long-pressing.
-            guard !isSwipingBack else { return }
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             onLongPress()
         }, onPressingChanged: { pressing in
-            // Only paint the press tint AFTER a short hold-still — this
-            // stops the bubble from looking "grabbed" the instant a finger
-            // lands while the user is actually trying to swipe back to the
-            // DM sidebar from on top of a message.
             if pressing {
-                let work = DispatchWorkItem {
-                    if !isSwipingBack { isPressing = true }
-                }
+                let work = DispatchWorkItem { isPressing = true }
                 pressDelayWork = work
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.16, execute: work)
             } else {
                 pressDelayWork?.cancel(); pressDelayWork = nil
                 isPressing = false
             }
         })
-        // Detect a rightward drag starting in the leftish half of the row
-        // and immediately cancel the press feedback so the system
-        // interactive-pop gesture wins cleanly.
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { value in
-                    if value.translation.width > 6
-                        && abs(value.translation.width) > abs(value.translation.height)
-                        && value.startLocation.x < 200 {
-                        if !isSwipingBack { isSwipingBack = true }
-                        pressDelayWork?.cancel(); pressDelayWork = nil
-                        if isPressing { isPressing = false }
-                    }
-                }
-                .onEnded { _ in isSwipingBack = false }
-        )
         // Horizontal swipe-to-reply. minimumDistance:18 keeps vertical scroll
         // responsive — SwiftUI only routes the drag here once the gesture is
         // clearly horizontal. We also bail out when the touch starts within
