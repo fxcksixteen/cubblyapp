@@ -192,25 +192,34 @@ struct ChatView: View {
 
     // MARK: - Header
 
-    /// Compact title block shown inside the standard UINavigationBar
-    /// (avatar + name + presence). The system supplies the back chevron
-    /// on the leading side and the native edge-swipe-back gesture for free.
-    private var chatTitleView: some View {
+    /// Fully custom Discord-style chat header. We render this OURSELVES
+    /// (no `.toolbar`) so iOS 26 never paints its default Liquid Glass
+    /// buttons or centered nav title into the chat thread.
+    private var header: some View {
         HStack(spacing: 8) {
+            Button { dismiss() } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(Theme.Colors.textPrimary)
+                    .frame(width: 32, height: 36)
+            }
+            .buttonStyle(.plain)
+
             ZStack(alignment: .bottomTrailing) {
                 if conversation.isGroup && conversation.pictureURL == nil {
-                    GroupAvatar(members: conversation.members, size: 28)
+                    GroupAvatar(members: conversation.members, size: 32)
                 } else {
                     AvatarView(url: conversation.avatarURL,
-                               fallbackText: conversation.displayName, size: 28)
+                               fallbackText: conversation.displayName, size: 32)
                 }
                 if let other = conversation.otherUser {
                     let live = presence.effectiveStatus(for: other.userID, storedStatus: other.status)
                     StatusDot(rawStatus: live, isOnline: presence.isOnline(other.userID),
-                              size: 9, borderColor: Theme.Colors.bgPrimary)
+                              size: 10, borderColor: Theme.Colors.bgPrimary)
                         .offset(x: 2, y: 2)
                 }
             }
+
             VStack(alignment: .leading, spacing: 0) {
                 Text(conversation.displayName)
                     .font(Theme.Fonts.bodyMedium)
@@ -224,6 +233,65 @@ struct ChatView: View {
                         .lineLimit(1)
                 }
             }
+
+            Spacer(minLength: 4)
+
+            if !conversation.isGroup {
+                Button { startVoiceCall() } label: {
+                    SVGIcon(name: "call", size: 22, tint: Theme.Colors.textSecondary)
+                        .frame(width: 36, height: 36)
+                }
+                .buttonStyle(.plain)
+
+                Button { } label: {
+                    SVGIcon(name: "video-camera", size: 22,
+                            tint: Theme.Colors.textSecondary.opacity(0.45))
+                        .frame(width: 36, height: 36)
+                }
+                .buttonStyle(.plain)
+                .disabled(true)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(
+            themeStore.equippedShopThemeId != nil
+                ? AnyView(Theme.Colors.bgPrimary.opacity(0.55))
+                : AnyView(Theme.Colors.bgPrimary)
+        )
+        .overlay(Rectangle().fill(Theme.Colors.divider).frame(height: 1), alignment: .bottom)
+    }
+
+    /// Translucent chat background — when a Shop theme is equipped, drop the
+    /// solid `bgPrimary` so the animated theme behind the tab stack actually
+    /// shows through inside the chat thread.
+    @ViewBuilder
+    private var chatBackground: some View {
+        if themeStore.equippedShopThemeId != nil {
+            Theme.Colors.bgPrimary.opacity(0.55)
+        } else {
+            Theme.Colors.bgPrimary
+        }
+    }
+
+    /// Pending attachments preview — Discord-style chip strip that sits ABOVE
+    /// the composer while the user is staging files. Tapping × removes one.
+    @ViewBuilder
+    private var pendingAttachmentsBar: some View {
+        if !pendingAttachments.isEmpty {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(pendingAttachments) { p in
+                        PendingAttachmentChip(item: p) {
+                            pendingAttachments.removeAll { $0.id == p.id }
+                        }
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+            }
+            .background(Theme.Colors.bgSecondary)
+            .overlay(Rectangle().fill(Theme.Colors.divider).frame(height: 1), alignment: .top)
         }
     }
 
