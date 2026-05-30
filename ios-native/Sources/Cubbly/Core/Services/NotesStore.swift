@@ -300,7 +300,7 @@ final class NotesStore: ObservableObject {
 
     /// Encrypt raw bytes with the vault key and upload to Supabase Storage.
     /// Returns metadata to attach to the note. Matches web shape exactly.
-    func uploadAttachment(data: Data, name: String, mime: String) async throws -> NoteAttachment {
+    func uploadAttachment(data: Data, name: String, mime: String, noteId: UUID? = nil) async throws -> NoteAttachment {
         guard let key = key, let uid = currentUserId else {
             throw NSError(domain: "Notes", code: 10, userInfo: [NSLocalizedDescriptionKey: "Locked"])
         }
@@ -310,9 +310,25 @@ final class NotesStore: ObservableObject {
         let cipherWithTag = sealed.ciphertext + sealed.tag
         let id = UUID().uuidString
         let storagePath = "\(uid.uuidString)/\(id).bin"
+        // Mirror src/contexts/NotesContext.tsx — store iv + original metadata
+        // as Storage user_metadata so a single attachment is still recoverable
+        // if the note JSON ever loses its attachment list (e.g. after a body
+        // re-encryption). Without this, "lost" .bin files can never be
+        // decrypted because the iv is gone.
+        let meta: [String: String] = [
+            "iv": iv,
+            "originalName": name,
+            "mime": mime,
+            "size": String(data.count),
+            "noteId": noteId?.uuidString ?? ""
+        ]
         _ = try await client.storage.from("notes-attachments")
             .upload(storagePath, data: cipherWithTag,
-                    options: FileOptions(contentType: "application/octet-stream", upsert: false))
+                    options: FileOptions(
+                        contentType: "application/octet-stream",
+                        upsert: false,
+                        metadata: meta
+                    ))
         return NoteAttachment(id: id, name: name, mime: mime, size: data.count,
                               storagePath: storagePath, iv: iv)
     }
