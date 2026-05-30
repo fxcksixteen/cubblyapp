@@ -426,6 +426,12 @@ private struct DMRow: View {
                         UserBadgesRow(userID: other.userID, size: 13)
                     }
                 }
+                .onAppear {
+                    if let uid = conversation.otherUser?.userID {
+                        UserBadgesStore.shared.request(uid)
+                        NameColorsStore.shared.request(uid)
+                    }
+                }
                 if let label = activityLabel {
                     HStack(spacing: 4) {
                         SVGIcon(name: "activity", size: 12, tint: Theme.Colors.success)
