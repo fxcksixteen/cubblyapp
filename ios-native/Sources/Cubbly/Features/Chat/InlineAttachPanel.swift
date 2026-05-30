@@ -97,8 +97,6 @@ struct InlineAttachPanel: View {
             .animation(.spring(response: 0.3, dampingFraction: 0.8), value: selected.isEmpty)
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
-            .background(Theme.Colors.bgPrimary)
-            .overlay(Rectangle().fill(Theme.Colors.divider).frame(height: 1), alignment: .top)
         }
         .frame(height: height)
         .background(Theme.Colors.bgSecondary)
