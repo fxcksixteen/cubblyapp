@@ -772,9 +772,24 @@ struct ChatView: View {
 
     private func send() async {
         let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        let staged = pendingAttachments
+        guard !trimmed.isEmpty || !staged.isEmpty else { return }
         draft = ""
-        await sendRaw(content: trimmed)
+        pendingAttachments = []
+        if !staged.isEmpty {
+            await sendAttachments(urls: staged.map(\.url), caption: trimmed)
+        } else {
+            await sendRaw(content: trimmed)
+        }
+    }
+
+    /// Queue files for the user to review/caption before sending — Discord-,
+    /// web-, and desktop-style behavior. Tapping send sends them all in a
+    /// single message (with optional text caption).
+    fileprivate func enqueueAttachments(urls: [URL]) {
+        for url in urls {
+            pendingAttachments.append(PendingChatAttachment(id: UUID(), url: url))
+        }
     }
 
     private func sendRaw(content: String) async {
