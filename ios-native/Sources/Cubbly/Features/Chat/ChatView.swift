@@ -69,9 +69,11 @@ struct ChatView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(chatBackground)
-        // Use the REAL system navigation bar so iOS owns the interactive
-        // push/pop transition — same as Personal Notes. The Discord-style
-        // header lives in `.toolbar` below (flat icons, no glass capsules).
+        // Keep ChatView as a completely normal pushed NavigationStack
+        // destination, exactly like NotesView. Do NOT replace the system
+        // leading/back item: iOS only gives us the catchable interactive
+        // push/pop transition when its own navigation chrome remains in charge.
+        .navigationTitle(conversation.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Theme.Colors.bgPrimary, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
@@ -189,63 +191,65 @@ struct ChatView: View {
         }
     }
 
-    // MARK: - Toolbar (Discord-style flat header in the REAL nav bar)
+    // MARK: - Toolbar (native nav chrome preserved for iOS swipe)
 
     @ToolbarContentBuilder
     private var chatToolbar: some ToolbarContent {
-        ToolbarItem(placement: .topBarLeading) {
-            HStack(spacing: 8) {
-                ZStack(alignment: .bottomTrailing) {
-                    if conversation.isGroup && conversation.pictureURL == nil {
-                        GroupAvatar(members: conversation.members, size: 28)
-                    } else {
-                        AvatarView(url: conversation.avatarURL,
-                                   fallbackText: conversation.displayName, size: 28)
-                    }
-                    if let other = conversation.otherUser {
-                        let live = presence.effectiveStatus(for: other.userID, storedStatus: other.status)
-                        StatusDot(rawStatus: live, isOnline: presence.isOnline(other.userID),
-                                  size: 9, borderColor: Theme.Colors.bgPrimary)
-                            .offset(x: 2, y: 2)
+        ToolbarItem(placement: .principal) {
+            chatToolbarTitle
+        }
+        if !conversation.isGroup {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button { startVoiceCall() } label: {
+                    SVGIcon(name: "call", size: 21, tint: Theme.Colors.textSecondary)
+                }
+                .buttonStyle(.plain)
+                Button { } label: {
+                    SVGIcon(name: "video-camera", size: 21, tint: Theme.Colors.textSecondary.opacity(0.45))
+                }
+                .disabled(true)
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private var chatToolbarTitle: some View {
+        HStack(spacing: 8) {
+            ZStack(alignment: .bottomTrailing) {
+                if conversation.isGroup && conversation.pictureURL == nil {
+                    GroupAvatar(members: conversation.members, size: 30)
+                } else {
+                    AvatarView(url: conversation.avatarURL, fallbackText: conversation.displayName, size: 30)
+                }
+                if let other = conversation.otherUser {
+                    let live = presence.effectiveStatus(for: other.userID, storedStatus: other.status)
+                    StatusDot(rawStatus: live, isOnline: presence.isOnline(other.userID), size: 9, borderColor: Theme.Colors.bgPrimary)
+                        .offset(x: 2, y: 2)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 4) {
+                    Text(conversation.displayName)
+                        .font(Theme.Fonts.bodyMedium)
+                        .foregroundStyle(Theme.Colors.textPrimary)
+                        .lineLimit(1)
+                    if !conversation.isGroup, let other = conversation.otherUser {
+                        UserBadgesRow(userID: other.userID, size: 12)
                     }
                 }
-                VStack(alignment: .leading, spacing: 0) {
-                    HStack(spacing: 4) {
-                        Text(conversation.displayName)
-                            .font(Theme.Fonts.bodyMedium)
-                            .foregroundStyle(Theme.Colors.textPrimary)
-                            .lineLimit(1)
-                        if !conversation.isGroup, let other = conversation.otherUser {
-                            UserBadgesRow(userID: other.userID, size: 12)
-                        }
-                    }
-                    if let other = conversation.otherUser {
-                        let live = presence.effectiveStatus(for: other.userID, storedStatus: other.status)
-                        Text(live.capitalized)
-                            .font(.cubbly(10))
-                            .foregroundStyle(Theme.Colors.textSecondary)
-                            .lineLimit(1)
-                    }
-                }
-                .onAppear {
-                    if let uid = conversation.otherUser?.userID {
-                        UserBadgesStore.shared.request(uid)
-                    }
+                if let other = conversation.otherUser {
+                    let live = presence.effectiveStatus(for: other.userID, storedStatus: other.status)
+                    Text(live.capitalized)
+                        .font(.cubbly(10))
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .lineLimit(1)
                 }
             }
         }
-        if !conversation.isGroup {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button(action: { startVoiceCall() }) {
-                    SVGIcon(name: "call", size: 20, tint: Theme.Colors.textSecondary)
-                }
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button(action: { }) {
-                    SVGIcon(name: "video-camera", size: 20,
-                            tint: Theme.Colors.textSecondary.opacity(0.45))
-                }
-                .disabled(true)
+        .onAppear {
+            if let uid = conversation.otherUser?.userID {
+                UserBadgesStore.shared.request(uid)
             }
         }
     }
