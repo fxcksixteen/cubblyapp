@@ -48,7 +48,6 @@ struct ChatView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
             ZStack {
                 if loading && messages.isEmpty {
                     ProgressView().tint(Theme.Colors.primary)
@@ -74,16 +73,29 @@ struct ChatView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(chatBackground)
-        // Hide the system nav bar via the modern toolbar API ONLY. The
-        // legacy `.navigationBarHidden(true)` modifier detaches the view
-        // from UIKit's UINavigationController chrome and silently disables
-        // the interactive-pop gesture — which is exactly why chat threads
-        // didn't feel like Personal Notes. The iOS 16+ toolbar API hides
-        // the bar visually while keeping the navigation controller intact,
-        // so the native swipe-back gesture works automatically (same as
-        // NotesView, which never hides anything at all).
-        .toolbar(.hidden, for: .navigationBar)
-        .navigationBarBackButtonHidden(true)
+        // Keep ChatView as a completely normal pushed NavigationStack
+        // destination, exactly like NotesView. Do NOT hide the nav bar or the
+        // system back button: iOS only gives us the catchable interactive pop
+        // transition when its own navigation chrome remains in charge.
+        .navigationTitle(conversation.displayName)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Theme.Colors.bgPrimary, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .principal) { chatToolbarTitle }
+            if !conversation.isGroup {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button { startVoiceCall() } label: {
+                        SVGIcon(name: "call", size: 21, tint: Theme.Colors.textSecondary)
+                    }
+                    Button { } label: {
+                        SVGIcon(name: "video-camera", size: 21,
+                                tint: Theme.Colors.textSecondary.opacity(0.45))
+                    }
+                    .disabled(true)
+                }
+            }
+        }
         .sheet(isPresented: $showGifPicker) {
             GiphyPickerView { url in
                 showGifPicker = false
