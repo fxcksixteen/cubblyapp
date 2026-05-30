@@ -14,7 +14,6 @@ struct ChatView: View {
 
     @EnvironmentObject private var session: SessionStore
     @EnvironmentObject private var presence: PresenceService
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var messages: [ChatMessage] = []
@@ -42,13 +41,11 @@ struct ChatView: View {
     @State private var pendingAttachments: [PendingChatAttachment] = []
     @FocusState private var composerFocused: Bool
     @StateObject private var reactions = MessageReactionsStore()
-    @ObservedObject private var themeStore = ThemeStore.shared
 
     private let repo = MessagesRepository()
 
     var body: some View {
         VStack(spacing: 0) {
-            header
             ZStack {
                 if loading && messages.isEmpty {
                     ProgressView().tint(Theme.Colors.primary)
@@ -74,16 +71,29 @@ struct ChatView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(chatBackground)
-        // Hide the system nav bar via the modern toolbar API ONLY. The
-        // legacy `.navigationBarHidden(true)` modifier detaches the view
-        // from UIKit's UINavigationController chrome and silently disables
-        // the interactive-pop gesture — which is exactly why chat threads
-        // didn't feel like Personal Notes. The iOS 16+ toolbar API hides
-        // the bar visually while keeping the navigation controller intact,
-        // so the native swipe-back gesture works automatically (same as
-        // NotesView, which never hides anything at all).
-        .toolbar(.hidden, for: .navigationBar)
-        .navigationBarBackButtonHidden(true)
+        // Keep ChatView as a completely normal pushed NavigationStack
+        // destination, exactly like NotesView. Do NOT hide the nav bar or the
+        // system back button: iOS only gives us the catchable interactive pop
+        // transition when its own navigation chrome remains in charge.
+        .navigationTitle(conversation.displayName)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Theme.Colors.bgPrimary, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .principal) { chatToolbarTitle }
+            if !conversation.isGroup {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button { startVoiceCall() } label: {
+                        SVGIcon(name: "call", size: 21, tint: Theme.Colors.textSecondary)
+                    }
+                    Button { } label: {
+                        SVGIcon(name: "video-camera", size: 21,
+                                tint: Theme.Colors.textSecondary.opacity(0.45))
+                    }
+                    .disabled(true)
+                }
+            }
+        }
         .sheet(isPresented: $showGifPicker) {
             GiphyPickerView { url in
                 showGifPicker = false
@@ -199,39 +209,36 @@ struct ChatView: View {
 
     // MARK: - Header
 
-    /// Fully custom Discord-style chat header. We render this OURSELVES
-    /// (no `.toolbar`) so iOS 26 never paints its default Liquid Glass
-    /// buttons or centered nav title into the chat thread.
-    private var header: some View {
+    /// Native NavigationStack title content. This keeps the thread connected
+    /// to the same iOS navigation controller as the DM sidebar (like Notes),
+    /// while still showing the Cubbly avatar/name/status in the bar.
+    private var chatToolbarTitle: some View {
         HStack(spacing: 8) {
-            Button { dismiss() } label: {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(Theme.Colors.textPrimary)
-                    .frame(width: 32, height: 36)
-            }
-            .buttonStyle(.plain)
-
             ZStack(alignment: .bottomTrailing) {
                 if conversation.isGroup && conversation.pictureURL == nil {
-                    GroupAvatar(members: conversation.members, size: 32)
+                    GroupAvatar(members: conversation.members, size: 30)
                 } else {
                     AvatarView(url: conversation.avatarURL,
-                               fallbackText: conversation.displayName, size: 32)
+                               fallbackText: conversation.displayName, size: 30)
                 }
                 if let other = conversation.otherUser {
                     let live = presence.effectiveStatus(for: other.userID, storedStatus: other.status)
                     StatusDot(rawStatus: live, isOnline: presence.isOnline(other.userID),
-                              size: 10, borderColor: Theme.Colors.bgPrimary)
+                              size: 9, borderColor: Theme.Colors.bgPrimary)
                         .offset(x: 2, y: 2)
                 }
             }
 
             VStack(alignment: .leading, spacing: 0) {
-                Text(conversation.displayName)
-                    .font(Theme.Fonts.bodyMedium)
-                    .foregroundStyle(Theme.Colors.textPrimary)
-                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    Text(conversation.displayName)
+                        .font(Theme.Fonts.bodyMedium)
+                        .foregroundStyle(Theme.Colors.textPrimary)
+                        .lineLimit(1)
+                    if !conversation.isGroup, let other = conversation.otherUser {
+                        UserBadgesRow(userID: other.userID, size: 12)
+                    }
+                }
                 if let other = conversation.otherUser {
                     let live = presence.effectiveStatus(for: other.userID, storedStatus: other.status)
                     Text(live.capitalized)
@@ -241,32 +248,12 @@ struct ChatView: View {
                 }
             }
 
-            Spacer(minLength: 4)
-
-            if !conversation.isGroup {
-                Button { startVoiceCall() } label: {
-                    SVGIcon(name: "call", size: 22, tint: Theme.Colors.textSecondary)
-                        .frame(width: 36, height: 36)
-                }
-                .buttonStyle(.plain)
-
-                Button { } label: {
-                    SVGIcon(name: "video-camera", size: 22,
-                            tint: Theme.Colors.textSecondary.opacity(0.45))
-                        .frame(width: 36, height: 36)
-                }
-                .buttonStyle(.plain)
-                .disabled(true)
+        }
+        .onAppear {
+            if let uid = conversation.otherUser?.userID {
+                UserBadgesStore.shared.request(uid)
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .background(
-            themeStore.equippedShopThemeId != nil
-                ? AnyView(Theme.Colors.bgPrimary.opacity(0.55))
-                : AnyView(Theme.Colors.bgPrimary)
-        )
-        .overlay(Rectangle().fill(Theme.Colors.divider).frame(height: 1), alignment: .bottom)
     }
 
     /// Translucent chat background — when a Shop theme is equipped, the
@@ -1223,7 +1210,7 @@ private struct DiscordStyleBubble: View {
         // clearly horizontal. We also bail out when the touch starts within
         // the leftmost 24pt so the system's left-edge interactive-pop gesture
         // (swipe back to the DM sidebar) always wins on the edge strip.
-        .gesture(
+        .simultaneousGesture(
             DragGesture(minimumDistance: 18)
                 .onChanged { value in
                     // Leave the left-edge strip to UIKit's pop gesture.

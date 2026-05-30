@@ -134,12 +134,13 @@ struct UserBadgesRow: View {
     @ObservedObject private var store = UserBadgesStore.shared
 
     var body: some View {
-        let list = userID.flatMap { store.badges[$0] } ?? []
+        let list = userID.flatMap { store.get($0) } ?? []
         HStack(spacing: 3) {
             ForEach(list) { b in
                 BadgeIcon(badge: b, size: size)
             }
         }
+        .fixedSize(horizontal: true, vertical: true)
         .onAppear { if let id = userID { store.request(id) } }
     }
 }
