@@ -1,6 +1,9 @@
 import SwiftUI
 import PhotosUI
 import AVKit
+import UIKit
+import UniformTypeIdentifiers
+import CoreTransferable
 
 /// Personal Notes — encrypted with the same PIN-derived key as web/desktop
 /// so the same vault is unlocked by the same PIN across every platform.
