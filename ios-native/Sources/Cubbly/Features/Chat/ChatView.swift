@@ -349,6 +349,13 @@ struct ChatView: View {
                             .id("call-\(e.id.uuidString)")
                         }
                     }
+                    // Bottom sentinel — invisible row anchored AFTER the
+                    // padding spacer, so `scrollTo("bottomSentinel")` lands
+                    // at the absolute bottom of the chat instead of clipping
+                    // to the last bubble's bottom edge.
+                    Color.clear
+                        .frame(height: 1)
+                        .id("bottomSentinel")
                 }
                 .padding(.top, 8)
                 .padding(.bottom, 28)
