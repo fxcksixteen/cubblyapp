@@ -143,7 +143,9 @@ struct DMListView: View {
                     convChannel = nil
                 }
             }
-            .refreshable { await load(silently: false) }
+            // No pull-to-refresh — matches web/desktop. The strip above is
+            // horizontal-only and realtime + .task already cover refresh.
+
         }
     }
 
