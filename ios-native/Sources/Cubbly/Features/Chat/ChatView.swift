@@ -46,9 +46,6 @@ struct ChatView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            Divider().background(Theme.Colors.divider)
-
             ZStack {
                 if loading && messages.isEmpty {
                     ProgressView().tint(Theme.Colors.primary)
@@ -65,10 +62,26 @@ struct ChatView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.Colors.bgPrimary)
-        .navigationBarHidden(true)
-        // Native iOS left-edge interactive pop — same gesture Personal Notes
-        // uses. No custom horizontal-swipe overlays.
-        .enableEdgeSwipeBack()
+        // Use the system navigation bar (same as Personal Notes) so the
+        // native left-edge interactive pop gesture works automatically —
+        // no proprietary swipe-back wiring required.
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Theme.Colors.bgPrimary, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .principal) { chatTitleView }
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button { startVoiceCall() } label: {
+                    SVGIcon(name: "call", size: 20, tint: Theme.Colors.textSecondary)
+                }
+                .disabled(conversation.isGroup)
+                Button {} label: {
+                    SVGIcon(name: "video-camera", size: 20,
+                            tint: Theme.Colors.textSecondary.opacity(0.4))
+                }
+                .disabled(true)
+            }
+        }
         .sheet(isPresented: $showGifPicker) {
             GiphyPickerView { url in
                 showGifPicker = false
