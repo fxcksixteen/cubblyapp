@@ -418,6 +418,15 @@ private struct NoteEditorView: View {
         .fullScreenCover(item: $previewImageData) { wrap in
             ImagePreview(data: wrap.data)
         }
+        .alert("Attachment failed",
+               isPresented: Binding(
+                get: { uploadError != nil },
+                set: { if !$0 { uploadError = nil } }
+               )) {
+            Button("OK", role: .cancel) { uploadError = nil }
+        } message: {
+            Text(uploadError ?? "")
+        }
     }
 
     private func loadIfNeeded() {
