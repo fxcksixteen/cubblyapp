@@ -80,17 +80,24 @@ struct ChatView: View {
         .toolbarBackground(Theme.Colors.bgPrimary, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbar {
-            ToolbarItem(placement: .principal) { chatToolbarTitle }
+            // LEFT-aligned avatar+name (Discord-style), placed next to the
+            // system back chevron. Using `.topBarLeading` instead of
+            // `.principal` so iOS does NOT center it in the bar.
+            ToolbarItem(placement: .topBarLeading) { chatToolbarTitle }
             if !conversation.isGroup {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button { startVoiceCall() } label: {
-                        SVGIcon(name: "call", size: 21, tint: Theme.Colors.textSecondary)
+                ToolbarItem(placement: .topBarTrailing) {
+                    HStack(spacing: 14) {
+                        Button(action: { startVoiceCall() }) {
+                            SVGIcon(name: "call", size: 21, tint: Theme.Colors.textSecondary)
+                        }
+                        .buttonStyle(.plain)
+                        Button(action: { }) {
+                            SVGIcon(name: "video-camera", size: 21,
+                                    tint: Theme.Colors.textSecondary.opacity(0.45))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(true)
                     }
-                    Button { } label: {
-                        SVGIcon(name: "video-camera", size: 21,
-                                tint: Theme.Colors.textSecondary.opacity(0.45))
-                    }
-                    .disabled(true)
                 }
             }
         }
