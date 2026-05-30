@@ -128,6 +128,9 @@ struct DMListView: View {
                 } else {
                     await load(silently: true)
                 }
+                if let me = session.currentUserID {
+                    await dmPrefs.loadIfNeeded(userID: me)
+                }
                 await subscribeRealtime()
             }
             .onDisappear {
