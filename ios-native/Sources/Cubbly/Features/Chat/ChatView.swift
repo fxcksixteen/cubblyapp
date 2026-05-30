@@ -302,7 +302,7 @@ struct ChatView: View {
                     }
                 }
                 .padding(.top, 8)
-                .padding(.bottom, 6)
+                .padding(.bottom, 16)
             }
             .scrollDismissesKeyboard(.interactively)
             .simultaneousGesture(TapGesture().onEnded { composerFocused = false })
