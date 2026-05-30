@@ -92,12 +92,9 @@ struct ChatView: View {
             .environmentObject(session)
             .presentationDetents([.medium, .large])
         }
-        .sheet(isPresented: $showAttachments) {
-            AttachmentsPicker { urls in
-                enqueueAttachments(urls: urls)
-            }
-            .presentationDetents([.fraction(0.55), .large])
-        }
+        // (Old AttachmentsPicker sheet removed — the inline attach panel now
+        // owns the primary attach flow. AttachmentsPicker still exists for
+        // edge-case fallbacks but is no longer presented here.)
         .sheet(item: $actionSheetMessage) { msg in
             MessageActionMenuView(
                 message: msg,
