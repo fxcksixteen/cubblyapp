@@ -148,6 +148,9 @@ final class ThemeStore: ObservableObject {
         case "theme_synthwave":       return [Color(hex: 0x150a2e), Color(hex: 0x2a0e5e), Color(hex: 0x5b1f8e), Color(hex: 0x150a2e)]
         case "theme_lava_flow":       return [Color(hex: 0x1f0a06), Color(hex: 0x5a1408), Color(hex: 0xb03a14), Color(hex: 0x5a1408)]
         case "theme_borealis":        return [Color(hex: 0x08131c), Color(hex: 0x0e3a4a), Color(hex: 0x1e7a6e), Color(hex: 0x6ee7b7), Color(hex: 0x0e3a4a)]
+        case "theme_sky_dusk":        return [Color(hex: 0x1B2658), Color(hex: 0x4B3A78), Color(hex: 0xE48A5E), Color(hex: 0xF5BE7A)]
+        case "theme_snowy_drift":     return [Color(hex: 0x0E1A2C), Color(hex: 0x1B2B45), Color(hex: 0x2C4063)]
+        case "theme_moonlit_hills":   return [Color(hex: 0x070A1A), Color(hex: 0x0E1438), Color(hex: 0x1C2455), Color(hex: 0x14213D)]
         default: return []
         }
     }
@@ -163,6 +166,9 @@ final class ThemeStore: ObservableObject {
         case "theme_synthwave":       return "synthwave"
         case "theme_lava_flow":       return "lava"
         case "theme_borealis":        return "borealis"
+        case "theme_sky_dusk":        return "sky"
+        case "theme_snowy_drift":     return "snowy"
+        case "theme_moonlit_hills":   return "hills"
         default: return "default"
         }
     }
