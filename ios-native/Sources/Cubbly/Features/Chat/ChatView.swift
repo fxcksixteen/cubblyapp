@@ -46,6 +46,12 @@ struct ChatView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Discord-style flat header — drawn inside the view so iOS 26
+            // does NOT wrap our buttons in liquid-glass capsules. Nav bar
+            // is hidden and the system back gesture is preserved by
+            // `nativeEdgeSwipeBack()`.
+            chatHeader
+
             ZStack {
                 if loading && messages.isEmpty {
                     ProgressView().tint(Theme.Colors.primary)
@@ -71,36 +77,13 @@ struct ChatView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(chatBackground)
-        // Keep ChatView as a completely normal pushed NavigationStack
-        // destination, exactly like NotesView. Do NOT hide the nav bar or the
-        // system back button: iOS only gives us the catchable interactive pop
-        // transition when its own navigation chrome remains in charge.
-        .navigationTitle(conversation.displayName)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(Theme.Colors.bgPrimary, for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
-        .toolbar {
-            // LEFT-aligned avatar+name (Discord-style), placed next to the
-            // system back chevron. Using `.topBarLeading` instead of
-            // `.principal` so iOS does NOT center it in the bar.
-            ToolbarItem(placement: .topBarLeading) { chatToolbarTitle }
-            if !conversation.isGroup {
-                ToolbarItem(placement: .topBarTrailing) {
-                    HStack(spacing: 14) {
-                        Button(action: { startVoiceCall() }) {
-                            SVGIcon(name: "call", size: 21, tint: Theme.Colors.textSecondary)
-                        }
-                        .buttonStyle(.plain)
-                        Button(action: { }) {
-                            SVGIcon(name: "video-camera", size: 21,
-                                    tint: Theme.Colors.textSecondary.opacity(0.45))
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(true)
-                    }
-                }
-            }
-        }
+        // Hide the system nav bar entirely so we render a fully flat,
+        // Discord-style header with zero iOS-26 glass effects. The
+        // interactive pop gesture (swipe-back into the DM sidebar) is
+        // kept alive by `nativeEdgeSwipeBack()`.
+        .navigationBarHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
+        .nativeEdgeSwipeBack()
         .sheet(isPresented: $showGifPicker) {
             GiphyPickerView { url in
                 showGifPicker = false
@@ -216,11 +199,23 @@ struct ChatView: View {
 
     // MARK: - Header
 
-    /// Native NavigationStack title content. This keeps the thread connected
-    /// to the same iOS navigation controller as the DM sidebar (like Notes),
-    /// while still showing the Cubbly avatar/name/status in the bar.
-    private var chatToolbarTitle: some View {
-        HStack(spacing: 8) {
+    @Environment(\.dismiss) private var dismiss
+
+    /// Flat Discord-style top bar drawn INSIDE the view (not via toolbar)
+    /// so iOS 26's liquid-glass capsule treatment never applies. Back
+    /// chevron on the far left, avatar + name + status on the left,
+    /// call/video icons on the far right — all using our own theme tokens.
+    private var chatHeader: some View {
+        HStack(spacing: 10) {
+            Button(action: { dismiss() }) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundStyle(Theme.Colors.textPrimary)
+                    .frame(width: 28, height: 36)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
             ZStack(alignment: .bottomTrailing) {
                 if conversation.isGroup && conversation.pictureURL == nil {
                     GroupAvatar(members: conversation.members, size: 30)
@@ -255,7 +250,28 @@ struct ChatView: View {
                 }
             }
 
+            Spacer(minLength: 8)
+
+            if !conversation.isGroup {
+                HStack(spacing: 18) {
+                    Button(action: { startVoiceCall() }) {
+                        SVGIcon(name: "call", size: 22, tint: Theme.Colors.textSecondary)
+                    }
+                    .buttonStyle(.plain)
+                    Button(action: { }) {
+                        SVGIcon(name: "video-camera", size: 22,
+                                tint: Theme.Colors.textSecondary.opacity(0.45))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(true)
+                }
+            }
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+        .background(Theme.Colors.bgPrimary)
+        .overlay(Rectangle().fill(Theme.Colors.divider).frame(height: 1), alignment: .bottom)
         .onAppear {
             if let uid = conversation.otherUser?.userID {
                 UserBadgesStore.shared.request(uid)
@@ -1172,7 +1188,7 @@ private struct DiscordStyleBubble: View {
     /// hold-still. Cancelled the instant we see a rightward swipe so
     /// messages don't visually "grab" when the user is navigating back.
     @State private var pressDelayWork: DispatchWorkItem?
-    @State private var isSwipingBack: Bool = false
+    
     /// Horizontal drag offset (only allowed leftwards). Drives the
     /// Discord-style swipe-to-reply animation.
     @State private var swipeOffset: CGFloat = 0
@@ -1207,48 +1223,24 @@ private struct DiscordStyleBubble: View {
                 .offset(x: swipeOffset)
         }
         .contentShape(Rectangle())
-        // Long-press only — a 0-distance DragGesture for "press feedback"
-        // was eating every vertical scroll touch and freezing the chat
-        // thread. Long-press alone is enough; SwiftUI handles its own
-        // scroll-vs-press disambiguation.
+        // Long-press only. A 0-distance DragGesture here was eating every
+        // vertical scroll touch AND fighting with the system swipe-back —
+        // long-press alone is enough; SwiftUI handles scroll/press
+        // disambiguation cleanly and the press tint is delayed so a quick
+        // rightward swipe never "grabs" the bubble.
         .onLongPressGesture(minimumDuration: 0.28, maximumDistance: 12, perform: {
-            // If a rightward swipe-back is already in progress, do NOT fire
-            // the action menu — the user is navigating, not long-pressing.
-            guard !isSwipingBack else { return }
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             onLongPress()
         }, onPressingChanged: { pressing in
-            // Only paint the press tint AFTER a short hold-still — this
-            // stops the bubble from looking "grabbed" the instant a finger
-            // lands while the user is actually trying to swipe back to the
-            // DM sidebar from on top of a message.
             if pressing {
-                let work = DispatchWorkItem {
-                    if !isSwipingBack { isPressing = true }
-                }
+                let work = DispatchWorkItem { isPressing = true }
                 pressDelayWork = work
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.16, execute: work)
             } else {
                 pressDelayWork?.cancel(); pressDelayWork = nil
                 isPressing = false
             }
         })
-        // Detect a rightward drag starting in the leftish half of the row
-        // and immediately cancel the press feedback so the system
-        // interactive-pop gesture wins cleanly.
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { value in
-                    if value.translation.width > 6
-                        && abs(value.translation.width) > abs(value.translation.height)
-                        && value.startLocation.x < 200 {
-                        if !isSwipingBack { isSwipingBack = true }
-                        pressDelayWork?.cancel(); pressDelayWork = nil
-                        if isPressing { isPressing = false }
-                    }
-                }
-                .onEnded { _ in isSwipingBack = false }
-        )
         // Horizontal swipe-to-reply. minimumDistance:18 keeps vertical scroll
         // responsive — SwiftUI only routes the drag here once the gesture is
         // clearly horizontal. We also bail out when the touch starts within

@@ -47,16 +47,29 @@ struct InlineAttachPanel: View {
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            // Bottom action bar — Photos + Files always visible. When at
-            // least one tile is selected, a Discord-blue "Add (N)" pill
-            // appears on the right to commit the selection.
+            // Floating pill bottom bar — Photos + Files in a single
+            // capsule that hovers over the grid. When at least one tile is
+            // selected, an "Add (N)" pill appears next to it.
             HStack(spacing: 10) {
-                actionPill(title: "Photos", systemImage: "photo.on.rectangle.angled") {
-                    showSystemPhotos = true
+                HStack(spacing: 0) {
+                    pillButton(title: "Photos", systemImage: "photo.on.rectangle.angled") {
+                        showSystemPhotos = true
+                    }
+                    Rectangle()
+                        .fill(Theme.Colors.divider.opacity(0.6))
+                        .frame(width: 1, height: 22)
+                    pillButton(title: "Files", systemImage: "paperclip") {
+                        showFilePicker = true
+                    }
                 }
-                actionPill(title: "Files", systemImage: "paperclip") {
-                    showFilePicker = true
-                }
+                .background(
+                    Capsule().fill(Theme.Colors.bgTertiary)
+                )
+                .overlay(
+                    Capsule().stroke(Color.white.opacity(0.06), lineWidth: 0.5)
+                )
+                .shadow(color: .black.opacity(0.25), radius: 8, y: 3)
+
                 if !selected.isEmpty {
                     Button {
                         Task { await commitSelection() }
@@ -66,24 +79,24 @@ struct InlineAttachPanel: View {
                                 ProgressView().tint(.white).scaleEffect(0.8)
                             } else {
                                 Image(systemName: "paperplane.fill")
-                                    .font(.system(size: 14, weight: .bold))
+                                    .font(.system(size: 13, weight: .bold))
                             }
                             Text("Add (\(selected.count))")
                                 .font(Theme.Fonts.bodyMedium)
                         }
                         .foregroundStyle(.white)
-                        .padding(.horizontal, 16).padding(.vertical, 9)
-                        .background(Theme.Colors.primary)
-                        .clipShape(Capsule())
+                        .padding(.horizontal, 16).padding(.vertical, 10)
+                        .background(Capsule().fill(Theme.Colors.primary))
+                        .shadow(color: Theme.Colors.primary.opacity(0.35), radius: 8, y: 3)
                     }
                     .buttonStyle(.plain)
                     .disabled(exporting)
+                    .transition(.scale.combined(with: .opacity))
                 }
             }
+            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: selected.isEmpty)
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
-            .background(Theme.Colors.bgPrimary)
-            .overlay(Rectangle().fill(Theme.Colors.divider).frame(height: 1), alignment: .top)
         }
         .frame(height: height)
         .background(Theme.Colors.bgSecondary)
@@ -191,17 +204,17 @@ struct InlineAttachPanel: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func actionPill(title: String, systemImage: String, action: @escaping () -> Void) -> some View {
+    /// Single segment of the floating Photos/Files pill.
+    private func pillButton(title: String, systemImage: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 6) {
                 Image(systemName: systemImage)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold))
                 Text(title).font(Theme.Fonts.bodyMedium)
             }
             .foregroundStyle(Theme.Colors.textPrimary)
-            .padding(.horizontal, 14).padding(.vertical, 9)
-            .background(Theme.Colors.bgTertiary)
-            .clipShape(Capsule())
+            .padding(.horizontal, 18).padding(.vertical, 11)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }

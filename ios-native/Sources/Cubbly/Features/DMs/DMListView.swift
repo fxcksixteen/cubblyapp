@@ -316,6 +316,14 @@ struct DMListView: View {
             let next = try await ConversationsRepository().listSummaries(currentUserID: userID)
             cache.conversations = next
             cache.lastLoaded = Date()
+            // Prefetch friend badges + name colors in one batch so they're
+            // already in the cache by the time DM rows render.
+            for conv in next {
+                if let uid = conv.otherUser?.userID {
+                    UserBadgesStore.shared.request(uid)
+                    NameColorsStore.shared.request(uid)
+                }
+            }
             errorMessage = nil
         } catch is CancellationError {
             errorMessage = nil
