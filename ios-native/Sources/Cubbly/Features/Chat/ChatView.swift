@@ -41,7 +41,6 @@ struct ChatView: View {
     @State private var pendingAttachments: [PendingChatAttachment] = []
     @FocusState private var composerFocused: Bool
     @StateObject private var reactions = MessageReactionsStore()
-    @ObservedObject private var themeStore = ThemeStore.shared
 
     private let repo = MessagesRepository()
 
