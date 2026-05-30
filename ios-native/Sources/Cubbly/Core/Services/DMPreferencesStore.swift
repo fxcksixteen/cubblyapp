@@ -39,7 +39,7 @@ final class DMPreferencesStore: ObservableObject {
         let pinned_at: String?
     }
 
-    private var client: SupabaseClient { SupabaseClientFactory.shared }
+    private var client: SupabaseClient { SupabaseManager.shared.client }
 
     func loadIfNeeded(userID: UUID) async {
         guard !loaded else { return }
