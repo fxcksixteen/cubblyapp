@@ -366,39 +366,43 @@ struct ChatView: View {
                 // Only snap to the new last message — NOT on every count
                 // change, otherwise prepending older messages while
                 // paginating yanks the user back down to the bottom.
-                if let last = messages.last?.id {
+                // Scroll past the last bubble into the bottom padding so the
+                // composer never appears to "kiss" the latest message.
+                if messages.last != nil {
                     withAnimation(.easeOut(duration: 0.18)) {
-                        proxy.scrollTo(last, anchor: .bottom)
+                        proxy.scrollTo("bottomSentinel", anchor: .bottom)
                     }
                 }
             }
             .onChange(of: composerFocused) { _, focused in
-                // When the keyboard rises OR drops, re-anchor to the newest
-                // message so dismissing the keyboard never leaves a phantom
+                // When the keyboard rises OR drops, re-anchor to the very
+                // bottom so dismissing the keyboard never leaves a phantom
                 // keyboard-sized gap below the last bubble.
-                if let last = messages.last?.id {
+                if messages.last != nil {
                     let delay = focused ? 0.15 : 0.30
                     DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
                         withAnimation(.easeOut(duration: 0.22)) {
-                            proxy.scrollTo(last, anchor: .bottom)
+                            proxy.scrollTo("bottomSentinel", anchor: .bottom)
                         }
                     }
                 }
             }
             .onAppear {
-                if let last = messages.last?.id { proxy.scrollTo(last, anchor: .bottom) }
+                if messages.last != nil {
+                    proxy.scrollTo("bottomSentinel", anchor: .bottom)
+                }
             }
             .onChange(of: scrollToBottomTrigger) { _, _ in
-                // Forced jump to the true latest message after initial
-                // hydration / re-entry. Multiple passes so the bubble layout
-                // has settled (avatars, link previews, attachments loading
-                // asynchronously) before each retry, otherwise the chat
-                // appears "stuck" a few messages up from the latest.
-                guard let last = messages.last?.id else { return }
-                proxy.scrollTo(last, anchor: .bottom)
+                // Forced jump to the true bottom after initial hydration /
+                // re-entry. Multiple passes so the bubble layout has settled
+                // (avatars, link previews, attachments loading asynchronously)
+                // before each retry, otherwise the chat appears "stuck" a few
+                // messages up from the latest.
+                guard messages.last != nil else { return }
+                proxy.scrollTo("bottomSentinel", anchor: .bottom)
                 for delay in [0.05, 0.18, 0.4, 0.8, 1.4] {
                     DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                        proxy.scrollTo(last, anchor: .bottom)
+                        proxy.scrollTo("bottomSentinel", anchor: .bottom)
                     }
                 }
             }
