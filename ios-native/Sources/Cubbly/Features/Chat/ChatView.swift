@@ -65,6 +65,14 @@ struct ChatView: View {
             replyBar
             pendingAttachmentsBar
             composer
+            // Discord-style inline attachment panel — takes the keyboard's
+            // place when "+" is tapped. Slides up from below.
+            if attachPanelOpen {
+                InlineAttachPanel(height: kbTracker.lastHeight) { urls in
+                    enqueueAttachments(urls: urls)
+                }
+                .transition(.move(edge: .bottom))
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(chatBackground)
