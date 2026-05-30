@@ -11,6 +11,7 @@ struct DMListView: View {
     @EnvironmentObject private var presence: PresenceService
     @ObservedObject private var lastChat = LastChatStore.shared
     @ObservedObject private var cache = ConversationsCache.shared
+    @ObservedObject private var dmPrefs = DMPreferencesStore.shared
 
     @State private var errorMessage: String?
     @State private var search: String = ""
@@ -85,25 +86,32 @@ struct DMListView: View {
                     .presentationDragIndicator(.visible)
             }
             .sheet(item: $quickMenuConversation) { conv in
+                let peerID = conv.otherUser?.userID
                 DMQuickMenuSheet(
                     conversation: conv,
-                    isPinned: false,
+                    isPinned: peerID.map { dmPrefs.isPinned($0) } ?? false,
                     onOpen: { openConversation = conv },
                     onViewProfile: {
                         if let other = conv.otherUser { profilePopupUserID = other.userID }
                     },
                     onCloseDM: {
-                        // TODO: wire to ConversationsRepository().hide(...) once available
+                        if let me = session.currentUserID, let peer = peerID {
+                            Task { await dmPrefs.setHidden(userID: me, peer: peer, hidden: true) }
+                        }
                     },
                     onTogglePin: {
-                        // TODO: per-user pin state — not yet stored on iOS
+                        if let me = session.currentUserID, let peer = peerID {
+                            Task { await dmPrefs.togglePin(userID: me, peer: peer) }
+                        }
                     },
                     onMarkAsRead: {
                         Task { try? await ConversationsRepository().markRead(conversationID: conv.id) }
                         UnreadCountsStore.shared.clearLocal(conversationID: conv.id)
                     },
                     onMuteToggle: {
-                        // TODO: mute toggle — not yet stored on iOS
+                        if let me = session.currentUserID, let peer = peerID {
+                            Task { await dmPrefs.toggleMute(userID: me, peer: peer) }
+                        }
                     },
                     onCopyID: {
                         UIPasteboard.general.string = conv.id.uuidString
@@ -119,6 +127,9 @@ struct DMListView: View {
                     await load(silently: !cache.conversations.isEmpty)
                 } else {
                     await load(silently: true)
+                }
+                if let me = session.currentUserID {
+                    await dmPrefs.loadIfNeeded(userID: me)
                 }
                 await subscribeRealtime()
             }
@@ -232,11 +243,25 @@ struct DMListView: View {
     }
 
     private var filtered: [ConversationSummary] {
-        guard !search.isEmpty else { return cache.conversations }
-        let q = search.lowercased()
-        return cache.conversations.filter {
-            $0.displayName.lowercased().contains(q) ||
-            ($0.lastMessage?.lowercased().contains(q) ?? false)
+        // Hide conversations the user has dismissed via "Close DM".
+        let visible = cache.conversations.filter { conv in
+            if let peer = conv.otherUser?.userID, dmPrefs.isHidden(peer) { return false }
+            return true
+        }
+        let searched: [ConversationSummary] = {
+            guard !search.isEmpty else { return visible }
+            let q = search.lowercased()
+            return visible.filter {
+                $0.displayName.lowercased().contains(q) ||
+                ($0.lastMessage?.lowercased().contains(q) ?? false)
+            }
+        }()
+        // Pinned conversations sort to the top, preserving recency within each bucket.
+        return searched.sorted { a, b in
+            let ap = a.otherUser.map { dmPrefs.isPinned($0.userID) } ?? false
+            let bp = b.otherUser.map { dmPrefs.isPinned($0.userID) } ?? false
+            if ap != bp { return ap && !bp }
+            return (a.lastMessageAt ?? .distantPast) > (b.lastMessageAt ?? .distantPast)
         }
     }
 

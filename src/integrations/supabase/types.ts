@@ -293,6 +293,45 @@ export type Database = {
           },
         ]
       }
+      dm_preferences: {
+        Row: {
+          created_at: string
+          hidden: boolean
+          id: string
+          muted: boolean
+          muted_until: string | null
+          peer_user_id: string
+          pinned: boolean
+          pinned_at: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          hidden?: boolean
+          id?: string
+          muted?: boolean
+          muted_until?: string | null
+          peer_user_id: string
+          pinned?: boolean
+          pinned_at?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          hidden?: boolean
+          id?: string
+          muted?: boolean
+          muted_until?: string | null
+          peer_user_id?: string
+          pinned?: boolean
+          pinned_at?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       friendships: {
         Row: {
           addressee_id: string
