@@ -557,21 +557,23 @@ struct ChatView: View {
             .background(Theme.Colors.bgTertiary)
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
 
+            let canSend = hasDraft || !pendingAttachments.isEmpty
             Button { Task { await send() } } label: {
                 ZStack {
                     Circle()
-                        .fill(hasDraft ? Theme.Colors.primary : Theme.Colors.bgTertiary)
+                        .fill(canSend ? Theme.Colors.primary : Theme.Colors.bgTertiary)
                         .frame(width: 36, height: 36)
                     Image(systemName: "arrow.up")
                         .font(.system(size: 17, weight: .bold))
-                        .foregroundStyle(hasDraft ? .white : Theme.Colors.textMuted)
+                        .foregroundStyle(canSend ? .white : Theme.Colors.textMuted)
                 }
             }
             .buttonStyle(.plain)
-            .disabled(!hasDraft)
+            .disabled(!canSend)
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.top, 8)
+        .padding(.bottom, 10)
         .background(Theme.Colors.bgPrimary)
         .overlay(Rectangle().fill(Theme.Colors.divider).frame(height: 1), alignment: .top)
         .confirmationDialog("Attach", isPresented: $showComposerMenu, titleVisibility: .hidden) {
