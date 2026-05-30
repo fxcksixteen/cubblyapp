@@ -407,10 +407,17 @@ private struct DMRow: View {
             }
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(conversation.displayName)
-                    .font(Theme.Fonts.bodyMedium)
-                    .foregroundStyle(Theme.Colors.textPrimary)
+                HStack(spacing: 6) {
+                    CubblyNameText(
+                        userId: conversation.isGroup ? nil : conversation.otherUser?.userID,
+                        text: conversation.displayName,
+                        font: Theme.Fonts.bodyMedium
+                    )
                     .lineLimit(1)
+                    if !conversation.isGroup, let other = conversation.otherUser {
+                        UserBadgesRow(userID: other.userID, size: 13)
+                    }
+                }
                 if let label = activityLabel {
                     HStack(spacing: 4) {
                         SVGIcon(name: "activity", size: 12, tint: Theme.Colors.success)

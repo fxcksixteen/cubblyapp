@@ -111,11 +111,14 @@ private struct FriendTile: View {
                     .fill(Theme.Colors.bgSecondary)
             )
 
-            Text(profile.displayName)
-                .font(.cubbly(10, .semibold))
-                .foregroundStyle(Theme.Colors.textSecondary)
-                .lineLimit(1)
-                .frame(width: 68)
+            CubblyNameText(
+                userId: profile.userID,
+                text: profile.displayName,
+                font: .cubbly(10, .semibold),
+                fallback: Theme.Colors.textSecondary
+            )
+            .lineLimit(1)
+            .frame(width: 68)
         }
         .contentShape(Rectangle())
     }

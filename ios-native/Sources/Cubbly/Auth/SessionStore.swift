@@ -62,6 +62,7 @@ final class SessionStore: ObservableObject {
                 await CoinsStore.shared.start(userId: session.user.id)
                 await ShopStore.shared.start(userId: session.user.id)
                 await NameColorsStore.shared.startRealtime()
+                await UserBadgesStore.shared.startRealtime()
                 await ActivityService.shared.start(userId: session.user.id)
                 await UnreadCountsStore.shared.start(userId: session.user.id)
                 // Flush any APNs token that arrived before sign-in completed,
