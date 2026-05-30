@@ -50,8 +50,19 @@ struct MainTabView: View {
                             .opacity(0.35)
                             .allowsHitTesting(false)
                     } else if theme.equippedShopThemeId == "theme_space" {
+                        // Render the animated space scene at full opacity so
+                        // the equipped Space theme actually looks like the
+                        // Shop preview instead of a dim wash over the base.
                         SpaceThemeAnimated()
-                            .opacity(0.55)
+                            .allowsHitTesting(false)
+                    } else if theme.equippedShopThemeId == "theme_sky_dusk" {
+                        SkyDuskAnimated()
+                            .allowsHitTesting(false)
+                    } else if theme.equippedShopThemeId == "theme_snowy_drift" {
+                        SnowyDriftAnimated()
+                            .allowsHitTesting(false)
+                    } else if theme.equippedShopThemeId == "theme_moonlit_hills" {
+                        MoonlitHillsAnimated()
                             .allowsHitTesting(false)
                     } else {
                         LinearGradient(colors: theme.backgroundGradient,

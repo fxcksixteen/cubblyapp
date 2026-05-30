@@ -392,8 +392,16 @@ private struct NoteEditorView: View {
                 Button("Done") { bodyFocused = false }
             }
         }
-        .onAppear { loadIfNeeded() }
-        .onDisappear { flushSave() }
+        .onAppear {
+            loadIfNeeded()
+            // Match ChatView — when a single note is open, hide the global
+            // bottom tab bar so the editor gets the full screen.
+            ChromeStore.shared.tabBarHidden = true
+        }
+        .onDisappear {
+            flushSave()
+            ChromeStore.shared.tabBarHidden = false
+        }
         .onChange(of: pickerItems) { _, items in
             guard !items.isEmpty else { return }
             Task { await ingest(items) }

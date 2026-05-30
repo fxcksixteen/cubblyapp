@@ -420,6 +420,12 @@ private struct ShopItemPreview: View {
         ZStack {
             if item.id == "theme_space" {
                 SpaceThemeAnimated()
+            } else if item.id == "theme_sky_dusk" {
+                SkyDuskAnimated()
+            } else if item.id == "theme_snowy_drift" {
+                SnowyDriftAnimated()
+            } else if item.id == "theme_moonlit_hills" {
+                MoonlitHillsAnimated()
             } else if let bgColor {
                 bgColor
             } else {

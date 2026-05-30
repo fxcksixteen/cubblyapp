@@ -148,6 +148,9 @@ final class ThemeStore: ObservableObject {
         case "theme_synthwave":       return [Color(hex: 0x150a2e), Color(hex: 0x2a0e5e), Color(hex: 0x5b1f8e), Color(hex: 0x150a2e)]
         case "theme_lava_flow":       return [Color(hex: 0x1f0a06), Color(hex: 0x5a1408), Color(hex: 0xb03a14), Color(hex: 0x5a1408)]
         case "theme_borealis":        return [Color(hex: 0x08131c), Color(hex: 0x0e3a4a), Color(hex: 0x1e7a6e), Color(hex: 0x6ee7b7), Color(hex: 0x0e3a4a)]
+        case "theme_sky_dusk":        return [Color(hex: 0x1B2658), Color(hex: 0x4B3A78), Color(hex: 0xE48A5E), Color(hex: 0xF5BE7A)]
+        case "theme_snowy_drift":     return [Color(hex: 0x0E1A2C), Color(hex: 0x1B2B45), Color(hex: 0x2C4063)]
+        case "theme_moonlit_hills":   return [Color(hex: 0x070A1A), Color(hex: 0x0E1438), Color(hex: 0x1C2455), Color(hex: 0x14213D)]
         default: return []
         }
     }
@@ -163,6 +166,9 @@ final class ThemeStore: ObservableObject {
         case "theme_synthwave":       return "synthwave"
         case "theme_lava_flow":       return "lava"
         case "theme_borealis":        return "borealis"
+        case "theme_sky_dusk":        return "sky"
+        case "theme_snowy_drift":     return "snowy"
+        case "theme_moonlit_hills":   return "hills"
         default: return "default"
         }
     }
@@ -179,6 +185,9 @@ final class ThemeStore: ObservableObject {
         case "synthwave": return Palette(bgPrimary: Color(hex: 0x150A2E), bgSecondary: Color(hex: 0x1C0D3A), bgTertiary: Color(hex: 0x0C0520), bgFloating: Color(hex: 0x210F44), textPrimary: Color(hex: 0xF4E8FF), textSecondary: Color(hex: 0xC0A8E8), textMuted: Color(hex: 0x7E6AA8), border: Color(hex: 0x2A1455), divider: Color(hex: 0x2A1455).opacity(0.7), hover: Color(hex: 0x2A1455), input: Color(hex: 0x2A1455), primary: Color(hex: 0xD946EF), primaryGlow: Color(hex: 0xF0ABFC))
         case "lava": return Palette(bgPrimary: Color(hex: 0x1F0A06), bgSecondary: Color(hex: 0x2A0C06), bgTertiary: Color(hex: 0x150603), bgFloating: Color(hex: 0x2E110A), textPrimary: Color(hex: 0xF7E1D2), textSecondary: Color(hex: 0xD09077), textMuted: Color(hex: 0x8E5A45), border: Color(hex: 0x3A160C), divider: Color(hex: 0x3A160C).opacity(0.7), hover: Color(hex: 0x3A160C), input: Color(hex: 0x3A160C), primary: Color(hex: 0xFF7A3A), primaryGlow: Color(hex: 0xFDBA74))
         case "borealis": return Palette(bgPrimary: Color(hex: 0x08131C), bgSecondary: Color(hex: 0x0A1A26), bgTertiary: Color(hex: 0x050D14), bgFloating: Color(hex: 0x0E2230), textPrimary: Color(hex: 0xE0F5EE), textSecondary: Color(hex: 0x7FB9B0), textMuted: Color(hex: 0x4D7D77), border: Color(hex: 0x122A36), divider: Color(hex: 0x122A36).opacity(0.7), hover: Color(hex: 0x122A36), input: Color(hex: 0x122A36), primary: Color(hex: 0x6EE7B7), primaryGlow: Color(hex: 0xA7F3D0))
+        case "sky": return Palette(bgPrimary: Color(hex: 0x1B2658), bgSecondary: Color(hex: 0x14204A), bgTertiary: Color(hex: 0x0E1736), bgFloating: Color(hex: 0x213069), textPrimary: Color(hex: 0xF7ECDA), textSecondary: Color(hex: 0xC9B59A), textMuted: Color(hex: 0x8A7E6A), border: Color(hex: 0x2A3870), divider: Color(hex: 0x2A3870).opacity(0.65), hover: Color(hex: 0x2A3870), input: Color(hex: 0x2A3870), primary: Color(hex: 0xF5BE7A), primaryGlow: Color(hex: 0xF8D7A8))
+        case "snowy": return Palette(bgPrimary: Color(hex: 0x0E1A2C), bgSecondary: Color(hex: 0x142440), bgTertiary: Color(hex: 0x081020), bgFloating: Color(hex: 0x172A48), textPrimary: Color(hex: 0xE6EEFA), textSecondary: Color(hex: 0x9AB0CC), textMuted: Color(hex: 0x5F7493), border: Color(hex: 0x1F3458), divider: Color(hex: 0x1F3458).opacity(0.65), hover: Color(hex: 0x1F3458), input: Color(hex: 0x1F3458), primary: Color(hex: 0x7CC0FF), primaryGlow: Color(hex: 0xBDDFFF))
+        case "hills": return Palette(bgPrimary: Color(hex: 0x070A1A), bgSecondary: Color(hex: 0x0E1438), bgTertiary: Color(hex: 0x05081A), bgFloating: Color(hex: 0x121A45), textPrimary: Color(hex: 0xE6E8F5), textSecondary: Color(hex: 0x95A0C4), textMuted: Color(hex: 0x5C6890), border: Color(hex: 0x1C2455), divider: Color(hex: 0x1C2455).opacity(0.7), hover: Color(hex: 0x1C2455), input: Color(hex: 0x1C2455), primary: Color(hex: 0xF6F1D5), primaryGlow: Color(hex: 0xF9E9B0))
         default: return Palette(bgPrimary: Color(hex: 0x313338), bgSecondary: Color(hex: 0x2B2D31), bgTertiary: Color(hex: 0x1E1F22), bgFloating: Color(hex: 0x111214), textPrimary: Color(hex: 0xF2F3F5), textSecondary: Color(hex: 0xB5BAC1), textMuted: Color(hex: 0x80848E), border: Color.white.opacity(0.06), divider: Color.white.opacity(0.04), hover: Color.white.opacity(0.05), input: Color(hex: 0x383A40), primary: Color(hex: 0xE6A833), primaryGlow: Color(hex: 0xF2C062))
         }
     }

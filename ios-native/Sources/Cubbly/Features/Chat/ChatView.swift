@@ -125,6 +125,11 @@ struct ChatView: View {
             // we don't show a banner for messages that arrive while the user
             // is reading them.
             NotificationService.shared.activeConversationID = conversation.id
+            // Mirror the web/desktop behavior: as soon as the user opens a
+            // chat thread, drop its red unread bubble from the server rail
+            // and stop incrementing it for newly-arriving messages.
+            UnreadCountsStore.shared.activeConversationID = conversation.id
+            UnreadCountsStore.shared.clearLocal(conversationID: conversation.id)
             // Hide the global custom tab bar while we're on a chat thread —
             // matches Discord/Telegram and stops it from eating vertical
             // space + competing with the message composer.
@@ -133,6 +138,9 @@ struct ChatView: View {
         .onDisappear {
             if NotificationService.shared.activeConversationID == conversation.id {
                 NotificationService.shared.activeConversationID = nil
+            }
+            if UnreadCountsStore.shared.activeConversationID == conversation.id {
+                UnreadCountsStore.shared.activeConversationID = nil
             }
             ChromeStore.shared.tabBarHidden = false
             Task {
