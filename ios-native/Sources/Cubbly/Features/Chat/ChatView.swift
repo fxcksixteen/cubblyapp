@@ -605,20 +605,14 @@ struct ChatView: View {
         .padding(.bottom, 10)
         .background(Theme.Colors.bgPrimary)
         .overlay(Rectangle().fill(Theme.Colors.divider).frame(height: 1), alignment: .top)
-        .confirmationDialog("Attach", isPresented: $showComposerMenu, titleVisibility: .hidden) {
-            Button("Photo Library") {
-                showComposerMenu = false
-                showAttachments = true
+        // Tapping into the text field collapses the inline attach panel so
+        // the keyboard can rise in its place (Discord behavior).
+        .onChange(of: composerFocused) { _, focused in
+            if focused && attachPanelOpen {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                    attachPanelOpen = false
+                }
             }
-            Button("Attach File") {
-                showComposerMenu = false
-                showFilePicker = true
-            }
-            Button("GIF") {
-                showComposerMenu = false
-                showGifPicker = true
-            }
-            Button("Cancel", role: .cancel) { showComposerMenu = false }
         }
         .fileImporter(isPresented: $showFilePicker,
                       allowedContentTypes: [.item],
