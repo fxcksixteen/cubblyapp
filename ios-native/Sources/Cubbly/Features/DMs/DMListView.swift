@@ -11,6 +11,7 @@ struct DMListView: View {
     @EnvironmentObject private var presence: PresenceService
     @ObservedObject private var lastChat = LastChatStore.shared
     @ObservedObject private var cache = ConversationsCache.shared
+    @ObservedObject private var dmPrefs = DMPreferencesStore.shared
 
     @State private var errorMessage: String?
     @State private var search: String = ""
