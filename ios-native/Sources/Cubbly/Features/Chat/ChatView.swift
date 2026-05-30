@@ -542,18 +542,26 @@ struct ChatView: View {
         let hasDraft = !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         return HStack(spacing: 10) {
             Button {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
-                    showComposerMenu.toggle()
+                // "+" rotates to "x" and swaps the keyboard for the inline
+                // attachment panel (Discord behavior). Tap again to collapse.
+                if attachPanelOpen {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                        attachPanelOpen = false
+                    }
+                } else {
+                    composerFocused = false
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                        attachPanelOpen = true
+                    }
                 }
-                if showComposerMenu { composerFocused = false }
             } label: {
                 ZStack {
                     Circle().fill(Theme.Colors.bgTertiary).frame(width: 36, height: 36)
                     Image(systemName: "plus")
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(Theme.Colors.textSecondary)
-                        .rotationEffect(.degrees(showComposerMenu ? 45 : 0))
-                        .animation(.spring(response: 0.35, dampingFraction: 0.7), value: showComposerMenu)
+                        .rotationEffect(.degrees(attachPanelOpen ? 45 : 0))
+                        .animation(.spring(response: 0.35, dampingFraction: 0.7), value: attachPanelOpen)
                 }
             }
             .buttonStyle(.plain)
