@@ -74,14 +74,16 @@ struct ChatView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(chatBackground)
-        // Custom header — fully hide the system nav bar so iOS 26 never
-        // paints its default Liquid Glass buttons / centered title here.
-        .navigationBarHidden(true)
+        // Hide the system nav bar via the modern toolbar API ONLY. The
+        // legacy `.navigationBarHidden(true)` modifier detaches the view
+        // from UIKit's UINavigationController chrome and silently disables
+        // the interactive-pop gesture — which is exactly why chat threads
+        // didn't feel like Personal Notes. The iOS 16+ toolbar API hides
+        // the bar visually while keeping the navigation controller intact,
+        // so the native swipe-back gesture works automatically (same as
+        // NotesView, which never hides anything at all).
         .toolbar(.hidden, for: .navigationBar)
-        // Re-enable Apple's native left-edge interactive-pop gesture even
-        // though the nav bar is hidden, so swipe-back to the DM sidebar
-        // matches Personal Notes 1:1.
-        .nativeEdgeSwipeBack()
+        .navigationBarBackButtonHidden(true)
         .sheet(isPresented: $showGifPicker) {
             GiphyPickerView { url in
                 showGifPicker = false
