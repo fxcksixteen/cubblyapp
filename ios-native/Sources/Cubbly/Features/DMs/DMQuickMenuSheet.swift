@@ -94,7 +94,9 @@ struct DMQuickMenuSheet: View {
         .padding(.bottom, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.Colors.bgPrimary.ignoresSafeArea())
+        }
     }
+
 
     private var headerTitle: String {
         if conversation.isGroup { return conversation.displayName }
