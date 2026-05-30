@@ -461,7 +461,7 @@ private struct NoteEditorView: View {
             let mime = item.supportedContentTypes.first?.preferredMIMEType ?? "application/octet-stream"
             let name = "attachment-\(Int(Date().timeIntervalSince1970)).\(ext)"
             do {
-                let att = try await store.uploadAttachment(data: data, name: name, mime: mime)
+                let att = try await store.uploadAttachment(data: data, name: name, mime: mime, noteId: noteID)
                 attachments.append(att)
                 scheduleSave()
             } catch {
