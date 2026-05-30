@@ -349,15 +349,15 @@ private struct NoteEditorView: View {
                     .padding(.bottom, 8)
                 }
 
-                TextEditor(text: $noteBody)
-                    .font(.cubbly(15))
-                    .foregroundStyle(Theme.Colors.textPrimary)
-                    .scrollContentBackground(.hidden)
-                    .background(Theme.Colors.bgPrimary)
-                    .frame(minHeight: 320)
-                    .padding(.horizontal, 12)
-                    .focused($bodyFocused)
-                    .onChange(of: noteBody) { _, _ in scheduleSave() }
+                LinkAwareTextEditor(
+                    text: $noteBody,
+                    font: .systemFont(ofSize: 15),
+                    textColor: UIColor(Theme.Colors.textPrimary),
+                    tintColor: UIColor(Theme.Colors.primary)
+                )
+                .frame(minHeight: 320)
+                .padding(.horizontal, 12)
+                .onChange(of: noteBody) { _, _ in scheduleSave() }
             }
         }
         .background(Theme.Colors.bgPrimary)
