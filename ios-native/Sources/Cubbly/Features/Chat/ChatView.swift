@@ -84,7 +84,7 @@ struct ChatView: View {
         }
         .sheet(isPresented: $showAttachments) {
             AttachmentsPicker { urls in
-                Task { await sendAttachments(urls: urls) }
+                enqueueAttachments(urls: urls)
             }
             .presentationDetents([.fraction(0.55), .large])
         }
