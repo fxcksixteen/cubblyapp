@@ -62,7 +62,19 @@ struct ServerRail: View {
             .padding(.top, 14)
         }
         .frame(width: 64)
-        .background(Theme.Colors.bgTertiary.ignoresSafeArea(edges: .vertical))
+        .background(
+            // When a Shop theme is equipped, let the animated theme
+            // background show through the rail so we don't get a flat
+            // Cubbly-colored bar on top of (e.g.) Space / Sky Dusk.
+            Group {
+                if theme.equippedShopThemeId != nil {
+                    Theme.Colors.bgTertiary.opacity(0.45)
+                } else {
+                    Theme.Colors.bgTertiary
+                }
+            }
+            .ignoresSafeArea(edges: .vertical)
+        )
         .sheet(isPresented: $showComingSoon) {
             ServerComingSoonSheet()
                 .presentationDetents([.medium])
