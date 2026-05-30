@@ -65,25 +65,8 @@ struct DMListView: View {
             .onChange(of: openConversation?.id) { _, newID in
                 if let id = newID { lastChat.lastConversationID = id }
             }
-            // Discord-style: while on the DM sidebar, a leftward swipe
-            // anywhere on the list re-opens whichever chat was last viewed.
-            // Uses SwiftUI's built-in DragGesture (no third-party gesture
-            // engines, no UIScreenEdgePan subclasses) — bails out if the
-            // user is already inside a chat thread.
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 24)
-                    .onEnded { value in
-                        guard openConversation == nil else { return }
-                        let dx = value.translation.width
-                        let dy = value.translation.height
-                        guard dx < -60, abs(dx) > abs(dy) * 1.5 else { return }
-                        guard let id = lastChat.lastConversationID,
-                              let conv = cache.conversations.first(where: { $0.id == id })
-                        else { return }
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        openConversation = conv
-                    }
-            )
+            // (Left-swipe to reopen last chat removed — it was competing
+            // with the NavigationStack's interactive push/pop gesture.)
             // Deep-link: tapping a push notification posts this name with
             // the conversation_id. Resolve to a ConversationSummary and
             // push it onto the sidebar's NavigationStack.
