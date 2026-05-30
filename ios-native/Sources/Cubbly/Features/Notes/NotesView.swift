@@ -321,6 +321,7 @@ private struct NoteEditorView: View {
     @State private var saveTask: Task<Void, Never>?
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var uploading = false
+    @State private var uploadError: String?
     @State private var previewVideoURL: IdentifiedURL?
     @State private var previewImageData: IdentifiedData?
     @FocusState private var bodyFocused: Bool
