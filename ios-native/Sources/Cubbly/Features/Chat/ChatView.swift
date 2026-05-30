@@ -199,11 +199,23 @@ struct ChatView: View {
 
     // MARK: - Header
 
-    /// Native NavigationStack title content. This keeps the thread connected
-    /// to the same iOS navigation controller as the DM sidebar (like Notes),
-    /// while still showing the Cubbly avatar/name/status in the bar.
-    private var chatToolbarTitle: some View {
-        HStack(spacing: 8) {
+    @Environment(\.dismiss) private var dismiss
+
+    /// Flat Discord-style top bar drawn INSIDE the view (not via toolbar)
+    /// so iOS 26's liquid-glass capsule treatment never applies. Back
+    /// chevron on the far left, avatar + name + status on the left,
+    /// call/video icons on the far right — all using our own theme tokens.
+    private var chatHeader: some View {
+        HStack(spacing: 10) {
+            Button(action: { dismiss() }) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundStyle(Theme.Colors.textPrimary)
+                    .frame(width: 28, height: 36)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
             ZStack(alignment: .bottomTrailing) {
                 if conversation.isGroup && conversation.pictureURL == nil {
                     GroupAvatar(members: conversation.members, size: 30)
@@ -238,7 +250,28 @@ struct ChatView: View {
                 }
             }
 
+            Spacer(minLength: 8)
+
+            if !conversation.isGroup {
+                HStack(spacing: 18) {
+                    Button(action: { startVoiceCall() }) {
+                        SVGIcon(name: "call", size: 22, tint: Theme.Colors.textSecondary)
+                    }
+                    .buttonStyle(.plain)
+                    Button(action: { }) {
+                        SVGIcon(name: "video-camera", size: 22,
+                                tint: Theme.Colors.textSecondary.opacity(0.45))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(true)
+                }
+            }
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+        .background(Theme.Colors.bgPrimary)
+        .overlay(Rectangle().fill(Theme.Colors.divider).frame(height: 1), alignment: .bottom)
         .onAppear {
             if let uid = conversation.otherUser?.userID {
                 UserBadgesStore.shared.request(uid)
