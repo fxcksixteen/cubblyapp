@@ -21,6 +21,7 @@ struct DMListView: View {
     @State private var convChannel: RealtimeChannelV2?
     @State private var profilePopupUserID: UUID?
     @State private var showNotes = false
+    @State private var quickMenuConversation: ConversationSummary?
 
     private func conversation_otherUser(_ conv: ConversationSummary) -> Profile? {
         conv.otherUser
