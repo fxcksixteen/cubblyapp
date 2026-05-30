@@ -189,84 +189,63 @@ struct ChatView: View {
         }
     }
 
-    // MARK: - Header
+    // MARK: - Toolbar (Discord-style flat header in the REAL nav bar)
 
-    @Environment(\.dismiss) private var dismiss
-
-    /// Flat Discord-style top bar drawn INSIDE the view (not via toolbar)
-    /// so iOS 26's liquid-glass capsule treatment never applies. Back
-    /// chevron on the far left, avatar + name + status on the left,
-    /// call/video icons on the far right — all using our own theme tokens.
-    private var chatHeader: some View {
-        HStack(spacing: 10) {
-            Button(action: { dismiss() }) {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 19, weight: .semibold))
-                    .foregroundStyle(Theme.Colors.textPrimary)
-                    .frame(width: 28, height: 36)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-
-            ZStack(alignment: .bottomTrailing) {
-                if conversation.isGroup && conversation.pictureURL == nil {
-                    GroupAvatar(members: conversation.members, size: 30)
-                } else {
-                    AvatarView(url: conversation.avatarURL,
-                               fallbackText: conversation.displayName, size: 30)
-                }
-                if let other = conversation.otherUser {
-                    let live = presence.effectiveStatus(for: other.userID, storedStatus: other.status)
-                    StatusDot(rawStatus: live, isOnline: presence.isOnline(other.userID),
-                              size: 9, borderColor: Theme.Colors.bgPrimary)
-                        .offset(x: 2, y: 2)
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 4) {
-                    Text(conversation.displayName)
-                        .font(Theme.Fonts.bodyMedium)
-                        .foregroundStyle(Theme.Colors.textPrimary)
-                        .lineLimit(1)
-                    if !conversation.isGroup, let other = conversation.otherUser {
-                        UserBadgesRow(userID: other.userID, size: 12)
+    @ToolbarContentBuilder
+    private var chatToolbar: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            HStack(spacing: 8) {
+                ZStack(alignment: .bottomTrailing) {
+                    if conversation.isGroup && conversation.pictureURL == nil {
+                        GroupAvatar(members: conversation.members, size: 28)
+                    } else {
+                        AvatarView(url: conversation.avatarURL,
+                                   fallbackText: conversation.displayName, size: 28)
+                    }
+                    if let other = conversation.otherUser {
+                        let live = presence.effectiveStatus(for: other.userID, storedStatus: other.status)
+                        StatusDot(rawStatus: live, isOnline: presence.isOnline(other.userID),
+                                  size: 9, borderColor: Theme.Colors.bgPrimary)
+                            .offset(x: 2, y: 2)
                     }
                 }
-                if let other = conversation.otherUser {
-                    let live = presence.effectiveStatus(for: other.userID, storedStatus: other.status)
-                    Text(live.capitalized)
-                        .font(.cubbly(10))
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                        .lineLimit(1)
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(spacing: 4) {
+                        Text(conversation.displayName)
+                            .font(Theme.Fonts.bodyMedium)
+                            .foregroundStyle(Theme.Colors.textPrimary)
+                            .lineLimit(1)
+                        if !conversation.isGroup, let other = conversation.otherUser {
+                            UserBadgesRow(userID: other.userID, size: 12)
+                        }
+                    }
+                    if let other = conversation.otherUser {
+                        let live = presence.effectiveStatus(for: other.userID, storedStatus: other.status)
+                        Text(live.capitalized)
+                            .font(.cubbly(10))
+                            .foregroundStyle(Theme.Colors.textSecondary)
+                            .lineLimit(1)
+                    }
                 }
-            }
-
-            Spacer(minLength: 8)
-
-            if !conversation.isGroup {
-                HStack(spacing: 18) {
-                    Button(action: { startVoiceCall() }) {
-                        SVGIcon(name: "call", size: 22, tint: Theme.Colors.textSecondary)
+                .onAppear {
+                    if let uid = conversation.otherUser?.userID {
+                        UserBadgesStore.shared.request(uid)
                     }
-                    .buttonStyle(.plain)
-                    Button(action: { }) {
-                        SVGIcon(name: "video-camera", size: 22,
-                                tint: Theme.Colors.textSecondary.opacity(0.45))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(true)
                 }
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity)
-        .background(Theme.Colors.bgPrimary)
-        .overlay(Rectangle().fill(Theme.Colors.divider).frame(height: 1), alignment: .bottom)
-        .onAppear {
-            if let uid = conversation.otherUser?.userID {
-                UserBadgesStore.shared.request(uid)
+        if !conversation.isGroup {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(action: { startVoiceCall() }) {
+                    SVGIcon(name: "call", size: 20, tint: Theme.Colors.textSecondary)
+                }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(action: { }) {
+                    SVGIcon(name: "video-camera", size: 20,
+                            tint: Theme.Colors.textSecondary.opacity(0.45))
+                }
+                .disabled(true)
             }
         }
     }
