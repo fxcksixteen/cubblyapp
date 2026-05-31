@@ -297,16 +297,16 @@ struct DMListView: View {
         guard let userID = session.currentUserID else { return }
         do {
             let next = try await ConversationsRepository().listSummaries(currentUserID: userID)
+            let peerIDs = next.compactMap { $0.otherUser?.userID }
+            // Block only on badges: they occupy inline space beside names and
+            // must be present on the first DM-sidebar paint. Name colors can
+            // keep using the existing lazy/debounced path.
+            await UserBadgesStore.shared.preload(peerIDs)
+            for uid in peerIDs {
+                NameColorsStore.shared.request(uid)
+            }
             cache.conversations = next
             cache.lastLoaded = Date()
-            // Prefetch friend badges + name colors in one batch so they're
-            // already in the cache by the time DM rows render.
-            for conv in next {
-                if let uid = conv.otherUser?.userID {
-                    UserBadgesStore.shared.request(uid)
-                    NameColorsStore.shared.request(uid)
-                }
-            }
             errorMessage = nil
         } catch is CancellationError {
             errorMessage = nil
