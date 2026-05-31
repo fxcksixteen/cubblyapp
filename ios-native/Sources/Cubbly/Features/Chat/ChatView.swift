@@ -1216,40 +1216,6 @@ private struct DiscordStyleBubble: View {
                 isPressing = false
             }
         })
-        // Horizontal swipe-to-reply. minimumDistance:18 keeps vertical scroll
-        // responsive — SwiftUI only routes the drag here once the gesture is
-        // clearly horizontal. We also bail out when the touch starts within
-        // the leftmost 24pt so the system's left-edge interactive-pop gesture
-        // (swipe back to the DM sidebar) always wins on the edge strip.
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 18)
-                .onChanged { value in
-                    // Leave the left-edge strip to UIKit's pop gesture.
-                    guard value.startLocation.x >= 24 else { return }
-                    // Only react to predominantly-horizontal leftward drags.
-                    guard abs(value.translation.width) > abs(value.translation.height),
-                          value.translation.width < 0 else { return }
-                    // Rubber-band past the threshold.
-                    let raw = value.translation.width
-                    let capped = max(raw, -120)
-                    swipeOffset = capped
-                    if !didFireReplyHaptic && capped <= -replyThreshold {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        didFireReplyHaptic = true
-                    } else if capped > -replyThreshold {
-                        didFireReplyHaptic = false
-                    }
-                }
-                .onEnded { value in
-                    guard value.startLocation.x >= 24 else { return }
-                    let triggered = value.translation.width <= -replyThreshold
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
-                        swipeOffset = 0
-                    }
-                    didFireReplyHaptic = false
-                    if triggered { onSwipeReply() }
-                }
-        )
     }
 
     private var bubbleRow: some View {
