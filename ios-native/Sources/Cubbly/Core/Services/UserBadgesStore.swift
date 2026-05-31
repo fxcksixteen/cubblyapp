@@ -45,6 +45,18 @@ final class UserBadgesStore: ObservableObject {
         }
     }
 
+    /// Used by DM lists before rows are painted, so already-equipped badges
+    /// are visible immediately instead of only after another surface (like a
+    /// profile sheet) happens to warm this cache.
+    func preload(_ userIds: [UUID]) async {
+        let missing = Set(userIds.filter { badges[$0] == nil })
+        guard !missing.isEmpty else { return }
+        pending.formUnion(missing)
+        fetchTask?.cancel()
+        fetchTask = nil
+        await flush()
+    }
+
     private func flush() async {
         let ids = Array(pending)
         pending.removeAll()

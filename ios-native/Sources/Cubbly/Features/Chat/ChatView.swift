@@ -69,15 +69,14 @@ struct ChatView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(chatBackground)
-        // Keep ChatView as a completely normal pushed NavigationStack
-        // destination, exactly like NotesView. Do NOT replace the system
-        // leading/back item: iOS only gives us the catchable interactive
-        // push/pop transition when its own navigation chrome remains in charge.
-        .navigationTitle(conversation.displayName)
+        // Keep ChatView as a normal pushed NavigationStack destination while
+        // drawing the Discord-style title/actions in the native toolbar.
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Theme.Colors.bgPrimary, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbar { chatToolbar }
+        .nativeEdgeSwipeBack()
         .sheet(isPresented: $showGifPicker) {
             GiphyPickerView { url in
                 showGifPicker = false
@@ -195,7 +194,7 @@ struct ChatView: View {
 
     @ToolbarContentBuilder
     private var chatToolbar: some ToolbarContent {
-        ToolbarItem(placement: .principal) {
+        ToolbarItem(placement: .topBarLeading) {
             chatToolbarTitle
         }
         if !conversation.isGroup {
@@ -247,6 +246,7 @@ struct ChatView: View {
                 }
             }
         }
+        .frame(maxWidth: 230, alignment: .leading)
         .onAppear {
             if let uid = conversation.otherUser?.userID {
                 UserBadgesStore.shared.request(uid)
@@ -1197,7 +1197,6 @@ private struct DiscordStyleBubble: View {
             bubbleRow
                 .offset(x: swipeOffset)
         }
-        .contentShape(Rectangle())
         // Long-press only. A 0-distance DragGesture here was eating every
         // vertical scroll touch AND fighting with the system swipe-back —
         // long-press alone is enough; SwiftUI handles scroll/press
@@ -1216,40 +1215,6 @@ private struct DiscordStyleBubble: View {
                 isPressing = false
             }
         })
-        // Horizontal swipe-to-reply. minimumDistance:18 keeps vertical scroll
-        // responsive — SwiftUI only routes the drag here once the gesture is
-        // clearly horizontal. We also bail out when the touch starts within
-        // the leftmost 24pt so the system's left-edge interactive-pop gesture
-        // (swipe back to the DM sidebar) always wins on the edge strip.
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 18)
-                .onChanged { value in
-                    // Leave the left-edge strip to UIKit's pop gesture.
-                    guard value.startLocation.x >= 24 else { return }
-                    // Only react to predominantly-horizontal leftward drags.
-                    guard abs(value.translation.width) > abs(value.translation.height),
-                          value.translation.width < 0 else { return }
-                    // Rubber-band past the threshold.
-                    let raw = value.translation.width
-                    let capped = max(raw, -120)
-                    swipeOffset = capped
-                    if !didFireReplyHaptic && capped <= -replyThreshold {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        didFireReplyHaptic = true
-                    } else if capped > -replyThreshold {
-                        didFireReplyHaptic = false
-                    }
-                }
-                .onEnded { value in
-                    guard value.startLocation.x >= 24 else { return }
-                    let triggered = value.translation.width <= -replyThreshold
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
-                        swipeOffset = 0
-                    }
-                    didFireReplyHaptic = false
-                    if triggered { onSwipeReply() }
-                }
-        )
     }
 
     private var bubbleRow: some View {
