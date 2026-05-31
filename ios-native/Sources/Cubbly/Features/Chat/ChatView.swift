@@ -69,15 +69,14 @@ struct ChatView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(chatBackground)
-        // Keep ChatView as a completely normal pushed NavigationStack
-        // destination, exactly like NotesView. Do NOT replace the system
-        // leading/back item: iOS only gives us the catchable interactive
-        // push/pop transition when its own navigation chrome remains in charge.
-        .navigationTitle(conversation.displayName)
+        // Keep ChatView as a normal pushed NavigationStack destination while
+        // drawing the Discord-style title/actions in the native toolbar.
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Theme.Colors.bgPrimary, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbar { chatToolbar }
+        .nativeEdgeSwipeBack()
         .sheet(isPresented: $showGifPicker) {
             GiphyPickerView { url in
                 showGifPicker = false
@@ -195,7 +194,7 @@ struct ChatView: View {
 
     @ToolbarContentBuilder
     private var chatToolbar: some ToolbarContent {
-        ToolbarItem(placement: .principal) {
+        ToolbarItem(placement: .topBarLeading) {
             chatToolbarTitle
         }
         if !conversation.isGroup {
@@ -247,6 +246,7 @@ struct ChatView: View {
                 }
             }
         }
+        .frame(maxWidth: 230, alignment: .leading)
         .onAppear {
             if let uid = conversation.otherUser?.userID {
                 UserBadgesStore.shared.request(uid)
