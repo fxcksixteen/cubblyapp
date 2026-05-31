@@ -1197,7 +1197,6 @@ private struct DiscordStyleBubble: View {
             bubbleRow
                 .offset(x: swipeOffset)
         }
-        .contentShape(Rectangle())
         // Long-press only. A 0-distance DragGesture here was eating every
         // vertical scroll touch AND fighting with the system swipe-back —
         // long-press alone is enough; SwiftUI handles scroll/press
