@@ -191,22 +191,48 @@ export function useConversations() {
   useEffect(() => {
     if (!user) return;
 
+    // Debounce full refetches so bursts of realtime events (e.g. a friend
+    // toggling status, multiple messages arriving) only trigger one refetch.
+    let refetchTimer: number | null = null;
+    const scheduleRefetch = () => {
+      if (refetchTimer != null) return;
+      refetchTimer = window.setTimeout(() => {
+        refetchTimer = null;
+        fetchRef.current();
+      }, 600);
+    };
+
     const uniqueSuffix =
       globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const channel = supabase.channel(`conversation-updates:${user.id}:${uniqueSuffix}`);
 
+    // Only react to participant changes that involve *us* (joining/leaving
+    // conversations). Everyone else's membership churn is irrelevant here.
     channel.on(
       "postgres_changes",
-      { event: "*", schema: "public", table: "conversation_participants" },
-      () => fetchRef.current(),
+      { event: "*", schema: "public", table: "conversation_participants", filter: `user_id=eq.${user.id}` },
+      () => scheduleRefetch(),
     );
     // Live conversation metadata changes (rename, picture change, etc.)
     channel.on(
       "postgres_changes",
-      { event: "*", schema: "public", table: "conversations" },
-      () => fetchRef.current(),
+      { event: "UPDATE", schema: "public", table: "conversations" },
+      (payload) => {
+        const updated = payload.new as any;
+        setConversations((prev) => {
+          const idx = prev.findIndex((c) => c.id === updated.id);
+          if (idx === -1) return prev;
+          const next = [...prev];
+          next[idx] = {
+            ...next[idx],
+            name: updated.name,
+            picture_url: updated.picture_url,
+          };
+          return next;
+        });
+      },
     );
-    // Live message updates — re-sort conversations when new messages arrive
+    // Live message inserts — just patch the local row, no refetch.
     channel.on(
       "postgres_changes",
       { event: "INSERT", schema: "public", table: "messages" },
@@ -215,7 +241,8 @@ export function useConversations() {
         setConversations((prev) => {
           const idx = prev.findIndex((c) => c.id === newMsg.conversation_id);
           if (idx === -1) {
-            fetchRef.current();
+            // New conversation we don't have yet — debounced refetch will pick it up.
+            scheduleRefetch();
             return prev;
           }
           const updated = [...prev];
@@ -233,24 +260,14 @@ export function useConversations() {
         });
       },
     );
-    channel.on(
-      "postgres_changes",
-      { event: "UPDATE", schema: "public", table: "messages" },
-      () => fetchRef.current(),
-    );
-    channel.on(
-      "postgres_changes",
-      { event: "DELETE", schema: "public", table: "messages" },
-      () => fetchRef.current(),
-    );
-    channel.on(
-      "postgres_changes",
-      { event: "UPDATE", schema: "public", table: "profiles" },
-      () => fetchRef.current(),
-    );
+    // NOTE: message UPDATE/DELETE and profile UPDATE used to trigger a full
+    // refetch here. They don't anymore — message edits/deletes don't change
+    // the sidebar preview enough to be worth the cost, and profile updates
+    // (status changes from anyone in the DB) were causing constant refetches.
     channel.subscribe();
 
     return () => {
+      if (refetchTimer != null) window.clearTimeout(refetchTimer);
       supabase.removeChannel(channel);
     };
   }, [user]);
