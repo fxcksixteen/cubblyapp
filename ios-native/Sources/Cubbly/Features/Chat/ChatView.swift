@@ -194,12 +194,16 @@ struct ChatView: View {
 
     @ToolbarContentBuilder
     private var chatToolbar: some ToolbarContent {
-        ToolbarItem(placement: .topBarLeading) {
+        let leading = ToolbarItem(placement: .topBarLeading) {
             chatToolbarTitle
-                .modifier(NoToolbarGlassModifier())
+        }
+        if #available(iOS 26.0, *) {
+            leading.sharedBackgroundVisibility(.hidden)
+        } else {
+            leading
         }
         if !conversation.isGroup {
-            ToolbarItem(placement: .topBarTrailing) {
+            let trailing = ToolbarItem(placement: .topBarTrailing) {
                 HStack(spacing: 14) {
                     Button { startVoiceCall() } label: {
                         SVGIcon(name: "call", size: 21, tint: Theme.Colors.textSecondary)
@@ -211,7 +215,11 @@ struct ChatView: View {
                     .disabled(true)
                     .buttonStyle(.plain)
                 }
-                .modifier(NoToolbarGlassModifier())
+            }
+            if #available(iOS 26.0, *) {
+                trailing.sharedBackgroundVisibility(.hidden)
+            } else {
+                trailing
             }
         }
     }
