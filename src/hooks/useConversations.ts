@@ -119,49 +119,57 @@ export function useConversations() {
       membersByConv.set(part.conversation_id, arr);
     }
 
-    // 6) Fetch last message per conversation in parallel
-    const conversationsList = (
-      await Promise.all(
-        conversationIds.map(async (convId) => {
-          const conv = convMap.get(convId);
-          if (!conv) return null;
-          const members = membersByConv.get(convId) ?? [];
+    // 6) Fetch last message for ALL conversations in a SINGLE batched query
+    //    (previously did N parallel queries — one per conversation — which
+    //    hammered both the DB and the client every time a profile status or
+    //    any message changed).
+    const lastMsgMap = new Map<string, { content: string; created_at: string }>();
+    if (conversationIds.length > 0) {
+      const { data: recentMsgs } = await supabase
+        .from("messages")
+        .select("conversation_id, content, created_at")
+        .in("conversation_id", conversationIds)
+        .order("created_at", { ascending: false })
+        .limit(Math.max(200, conversationIds.length * 3));
+      for (const m of recentMsgs || []) {
+        if (!lastMsgMap.has(m.conversation_id)) {
+          lastMsgMap.set(m.conversation_id, { content: m.content, created_at: m.created_at });
+        }
+      }
+    }
 
-          // For DMs we MUST have at least one other member; for groups it's allowed to have zero (e.g. they all left)
-          if (!conv.is_group && members.length === 0) return null;
+    const conversationsList = conversationIds
+      .map((convId) => {
+        const conv = convMap.get(convId);
+        if (!conv) return null;
+        const members = membersByConv.get(convId) ?? [];
 
-          const { data: lastMessage } = await supabase
-            .from("messages")
-            .select("content, created_at")
-            .eq("conversation_id", convId)
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .maybeSingle();
+        // For DMs we MUST have at least one other member; for groups it's allowed to have zero (e.g. they all left)
+        if (!conv.is_group && members.length === 0) return null;
 
-          // Representative participant — for DMs this is the only other user, for groups it's the first member (used as a fallback avatar source)
-          const participant: ConversationParticipantProfile =
-            members[0] ?? {
-              user_id: conv.id,
-              display_name: conv.name || "Group",
-              username: "",
-              avatar_url: conv.picture_url,
-              status: "online",
-            };
+        const lastMessage = lastMsgMap.get(convId);
+        const participant: ConversationParticipantProfile =
+          members[0] ?? {
+            user_id: conv.id,
+            display_name: conv.name || "Group",
+            username: "",
+            avatar_url: conv.picture_url,
+            status: "online",
+          };
 
-          return {
-            id: convId,
-            is_group: conv.is_group,
-            name: conv.name,
-            picture_url: conv.picture_url,
-            owner_id: conv.owner_id,
-            participant,
-            members,
-            lastMessage: lastMessage?.content,
-            lastMessageAt: lastMessage?.created_at,
-          } satisfies Conversation;
-        }),
-      )
-    ).filter(Boolean) as Conversation[];
+        return {
+          id: convId,
+          is_group: conv.is_group,
+          name: conv.name,
+          picture_url: conv.picture_url,
+          owner_id: conv.owner_id,
+          participant,
+          members,
+          lastMessage: lastMessage?.content,
+          lastMessageAt: lastMessage?.created_at,
+        } satisfies Conversation;
+      })
+      .filter(Boolean) as Conversation[];
 
     conversationsList.sort((a, b) => {
       const aTime = a.lastMessageAt || "";
