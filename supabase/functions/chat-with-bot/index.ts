@@ -103,6 +103,18 @@ serve(async (req) => {
       content: m.content.replace(/\[attachments\].*?\[\/attachments\]/s, "").trim() || "(sent an attachment)",
     }));
 
+    // If caller passed an out-of-band user_message (e.g. "[SYSTEM: user just
+    // tried to start a voice call]"), append it as the final user turn so the
+    // model actually sees something new to respond to. Without this, Gemini
+    // gets a history with no new user message and returns empty content.
+    const messages: Array<{ role: string; content: string }> = [
+      { role: "system", content: SYSTEM_PROMPT },
+      ...history,
+    ];
+    if (typeof user_message === "string" && user_message.trim()) {
+      messages.push({ role: "user", content: user_message });
+    }
+
     // Call Lovable AI Gateway
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -112,10 +124,7 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          ...history,
-        ],
+        messages,
         max_tokens: 400,
       }),
     });
