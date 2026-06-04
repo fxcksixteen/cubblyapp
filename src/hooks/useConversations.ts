@@ -119,49 +119,57 @@ export function useConversations() {
       membersByConv.set(part.conversation_id, arr);
     }
 
-    // 6) Fetch last message per conversation in parallel
-    const conversationsList = (
-      await Promise.all(
-        conversationIds.map(async (convId) => {
-          const conv = convMap.get(convId);
-          if (!conv) return null;
-          const members = membersByConv.get(convId) ?? [];
+    // 6) Fetch last message for ALL conversations in a SINGLE batched query
+    //    (previously did N parallel queries — one per conversation — which
+    //    hammered both the DB and the client every time a profile status or
+    //    any message changed).
+    const lastMsgMap = new Map<string, { content: string; created_at: string }>();
+    if (conversationIds.length > 0) {
+      const { data: recentMsgs } = await supabase
+        .from("messages")
+        .select("conversation_id, content, created_at")
+        .in("conversation_id", conversationIds)
+        .order("created_at", { ascending: false })
+        .limit(Math.max(200, conversationIds.length * 3));
+      for (const m of recentMsgs || []) {
+        if (!lastMsgMap.has(m.conversation_id)) {
+          lastMsgMap.set(m.conversation_id, { content: m.content, created_at: m.created_at });
+        }
+      }
+    }
 
-          // For DMs we MUST have at least one other member; for groups it's allowed to have zero (e.g. they all left)
-          if (!conv.is_group && members.length === 0) return null;
+    const conversationsList = conversationIds
+      .map((convId) => {
+        const conv = convMap.get(convId);
+        if (!conv) return null;
+        const members = membersByConv.get(convId) ?? [];
 
-          const { data: lastMessage } = await supabase
-            .from("messages")
-            .select("content, created_at")
-            .eq("conversation_id", convId)
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .maybeSingle();
+        // For DMs we MUST have at least one other member; for groups it's allowed to have zero (e.g. they all left)
+        if (!conv.is_group && members.length === 0) return null;
 
-          // Representative participant — for DMs this is the only other user, for groups it's the first member (used as a fallback avatar source)
-          const participant: ConversationParticipantProfile =
-            members[0] ?? {
-              user_id: conv.id,
-              display_name: conv.name || "Group",
-              username: "",
-              avatar_url: conv.picture_url,
-              status: "online",
-            };
+        const lastMessage = lastMsgMap.get(convId);
+        const participant: ConversationParticipantProfile =
+          members[0] ?? {
+            user_id: conv.id,
+            display_name: conv.name || "Group",
+            username: "",
+            avatar_url: conv.picture_url,
+            status: "online",
+          };
 
-          return {
-            id: convId,
-            is_group: conv.is_group,
-            name: conv.name,
-            picture_url: conv.picture_url,
-            owner_id: conv.owner_id,
-            participant,
-            members,
-            lastMessage: lastMessage?.content,
-            lastMessageAt: lastMessage?.created_at,
-          } satisfies Conversation;
-        }),
-      )
-    ).filter(Boolean) as Conversation[];
+        return {
+          id: convId,
+          is_group: conv.is_group,
+          name: conv.name,
+          picture_url: conv.picture_url,
+          owner_id: conv.owner_id,
+          participant,
+          members,
+          lastMessage: lastMessage?.content,
+          lastMessageAt: lastMessage?.created_at,
+        } satisfies Conversation;
+      })
+      .filter(Boolean) as Conversation[];
 
     conversationsList.sort((a, b) => {
       const aTime = a.lastMessageAt || "";
@@ -183,22 +191,48 @@ export function useConversations() {
   useEffect(() => {
     if (!user) return;
 
+    // Debounce full refetches so bursts of realtime events (e.g. a friend
+    // toggling status, multiple messages arriving) only trigger one refetch.
+    let refetchTimer: number | null = null;
+    const scheduleRefetch = () => {
+      if (refetchTimer != null) return;
+      refetchTimer = window.setTimeout(() => {
+        refetchTimer = null;
+        fetchRef.current();
+      }, 600);
+    };
+
     const uniqueSuffix =
       globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const channel = supabase.channel(`conversation-updates:${user.id}:${uniqueSuffix}`);
 
+    // Only react to participant changes that involve *us* (joining/leaving
+    // conversations). Everyone else's membership churn is irrelevant here.
     channel.on(
       "postgres_changes",
-      { event: "*", schema: "public", table: "conversation_participants" },
-      () => fetchRef.current(),
+      { event: "*", schema: "public", table: "conversation_participants", filter: `user_id=eq.${user.id}` },
+      () => scheduleRefetch(),
     );
     // Live conversation metadata changes (rename, picture change, etc.)
     channel.on(
       "postgres_changes",
-      { event: "*", schema: "public", table: "conversations" },
-      () => fetchRef.current(),
+      { event: "UPDATE", schema: "public", table: "conversations" },
+      (payload) => {
+        const updated = payload.new as any;
+        setConversations((prev) => {
+          const idx = prev.findIndex((c) => c.id === updated.id);
+          if (idx === -1) return prev;
+          const next = [...prev];
+          next[idx] = {
+            ...next[idx],
+            name: updated.name,
+            picture_url: updated.picture_url,
+          };
+          return next;
+        });
+      },
     );
-    // Live message updates — re-sort conversations when new messages arrive
+    // Live message inserts — just patch the local row, no refetch.
     channel.on(
       "postgres_changes",
       { event: "INSERT", schema: "public", table: "messages" },
@@ -207,7 +241,8 @@ export function useConversations() {
         setConversations((prev) => {
           const idx = prev.findIndex((c) => c.id === newMsg.conversation_id);
           if (idx === -1) {
-            fetchRef.current();
+            // New conversation we don't have yet — debounced refetch will pick it up.
+            scheduleRefetch();
             return prev;
           }
           const updated = [...prev];
@@ -225,24 +260,14 @@ export function useConversations() {
         });
       },
     );
-    channel.on(
-      "postgres_changes",
-      { event: "UPDATE", schema: "public", table: "messages" },
-      () => fetchRef.current(),
-    );
-    channel.on(
-      "postgres_changes",
-      { event: "DELETE", schema: "public", table: "messages" },
-      () => fetchRef.current(),
-    );
-    channel.on(
-      "postgres_changes",
-      { event: "UPDATE", schema: "public", table: "profiles" },
-      () => fetchRef.current(),
-    );
+    // NOTE: message UPDATE/DELETE and profile UPDATE used to trigger a full
+    // refetch here. They don't anymore — message edits/deletes don't change
+    // the sidebar preview enough to be worth the cost, and profile updates
+    // (status changes from anyone in the DB) were causing constant refetches.
     channel.subscribe();
 
     return () => {
+      if (refetchTimer != null) window.clearTimeout(refetchTimer);
       supabase.removeChannel(channel);
     };
   }, [user]);
