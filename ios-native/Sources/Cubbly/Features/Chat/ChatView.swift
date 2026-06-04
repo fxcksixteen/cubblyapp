@@ -1767,3 +1767,19 @@ struct PendingAttachmentChip: View {
         }
     }
 }
+
+/// Strips the iOS 26 Liquid Glass capsule that wraps toolbar items by default.
+/// On older iOS versions this is a no-op so the build still compiles.
+private struct NoToolbarGlassModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        #if compiler(>=6.2)
+        if #available(iOS 26.0, *) {
+            content.sharedBackgroundVisibility(.hidden)
+        } else {
+            content
+        }
+        #else
+        content
+        #endif
+    }
+}
