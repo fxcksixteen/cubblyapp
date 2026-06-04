@@ -196,18 +196,22 @@ struct ChatView: View {
     private var chatToolbar: some ToolbarContent {
         ToolbarItem(placement: .topBarLeading) {
             chatToolbarTitle
+                .modifier(NoToolbarGlassModifier())
         }
         if !conversation.isGroup {
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                Button { startVoiceCall() } label: {
-                    SVGIcon(name: "call", size: 21, tint: Theme.Colors.textSecondary)
+            ToolbarItem(placement: .topBarTrailing) {
+                HStack(spacing: 14) {
+                    Button { startVoiceCall() } label: {
+                        SVGIcon(name: "call", size: 21, tint: Theme.Colors.textSecondary)
+                    }
+                    .buttonStyle(.plain)
+                    Button { } label: {
+                        SVGIcon(name: "video-camera", size: 21, tint: Theme.Colors.textSecondary.opacity(0.45))
+                    }
+                    .disabled(true)
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
-                Button { } label: {
-                    SVGIcon(name: "video-camera", size: 21, tint: Theme.Colors.textSecondary.opacity(0.45))
-                }
-                .disabled(true)
-                .buttonStyle(.plain)
+                .modifier(NoToolbarGlassModifier())
             }
         }
     }
