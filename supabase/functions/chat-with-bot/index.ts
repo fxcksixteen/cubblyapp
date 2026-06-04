@@ -144,7 +144,8 @@ serve(async (req) => {
     }
 
     const aiData = await aiResponse.json();
-    const botReply = aiData.choices?.[0]?.message?.content || "I encountered an issue processing that. Could you try again?";
+    console.log("AI Gateway response:", JSON.stringify(aiData).slice(0, 2000));
+    const botReply = aiData.choices?.[0]?.message?.content?.trim() || "I encountered an issue processing that. Could you try again?";
 
     // Insert the bot's reply as a message
     const { data: inserted, error: insertError } = await supabase
