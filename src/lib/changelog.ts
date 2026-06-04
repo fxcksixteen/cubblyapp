@@ -23,9 +23,24 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.3.9";
+export const CURRENT_VERSION = "0.3.10";
 
 export const CHANGELOG: ChangelogEntry[] = [
+
+  {
+    version: "0.3.10",
+    title: "Coins are flowing and calls actually connect again",
+    date: "2026-06-04",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Coins are being awarded again. The activity-coins and message-coins flow had stopped paying out — voice minutes, gaming minutes, and the per-100-messages reward weren't crediting balances or firing the coin-earned notification + sound. The earning RPCs and triggers are restored so the 30-minute voice/gaming blocks and 100-message blocks tick balances up and surface the notification like before.",
+      "Voice calls work again. Calls were hanging up the instant either side tried to join because brand-new call events were being auto-marked stale before the first participant heartbeat could land. Fresh call events now get a grace window so the first heartbeat from each side is always counted before any stale-cleanup runs.",
+      "CubblyBot voice-call test path actually starts a real call now instead of routing the call button through the chat-bot edge function and replying with text. Tapping the call button on the CubblyBot DM goes straight into the loopback call flow, which is the intended way to self-test the call stack.",
+      "Big drop in web app lag, especially in the DM sidebar. The conversation list was firing one 'last message' query per conversation on every realtime tick (N+1) and refetching the whole list on every messages/profiles event. Last-message fetches are now batched into a single query and realtime refetches are debounced and narrowed to events that actually matter, so navigating between chats and tabs is snappy again.",
+      "chat-with-bot edge function now actually feeds the latest user message into Gemini when called from the voice-call notification path, instead of sending an empty turn that produced the generic 'I encountered an issue processing that' error.",
+    ],
+  },
 
   {
     version: "0.3.9",
