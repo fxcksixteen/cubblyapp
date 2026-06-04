@@ -5,7 +5,6 @@ import { useVoice } from "@/contexts/VoiceContext";
 import { useGroupCall } from "@/contexts/GroupCallContext";
 import { useUnreadCounts } from "@/hooks/useUnreadCounts";
 import { useFriends } from "@/hooks/useFriends";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { getProfileColor } from "@/lib/profileColors";
 import { getEffectivePresenceStatus } from "@/lib/presence";
@@ -199,26 +198,6 @@ const AppLayout = () => {
         return;
       }
       if (activeConv && !activeConv.is_group && activeParticipant) {
-        if (activeParticipant.user_id === BOT_USER_ID) {
-          try {
-            const { data: { session } } = await supabase.auth.getSession();
-            await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat-with-bot`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-                "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-              },
-              body: JSON.stringify({
-                conversation_id: activeConvId,
-                user_message: "[SYSTEM: The user just tried to start a voice call with you. Explain that you're a text-based AI and can't join voice calls yet, but you'd love to help test other features or just chat! Be warm and helpful.]",
-              }),
-            });
-          } catch (e) {
-            console.error("Failed to notify bot about call:", e);
-          }
-          return;
-        }
         startCall(activeConvId!, activeParticipant.user_id, activeParticipant.display_name);
       }
     };
