@@ -258,7 +258,7 @@ struct ChatView: View {
                 }
             }
         }
-        .frame(maxWidth: 230, alignment: .leading)
+        .fixedSize(horizontal: true, vertical: false)
         .onAppear {
             if let uid = conversation.otherUser?.userID {
                 UserBadgesStore.shared.request(uid)
@@ -1209,11 +1209,10 @@ private struct DiscordStyleBubble: View {
             bubbleRow
                 .offset(x: swipeOffset)
         }
-        // Long-press only. A 0-distance DragGesture here was eating every
-        // vertical scroll touch AND fighting with the system swipe-back —
-        // long-press alone is enough; SwiftUI handles scroll/press
-        // disambiguation cleanly and the press tint is delayed so a quick
-        // rightward swipe never "grabs" the bubble.
+        // Long-press for the action sheet. A 0-distance DragGesture here was
+        // eating every vertical scroll touch AND fighting with the system
+        // swipe-back, so we keep press detection separate and add the
+        // swipe-to-reply as a *high-distance* simultaneous gesture below.
         .onLongPressGesture(minimumDuration: 0.28, maximumDistance: 12, perform: {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             onLongPress()
@@ -1227,6 +1226,34 @@ private struct DiscordStyleBubble: View {
                 isPressing = false
             }
         })
+        // Discord-style swipe-to-reply. Only engages on a clearly horizontal
+        // *leftward* drag, so it never competes with vertical scroll or the
+        // system right-edge swipe-back (which goes the opposite direction).
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 14)
+                .onChanged { value in
+                    let dx = value.translation.width
+                    let dy = value.translation.height
+                    // Require dominantly-horizontal AND leftward motion.
+                    guard dx < 0, abs(dx) > abs(dy) * 1.5 else { return }
+                    // Rubber-banded leftward offset, capped past threshold.
+                    let raw = -dx
+                    let eased = raw < replyThreshold ? raw : replyThreshold + (raw - replyThreshold) * 0.35
+                    swipeOffset = -eased
+                    if !didFireReplyHaptic, raw >= replyThreshold {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        didFireReplyHaptic = true
+                    }
+                }
+                .onEnded { value in
+                    let fired = -value.translation.width >= replyThreshold
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+                        swipeOffset = 0
+                    }
+                    didFireReplyHaptic = false
+                    if fired { onSwipeReply() }
+                }
+        )
     }
 
     private var bubbleRow: some View {
