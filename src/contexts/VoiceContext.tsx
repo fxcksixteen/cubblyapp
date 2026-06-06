@@ -1591,6 +1591,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       if (channelRef.current && activeCallRef.current?.conversationId !== conversationId) {
         try { supabase.removeChannel(channelRef.current); } catch {}
         channelRef.current = null;
+        channelConversationRef.current = null;
       }
 
       // ─── Hardcoded invariant: only ONE call can ever be ongoing per chat. ───
