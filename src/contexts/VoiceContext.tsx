@@ -2404,6 +2404,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
       channelRef.current = null;
+      channelConversationRef.current = null;
     }
     console.log("[Voice] 🔴 Call ended, all resources cleaned up");
   }, [user, stopAudioLevelMonitor, stopScreenShare, activeCall, incomingCall]);
