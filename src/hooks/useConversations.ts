@@ -119,23 +119,28 @@ export function useConversations() {
       membersByConv.set(part.conversation_id, arr);
     }
 
-    // 6) Fetch last message for ALL conversations in a SINGLE batched query
-    //    (previously did N parallel queries — one per conversation — which
-    //    hammered both the DB and the client every time a profile status or
-    //    any message changed).
+    // 6) Fetch last message for each conversation. v0.3.12: a single batched
+    //    `limit(N)` query was dropping older friends' last-messages out of the
+    //    window whenever any other conversation had a burst of recent activity
+    //    — which made those friends silently disappear from the sidebar. Per-
+    //    conversation parallel queries (N is small — typical user has <30 DMs)
+    //    are bulletproof and only a few ms slower.
     const lastMsgMap = new Map<string, { content: string; created_at: string }>();
     if (conversationIds.length > 0) {
-      const { data: recentMsgs } = await supabase
-        .from("messages")
-        .select("conversation_id, content, created_at")
-        .in("conversation_id", conversationIds)
-        .order("created_at", { ascending: false })
-        .limit(Math.max(200, conversationIds.length * 3));
-      for (const m of recentMsgs || []) {
-        if (!lastMsgMap.has(m.conversation_id)) {
-          lastMsgMap.set(m.conversation_id, { content: m.content, created_at: m.created_at });
-        }
-      }
+      const results = await Promise.all(
+        conversationIds.map((cid) =>
+          supabase
+            .from("messages")
+            .select("content, created_at")
+            .eq("conversation_id", cid)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+        ),
+      );
+      results.forEach((r, i) => {
+        if (r.data) lastMsgMap.set(conversationIds[i], { content: r.data.content, created_at: r.data.created_at });
+      });
     }
 
     const conversationsList = conversationIds
