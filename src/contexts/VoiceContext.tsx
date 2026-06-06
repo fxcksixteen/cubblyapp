@@ -1027,12 +1027,23 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     return new Promise((resolve, reject) => {
       if (!user) { reject(new Error("No user")); return; }
 
+      // v0.3.11: only reuse the cached channel if it's for the SAME
+      // conversation. Otherwise tear it down — a stale channel from a
+      // previous call was silently swallowing accept/rejoin signaling.
       if (channelRef.current) {
-        resolve(channelRef.current);
-        return;
+        if (channelConversationRef.current === conversationId) {
+          console.log(`[Voice] ♻️ Reusing signaling channel for ${conversationId.substring(0,8)}`);
+          resolve(channelRef.current);
+          return;
+        }
+        console.log(`[Voice] 🧹 Dropping stale signaling channel (was ${channelConversationRef.current?.substring(0,8)}, now ${conversationId.substring(0,8)})`);
+        try { supabase.removeChannel(channelRef.current); } catch {}
+        channelRef.current = null;
+        channelConversationRef.current = null;
       }
 
       const channelName = `voice-call:${conversationId}`;
+      console.log(`[Voice] 📡 Subscribing to signaling channel ${channelName}`);
       const channel = supabase.channel(channelName);
 
       channel.on("broadcast", { event: "voice-signal" }, async ({ payload }) => {
