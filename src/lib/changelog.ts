@@ -23,9 +23,21 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.3.10";
+export const CURRENT_VERSION = "0.3.11";
 
 export const CHANGELOG: ChangelogEntry[] = [
+
+  {
+    version: "0.3.11",
+    title: "Friends reappear, calls actually reach the other side",
+    date: "2026-06-06",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Clicking 'Message' on a friend you share a group chat with no longer opens that group chat instead of the real 1:1 DM. The create-DM lookup was matching ANY conversation containing both users — group chats included — so it kept hijacking the DM and your friend would also vanish from the sidebar. It now only matches a true 1:1 DM (and creates a fresh one when none exists), so the friend reappears in the DM sidebar the moment you message them.",
+      "Voice calls reach the other side again. The signaling channel was being cached across calls without checking which conversation it belonged to, so accepting an incoming call or hitting Rejoin sometimes ended up listening on a stale channel from a previous chat — the caller's offer never arrived, your accept/rejoin appeared to do nothing on the caller's end, and you stayed marked as 'Not in call.' The cached channel is now keyed to the conversation and torn down whenever you move to a different call, plus the accept/rejoin path logs every signaling hop so any remaining issue is much easier to pinpoint.",
+    ],
+  },
 
   {
     version: "0.3.10",

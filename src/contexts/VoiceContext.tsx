@@ -369,6 +369,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   /** Cleanup fn for an active native (WASAPI) per-window audio capture, if any. */
   const nativeWindowAudioStopRef = useRef<(() => void) | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  // v0.3.11: track which conversation channelRef belongs to so setupSignaling
+  // never accidentally hands back a stale channel from a previous call to a
+  // different conversation. That was a silent way for accept/rejoin to never
+  // hear from the actual peer — the listener was bound to the wrong room.
+  const channelConversationRef = useRef<string | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const remoteAnalyserRef = useRef<AnalyserNode | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
@@ -1022,12 +1027,23 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     return new Promise((resolve, reject) => {
       if (!user) { reject(new Error("No user")); return; }
 
+      // v0.3.11: only reuse the cached channel if it's for the SAME
+      // conversation. Otherwise tear it down — a stale channel from a
+      // previous call was silently swallowing accept/rejoin signaling.
       if (channelRef.current) {
-        resolve(channelRef.current);
-        return;
+        if (channelConversationRef.current === conversationId) {
+          console.log(`[Voice] ♻️ Reusing signaling channel for ${conversationId.substring(0,8)}`);
+          resolve(channelRef.current);
+          return;
+        }
+        console.log(`[Voice] 🧹 Dropping stale signaling channel (was ${channelConversationRef.current?.substring(0,8)}, now ${conversationId.substring(0,8)})`);
+        try { supabase.removeChannel(channelRef.current); } catch {}
+        channelRef.current = null;
+        channelConversationRef.current = null;
       }
 
       const channelName = `voice-call:${conversationId}`;
+      console.log(`[Voice] 📡 Subscribing to signaling channel ${channelName}`);
       const channel = supabase.channel(channelName);
 
       channel.on("broadcast", { event: "voice-signal" }, async ({ payload }) => {
@@ -1450,8 +1466,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       channel.subscribe((status) => {
         if (status === "SUBSCRIBED") {
           channelRef.current = channel;
+          channelConversationRef.current = conversationId;
+          console.log(`[Voice] ✅ Signaling channel SUBSCRIBED for ${conversationId.substring(0,8)}`);
           resolve(channel);
         } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.error(`[Voice] ❌ Signaling channel failed (${status}) for ${conversationId.substring(0,8)}`);
           reject(new Error(`Channel subscription failed: ${status}`));
         }
       });
@@ -1572,6 +1591,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       if (channelRef.current && activeCallRef.current?.conversationId !== conversationId) {
         try { supabase.removeChannel(channelRef.current); } catch {}
         channelRef.current = null;
+        channelConversationRef.current = null;
       }
 
       // ─── Hardcoded invariant: only ONE call can ever be ongoing per chat. ───
@@ -2384,6 +2404,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
       channelRef.current = null;
+      channelConversationRef.current = null;
     }
     console.log("[Voice] 🔴 Call ended, all resources cleaned up");
   }, [user, stopAudioLevelMonitor, stopScreenShare, activeCall, incomingCall]);
