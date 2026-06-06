@@ -307,7 +307,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const [settings, setSettings] = useState<VoiceSettings>(loadSettings);
   const [screenShareSettings, setScreenShareSettings] = useState<ScreenShareSettings>(loadScreenShareSettings);
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
-  const [incomingCall, setIncomingCall] = useState<VoiceContextType["incomingCall"]>(null);
+  const [incomingCall, _setIncomingCall] = useState<VoiceContextType["incomingCall"]>(null);
+  const incomingCallRef = useRef<VoiceContextType["incomingCall"]>(null);
+  const setIncomingCall: typeof _setIncomingCall = useCallback((v) => {
+    _setIncomingCall((prev) => {
+      const next = typeof v === "function" ? (v as (p: typeof prev) => typeof prev)(prev) : v;
+      incomingCallRef.current = next;
+      return next;
+    });
+  }, []);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
@@ -2694,7 +2702,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         if (payload.targetId !== user.id || activeCall || sameCallAlreadyOpen) return;
 
         try {
-          await setupSignaling(payload.conversationId);
+          const channel = await setupSignaling(payload.conversationId);
           setIncomingCall({
             conversationId: payload.conversationId,
             callerId: payload.callerId,
@@ -2703,6 +2711,45 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             callEventId: payload.callEventId,
           });
           playLooping("incomingCall", { volume: 0.5 });
+
+          // v0.3.12: pre-fetch the SDP offer from the caller IMMEDIATELY,
+          // before the user clicks Accept. This makes Accept a single fast
+          // setRemoteDescription→createAnswer hop instead of a fragile
+          // ready-for-offer round-trip after click (which was the root cause
+          // of "Accept does nothing"). The voice-signal `offer` handler stores
+          // the SDP into incomingCall via setIncomingCall on the no-pc/no-
+          // acceptedCall branch — so by the time the user hits Accept, the
+          // offer is already there.
+          const sendReady = () => {
+            try {
+              channel.send({
+                type: "broadcast",
+                event: "voice-signal",
+                payload: {
+                  type: "ready-for-offer",
+                  senderId: user.id,
+                  senderName: user.user_metadata?.display_name || "User",
+                  callEventId: payload.callEventId,
+                },
+              });
+            } catch (e) {
+              console.warn("[Voice] pre-accept ready-for-offer send failed:", e);
+            }
+          };
+          sendReady();
+          // Retry the pre-fetch a few times in case the caller's signaling
+          // subscribe lost the first broadcast.
+          [500, 1200, 2500, 4500].forEach((ms) => {
+            setTimeout(() => {
+              // Bail if we already have the offer, or the call is gone, or
+              // we already accepted.
+              const snap = incomingCallRef.current;
+              if (!snap || snap.callEventId !== payload.callEventId) return;
+              if (snap.offer) return;
+              console.log(`[Voice] 🔁 Pre-accept re-sending ready-for-offer (+${ms}ms)`);
+              sendReady();
+            }, ms);
+          });
         } catch (e) {
           console.error("Failed to setup signaling for incoming call:", e);
         }
