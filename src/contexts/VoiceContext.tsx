@@ -307,7 +307,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const [settings, setSettings] = useState<VoiceSettings>(loadSettings);
   const [screenShareSettings, setScreenShareSettings] = useState<ScreenShareSettings>(loadScreenShareSettings);
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
-  const [incomingCall, setIncomingCall] = useState<VoiceContextType["incomingCall"]>(null);
+  const [incomingCall, _setIncomingCall] = useState<VoiceContextType["incomingCall"]>(null);
+  const incomingCallRef = useRef<VoiceContextType["incomingCall"]>(null);
+  const setIncomingCall: typeof _setIncomingCall = useCallback((v) => {
+    _setIncomingCall((prev) => {
+      const next = typeof v === "function" ? (v as (p: typeof prev) => typeof prev)(prev) : v;
+      incomingCallRef.current = next;
+      return next;
+    });
+  }, []);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
