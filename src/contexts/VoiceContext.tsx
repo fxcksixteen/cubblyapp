@@ -1466,8 +1466,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       channel.subscribe((status) => {
         if (status === "SUBSCRIBED") {
           channelRef.current = channel;
+          channelConversationRef.current = conversationId;
+          console.log(`[Voice] ✅ Signaling channel SUBSCRIBED for ${conversationId.substring(0,8)}`);
           resolve(channel);
         } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.error(`[Voice] ❌ Signaling channel failed (${status}) for ${conversationId.substring(0,8)}`);
           reject(new Error(`Channel subscription failed: ${status}`));
         }
       });
