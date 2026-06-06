@@ -369,6 +369,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   /** Cleanup fn for an active native (WASAPI) per-window audio capture, if any. */
   const nativeWindowAudioStopRef = useRef<(() => void) | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  // v0.3.11: track which conversation channelRef belongs to so setupSignaling
+  // never accidentally hands back a stale channel from a previous call to a
+  // different conversation. That was a silent way for accept/rejoin to never
+  // hear from the actual peer — the listener was bound to the wrong room.
+  const channelConversationRef = useRef<string | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const remoteAnalyserRef = useRef<AnalyserNode | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
