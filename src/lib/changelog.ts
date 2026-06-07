@@ -40,6 +40,19 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 
   {
+    version: "0.3.12",
+    title: "Calls actually go through, friends stop vanishing from the sidebar",
+    date: "2026-06-06",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Voice calls finally work end-to-end again. The receiver was waiting until you clicked Accept to ask the caller for the SDP offer, so a single dropped broadcast left Accept doing nothing and Rejoin opening a fake local call with no peer. The receiver now pre-fetches the offer the instant the incoming-call notification arrives (with retries), so Accept becomes a single fast setRemoteDescription/answer hop and both sides actually connect.",
+      "Friends like Aria no longer magically disappear from your DM sidebar when you click off their chat. The conversation list was loading 'last message' via one big batched query capped at ~200 rows — if any other DM had a recent burst of activity, older friends' last-messages fell outside the window, lastMessage came back empty, and the sidebar filter hid them on the next refetch. Last messages are now fetched per conversation in parallel so every DM keeps its preview and stays pinned in the sidebar.",
+    ],
+  },
+
+
+  {
     version: "0.3.11",
     title: "Friends reappear, calls actually reach the other side",
     date: "2026-06-06",
