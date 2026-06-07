@@ -1989,7 +1989,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         });
       }
 
-      setCurrentCallEventId(acceptedCallEventId);
+      // currentCallEventId was set earlier (before SDP) in v0.3.12.
+
       // NOTE: do NOT manually insert a CallEvent here. The realtime INSERT
       // subscription (see `setupCallEventsRealtime`) is the single source of
       // truth and uses the *real* `started_at` from the DB. Inserting a local
