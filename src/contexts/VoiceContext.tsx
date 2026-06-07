@@ -183,6 +183,51 @@ const STUN_ONLY_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun1.l.google.com:19302" },
 ];
 
+/**
+ * v0.3.12 — Reliable signaling send.
+ *
+ * Background: supabase-js's `channel.send({type:'broadcast', ...})` returns a
+ * Promise that resolves to "ok" | "timed out" | "rate limited" | "error". When
+ * the call sites do NOT await it (which the entire WebRTC signaling path was
+ * doing), subsequent un-awaited sends during a burst (offer/answer + ICE
+ * flurry) can be silently dropped client-side. That matches the reproducible
+ * symptom: Accept does nothing, Rejoin opens the UI but the peer stays "Not
+ * in call", the caller never sees the receiver join.
+ *
+ * This helper awaits the send, and retries on transient non-ok statuses with
+ * a small backoff. It returns when the broadcast is acknowledged OR after the
+ * final retry — never throws.
+ */
+async function sendSignalReliably(
+  channel: ReturnType<typeof supabase.channel> | null,
+  payload: Record<string, any>,
+  label: string,
+): Promise<void> {
+  if (!channel) {
+    console.warn(`[Voice] sendSignal(${label}) skipped — no channel`);
+    return;
+  }
+  const delays = [0, 150, 400, 900];
+  for (let i = 0; i < delays.length; i++) {
+    if (delays[i] > 0) await new Promise((r) => setTimeout(r, delays[i]));
+    try {
+      const res: any = await (channel as any).send({
+        type: "broadcast",
+        event: "voice-signal",
+        payload,
+      });
+      if (res === "ok" || res === undefined || res === true) {
+        if (i > 0) console.log(`[Voice] ✅ sendSignal(${label}) ok on retry #${i}`);
+        return;
+      }
+      console.warn(`[Voice] ⚠️ sendSignal(${label}) status='${res}', retry #${i + 1}`);
+    } catch (e) {
+      console.warn(`[Voice] sendSignal(${label}) threw on attempt ${i + 1}:`, e);
+    }
+  }
+  console.error(`[Voice] ❌ sendSignal(${label}) failed after all retries`);
+}
+
 interface VoiceContextType {
   settings: VoiceSettings;
   updateSettings: (partial: Partial<VoiceSettings>) => void;
