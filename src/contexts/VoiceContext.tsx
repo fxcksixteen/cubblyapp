@@ -2747,10 +2747,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     const globalChannel = supabase.channel(`voice-global:${user.id}`);
     globalChannel
       .on("broadcast", { event: "incoming-call" }, async ({ payload }) => {
+        // v0.3.12: read live state through refs so we don't have to resubscribe
+        // this channel on every call state change (which was creating a
+        // teardown window that swallowed incoming-call notifications).
+        const activeNow = activeCallReadRef.current;
+        const incomingNow = incomingCallRef.current;
         const sameCallAlreadyOpen =
-          activeCall?.conversationId === payload.conversationId ||
-          incomingCall?.callEventId === payload.callEventId;
-        if (payload.targetId !== user.id || activeCall || sameCallAlreadyOpen) return;
+          activeNow?.conversationId === payload.conversationId ||
+          incomingNow?.callEventId === payload.callEventId;
+        if (payload.targetId !== user.id || activeNow || sameCallAlreadyOpen) return;
 
         try {
           const channel = await setupSignaling(payload.conversationId);
@@ -2798,11 +2803,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         }
       })
       .on("broadcast", { event: "incoming-call-dismiss" }, ({ payload }) => {
+        const activeNow = activeCallReadRef.current;
+        const incomingNow = incomingCallRef.current;
         const matchesIncoming =
-          incomingCall?.callEventId === payload.callEventId ||
-          incomingCall?.conversationId === payload.conversationId;
+          incomingNow?.callEventId === payload.callEventId ||
+          incomingNow?.conversationId === payload.conversationId;
         const matchesActive =
-          activeCall?.conversationId === payload.conversationId && activeCall?.state !== "connected";
+          activeNow?.conversationId === payload.conversationId && activeNow?.state !== "connected";
 
         if (!matchesIncoming && !matchesActive) return;
 
@@ -2817,7 +2824,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       });
     globalChannel.subscribe();
     return () => { supabase.removeChannel(globalChannel); };
-  }, [user, activeCall, incomingCall, setupSignaling]);
+  }, [user, setupSignaling]);
+
 
   // Stop incoming ringtone as soon as we accept (incomingCall cleared) or it's superseded.
   useEffect(() => {
