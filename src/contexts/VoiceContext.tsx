@@ -985,18 +985,14 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     // the caller side and no offer ever reached them.
     if (pcRef.current && pendingOfferRef.current && pendingOfferRef.current.conversationId === conversationId) {
       console.log("[Voice] 🔁 PC already exists — re-broadcasting pending offer for late joiner");
-      channel.send({
-        type: "broadcast",
-        event: "voice-signal",
-        payload: {
-          type: "offer",
-          sdp: pendingOfferRef.current.offer,
-          senderId: user.id,
-          senderName: user.user_metadata?.display_name || "User",
-          callerAvatarUrl: outgoingCallMeta.callerAvatarUrl,
-          callEventId: outgoingCallMeta.callEventId,
-        },
-      });
+      await sendSignalReliably(channel, {
+        type: "offer",
+        sdp: pendingOfferRef.current.offer,
+        senderId: user.id,
+        senderName: user.user_metadata?.display_name || "User",
+        callerAvatarUrl: outgoingCallMeta.callerAvatarUrl,
+        callEventId: outgoingCallMeta.callEventId,
+      }, "offer(re-broadcast)");
       return;
     }
     if (pcRef.current) {
@@ -1059,19 +1055,16 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       callEventId: outgoingCallMeta.callEventId,
     };
 
-    channel.send({
-      type: "broadcast",
-      event: "voice-signal",
-      payload: {
-        type: "offer",
-        sdp: offer,
-        senderId: user.id,
-        senderName: user.user_metadata?.display_name || "User",
-        callerAvatarUrl: outgoingCallMeta.callerAvatarUrl,
-        callEventId: outgoingCallMeta.callEventId,
-      },
-    });
+    await sendSignalReliably(channel, {
+      type: "offer",
+      sdp: offer,
+      senderId: user.id,
+      senderName: user.user_metadata?.display_name || "User",
+      callerAvatarUrl: outgoingCallMeta.callerAvatarUrl,
+      callEventId: outgoingCallMeta.callEventId,
+    }, "offer");
     console.log("[Voice] 📡 Offer sent to callee via broadcast");
+
 
     setActiveCall(prev => prev && prev.conversationId === conversationId ? { ...prev, state: "ringing" } : prev);
   }, [user, getUserMedia, createPeerConnection, startAudioLevelMonitor]);
