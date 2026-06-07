@@ -23,14 +23,14 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.3.12";
+export const CURRENT_VERSION = "0.3.13";
 
 export const CHANGELOG: ChangelogEntry[] = [
 
   {
-    version: "0.3.12",
+    version: "0.3.13",
     title: "Calls actually go through, friends stop vanishing from the sidebar",
-    date: "2026-06-06",
+    date: "2026-06-07",
     hero: bearImage,
     newFeatures: [],
     bugFixes: [
