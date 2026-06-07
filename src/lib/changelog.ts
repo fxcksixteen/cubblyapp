@@ -34,7 +34,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     hero: bearImage,
     newFeatures: [],
     bugFixes: [
-      "Voice calls finally work end-to-end again. The receiver was waiting until you clicked Accept to ask the caller for the SDP offer, so a single dropped broadcast left Accept doing nothing and Rejoin opening a fake local call with no peer. The receiver now pre-fetches the offer the instant the incoming-call notification arrives (with retries), so Accept becomes a single fast setRemoteDescription/answer hop and both sides actually connect.",
+      "Voice calls finally work end-to-end again. Two things were broken at once: the receiver was waiting until you clicked Accept to ask the caller for the SDP offer, AND every signaling broadcast (offer, answer, ready-for-offer, peer-leave) was being fired without awaiting it — supabase's realtime client silently drops un-awaited sends under burst, which is exactly what happens during a WebRTC handshake. The receiver now pre-fetches the offer the instant the ring arrives, and every critical signaling message is awaited and retried until the realtime server acknowledges it. Accept and Rejoin now consistently land you in the call and the caller actually sees you join.",
       "Friends like Aria no longer magically disappear from your DM sidebar when you click off their chat. The conversation list was loading 'last message' via one big batched query capped at ~200 rows — if any other DM had a recent burst of activity, older friends' last-messages fell outside the window, lastMessage came back empty, and the sidebar filter hid them on the next refetch. Last messages are now fetched per conversation in parallel so every DM keeps its preview and stays pinned in the sidebar.",
     ],
   },
