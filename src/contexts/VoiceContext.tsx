@@ -1055,14 +1055,17 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     let sdp = offer.sdp || "";
     sdp = setHighQualityOpus(sdp);
     offer.sdp = sdp;
-    await pc.setLocalDescription(offer);
-    console.log("[Voice] 📤 Offer created and set as local description");
-
+    // v0.3.12: stash pendingOfferRef BEFORE awaiting setLocalDescription so a
+    // ready-for-offer retry that lands mid-await can re-broadcast this offer
+    // instead of bailing with "PC exists, no pending offer".
     pendingOfferRef.current = {
       offer,
       conversationId,
       callEventId: outgoingCallMeta.callEventId,
     };
+    await pc.setLocalDescription(offer);
+    console.log("[Voice] 📤 Offer created and set as local description");
+
 
     await sendSignalReliably(channel, {
       type: "offer",
