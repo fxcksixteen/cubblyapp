@@ -469,6 +469,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const outgoingCallMetaRef = useRef<{ conversationId: string; callEventId: string; callerAvatarUrl?: string } | null>(null);
   // Flag to prevent re-broadcasting hangup when receiving one
   const isRemoteHangup = useRef<boolean>(false);
+  // v0.3.12: track which offer (by callEventId) we have already answered so
+  // duplicate offer retries from the caller's retry loop cannot re-trigger
+  // setRemoteDescription on an already-stable PC, which was wiping ICE state.
+  const lastAnsweredOfferRef = useRef<string | null>(null);
+  // v0.3.12: refs for activeCall + incomingCall so the global voice-global
+  // channel effect can stay mounted purely on `user` (it was being torn down
+  // and resubscribed on every call state change, causing dropped notifications).
+  const activeCallReadRef = useRef<ActiveCall | null>(null);
+  useEffect(() => { activeCallReadRef.current = activeCall; }, [activeCall]);
 
   useEffect(() => {
     detectBestRegion().then(setDetectedRegion);
