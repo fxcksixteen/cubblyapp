@@ -2467,6 +2467,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     pendingOfferRef.current = null;
     acceptedIncomingCallRef.current = null;
     outgoingCallMetaRef.current = null;
+    lastAnsweredOfferRef.current = null;
+
 
     document.querySelectorAll("audio").forEach((el: any) => {
       if (el.__cubblyRemote) { el.pause(); el.srcObject = null; el.remove(); }
