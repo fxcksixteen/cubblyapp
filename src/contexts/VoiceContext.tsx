@@ -1151,11 +1151,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               sdp = setHighQualityOpus(sdp);
               answer.sdp = sdp;
               await pc.setLocalDescription(answer);
-              channel.send({
-                type: "broadcast",
-                event: "voice-signal",
-                payload: { type: "answer", sdp: answer, senderId: user.id },
-              });
+              await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id }, "answer(re-offer)");
             } catch (e) {
               console.warn("[Voice] Mid-call re-offer handling failed:", e);
             }
@@ -1174,11 +1170,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               answer.sdp = sdp;
               await pc.setLocalDescription(answer);
 
-              channel.send({
-                type: "broadcast",
-                event: "voice-signal",
-                payload: { type: "answer", sdp: answer, senderId: user.id },
-              });
+              await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id }, "answer(accepted-offer)");
 
               setActiveCall(prev => prev && prev.conversationId === conversationId
                 ? {
@@ -1252,11 +1244,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               answer.sdp = sdp;
               await newPc.setLocalDescription(answer);
 
-              channel.send({
-                type: "broadcast",
-                event: "voice-signal",
-                payload: { type: "answer", sdp: answer, senderId: user.id },
-              });
+              await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id }, "answer(rejoin)");
 
               setActiveCall(prev => prev ? {
                 ...prev,
@@ -1786,16 +1774,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       if (isJoiningExisting) {
         console.log("[Voice] 📡 Rejoin requested — asking active peer for an offer (with retries)");
         const sendReady = () => {
-          channel.send({
-            type: "broadcast",
-            event: "voice-signal",
-            payload: {
-              type: "ready-for-offer",
-              senderId: user.id,
-              senderName: user.user_metadata?.display_name || "User",
-              callEventId,
-            },
-          });
+          void sendSignalReliably(channel, {
+            type: "ready-for-offer",
+            senderId: user.id,
+            senderName: user.user_metadata?.display_name || "User",
+            callEventId,
+          }, "ready-for-offer(rejoin)");
         };
         sendReady();
         // Retry: broadcast is best-effort; if the staying peer's signaling
@@ -1922,11 +1906,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         answer.sdp = sdp;
         await pc.setLocalDescription(answer);
 
-        channel.send({
-          type: "broadcast",
-          event: "voice-signal",
-          payload: { type: "answer", sdp: answer, senderId: user.id },
-        });
+        await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id }, "answer(accept)");
         console.log("[Voice] 📡 Answer sent to caller");
 
         acceptedIncomingCallRef.current = null;
@@ -1934,16 +1914,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       } else {
         console.log("[Voice] 📡 No offer yet, sending ready-for-offer to caller (with retries)...");
         const sendReady = () => {
-          channel.send({
-            type: "broadcast",
-            event: "voice-signal",
-            payload: {
-              type: "ready-for-offer",
-              senderId: user.id,
-              senderName: user.user_metadata?.display_name || "User",
-              callEventId: acceptedCallEventId,
-            },
-          });
+          void sendSignalReliably(channel, {
+            type: "ready-for-offer",
+            senderId: user.id,
+            senderName: user.user_metadata?.display_name || "User",
+            callEventId: acceptedCallEventId,
+          }, "ready-for-offer(accept)");
         };
         sendReady();
         // v0.3.9: the very first ready-for-offer often races the caller's
@@ -2397,13 +2373,14 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     // else in the conversation can still join from the chat-thread pill.
     // The legacy `hangup` event (which forced both sides to end) is gone.
     if (!isRemoteHangup.current && channelRef.current && user && pcRef.current) {
-      channelRef.current.send({
-        type: "broadcast",
-        event: "voice-signal",
-        // v0.3.8: stamp the callEventId so peers can ignore stale leaves
-        // from a previous call attempt in the same conversation.
-        payload: { type: "peer-leave", senderId: user.id, callEventId: currentCallEventIdRef.current },
-      });
+      // v0.3.12: await this so peer-leave actually goes out before the
+      // channel is torn down a few lines later — otherwise the peer was
+      // left thinking we were still in the call.
+      void sendSignalReliably(channelRef.current, {
+        type: "peer-leave",
+        senderId: user.id,
+        callEventId: currentCallEventIdRef.current,
+      }, "peer-leave");
     }
 
     // Clean up loopback peers if they exist
@@ -2759,20 +2736,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           // acceptedCall branch — so by the time the user hits Accept, the
           // offer is already there.
           const sendReady = () => {
-            try {
-              channel.send({
-                type: "broadcast",
-                event: "voice-signal",
-                payload: {
-                  type: "ready-for-offer",
-                  senderId: user.id,
-                  senderName: user.user_metadata?.display_name || "User",
-                  callEventId: payload.callEventId,
-                },
-              });
-            } catch (e) {
-              console.warn("[Voice] pre-accept ready-for-offer send failed:", e);
-            }
+            void sendSignalReliably(channel, {
+              type: "ready-for-offer",
+              senderId: user.id,
+              senderName: user.user_metadata?.display_name || "User",
+              callEventId: payload.callEventId,
+            }, "ready-for-offer(pre-accept)");
           };
           sendReady();
           // Retry the pre-fetch a few times in case the caller's signaling
