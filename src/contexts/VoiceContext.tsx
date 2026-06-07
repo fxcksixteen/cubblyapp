@@ -2489,44 +2489,27 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => { endCallRef.current = endCall; }, [endCall]);
 
   const upsertCurrentCallParticipantState = useCallback(async (patch: ParticipantStatePatch) => {
-    if (!user || !currentCallEventId) return;
-
-    const updates: ParticipantStatePatch = {};
-    if (patch.is_muted !== undefined) updates.is_muted = patch.is_muted;
-    if (patch.is_deafened !== undefined) updates.is_deafened = patch.is_deafened;
-    if (patch.is_video_on !== undefined) updates.is_video_on = patch.is_video_on;
-    if (patch.is_screen_sharing !== undefined) updates.is_screen_sharing = patch.is_screen_sharing;
+    // v0.3.12: read from the ref so a fast ICE-connected fire (before React
+    // re-renders with the new currentCallEventId) still finds the live id.
+    const evtId = currentCallEventIdRef.current || currentCallEventId;
+    if (!user || !evtId) return;
 
     try {
-      const { data: existing } = await supabase
-        .from("call_participants")
-        .select("id")
-        .eq("call_event_id", currentCallEventId)
-        .eq("user_id", user.id)
-        .is("left_at", null)
-        .maybeSingle();
-
-      if (existing) {
-        await supabase
-          .from("call_participants")
-          .update(updates)
-          .eq("id", existing.id);
-        return;
-      }
-
-      await supabase.from("call_participants").insert({
-        call_event_id: currentCallEventId,
-        user_id: user.id,
-        is_muted: false,
-        is_deafened: false,
-        is_video_on: false,
-        is_screen_sharing: false,
-        ...updates,
+      // Use the heartbeat RPC — it upserts on (call_event_id, user_id) AND
+      // clears left_at, which is what makes rejoin/reaccept revive a stale
+      // participant row instead of failing silently on the UNIQUE constraint.
+      await (supabase as any).rpc("heartbeat_call_participant", {
+        _call_event_id: evtId,
+        _is_muted: patch.is_muted ?? null,
+        _is_deafened: patch.is_deafened ?? null,
+        _is_video_on: patch.is_video_on ?? null,
+        _is_screen_sharing: patch.is_screen_sharing ?? null,
       });
     } catch (e) {
-      console.warn("[Voice] Failed to upsert call participant state:", e);
+      console.warn("[Voice] heartbeat_call_participant RPC failed:", e);
     }
   }, [user, currentCallEventId]);
+
 
   /** Push my current mute/deafen state to call_participants so peers see it live */
   const syncCallParticipantState = useCallback(async (overrides?: { is_muted?: boolean; is_deafened?: boolean }) => {
