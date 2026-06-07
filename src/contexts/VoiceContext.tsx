@@ -1278,6 +1278,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               await newPc.setLocalDescription(answer);
 
               await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id }, "answer(rejoin)");
+              if (payload.callEventId) lastAnsweredOfferRef.current = payload.callEventId;
 
               setActiveCall(prev => prev ? {
                 ...prev,
@@ -1287,6 +1288,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
                 peerLeftAt: undefined,
               } : prev);
               peerIdRef.current = payload.senderId || peerIdRef.current;
+              // v0.3.12: immediate heartbeat so the staying peer sees us live
+              // in call_participants and stops showing "Not in call".
+              const evtId = payload.callEventId || currentCallEventIdRef.current;
+              if (evtId) {
+                void (async () => {
+                  try { await (supabase as any).rpc("heartbeat_call_participant", { _call_event_id: evtId }); } catch {}
+                })();
+              }
+
             } catch (e) {
               console.error("[Voice] Rejoin auto-accept failed (keeping call alive):", e);
               // v0.3.8: don't endCall — leave it to the user.
