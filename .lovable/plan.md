@@ -1,29 +1,42 @@
-Plan to fix only web/desktop voice calls for v0.3.12:
+I re-inspected the current v0.3.12 voice code and it is not safe to call this fully fixed yet. The DM sidebar fix can stay untouched, but voice still has race conditions that can make Accept/Rejoin open the UI without completing the real call.
 
-1. **Make signaling reliable instead of best-effort**
-   - Add one small awaited broadcast helper in `VoiceContext.tsx` for call signaling.
-   - Critical messages will be awaited and retried: `incoming-call`, `ready-for-offer`, `offer`, `answer`, `peer-leave`, and `incoming-call-dismiss`.
-   - Serialize ICE-candidate sends through a small promise queue so the realtime client is not hit with an un-awaited burst that can drop messages during WebRTC setup.
+Plan to fix only web/desktop 1:1 voice calls for v0.3.12:
 
-2. **Fix both join paths**
-   - **Accept button:** accept should always either answer an existing offer or reliably request a fresh offer, without depending on a single dropped broadcast.
-   - **Rejoin button / call pill:** rejoin should reliably ask the live peer for an offer, then auto-answer it only for the matching conversation/call event.
-   - Keep the call UI in “calling/ringing” until ICE actually connects, not fake-connected.
+1. Make Accept and Rejoin share the same join path
+   - Add one internal helper in `VoiceContext.tsx` for the receiver/joiner side: get mic, create peer connection, attach tracks, set the offer as remote description, create/send answer, set `activeCall`, set `currentCallEventId`, and heartbeat `call_participants`.
+   - Use this helper from both:
+     - incoming call Accept button
+     - Rejoin / Join Call button response to an offer
+   - This restores the old behavior principle: accepting and rejoining both do the same offer-answer join, instead of two slightly different fragile paths.
 
-3. **Keep participant state correct**
-   - Ensure `call_participants` heartbeat/upsert runs immediately for accept and rejoin, with the correct `callEventId`, so the other side stops showing “Not in call” once the peer really joined.
-   - Keep the existing DM/sidebar fix untouched.
+2. Fix participant state so “Not in call” cannot hallucinate after a real join
+   - Set `currentCallEventId` before SDP/ICE can connect, not after the accept flow finishes.
+   - Replace the direct participant insert/update fallback in `upsertCurrentCallParticipantState` with the existing backend heartbeat RPC so stale `left_at` rows are revived instead of failing on the unique constraint.
+   - Ensure Accept and Rejoin both immediately write/refresh the local `call_participants` row before waiting on background heartbeat timers.
 
-4. **Keep diagnostics but reduce guessing**
-   - Keep focused `[Voice]` logs around subscribe/send/receive/SDP/ICE state so if anything still fails, the exact hop is visible.
-   - Update `src/lib/changelog.ts` for v0.3.12 with this as the only important web/desktop fix.
+3. Fix duplicate offer retries breaking accepted calls
+   - Track the last answered offer per `callEventId`.
+   - Ignore duplicate offer retry broadcasts after the same offer/call event has already been answered.
+   - Keep legitimate mid-call renegotiation for camera/screenshare, but stop old retry offers from re-running `setRemoteDescription` against a stable answered peer connection.
 
-Technical root cause I’m targeting: the current code sends many realtime/WebRTC signaling broadcasts without awaiting them. During offer/answer/ICE bursts, this can drop or ignore messages, which matches “Accept does nothing,” “Rejoin opens the UI but peer stays Not in call,” and “caller never sees me join.”
+4. Fix rejoin offer-send race on the staying peer
+   - In the caller/staying-peer offer creation path, store `pendingOfferRef` immediately after `createOffer()` and before `setLocalDescription()` completes.
+   - If a second `ready-for-offer` arrives while offer creation is in progress, wait for/reuse that in-flight offer instead of returning with “PC exists, no pending offer.”
 
-<presentation-actions>
-  <presentation-open-history>View History</presentation-open-history>
-</presentation-actions>
+5. Stabilize global incoming-call signaling
+   - Keep the `voice-global:<userId>` listener mounted based only on the logged-in user.
+   - Read `activeCall` and `incomingCall` through refs inside callbacks, instead of resubscribing every time call state changes.
+   - This removes the teardown window during Accept where incoming-call dismiss/notifications can be missed.
 
-<presentation-actions>
-<presentation-link url="https://docs.lovable.dev/tips-tricks/troubleshooting">Troubleshooting docs</presentation-link>
-</presentation-actions>
+6. Make ICE candidate signaling reliable enough for setup
+   - Route main-call ICE sends through a small queued reliable sender instead of raw un-awaited `channel.send()` in Accept/Rejoin/outgoing paths.
+   - Keep screen-share and mute/video sends separate unless needed, so this stays focused on call setup.
+
+7. Validate the backend assumptions already checked
+   - Confirmed `heartbeat_call_participant` exists, revives stale participant rows by clearing `left_at`, and `call_events`/`call_participants` are in realtime.
+   - No backend schema migration is needed for this fix.
+
+Validation after implementation:
+- Check the code paths so Accept and Rejoin both call the same helper.
+- Run focused tests/type validation through the normal harness.
+- Leave v0.3.12 changelog focused on this single web/desktop voice-call fix.

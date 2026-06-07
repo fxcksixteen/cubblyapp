@@ -469,6 +469,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const outgoingCallMetaRef = useRef<{ conversationId: string; callEventId: string; callerAvatarUrl?: string } | null>(null);
   // Flag to prevent re-broadcasting hangup when receiving one
   const isRemoteHangup = useRef<boolean>(false);
+  // v0.3.12: track which offer (by callEventId) we have already answered so
+  // duplicate offer retries from the caller's retry loop cannot re-trigger
+  // setRemoteDescription on an already-stable PC, which was wiping ICE state.
+  const lastAnsweredOfferRef = useRef<string | null>(null);
+  // v0.3.12: refs for activeCall + incomingCall so the global voice-global
+  // channel effect can stay mounted purely on `user` (it was being torn down
+  // and resubscribed on every call state change, causing dropped notifications).
+  const activeCallReadRef = useRef<ActiveCall | null>(null);
+  useEffect(() => { activeCallReadRef.current = activeCall; }, [activeCall]);
 
   useEffect(() => {
     detectBestRegion().then(setDetectedRegion);
@@ -1046,14 +1055,17 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     let sdp = offer.sdp || "";
     sdp = setHighQualityOpus(sdp);
     offer.sdp = sdp;
-    await pc.setLocalDescription(offer);
-    console.log("[Voice] 📤 Offer created and set as local description");
-
+    // v0.3.12: stash pendingOfferRef BEFORE awaiting setLocalDescription so a
+    // ready-for-offer retry that lands mid-await can re-broadcast this offer
+    // instead of bailing with "PC exists, no pending offer".
     pendingOfferRef.current = {
       offer,
       conversationId,
       callEventId: outgoingCallMeta.callEventId,
     };
+    await pc.setLocalDescription(offer);
+    console.log("[Voice] 📤 Offer created and set as local description");
+
 
     await sendSignalReliably(channel, {
       type: "offer",
@@ -1119,6 +1131,17 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         if (payload.type === "offer") {
           const acceptedCall = acceptedIncomingCallRef.current;
 
+          // v0.3.12: ignore duplicate offer retries from the caller's retry
+          // loop once we've already answered this exact callEventId. Without
+          // this, a delayed retry re-triggers setRemoteDescription on the
+          // stable PC and silently wipes the just-established ICE pair.
+          if (payload.callEventId && lastAnsweredOfferRef.current === payload.callEventId) {
+            console.log("[Voice] 🛑 Ignoring duplicate offer retry for already-answered call", payload.callEventId);
+            return;
+          }
+
+
+
           // Re-offer mid-call (e.g. peer enabled camera and renegotiated).
           // If we already have a connected PC and signaling is stable, accept
           // the new offer and answer it. This is the Perfect-Negotiation path
@@ -1171,6 +1194,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               await pc.setLocalDescription(answer);
 
               await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id }, "answer(accepted-offer)");
+              if (payload.callEventId) lastAnsweredOfferRef.current = payload.callEventId;
 
               setActiveCall(prev => prev && prev.conversationId === conversationId
                 ? {
@@ -1193,6 +1217,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
               acceptedIncomingCallRef.current = null;
               setIncomingCall(null);
+              // v0.3.12: immediately heartbeat so peer sees us in
+              // call_participants without waiting for the 10s heartbeat tick.
+              const evtId = payload.callEventId || currentCallEventIdRef.current;
+              if (evtId) {
+                void (async () => {
+                  try { await (supabase as any).rpc("heartbeat_call_participant", { _call_event_id: evtId }); } catch {}
+                })();
+              }
+
             } catch (e) {
               console.error("[Voice] Failed handling accepted offer (keeping call alive):", e);
               // v0.3.8: don't tear down the call on a single SDP failure.
@@ -1245,6 +1278,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               await newPc.setLocalDescription(answer);
 
               await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id }, "answer(rejoin)");
+              if (payload.callEventId) lastAnsweredOfferRef.current = payload.callEventId;
 
               setActiveCall(prev => prev ? {
                 ...prev,
@@ -1254,6 +1288,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
                 peerLeftAt: undefined,
               } : prev);
               peerIdRef.current = payload.senderId || peerIdRef.current;
+              // v0.3.12: immediate heartbeat so the staying peer sees us live
+              // in call_participants and stops showing "Not in call".
+              const evtId = payload.callEventId || currentCallEventIdRef.current;
+              if (evtId) {
+                void (async () => {
+                  try { await (supabase as any).rpc("heartbeat_call_participant", { _call_event_id: evtId }); } catch {}
+                })();
+              }
+
             } catch (e) {
               console.error("[Voice] Rejoin auto-accept failed (keeping call alive):", e);
               // v0.3.8: don't endCall — leave it to the user.
@@ -1891,6 +1934,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       });
       peerIdRef.current = acceptedCall.callerId;
       setIncomingCall(null);
+      // v0.3.12: set currentCallEventId BEFORE SDP/ICE can connect so the
+      // syncParticipant call inside oniceconnectionstatechange and the
+      // heartbeat effect both see the right id even on fast LAN/loopback.
+      setCurrentCallEventId(acceptedCallEventId);
+      currentCallEventIdRef.current = acceptedCallEventId;
       void broadcastIncomingCallDismiss(acceptedCall.conversationId, acceptedCallEventId);
       await ensureOwnParticipantRow(acceptedCallEventId);
 
@@ -1907,10 +1955,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         await pc.setLocalDescription(answer);
 
         await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id }, "answer(accept)");
+        lastAnsweredOfferRef.current = acceptedCallEventId;
         console.log("[Voice] 📡 Answer sent to caller");
 
         acceptedIncomingCallRef.current = null;
         setActiveCall(prev => prev ? { ...prev, state: "calling" } : prev);
+
       } else {
         console.log("[Voice] 📡 No offer yet, sending ready-for-offer to caller (with retries)...");
         const sendReady = () => {
@@ -1939,7 +1989,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         });
       }
 
-      setCurrentCallEventId(acceptedCallEventId);
+      // currentCallEventId was set earlier (before SDP) in v0.3.12.
+
       // NOTE: do NOT manually insert a CallEvent here. The realtime INSERT
       // subscription (see `setupCallEventsRealtime`) is the single source of
       // truth and uses the *real* `started_at` from the DB. Inserting a local
@@ -2416,6 +2467,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     pendingOfferRef.current = null;
     acceptedIncomingCallRef.current = null;
     outgoingCallMetaRef.current = null;
+    lastAnsweredOfferRef.current = null;
+
 
     document.querySelectorAll("audio").forEach((el: any) => {
       if (el.__cubblyRemote) { el.pause(); el.srcObject = null; el.remove(); }
@@ -2436,44 +2489,27 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => { endCallRef.current = endCall; }, [endCall]);
 
   const upsertCurrentCallParticipantState = useCallback(async (patch: ParticipantStatePatch) => {
-    if (!user || !currentCallEventId) return;
-
-    const updates: ParticipantStatePatch = {};
-    if (patch.is_muted !== undefined) updates.is_muted = patch.is_muted;
-    if (patch.is_deafened !== undefined) updates.is_deafened = patch.is_deafened;
-    if (patch.is_video_on !== undefined) updates.is_video_on = patch.is_video_on;
-    if (patch.is_screen_sharing !== undefined) updates.is_screen_sharing = patch.is_screen_sharing;
+    // v0.3.12: read from the ref so a fast ICE-connected fire (before React
+    // re-renders with the new currentCallEventId) still finds the live id.
+    const evtId = currentCallEventIdRef.current || currentCallEventId;
+    if (!user || !evtId) return;
 
     try {
-      const { data: existing } = await supabase
-        .from("call_participants")
-        .select("id")
-        .eq("call_event_id", currentCallEventId)
-        .eq("user_id", user.id)
-        .is("left_at", null)
-        .maybeSingle();
-
-      if (existing) {
-        await supabase
-          .from("call_participants")
-          .update(updates)
-          .eq("id", existing.id);
-        return;
-      }
-
-      await supabase.from("call_participants").insert({
-        call_event_id: currentCallEventId,
-        user_id: user.id,
-        is_muted: false,
-        is_deafened: false,
-        is_video_on: false,
-        is_screen_sharing: false,
-        ...updates,
+      // Use the heartbeat RPC — it upserts on (call_event_id, user_id) AND
+      // clears left_at, which is what makes rejoin/reaccept revive a stale
+      // participant row instead of failing silently on the UNIQUE constraint.
+      await (supabase as any).rpc("heartbeat_call_participant", {
+        _call_event_id: evtId,
+        _is_muted: patch.is_muted ?? null,
+        _is_deafened: patch.is_deafened ?? null,
+        _is_video_on: patch.is_video_on ?? null,
+        _is_screen_sharing: patch.is_screen_sharing ?? null,
       });
     } catch (e) {
-      console.warn("[Voice] Failed to upsert call participant state:", e);
+      console.warn("[Voice] heartbeat_call_participant RPC failed:", e);
     }
   }, [user, currentCallEventId]);
+
 
   /** Push my current mute/deafen state to call_participants so peers see it live */
   const syncCallParticipantState = useCallback(async (overrides?: { is_muted?: boolean; is_deafened?: boolean }) => {
@@ -2711,10 +2747,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     const globalChannel = supabase.channel(`voice-global:${user.id}`);
     globalChannel
       .on("broadcast", { event: "incoming-call" }, async ({ payload }) => {
+        // v0.3.12: read live state through refs so we don't have to resubscribe
+        // this channel on every call state change (which was creating a
+        // teardown window that swallowed incoming-call notifications).
+        const activeNow = activeCallReadRef.current;
+        const incomingNow = incomingCallRef.current;
         const sameCallAlreadyOpen =
-          activeCall?.conversationId === payload.conversationId ||
-          incomingCall?.callEventId === payload.callEventId;
-        if (payload.targetId !== user.id || activeCall || sameCallAlreadyOpen) return;
+          activeNow?.conversationId === payload.conversationId ||
+          incomingNow?.callEventId === payload.callEventId;
+        if (payload.targetId !== user.id || activeNow || sameCallAlreadyOpen) return;
 
         try {
           const channel = await setupSignaling(payload.conversationId);
@@ -2762,11 +2803,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         }
       })
       .on("broadcast", { event: "incoming-call-dismiss" }, ({ payload }) => {
+        const activeNow = activeCallReadRef.current;
+        const incomingNow = incomingCallRef.current;
         const matchesIncoming =
-          incomingCall?.callEventId === payload.callEventId ||
-          incomingCall?.conversationId === payload.conversationId;
+          incomingNow?.callEventId === payload.callEventId ||
+          incomingNow?.conversationId === payload.conversationId;
         const matchesActive =
-          activeCall?.conversationId === payload.conversationId && activeCall?.state !== "connected";
+          activeNow?.conversationId === payload.conversationId && activeNow?.state !== "connected";
 
         if (!matchesIncoming && !matchesActive) return;
 
@@ -2781,7 +2824,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       });
     globalChannel.subscribe();
     return () => { supabase.removeChannel(globalChannel); };
-  }, [user, activeCall, incomingCall, setupSignaling]);
+  }, [user, setupSignaling]);
+
 
   // Stop incoming ringtone as soon as we accept (incomingCall cleared) or it's superseded.
   useEffect(() => {
