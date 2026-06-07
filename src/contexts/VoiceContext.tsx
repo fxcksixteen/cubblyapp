@@ -1194,6 +1194,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               await pc.setLocalDescription(answer);
 
               await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id }, "answer(accepted-offer)");
+              if (payload.callEventId) lastAnsweredOfferRef.current = payload.callEventId;
 
               setActiveCall(prev => prev && prev.conversationId === conversationId
                 ? {
@@ -1216,6 +1217,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
               acceptedIncomingCallRef.current = null;
               setIncomingCall(null);
+              // v0.3.12: immediately heartbeat so peer sees us in
+              // call_participants without waiting for the 10s heartbeat tick.
+              const evtId = payload.callEventId || currentCallEventIdRef.current;
+              if (evtId) {
+                void (async () => {
+                  try { await (supabase as any).rpc("heartbeat_call_participant", { _call_event_id: evtId }); } catch {}
+                })();
+              }
+
             } catch (e) {
               console.error("[Voice] Failed handling accepted offer (keeping call alive):", e);
               // v0.3.8: don't tear down the call on a single SDP failure.
