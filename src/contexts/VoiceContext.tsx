@@ -1934,6 +1934,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       });
       peerIdRef.current = acceptedCall.callerId;
       setIncomingCall(null);
+      // v0.3.12: set currentCallEventId BEFORE SDP/ICE can connect so the
+      // syncParticipant call inside oniceconnectionstatechange and the
+      // heartbeat effect both see the right id even on fast LAN/loopback.
+      setCurrentCallEventId(acceptedCallEventId);
+      currentCallEventIdRef.current = acceptedCallEventId;
       void broadcastIncomingCallDismiss(acceptedCall.conversationId, acceptedCallEventId);
       await ensureOwnParticipantRow(acceptedCallEventId);
 
@@ -1950,10 +1955,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         await pc.setLocalDescription(answer);
 
         await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id }, "answer(accept)");
+        lastAnsweredOfferRef.current = acceptedCallEventId;
         console.log("[Voice] 📡 Answer sent to caller");
 
         acceptedIncomingCallRef.current = null;
         setActiveCall(prev => prev ? { ...prev, state: "calling" } : prev);
+
       } else {
         console.log("[Voice] 📡 No offer yet, sending ready-for-offer to caller (with retries)...");
         const sendReady = () => {
