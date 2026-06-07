@@ -1131,6 +1131,17 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         if (payload.type === "offer") {
           const acceptedCall = acceptedIncomingCallRef.current;
 
+          // v0.3.12: ignore duplicate offer retries from the caller's retry
+          // loop once we've already answered this exact callEventId. Without
+          // this, a delayed retry re-triggers setRemoteDescription on the
+          // stable PC and silently wipes the just-established ICE pair.
+          if (payload.callEventId && lastAnsweredOfferRef.current === payload.callEventId) {
+            console.log("[Voice] 🛑 Ignoring duplicate offer retry for already-answered call", payload.callEventId);
+            return;
+          }
+
+
+
           // Re-offer mid-call (e.g. peer enabled camera and renegotiated).
           // If we already have a connected PC and signaling is stable, accept
           // the new offer and answer it. This is the Perfect-Negotiation path
