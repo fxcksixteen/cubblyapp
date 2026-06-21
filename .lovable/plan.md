@@ -1,42 +1,57 @@
-I re-inspected the current v0.3.12 voice code and it is not safe to call this fully fixed yet. The DM sidebar fix can stay untouched, but voice still has race conditions that can make Accept/Rejoin open the UI without completing the real call.
+## v0.3.14 — Two bug fixes
 
-Plan to fix only web/desktop 1:1 voice calls for v0.3.12:
+### Bug 1 — Calls silently dead between two specific users (kaszy ↔ geassbound)
 
-1. Make Accept and Rejoin share the same join path
-   - Add one internal helper in `VoiceContext.tsx` for the receiver/joiner side: get mic, create peer connection, attach tracks, set the offer as remote description, create/send answer, set `activeCall`, set `currentCallEventId`, and heartbeat `call_participants`.
-   - Use this helper from both:
-     - incoming call Accept button
-     - Rejoin / Join Call button response to an offer
-   - This restores the old behavior principle: accepting and rejoining both do the same offer-answer join, instead of two slightly different fragile paths.
+**Root cause (high confidence).** In `src/contexts/VoiceContext.tsx` `startCall` (around lines 1686–1740), before initiating a fresh call we look up any `call_events` row with `state='ongoing'` in that conversation. If a participant row exists for the *other* user with `left_at IS NULL` and is considered "fresh", we silently switch into rejoin mode (`isJoiningExisting = true`) — and that path **never sends the `incoming-call` broadcast** (the broadcast only fires in the `!isJoiningExisting` branch at line 1842). So the peer never rings, never sees an incoming call, and the caller just sits in "calling…".
 
-2. Fix participant state so “Not in call” cannot hallucinate after a real join
-   - Set `currentCallEventId` before SDP/ICE can connect, not after the accept flow finishes.
-   - Replace the direct participant insert/update fallback in `upsertCurrentCallParticipantState` with the existing backend heartbeat RPC so stale `left_at` rows are revived instead of failing on the unique constraint.
-   - Ensure Accept and Rejoin both immediately write/refresh the local `call_participants` row before waiting on background heartbeat timers.
+The freshness check is:
 
-3. Fix duplicate offer retries breaking accepted calls
-   - Track the last answered offer per `callEventId`.
-   - Ignore duplicate offer retry broadcasts after the same offer/call event has already been answered.
-   - Keep legitimate mid-call renegotiation for camera/screenshare, but stop old retry offers from re-running `setRemoteDescription` against a stable answered peer connection.
+```ts
+r.left_at === null &&
+(!r.last_seen_at || now - new Date(r.last_seen_at).getTime() < FRESH_MS)
+```
 
-4. Fix rejoin offer-send race on the staying peer
-   - In the caller/staying-peer offer creation path, store `pendingOfferRef` immediately after `createOffer()` and before `setLocalDescription()` completes.
-   - If a second `ready-for-offer` arrives while offer creation is in progress, wait for/reuse that in-flight offer instead of returning with “PC exists, no pending offer.”
+The `!r.last_seen_at` clause treats a NULL `last_seen_at` as fresh forever. Any old participant row that was inserted but never received its first heartbeat (crash, force-quit, network drop before the heartbeat interval, an older app version that didn't write `last_seen_at`) will permanently poison that single conversation. Every future call attempt between those two users is hijacked into a silent "rejoin" against a ghost — which matches the reported symptom exactly: works for everyone, broken *only* in that one DM.
 
-5. Stabilize global incoming-call signaling
-   - Keep the `voice-global:<userId>` listener mounted based only on the logged-in user.
-   - Read `activeCall` and `incomingCall` through refs inside callbacks, instead of resubscribing every time call state changes.
-   - This removes the teardown window during Accept where incoming-call dismiss/notifications can be missed.
+**Fix.**
 
-6. Make ICE candidate signaling reliable enough for setup
-   - Route main-call ICE sends through a small queued reliable sender instead of raw un-awaited `channel.send()` in Accept/Rejoin/outgoing paths.
-   - Keep screen-share and mute/video sends separate unless needed, so this stays focused on call setup.
+1. In `startCall`, change the freshness predicate so NULL `last_seen_at` is *not* automatically fresh — fall back to `joined_at` (which is `NOT NULL DEFAULT now()`):
 
-7. Validate the backend assumptions already checked
-   - Confirmed `heartbeat_call_participant` exists, revives stale participant rows by clearing `left_at`, and `call_events`/`call_participants` are in realtime.
-   - No backend schema migration is needed for this fix.
+   ```ts
+   const baseline = r.last_seen_at ?? r.joined_at;
+   const isFresh = baseline && now - new Date(baseline).getTime() < FRESH_MS;
+   const otherActive = r.user_id !== user.id && r.left_at === null && isFresh;
+   ```
 
-Validation after implementation:
-- Check the code paths so Accept and Rejoin both call the same helper.
-- Run focused tests/type validation through the normal harness.
-- Leave v0.3.12 changelog focused on this single web/desktop voice-call fix.
+   Include `joined_at` in the `select`.
+
+2. Defensive cleanup: when `existing` is found but no peer is genuinely live, in addition to `end_call_event_if_stale`, soft-close stale participant rows so the row state matches reality (UPDATE `call_participants` SET `left_at = now()` WHERE `call_event_id = existing.id` AND `left_at IS NULL` AND (`last_seen_at` IS NULL OR `now() - last_seen_at >= 30s`)).
+
+3. Belt-and-suspenders: even on the `isJoiningExisting` rejoin path, still fire one `incoming-call` broadcast to the peer. If they're truly in the call it's a no-op (the receiver already short-circuits on `activeNow || sameCallAlreadyOpen` at line 2758). If they're not, they get the ring instead of nothing.
+
+4. Add a brief `console.log` in the rejoin branch identifying which row was treated as live, so if a similar ghost appears again it's diagnosable from logs.
+
+No schema migration is required — `joined_at` already exists.
+
+### Bug 2 — Profile modal clipped to DM sidebar in Space theme
+
+**Root cause.** In Space theme `.sidebar-tertiary` gets `backdrop-filter: blur(8px)` (`src/index.css` line 176). `backdrop-filter` establishes a containing block for `position: fixed` descendants, so the full-profile modal rendered by `UserProfileCard` (`fixed inset-0 z-[70]`) — which lives inside the DM sidebar tree via `DMSidebar.tsx` line 440 — gets confined to the sidebar's bounding box instead of the viewport. That's exactly what the screenshot shows: a 440px-wide centered modal squeezed into the ~230px sidebar column.
+
+**Fix.** Render `UserProfileCard` through a React portal to `document.body` so it escapes any filtered/transformed ancestor. The card has two render paths — both `showFullProfile` (centered modal) and the mini card (`position: fixed` at click coords) need to escape — so wrap the returned JSX in `createPortal(..., document.body)` once at the bottom of the component.
+
+This is a one-file, ~3-line change in `src/components/app/chat/UserProfileCard.tsx`. No theme-CSS surgery needed (and no risk of breaking the deliberate blur on the sidebar itself).
+
+### Version + changelog
+
+- Bump `package.json` and `CURRENT_VERSION` in `src/lib/changelog.ts` to `0.3.14`.
+- Prepend a `0.3.14` entry to the changelog with two bullets:
+  - **Voice calls fixed between specific friend pairs** — a stale "ghost" participant row in one DM could silently divert every new call attempt into a rejoin against nobody, so the peer never rang. The freshness check now ignores rows with no heartbeat, cleans them up, and always rings the peer as a fallback.
+  - **Profile modal no longer clipped on Space theme** — the Space sidebar's backdrop-blur was confining `position: fixed` children to the sidebar; the profile modal is now portaled to `document.body` so it always covers the full viewport.
+- Keep `0.3.13` and `0.3.12` entries intact.
+
+### Files touched
+
+- `src/contexts/VoiceContext.tsx` — freshness predicate, stale-participant cleanup, fallback `incoming-call` broadcast on rejoin, log line.
+- `src/components/app/chat/UserProfileCard.tsx` — portal the rendered card to `document.body`.
+- `src/lib/changelog.ts` — new 0.3.14 entry, bump `CURRENT_VERSION`.
+- `package.json` — version bump.
