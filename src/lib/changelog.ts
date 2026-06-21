@@ -23,9 +23,21 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.3.13";
+export const CURRENT_VERSION = "0.3.14";
 
 export const CHANGELOG: ChangelogEntry[] = [
+
+  {
+    version: "0.3.14",
+    title: "Ghost calls exorcised, profile modal stops getting squished on Space",
+    date: "2026-06-21",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Voice calls between specific friend pairs work again. A single conversation could get permanently poisoned by a leftover 'ghost' participant row from an older session — a row with no heartbeat but still marked as in-call. Every fresh call attempt in that DM was silently hijacked into a rejoin against the ghost, so the peer never rang and the caller sat stuck on 'calling…'. The freshness check now ignores rows that have never sent a heartbeat, soft-closes stale participant rows on the way in, and always fires the incoming-call ring to the peer as a fallback even on the rejoin path — so a stuck row can never silently kill a DM's call ability again.",
+      "Profile modal no longer renders clipped inside the DM sidebar on the Space theme. The Space sidebar uses a backdrop blur, and `backdrop-filter` quietly turns its element into a containing block for `position: fixed` children — which trapped the 440px-wide profile modal inside the ~230px sidebar column. The profile card now mounts through a portal on `document.body`, so it always covers the full viewport regardless of theme effects.",
+    ],
+  },
 
   {
     version: "0.3.13",
