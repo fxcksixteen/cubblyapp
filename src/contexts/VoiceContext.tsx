@@ -1837,6 +1837,36 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         callerAvatarUrl,
       };
 
+      // Always ring the peer (even on rejoin) — receiver short-circuits if
+      // they already have an active or incoming call for this conversation,
+      // so this is a safe no-op in the true-rejoin case. The reason this is
+      // unconditional: the "joining existing" path used to assume the peer
+      // was definitely live and never sent a ring, so any false-positive in
+      // the liveness check (e.g. ghost participant row with NULL last_seen)
+      // silently killed the call. Now the peer always gets the ring as a
+      // fallback.
+      const recipientGlobalChannel = supabase.channel(`voice-global:${peerId}`);
+      recipientGlobalChannel.subscribe(async (status) => {
+        if (status === "SUBSCRIBED") {
+          console.log(`[Voice] 📡 Sending incoming-call notification to peer (${isJoiningExisting ? "rejoin-fallback" : "new-call"})`);
+          recipientGlobalChannel.send({
+            type: "broadcast",
+            event: "incoming-call",
+            payload: {
+              targetId: peerId,
+              conversationId,
+              callerId: user.id,
+              callerName: user.user_metadata?.display_name || "User",
+              callerAvatarUrl,
+              callEventId,
+            },
+          });
+          setTimeout(() => {
+            supabase.removeChannel(recipientGlobalChannel);
+          }, 3000);
+        }
+      });
+
       if (isJoiningExisting) {
         console.log("[Voice] 📡 Rejoin requested — asking active peer for an offer (with retries)");
         const sendReady = () => {
@@ -1862,30 +1892,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
 
-      const recipientGlobalChannel = supabase.channel(`voice-global:${peerId}`);
-      recipientGlobalChannel.subscribe(async (status) => {
-        if (status === "SUBSCRIBED") {
-          console.log("[Voice] 📡 Sending incoming-call notification to peer");
-          recipientGlobalChannel.send({
-            type: "broadcast",
-            event: "incoming-call",
-            payload: {
-              targetId: peerId,
-              conversationId,
-              callerId: user.id,
-              callerName: user.user_metadata?.display_name || "User",
-              callerAvatarUrl,
-              callEventId,
-            },
-          });
-          setTimeout(() => {
-            supabase.removeChannel(recipientGlobalChannel);
-          }, 3000);
-        }
-      });
-
       console.log("[Voice] ⏳ Waiting for callee to accept and send ready-for-offer...");
       void channel;
+
     } catch (e) {
       console.error("[Voice] ❌ Failed to start call:", e);
     }
