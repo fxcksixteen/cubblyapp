@@ -153,7 +153,7 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
 
   // Full profile popup
   if (showFullProfile) {
-    return (
+    return createPortal((
       <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60" onClick={onClose}>
         <div
           ref={ref}
@@ -243,11 +243,11 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
           </div>
         </div>
       </div>
-    );
+    ), document.body);
   }
 
   // Mini profile card
-  return (
+  return createPortal((
     <div ref={ref} style={style} className="w-[300px] rounded-xl overflow-hidden shadow-2xl border border-[#2b2d31] bg-[#111214] animate-in fade-in-0 zoom-in-95 duration-150">
       {/* Banner */}
       <div className="h-[60px]" style={{ background: profile?.banner_url ? `url(${profile.banner_url}) center/cover no-repeat` : color.banner }} />
@@ -325,7 +325,7 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
         </div>
       )}
     </div>
-  );
+  ), document.body);
 };
 
 export default UserProfileCard;
