@@ -1699,16 +1699,26 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           // dropping you into a fake "calling..." with no one on the other end.
           const { data: liveRows } = await supabase
             .from("call_participants")
-            .select("user_id, last_seen_at, left_at")
+            .select("user_id, last_seen_at, left_at, joined_at")
             .eq("call_event_id", existing.id);
 
           const FRESH_MS = 30_000;
           const now = Date.now();
-          const otherActive = (liveRows || []).some((r: any) =>
-            r.user_id !== user.id &&
-            r.left_at === null &&
-            (!r.last_seen_at || now - new Date(r.last_seen_at).getTime() < FRESH_MS)
-          );
+          const otherActive = (liveRows || []).some((r: any) => {
+            if (r.user_id === user.id) return false;
+            if (r.left_at !== null) return false;
+            // A row with NO heartbeat is NOT automatically fresh — a crash/
+            // force-quit/older client could have left a "ghost" row with
+            // last_seen_at=NULL that would otherwise permanently poison this
+            // DM (every call attempt silently hijacked into a rejoin against
+            // nobody). Fall back to joined_at (NOT NULL DEFAULT now()) so
+            // ghosts time out after FRESH_MS like any other stale row.
+            const baselineStr = r.last_seen_at ?? r.joined_at;
+            if (!baselineStr) return false;
+            const baseline = new Date(baselineStr).getTime();
+            if (Number.isNaN(baseline)) return false;
+            return now - baseline < FRESH_MS;
+          });
 
           if (otherActive) {
             callEventId = existing.id;
@@ -1717,17 +1727,30 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               const t = Date.parse(existing.started_at);
               if (!Number.isNaN(t)) existingStartedAtMs = t;
             }
-            console.log("[Voice] 🔁 Joining existing ongoing call_event:", callEventId);
+            const livePeers = (liveRows || [])
+              .filter((r: any) => r.user_id !== user.id && r.left_at === null)
+              .map((r: any) => `${r.user_id}@${r.last_seen_at ?? `joined:${r.joined_at}`}`);
+            console.log("[Voice] 🔁 Joining existing ongoing call_event:", callEventId, "live peers:", livePeers);
           } else {
-            // No real peer present. Ask the backend to close it only if it is
-            // genuinely stale; brand-new events can exist for a moment before
-            // the first participant heartbeat lands.
+            // No real peer present. Ask the backend to close the event AND
+            // soft-close any stale participant rows so a ghost can't poison
+            // future call attempts in this conversation.
             try { await (supabase as any).rpc("end_call_event_if_stale", { _call_event_id: existing.id }); } catch {}
+            try {
+              await supabase
+                .from("call_participants")
+                .update({ left_at: new Date().toISOString() })
+                .eq("call_event_id", existing.id)
+                .is("left_at", null);
+            } catch (e) {
+              console.warn("[Voice] could not soft-close stale participant rows:", e);
+            }
           }
         }
       } catch (e) {
         console.warn("[Voice] could not check for existing call_event:", e);
       }
+
       if (!callEventId) callEventId = crypto.randomUUID();
 
       if (isJoiningExisting) {
@@ -1814,6 +1837,36 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         callerAvatarUrl,
       };
 
+      // Always ring the peer (even on rejoin) — receiver short-circuits if
+      // they already have an active or incoming call for this conversation,
+      // so this is a safe no-op in the true-rejoin case. The reason this is
+      // unconditional: the "joining existing" path used to assume the peer
+      // was definitely live and never sent a ring, so any false-positive in
+      // the liveness check (e.g. ghost participant row with NULL last_seen)
+      // silently killed the call. Now the peer always gets the ring as a
+      // fallback.
+      const recipientGlobalChannel = supabase.channel(`voice-global:${peerId}`);
+      recipientGlobalChannel.subscribe(async (status) => {
+        if (status === "SUBSCRIBED") {
+          console.log(`[Voice] 📡 Sending incoming-call notification to peer (${isJoiningExisting ? "rejoin-fallback" : "new-call"})`);
+          recipientGlobalChannel.send({
+            type: "broadcast",
+            event: "incoming-call",
+            payload: {
+              targetId: peerId,
+              conversationId,
+              callerId: user.id,
+              callerName: user.user_metadata?.display_name || "User",
+              callerAvatarUrl,
+              callEventId,
+            },
+          });
+          setTimeout(() => {
+            supabase.removeChannel(recipientGlobalChannel);
+          }, 3000);
+        }
+      });
+
       if (isJoiningExisting) {
         console.log("[Voice] 📡 Rejoin requested — asking active peer for an offer (with retries)");
         const sendReady = () => {
@@ -1839,30 +1892,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
 
-      const recipientGlobalChannel = supabase.channel(`voice-global:${peerId}`);
-      recipientGlobalChannel.subscribe(async (status) => {
-        if (status === "SUBSCRIBED") {
-          console.log("[Voice] 📡 Sending incoming-call notification to peer");
-          recipientGlobalChannel.send({
-            type: "broadcast",
-            event: "incoming-call",
-            payload: {
-              targetId: peerId,
-              conversationId,
-              callerId: user.id,
-              callerName: user.user_metadata?.display_name || "User",
-              callerAvatarUrl,
-              callEventId,
-            },
-          });
-          setTimeout(() => {
-            supabase.removeChannel(recipientGlobalChannel);
-          }, 3000);
-        }
-      });
-
       console.log("[Voice] ⏳ Waiting for callee to accept and send ready-for-offer...");
       void channel;
+
     } catch (e) {
       console.error("[Voice] ❌ Failed to start call:", e);
     }
