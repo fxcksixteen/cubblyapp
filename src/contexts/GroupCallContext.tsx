@@ -766,7 +766,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        audio: GROUP_MIC_CONSTRAINTS,
         video: false,
       });
     } catch (e) {
