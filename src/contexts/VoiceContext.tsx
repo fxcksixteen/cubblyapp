@@ -702,6 +702,40 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       iceCandidatePoolSize: 4,
     });
 
+    // === v0.3.16 diagnostics: log every signaling transition + inbound RTP
+    // so we can pin where the kaszy ↔ geassbound call is actually failing.
+    // The DB shows both sides successfully join the same call_event and
+    // heartbeat for ~50s, so the breakdown is in WebRTC, not signaling/DB.
+    pc.onsignalingstatechange = () => {
+      console.log("[VoiceDiag] signalingState →", pc.signalingState);
+    };
+    let inboundStatsTimer: number | null = null;
+    const startInboundStats = () => {
+      if (inboundStatsTimer !== null) return;
+      const started = Date.now();
+      inboundStatsTimer = window.setInterval(async () => {
+        // Stop after 60s — enough to confirm "audio flowing or not".
+        if (Date.now() - started > 60_000) {
+          if (inboundStatsTimer !== null) { clearInterval(inboundStatsTimer); inboundStatsTimer = null; }
+          return;
+        }
+        try {
+          const stats = await pc.getStats();
+          stats.forEach((r: any) => {
+            if (r.type === "inbound-rtp" && r.kind === "audio") {
+              console.log(
+                `[VoiceDiag] inbound-rtp audio: packets=${r.packetsReceived ?? 0}` +
+                ` bytes=${r.bytesReceived ?? 0} jitter=${r.jitter ?? 0}` +
+                ` packetsLost=${r.packetsLost ?? 0}`
+              );
+            }
+          });
+        } catch {}
+      }, 3_000);
+    };
+    const oldConnState = pc.onconnectionstatechange;
+    void oldConnState; // we'll wrap below where the original handler is set
+
     pc.ontrack = (event) => {
       // CRITICAL: with `replaceTrack()` flow (camera toggle mid-call), the
       // remote side often receives a track WITHOUT a usable `event.streams[0]`
