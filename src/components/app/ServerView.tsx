@@ -150,8 +150,16 @@ const ServerView = () => {
         </div>
         {/* Voice-Connected card pinned to the bottom of the channel sidebar,
             mirroring the DM sidebar so users can mute/share/disconnect without
-            leaving the server view. */}
-        <SidebarGroupCallCard />
+            leaving the server view. Pass fallback info so it paints instantly
+            instead of blanking while the supabase lookup races. */}
+        <SidebarGroupCallCard
+          fallbackServerInfo={
+            serverId && channelId && server?.name
+              ? { server_id: serverId, server_name: server.name, channel_id: channelId }
+              : null
+          }
+        />
+
       </div>
 
       {/* Main: chat or voice channel placeholder */}
