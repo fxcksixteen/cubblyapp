@@ -23,9 +23,29 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.3.15";
+export const CURRENT_VERSION = "0.3.16";
 
 export const CHANGELOG: ChangelogEntry[] = [
+
+  {
+    version: "0.3.16",
+    title: "Server call audio gets DM-quality, sidebar voice card now shows in servers, plus deep WebRTC diagnostics",
+    date: "2026-06-22",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Server voice channel audio no longer sounds muffled and underwater. Group/server calls were using bare microphone constraints with no sample rate, channel count, or Opus tuning — so the encoder defaulted to mono ~32 kbps speech codec settings, exactly the 'sounds like you're in a swimming pool' quality you described. Server calls now negotiate the same 48 kHz stereo, 256 kbps high-bitrate Opus with in-band FEC that DM calls have used since v0.3.x, with mobile-safe fallback constraints for iOS Safari.",
+      "Rejoining a server voice channel now finds people already in it, instead of dropping you in alone. The previous flow relied on a single peer-join broadcast packet — if that packet was dropped or arrived before the other side's signaling channel was ready, you'd sit there in an empty channel while the other person was clearly still in it (and they had to leave and rejoin for you both to reconnect). A 5-second reconcile loop now scans the database for live participants who don't yet have a peer connection and re-broadcasts peer-join until everyone is paired up.",
+      "The 'Voice Connected' card at the bottom of the DM sidebar now also shows up in the server channel sidebar when you're in a server voice channel — with mute, video, screenshare, and disconnect buttons, just like in DMs. Before, you had to navigate back to the voice channel to control the call.",
+      "Screen share button is now available in the in-server voice card (it was only in DMs).",
+      "Voice calls between kaszy and geassbound specifically — three rounds of guess-fixes haven't pinned it, and the database shows the signaling layer connects fine (both sides join the same call_event and heartbeat for ~50 seconds before giving up). That means the failure is in the WebRTC peer connection itself (ICE / DTLS / RTP), not signaling. This build adds [VoiceDiag] structured logs around every signaling transition, every connection state change, and a 3-second inbound-RTP packet counter. Open dev tools (F12) the next time you try a call with her and send the [VoiceDiag] lines, so the next fix can target the real failure point instead of patching around symptoms.",
+      "Known not-yet-fixed (saving for the next patch to keep this build focused): server screen-share mute glitch where starting a share mutes you and the call UI flashes, and the full Discord-style server voice UI redesign.",
+    ],
+  },
+
+
+
+
 
   {
     version: "0.3.15",

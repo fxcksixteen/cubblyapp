@@ -102,6 +102,33 @@ const STUN_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun1.l.google.com:19302" },
 ];
 
+/**
+ * iOS Safari rejects strict sampleRate/sampleSize/channelCount on getUserMedia
+ * — match DM-call constraints so server-call audio doesn't sound underwater
+ * compared to 1:1 calls.
+ */
+const isMobileGC = typeof navigator !== "undefined" && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || "");
+const GROUP_MIC_CONSTRAINTS: MediaTrackConstraints = isMobileGC
+  ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+  : { echoCancellation: true, noiseSuppression: true, autoGainControl: true, sampleRate: 48000, sampleSize: 24, channelCount: 2 } as MediaTrackConstraints;
+
+/**
+ * Force stereo high-bitrate Opus on outgoing SDP so server-call audio matches
+ * DM-call fidelity. Without this the encoder defaults to ~32kbps mono speech
+ * and music/background audio sounds muffled.
+ */
+function mungeGroupCallOpusSdp(sdp: string | undefined | null): string {
+  if (!sdp) return sdp || "";
+  return sdp.replace(/a=fmtp:111 ([^\r\n]*)/g, (_m, existing) => {
+    const filtered = String(existing)
+      .split(";")
+      .map((s) => s.trim())
+      .filter((s) => s && !/^(stereo|sprop-stereo|maxaveragebitrate|useinbandfec|maxplaybackrate)=/i.test(s));
+    filtered.push("stereo=1", "sprop-stereo=1", "maxaveragebitrate=256000", "useinbandfec=1", "maxplaybackrate=48000");
+    return `a=fmtp:111 ${filtered.join(";")}`;
+  });
+}
+
 export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
   const { user } = useAuth();
   const [activeCall, setActiveCall] = useState<GroupActiveCall | null>(null);
@@ -413,7 +440,12 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       if (!channelRef.current || !user) return;
       try {
         makingOfferRef.current.set(peerId, true);
-        await pc.setLocalDescription();
+        // Explicit createOffer so we can patch the SDP for stereo high-bitrate
+        // Opus before publishing it; without this, server-call audio defaults
+        // to mono ~32kbps and sounds underwater compared to DM calls.
+        const offer = await pc.createOffer();
+        offer.sdp = mungeGroupCallOpusSdp(offer.sdp);
+        await pc.setLocalDescription(offer);
         channelRef.current.send({
           type: "broadcast",
           event: "group-signal",
@@ -467,11 +499,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
+        audio: GROUP_MIC_CONSTRAINTS,
         video: false,
       });
     } catch (e) {
@@ -617,11 +645,12 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
             const pc = ensurePc(payload.fromUserId);
             try {
               const offer = await pc.createOffer();
+              offer.sdp = mungeGroupCallOpusSdp(offer.sdp);
               await pc.setLocalDescription(offer);
               channel.send({
                 type: "broadcast",
                 event: "group-signal",
-                payload: { type: "offer", fromUserId: user.id, toUserId: payload.fromUserId, sdp: offer },
+                payload: { type: "offer", fromUserId: user.id, toUserId: payload.fromUserId, sdp: pc.localDescription },
               });
             } catch (e) {
               console.error("[GroupCall] Failed to create offer for new peer:", e);
@@ -655,7 +684,9 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
             }
             queuedIceRef.current.delete(payload.fromUserId);
 
-            await pc.setLocalDescription();
+            const answer = await pc.createAnswer();
+            answer.sdp = mungeGroupCallOpusSdp(answer.sdp);
+            await pc.setLocalDescription(answer);
             channel.send({
               type: "broadcast",
               event: "group-signal",
@@ -743,7 +774,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        audio: GROUP_MIC_CONSTRAINTS,
         video: false,
       });
     } catch (e) {
@@ -1204,6 +1235,50 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     const i = setInterval(tick, 10_000);
     return () => clearInterval(i);
   }, [activeCall, user]);
+
+  // DB-driven peer reconcile: every 5s, scan call_participants for live peers
+  // we don't yet have a PC for and broadcast a peer-join so the higher-id side
+  // offers to us. Fixes "I left and rejoined and landed alone even though she
+  // was still in the channel" — relying on a single peer-join packet wasn't
+  // enough when realtime had momentarily dropped the broadcast.
+  useEffect(() => {
+    if (!activeCall || !user || !channelRef.current) return;
+    const evtId = callEventIdRef.current;
+    if (!evtId) return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const { data: rows } = await supabase
+          .from("call_participants")
+          .select("user_id, last_seen_at, joined_at, left_at")
+          .eq("call_event_id", evtId);
+        if (cancelled || !rows) return;
+        const FRESH_MS = 30_000;
+        const now = Date.now();
+        for (const r of rows as any[]) {
+          if (r.user_id === user.id) continue;
+          if (r.left_at !== null) continue;
+          const baselineStr = r.last_seen_at ?? r.joined_at;
+          if (!baselineStr) continue;
+          if (now - new Date(baselineStr).getTime() >= FRESH_MS) continue;
+          if (pcsRef.current.has(r.user_id)) continue;
+          console.log("[GroupCall] 🔁 Reconcile: missing PC for live peer", r.user_id, "— re-broadcasting peer-join");
+          // Re-announce so the higher-id side offers to us.
+          channelRef.current?.send({
+            type: "broadcast",
+            event: "group-signal",
+            payload: { type: "peer-join", fromUserId: user.id },
+          });
+          break; // one rebroadcast per tick is enough; next tick re-checks
+        }
+      } catch { /* best-effort */ }
+    };
+    const i = setInterval(tick, 5_000);
+    // First tick after a brief delay so the initial peer-join has a chance.
+    const seed = setTimeout(tick, 2_000);
+    return () => { cancelled = true; clearInterval(i); clearTimeout(seed); };
+  }, [activeCall?.conversationId, user]);
+
 
   return (
     <GroupCallContext.Provider value={{

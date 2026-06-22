@@ -11,6 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import ChatView from "@/components/app/ChatView";
 import GroupCallPanel from "@/components/app/GroupCallPanel";
+import SidebarGroupCallCard from "@/components/app/SidebarGroupCallCard";
 import StatusIndicator from "@/components/app/StatusIndicator";
 import UserDisplayName from "@/components/app/UserDisplayName";
 import UserBadges from "@/components/app/UserBadges";
@@ -147,6 +148,10 @@ const ServerView = () => {
           <ChannelGroup label="Voice Channels" channels={channels.filter((c) => c.kind === "voice")} activeId={channelId}
             onSelect={(id) => navigate(`/@me/server/${serverId}/${id}`)} />
         </div>
+        {/* Voice-Connected card pinned to the bottom of the channel sidebar,
+            mirroring the DM sidebar so users can mute/share/disconnect without
+            leaving the server view. */}
+        <SidebarGroupCallCard />
       </div>
 
       {/* Main: chat or voice channel placeholder */}
