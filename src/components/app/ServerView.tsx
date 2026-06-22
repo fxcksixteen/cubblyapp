@@ -12,6 +12,8 @@ import { toast } from "sonner";
 import ChatView from "@/components/app/ChatView";
 import ServerVoicePanel from "@/components/app/ServerVoicePanel";
 import SidebarGroupCallCard from "@/components/app/SidebarGroupCallCard";
+import SidebarActivityCard from "@/components/app/SidebarActivityCard";
+import UserPanel from "@/components/app/UserPanel";
 import StatusIndicator from "@/components/app/StatusIndicator";
 import UserDisplayName from "@/components/app/UserDisplayName";
 import UserBadges from "@/components/app/UserBadges";
@@ -152,6 +154,7 @@ const ServerView = () => {
             mirroring the DM sidebar so users can mute/share/disconnect without
             leaving the server view. Pass fallback info so it paints instantly
             instead of blanking while the supabase lookup races. */}
+        <SidebarActivityCard />
         <SidebarGroupCallCard
           fallbackServerInfo={
             serverId && channelId && server?.name
@@ -159,6 +162,10 @@ const ServerView = () => {
               : null
           }
         />
+
+        {/* Profile / mute / deafen / settings — same panel as the DM sidebar
+            so the user always has these controls in reach. */}
+        <UserPanel />
 
       </div>
 
