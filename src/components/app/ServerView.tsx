@@ -10,7 +10,7 @@ import { useGroupCall } from "@/contexts/GroupCallContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import ChatView from "@/components/app/ChatView";
-import GroupCallPanel from "@/components/app/GroupCallPanel";
+import ServerVoicePanel from "@/components/app/ServerVoicePanel";
 import SidebarGroupCallCard from "@/components/app/SidebarGroupCallCard";
 import StatusIndicator from "@/components/app/StatusIndicator";
 import UserDisplayName from "@/components/app/UserDisplayName";
@@ -150,8 +150,16 @@ const ServerView = () => {
         </div>
         {/* Voice-Connected card pinned to the bottom of the channel sidebar,
             mirroring the DM sidebar so users can mute/share/disconnect without
-            leaving the server view. */}
-        <SidebarGroupCallCard />
+            leaving the server view. Pass fallback info so it paints instantly
+            instead of blanking while the supabase lookup races. */}
+        <SidebarGroupCallCard
+          fallbackServerInfo={
+            serverId && channelId && server?.name
+              ? { server_id: serverId, server_name: server.name, channel_id: channelId }
+              : null
+          }
+        />
+
       </div>
 
       {/* Main: chat or voice channel placeholder */}
@@ -316,24 +324,28 @@ const VoiceChannelPanel = ({ channel, conversation }: { channel: ServerChannel; 
         <Volume2 className="h-5 w-5" style={{ color: "var(--app-text-secondary)" }} />
         <span className="font-semibold" style={{ color: "var(--app-text-primary)" }}>{channel.name}</span>
       </div>
-      {conversation && <GroupCallPanel conversationId={conversation.id} />}
-      <div className="flex-1 flex items-center justify-center text-center p-6">
-        <div className="max-w-sm">
-          <div className="flex h-16 w-16 mx-auto items-center justify-center rounded-full mb-4" style={{ backgroundColor: "var(--app-bg-tertiary)" }}>
-            <Volume2 className="h-8 w-8" style={{ color: "hsl(var(--primary))" }} />
+      {isJoined && conversation ? (
+        <ServerVoicePanel conversationId={conversation.id} />
+      ) : (
+        <div className="flex-1 flex items-center justify-center text-center p-6">
+          <div className="max-w-sm">
+            <div className="flex h-16 w-16 mx-auto items-center justify-center rounded-full mb-4" style={{ backgroundColor: "var(--app-bg-tertiary)" }}>
+              <Volume2 className="h-8 w-8" style={{ color: "hsl(var(--primary))" }} />
+            </div>
+            <h3 className="font-semibold mb-1" style={{ color: "var(--app-text-primary)" }}>Voice channel</h3>
+            <p className="text-sm" style={{ color: "var(--app-text-secondary)" }}>
+              Join this channel to talk with everyone here.
+            </p>
+            <Button onClick={handleJoin} disabled={!conversation} className="mt-4 rounded-full px-5">
+              Join Voice
+            </Button>
           </div>
-          <h3 className="font-semibold mb-1" style={{ color: "var(--app-text-primary)" }}>Voice channel</h3>
-          <p className="text-sm" style={{ color: "var(--app-text-secondary)" }}>
-            {isJoined ? "You're connected to this channel." : "Join this channel to talk with everyone here."}
-          </p>
-          <Button onClick={handleJoin} disabled={!conversation} className="mt-4 rounded-full px-5">
-            {isJoined ? "Leave Voice" : "Join Voice"}
-          </Button>
         </div>
-      </div>
+      )}
     </div>
   );
 };
+
 
 const CreateChannelModal = ({ serverId, onClose }: { serverId: string; onClose: () => void }) => {
   const [name, setName] = useState("");
