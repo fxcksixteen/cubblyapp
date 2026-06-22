@@ -12,6 +12,8 @@ import { toast } from "sonner";
 import ChatView from "@/components/app/ChatView";
 import ServerVoicePanel from "@/components/app/ServerVoicePanel";
 import SidebarGroupCallCard from "@/components/app/SidebarGroupCallCard";
+import SidebarActivityCard from "@/components/app/SidebarActivityCard";
+import UserPanel from "@/components/app/UserPanel";
 import StatusIndicator from "@/components/app/StatusIndicator";
 import UserDisplayName from "@/components/app/UserDisplayName";
 import UserBadges from "@/components/app/UserBadges";
