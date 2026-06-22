@@ -684,7 +684,9 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
             }
             queuedIceRef.current.delete(payload.fromUserId);
 
-            await pc.setLocalDescription();
+            const answer = await pc.createAnswer();
+            answer.sdp = mungeGroupCallOpusSdp(answer.sdp);
+            await pc.setLocalDescription(answer);
             channel.send({
               type: "broadcast",
               event: "group-signal",
