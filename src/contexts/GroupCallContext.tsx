@@ -105,12 +105,33 @@ const STUN_SERVERS: RTCIceServer[] = [
 /**
  * iOS Safari rejects strict sampleRate/sampleSize/channelCount on getUserMedia
  * — match DM-call constraints so server-call audio doesn't sound underwater
- * compared to 1:1 calls.
+ * compared to 1:1 calls. v0.3.17: dropped `sampleSize: 24` (no consumer mic
+ * supports it; it was the root cause of OverconstrainedError) and the caller
+ * uses `getUserMediaSafe` below which retries with bare constraints on failure.
  */
 const isMobileGC = typeof navigator !== "undefined" && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || "");
 const GROUP_MIC_CONSTRAINTS: MediaTrackConstraints = isMobileGC
   ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-  : { echoCancellation: true, noiseSuppression: true, autoGainControl: true, sampleRate: 48000, sampleSize: 24, channelCount: 2 } as MediaTrackConstraints;
+  : { echoCancellation: true, noiseSuppression: true, autoGainControl: true, sampleRate: 48000, channelCount: 2 } as MediaTrackConstraints;
+
+const GROUP_MIC_FALLBACK: MediaTrackConstraints = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+
+async function getGroupMicSafe(): Promise<MediaStream> {
+  try {
+    const s = await navigator.mediaDevices.getUserMedia({ audio: GROUP_MIC_CONSTRAINTS, video: false });
+    try { console.log("[GroupCall] 🎙️ mic settings:", s.getAudioTracks()[0]?.getSettings?.()); } catch {}
+    return s;
+  } catch (e: any) {
+    const name = e?.name || "";
+    if (name === "OverconstrainedError" || name === "NotReadableError" || name === "TypeError") {
+      console.warn("[GroupCall] 🎙️ hi-fi constraints rejected (", name, ") — falling back");
+      const s = await navigator.mediaDevices.getUserMedia({ audio: GROUP_MIC_FALLBACK, video: false });
+      try { console.log("[GroupCall] 🎙️ mic settings (fallback):", s.getAudioTracks()[0]?.getSettings?.()); } catch {}
+      return s;
+    }
+    throw e;
+  }
+}
 
 /**
  * Force stereo high-bitrate Opus on outgoing SDP so server-call audio matches
@@ -495,13 +516,22 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     }
     console.log("[GroupCall] 📞 Starting group call in", conversationId, "with", memberIds.length, "members");
 
+    // v0.3.17: defensively wipe any stale PCs/senders left over from a prior
+    // call that didn't fully clean up. Reusing an existing PC from a prior
+    // session caused `setLocalDescription` to throw "order of m-lines in
+    // subsequent offer doesn't match" because new addTrack calls extended the
+    // m-line list past the previous answer.
+    for (const [, pc] of pcsRef.current) { try { pc.close(); } catch {} }
+    pcsRef.current.clear();
+    videoSendersRef.current.clear();
+    screenSendersRef.current.clear();
+    queuedIceRef.current.clear();
+    remoteDescSetRef.current.clear();
+
     // Get mic
     let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: GROUP_MIC_CONSTRAINTS,
-        video: false,
-      });
+      stream = await getGroupMicSafe();
     } catch (e) {
       console.error("[GroupCall] Failed to get mic:", e);
       return;
@@ -773,10 +803,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
 
     let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: GROUP_MIC_CONSTRAINTS,
-        video: false,
-      });
+      stream = await getGroupMicSafe();
     } catch (e) {
       console.error("[GroupCall] Mic permission denied:", e);
       return;

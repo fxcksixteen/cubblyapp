@@ -23,9 +23,23 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.3.16";
+export const CURRENT_VERSION = "0.3.17";
 
 export const CHANGELOG: ChangelogEntry[] = [
+
+  {
+    version: "0.3.17",
+    title: "Found the real reason DM calls broke between kaszy & geassbound",
+    date: "2026-06-22",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "DM voice/video calls between kaszy and geassbound (and any other pair where one mic happened to reject 24-bit audio) actually work now. The v0.3.15 diagnostic logs caught the real culprit: getUserMedia was throwing OverconstrainedError every single time because the desktop audio constraints asked for `sampleSize: 24`, and no consumer microphone actually supports 24-bit sample size — Chrome silently treated the whole constraint set as strict and refused to give us a mic stream at all. The throw was caught and swallowed, so the call UI just sat in 'Calling…' / 'Ringing…' forever while the caller silently rolled over to 'Not in call' after the 30s ring timeout, the green Accept button did nothing, and Rejoin opened a call panel stuck on 'Ringing…'. All three symptoms had the same root cause. `sampleSize: 24` is now removed entirely, and getUserMedia has a fallback retry with bare constraints if the hi-fi attempt still fails on some other constraint, so a constraint mismatch on one device can never again silently kill the call.",
+      "Server voice channels also suffered the same constraint bug — fixed there too, which is the most likely reason server-call audio sounded muffled and underwater on certain mics (the strict path was silently producing a degraded fallback stream on devices where it didn't outright fail).",
+      "Group/server call crash 'Failed to execute setLocalDescription: order of m-lines in subsequent offer doesn't match' when starting a call right after leaving one. Stale peer connections from the prior call were being reused and the new addTrack calls extended their m-line list past the previous SDP answer. startCall now defensively closes any leftover peer connections before building the new ones.",
+      "Acquired mic settings are now logged as `[Voice] 🎙️ mic settings: {...}` and `[GroupCall] 🎙️ mic settings: {...}` so future audio-quality issues are diagnosable from the console instead of guesswork.",
+    ],
+  },
 
   {
     version: "0.3.16",
