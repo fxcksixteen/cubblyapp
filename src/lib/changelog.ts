@@ -23,9 +23,21 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.3.14";
+export const CURRENT_VERSION = "0.3.15";
 
 export const CHANGELOG: ChangelogEntry[] = [
+
+  {
+    version: "0.3.15",
+    title: "Calls between specific friend pairs work again, no more reciprocal ringing deadlock",
+    date: "2026-06-22",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Voice/video calls between specific friend pairs (the kaszy ↔ geassbound case) work again. v0.3.14 added an unconditional 'incoming-call' ring to the peer even on the rejoin path as a ghost-row fallback — but when the peer was actually live, that fresh ring made their client treat the rejoin as a brand-new inbound call, fire back its own 'ready-for-offer', and flip the REJOINER into the offerer role. That's why Rejoin opened the call panel stuck on 'Ringing…' and the green Accept button appeared to do nothing on the receiver while the caller silently rolled over into 'Not in call' after the 30s ring timeout. The ring is now sent only on brand-new calls; the ghost-row case is still handled because the liveness check correctly falls through to the new-call branch when the peer isn't actually live.",
+      "Clicking the voice or video call button on a DM where the other person is already ringing YOU now picks up the call instead of starting a second outgoing call. Before, both people clicking 'call' around the same moment ended up with two separate ongoing call events for the same conversation, each side ringing the other and neither one able to connect. The buttons now route to Accept whenever there's an incoming call for the active DM.",
+    ],
+  },
 
   {
     version: "0.3.14",
