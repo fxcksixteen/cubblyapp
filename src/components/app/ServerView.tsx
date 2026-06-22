@@ -10,7 +10,7 @@ import { useGroupCall } from "@/contexts/GroupCallContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import ChatView from "@/components/app/ChatView";
-import GroupCallPanel from "@/components/app/GroupCallPanel";
+import ServerVoicePanel from "@/components/app/ServerVoicePanel";
 import SidebarGroupCallCard from "@/components/app/SidebarGroupCallCard";
 import StatusIndicator from "@/components/app/StatusIndicator";
 import UserDisplayName from "@/components/app/UserDisplayName";
