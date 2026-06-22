@@ -28,6 +28,21 @@ const UserPanel = () => {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [userStatus, setUserStatus] = useState("online");
 
+  // Load the user's saved presence status so the dot under their avatar in the
+  // server sidebar matches reality (online / idle / dnd / invisible) instead of
+  // always showing the "online" default.
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("profiles")
+      .select("status")
+      .eq("user_id", user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.status) setUserStatus(data.status);
+      });
+  }, [user]);
+
   const muted = activeCall ? activeCall.isMuted : localMuted;
   const deafened = activeCall ? activeCall.isDeafened : localDeafened;
 
