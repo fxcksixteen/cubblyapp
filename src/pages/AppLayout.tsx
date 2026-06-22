@@ -48,7 +48,7 @@ const AppLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, onlineUserIds } = useAuth();
-  const { activeCall, startCall, endCall, toggleVideo } = useVoice();
+  const { activeCall, startCall, endCall, toggleVideo, incomingCall, acceptCall } = useVoice();
   const groupCall = useGroupCall();
   const isMobile = useIsMobile();
 
