@@ -132,6 +132,29 @@ const SidebarGroupCallCard = () => {
           />
         </button>
         <button
+          onClick={() => {
+            if (activeCall.isScreenSharing) {
+              toggleScreenShare();
+            } else {
+              setShowSharePicker(true);
+            }
+          }}
+          className="flex-1 flex items-center justify-center rounded-md py-1.5 transition-colors"
+          style={{ backgroundColor: activeCall.isScreenSharing ? "rgba(59,165,92,0.2)" : "rgba(255,255,255,0.06)" }}
+          aria-label={activeCall.isScreenSharing ? "Stop screen share" : "Share your screen"}
+        >
+          <img
+            src={screenshareIcon}
+            alt=""
+            className="h-[16px] w-[16px]"
+            style={{
+              filter: activeCall.isScreenSharing
+                ? "invert(60%) sepia(56%) saturate(412%) hue-rotate(82deg) brightness(91%) contrast(89%)"
+                : "invert(70%)",
+            }}
+          />
+        </button>
+        <button
           onClick={leaveCall}
           className="flex-1 flex items-center justify-center rounded-md py-1.5 transition-colors"
           style={{ backgroundColor: "#ed4245" }}
@@ -140,6 +163,18 @@ const SidebarGroupCallCard = () => {
           <img src={callEndIcon} alt="" className="h-[16px] w-[16px]" style={{ filter: "invert(100%)" }} />
         </button>
       </div>
+
+      <ScreenSharePicker
+        isOpen={showSharePicker}
+        onClose={() => setShowSharePicker(false)}
+        onSelect={(_type: ScreenShareType, _options) => {
+          setShowSharePicker(false);
+          // GroupCall toggleScreenShare accepts an optional Electron sourceId.
+          // The DM picker returns richer options; for server calls we pass the
+          // sourceId when available and let getDisplayMedia handle the browser case.
+          toggleScreenShare((_options as any)?.sourceId);
+        }}
+      />
     </div>
   );
 };
