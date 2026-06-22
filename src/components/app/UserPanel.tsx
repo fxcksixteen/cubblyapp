@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 import { useVoice } from "@/contexts/VoiceContext";
 import { playSound } from "@/lib/sounds";
 import ProfilePopup from "./ProfilePopup";
@@ -26,6 +27,21 @@ const UserPanel = () => {
   const [localDeafened, setLocalDeafened] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [userStatus, setUserStatus] = useState("online");
+
+  // Load the user's saved presence status so the dot under their avatar in the
+  // server sidebar matches reality (online / idle / dnd / invisible) instead of
+  // always showing the "online" default.
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("profiles")
+      .select("status")
+      .eq("user_id", user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.status) setUserStatus(data.status);
+      });
+  }, [user]);
 
   const muted = activeCall ? activeCall.isMuted : localMuted;
   const deafened = activeCall ? activeCall.isDeafened : localDeafened;
