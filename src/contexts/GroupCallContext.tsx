@@ -516,6 +516,18 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     }
     console.log("[GroupCall] 📞 Starting group call in", conversationId, "with", memberIds.length, "members");
 
+    // v0.3.17: defensively wipe any stale PCs/senders left over from a prior
+    // call that didn't fully clean up. Reusing an existing PC from a prior
+    // session caused `setLocalDescription` to throw "order of m-lines in
+    // subsequent offer doesn't match" because new addTrack calls extended the
+    // m-line list past the previous answer.
+    for (const [, pc] of pcsRef.current) { try { pc.close(); } catch {} }
+    pcsRef.current.clear();
+    videoSendersRef.current.clear();
+    screenSendersRef.current.clear();
+    queuedIceRef.current.clear();
+    remoteDescSetRef.current.clear();
+
     // Get mic
     let stream: MediaStream;
     try {
