@@ -645,11 +645,12 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
             const pc = ensurePc(payload.fromUserId);
             try {
               const offer = await pc.createOffer();
+              offer.sdp = mungeGroupCallOpusSdp(offer.sdp);
               await pc.setLocalDescription(offer);
               channel.send({
                 type: "broadcast",
                 event: "group-signal",
-                payload: { type: "offer", fromUserId: user.id, toUserId: payload.fromUserId, sdp: offer },
+                payload: { type: "offer", fromUserId: user.id, toUserId: payload.fromUserId, sdp: pc.localDescription },
               });
             } catch (e) {
               console.error("[GroupCall] Failed to create offer for new peer:", e);
