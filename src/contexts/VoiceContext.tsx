@@ -906,6 +906,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
     pc.onconnectionstatechange = () => {
       console.log("[Voice] Connection state:", pc.connectionState);
+      console.log(`[VoiceDiag] connectionState=${pc.connectionState} iceConnectionState=${pc.iceConnectionState} signalingState=${pc.signalingState}`);
+      if (pc.connectionState === "connected") {
+        startInboundStats();
+      }
+      if (pc.connectionState === "failed" || pc.connectionState === "closed") {
+        if (inboundStatsTimer !== null) { clearInterval(inboundStatsTimer); inboundStatsTimer = null; }
+      }
     };
 
     // Pre-create a bidirectional video transceiver so we can hot-swap a camera
