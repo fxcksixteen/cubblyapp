@@ -154,6 +154,7 @@ const ServerView = () => {
             mirroring the DM sidebar so users can mute/share/disconnect without
             leaving the server view. Pass fallback info so it paints instantly
             instead of blanking while the supabase lookup races. */}
+        <SidebarActivityCard />
         <SidebarGroupCallCard
           fallbackServerInfo={
             serverId && channelId && server?.name
@@ -161,6 +162,10 @@ const ServerView = () => {
               : null
           }
         />
+
+        {/* Profile / mute / deafen / settings — same panel as the DM sidebar
+            so the user always has these controls in reach. */}
+        <UserPanel />
 
       </div>
 
