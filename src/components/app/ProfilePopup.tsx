@@ -111,7 +111,7 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
           style={{ backgroundColor: "var(--app-bg-tertiary, #111214)", borderColor: "var(--app-border, #2b2d31)" }}
         >
           {/* Banner */}
-          <div className="h-[60px]" style={{ background: profileColor.banner }} />
+          <div className="h-[60px]" style={{ background: bannerUrl ? `url(${bannerUrl}) center/cover no-repeat` : profileColor.banner }} />
 
           {/* Avatar */}
           <div className="px-4 -mt-6 relative z-10">
