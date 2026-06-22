@@ -48,7 +48,7 @@ const AppLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, onlineUserIds } = useAuth();
-  const { activeCall, startCall, endCall, toggleVideo } = useVoice();
+  const { activeCall, startCall, endCall, toggleVideo, incomingCall, acceptCall } = useVoice();
   const groupCall = useGroupCall();
   const isMobile = useIsMobile();
 
@@ -190,6 +190,14 @@ const AppLayout = () => {
       else endCall();
       return;
     }
+    // If the peer is already ringing US for this DM, the voice button must
+    // behave like Accept — never start a second outgoing call against the
+    // same person. This is what stopped two users from ringing each other
+    // simultaneously and getting stuck.
+    if (incomingCall && incomingCall.conversationId === activeConvId) {
+      acceptCall();
+      return;
+    }
     const proceed = async () => {
       if (activeConv?.is_group && activeConvId) {
         const memberIds = activeConv.members.map(m => m.user_id);
@@ -210,6 +218,12 @@ const AppLayout = () => {
     if (!activeConv || activeConv.is_group || !activeParticipant) return;
     if (activeParticipant.user_id === BOT_USER_ID) return;
     const alreadyInThisCall = activeCall?.conversationId === activeConvId;
+    // Same accept-instead-of-call rule for the video button.
+    if (!alreadyInThisCall && incomingCall && incomingCall.conversationId === activeConvId) {
+      acceptCall();
+      try { await toggleVideo(); } catch (e) { console.error("[Video] toggle failed:", e); }
+      return;
+    }
     const proceed = async () => {
       if (!alreadyInThisCall) {
         startCall(activeConvId!, activeParticipant.user_id, activeParticipant.display_name);
