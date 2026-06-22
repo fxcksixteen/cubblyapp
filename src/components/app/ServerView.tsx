@@ -148,6 +148,10 @@ const ServerView = () => {
           <ChannelGroup label="Voice Channels" channels={channels.filter((c) => c.kind === "voice")} activeId={channelId}
             onSelect={(id) => navigate(`/@me/server/${serverId}/${id}`)} />
         </div>
+        {/* Voice-Connected card pinned to the bottom of the channel sidebar,
+            mirroring the DM sidebar so users can mute/share/disconnect without
+            leaving the server view. */}
+        <SidebarGroupCallCard />
       </div>
 
       {/* Main: chat or voice channel placeholder */}
