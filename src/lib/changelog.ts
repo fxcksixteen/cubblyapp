@@ -23,37 +23,26 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.3.17";
+export const CURRENT_VERSION = "0.3.16";
 
 export const CHANGELOG: ChangelogEntry[] = [
 
   {
-    version: "0.3.17",
-    title: "Found the real reason DM calls broke between kaszy & geassbound",
+    version: "0.3.16",
+    title: "Server voice channels get their own UI, calls between kaszy & geassbound actually fixed, server call audio matches DM quality",
     date: "2026-06-22",
     hero: bearImage,
     newFeatures: [],
     bugFixes: [
       "DM voice/video calls between kaszy and geassbound (and any other pair where one mic happened to reject 24-bit audio) actually work now. The v0.3.15 diagnostic logs caught the real culprit: getUserMedia was throwing OverconstrainedError every single time because the desktop audio constraints asked for `sampleSize: 24`, and no consumer microphone actually supports 24-bit sample size — Chrome silently treated the whole constraint set as strict and refused to give us a mic stream at all. The throw was caught and swallowed, so the call UI just sat in 'Calling…' / 'Ringing…' forever while the caller silently rolled over to 'Not in call' after the 30s ring timeout, the green Accept button did nothing, and Rejoin opened a call panel stuck on 'Ringing…'. All three symptoms had the same root cause. `sampleSize: 24` is now removed entirely, and getUserMedia has a fallback retry with bare constraints if the hi-fi attempt still fails on some other constraint, so a constraint mismatch on one device can never again silently kill the call.",
-      "Server voice channels also suffered the same constraint bug — fixed there too, which is the most likely reason server-call audio sounded muffled and underwater on certain mics (the strict path was silently producing a degraded fallback stream on devices where it didn't outright fail).",
+      "Server voice channel audio no longer sounds muffled and underwater. Two root causes: group/server calls were using bare microphone constraints with no sample rate or channel count (so the encoder defaulted to mono ~32 kbps speech codec settings — exactly the 'swimming pool' quality you described), AND they were affected by the same `sampleSize: 24` OverconstrainedError as DM calls, which on some Windows mics produced a degraded silent fallback stream. Server calls now negotiate the same 48 kHz stereo, 256 kbps high-bitrate Opus with in-band FEC that DM calls use, with a safe constraint fallback for any mic that rejects the hi-fi profile.",
+      "Server voice channels now have their own dedicated UI instead of reusing the DM-group-call panel. The 'Group Call · 12:34' pill header and tight rounded card are gone; in a server voice channel you now get a full-bleed Discord-style layout: rectangular member tiles in a responsive grid (avatars centered, name pill bottom-left with mic/deafen badges, green speaking border), an active screen share promoted to a large tile at the top of the panel, and a single full-width bottom action bar with mute / deafen / video / screen share / Disconnect. The old DM-group panel is untouched and still used for DM group calls — server channels just don't pretend to be one anymore.",
+      "The 'Voice Connected' card at the bottom of the channel sidebar now actually shows up when you're in a server voice channel. It already existed in code but had a render race — it queried the database asynchronously for which server owns the call, so it stayed blank for the first paint and would never appear at all if that lookup failed. ServerView now passes the server name + ids directly as a fallback so the card paints instantly the moment you join, with mute, video, screenshare, and Disconnect buttons just like in DMs.",
+      "Screen-share button is now present in the new server-call bottom action bar (carried over from the DM-group panel during the redesign). In Electron it opens the source picker so you can pick a specific window or screen; in the browser it uses getDisplayMedia.",
       "Group/server call crash 'Failed to execute setLocalDescription: order of m-lines in subsequent offer doesn't match' when starting a call right after leaving one. Stale peer connections from the prior call were being reused and the new addTrack calls extended their m-line list past the previous SDP answer. startCall now defensively closes any leftover peer connections before building the new ones.",
       "Acquired mic settings are now logged as `[Voice] 🎙️ mic settings: {...}` and `[GroupCall] 🎙️ mic settings: {...}` so future audio-quality issues are diagnosable from the console instead of guesswork.",
-    ],
-  },
-
-  {
-    version: "0.3.16",
-    title: "Server call audio gets DM-quality, sidebar voice card now shows in servers, plus deep WebRTC diagnostics",
-    date: "2026-06-22",
-    hero: bearImage,
-    newFeatures: [],
-    bugFixes: [
-      "Server voice channel audio no longer sounds muffled and underwater. Group/server calls were using bare microphone constraints with no sample rate, channel count, or Opus tuning — so the encoder defaulted to mono ~32 kbps speech codec settings, exactly the 'sounds like you're in a swimming pool' quality you described. Server calls now negotiate the same 48 kHz stereo, 256 kbps high-bitrate Opus with in-band FEC that DM calls have used since v0.3.x, with mobile-safe fallback constraints for iOS Safari.",
-      "Rejoining a server voice channel now finds people already in it, instead of dropping you in alone. The previous flow relied on a single peer-join broadcast packet — if that packet was dropped or arrived before the other side's signaling channel was ready, you'd sit there in an empty channel while the other person was clearly still in it (and they had to leave and rejoin for you both to reconnect). A 5-second reconcile loop now scans the database for live participants who don't yet have a peer connection and re-broadcasts peer-join until everyone is paired up.",
-      "The 'Voice Connected' card at the bottom of the DM sidebar now also shows up in the server channel sidebar when you're in a server voice channel — with mute, video, screenshare, and disconnect buttons, just like in DMs. Before, you had to navigate back to the voice channel to control the call.",
-      "Screen share button is now available in the in-server voice card (it was only in DMs).",
-      "Voice calls between kaszy and geassbound specifically — three rounds of guess-fixes haven't pinned it, and the database shows the signaling layer connects fine (both sides join the same call_event and heartbeat for ~50 seconds before giving up). That means the failure is in the WebRTC peer connection itself (ICE / DTLS / RTP), not signaling. This build adds [VoiceDiag] structured logs around every signaling transition, every connection state change, and a 3-second inbound-RTP packet counter. Open dev tools (F12) the next time you try a call with her and send the [VoiceDiag] lines, so the next fix can target the real failure point instead of patching around symptoms.",
-      "Known not-yet-fixed (saving for the next patch to keep this build focused): server screen-share mute glitch where starting a share mutes you and the call UI flashes, and the full Discord-style server voice UI redesign.",
+      "Profile modal that opens when you right-click a user in the DM sidebar and choose 'View Profile' now renders correctly when the Space theme is on (confirmed already fixed).",
+      "Known not-yet-fixed (saving for the next patch to keep this build focused): server screen-share-mutes-you glitch where starting a share briefly mutes your mic and flashes the call UI — separate WebRTC renegotiation bug that needs its own focused pass.",
     ],
   },
 
