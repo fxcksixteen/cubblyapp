@@ -26,21 +26,32 @@ const PingBars = ({ ping }: { ping: number }) => {
   );
 };
 
+interface Props {
+  /**
+   * Optional immediate server-info so the card can paint instantly when
+   * mounted inside a server view (we already know server name + ids from
+   * the URL). Without this, the supabase lookup race leaves the card blank
+   * for ~200ms after joining and shows nothing at all if the lookup fails.
+   */
+  fallbackServerInfo?: { server_id: string; server_name: string; channel_id: string } | null;
+}
+
 /**
  * Shown above the user panel when the user is connected to a SERVER voice
  * channel (group call). Mirrors SidebarVoiceCard so DM and server calls feel
- * identical from the sidebar.
+ * identical from the sidebar. Returns null for non-server group calls (those
+ * are handled by SidebarVoiceCard's call panel route).
  */
-const SidebarGroupCallCard = () => {
+const SidebarGroupCallCard = ({ fallbackServerInfo = null }: Props = {}) => {
   const { activeCall, leaveCall, ping, toggleVideo, toggleScreenShare } = useGroupCall();
   const navigate = useNavigate();
   const [elapsed, setElapsed] = useState(0);
   const [showSharePicker, setShowSharePicker] = useState(false);
-  const [serverInfo, setServerInfo] = useState<{ server_id: string; server_name: string; channel_id: string } | null>(null);
+  const [resolvedInfo, setResolvedInfo] = useState<{ server_id: string; server_name: string; channel_id: string } | null>(null);
 
   // Resolve which server/channel owns this group call so the card can deep-link back.
   useEffect(() => {
-    if (!activeCall) { setServerInfo(null); return; }
+    if (!activeCall) { setResolvedInfo(null); return; }
     let cancelled = false;
     (async () => {
       const { data: ch } = await supabase
@@ -49,7 +60,7 @@ const SidebarGroupCallCard = () => {
         .eq("conversation_id", activeCall.conversationId)
         .maybeSingle();
       if (cancelled || !ch) return;
-      setServerInfo({
+      setResolvedInfo({
         server_id: (ch as any).server_id,
         server_name: (ch as any).servers?.name || "Server",
         channel_id: (ch as any).id,
@@ -65,8 +76,10 @@ const SidebarGroupCallCard = () => {
   }, [activeCall?.joinedAt]);
 
   if (!activeCall) return null;
-  // Only show for SERVER calls — DM/group calls already render via SidebarVoiceCard's path.
-  // If we couldn't resolve a server channel, this is a non-server group call; bail.
+  // Prefer fresh DB-resolved info; fall back to the URL-derived prop so the
+  // card paints instantly inside server views. Without EITHER it's a non-server
+  // group call — handled elsewhere — so bail.
+  const serverInfo = resolvedInfo || fallbackServerInfo;
   if (!serverInfo) return null;
 
   const stateLabel = "Voice Connected";
