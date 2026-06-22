@@ -39,8 +39,8 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Server voice channels have a new dedicated UI: rectangular member tiles in a responsive grid, active screen share promoted to a large tile at the top, and a single full-width bottom action bar. No more DM-group panel reused inside servers.",
       "The 'Voice Connected' card at the bottom of the channel sidebar now actually appears the moment you join a server voice channel.",
       "Screen-share button is present in the new server-call bottom bar.",
-      "Fixed a crash when starting a call right after leaving one (m-line ordering error from stale peer connections).",
-      "Profile modal under the Space theme renders correctly (confirmed fixed).",
+      "Your profile panel (avatar, name, mute, deafen, settings) now shows at the bottom of the server sidebar, just like in DMs.",
+      "Fixed a crash when starting a call right after leaving one.",
     ],
   },
 
