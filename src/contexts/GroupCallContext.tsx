@@ -1236,6 +1236,50 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     return () => clearInterval(i);
   }, [activeCall, user]);
 
+  // DB-driven peer reconcile: every 5s, scan call_participants for live peers
+  // we don't yet have a PC for and broadcast a peer-join so the higher-id side
+  // offers to us. Fixes "I left and rejoined and landed alone even though she
+  // was still in the channel" — relying on a single peer-join packet wasn't
+  // enough when realtime had momentarily dropped the broadcast.
+  useEffect(() => {
+    if (!activeCall || !user || !channelRef.current) return;
+    const evtId = callEventIdRef.current;
+    if (!evtId) return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const { data: rows } = await supabase
+          .from("call_participants")
+          .select("user_id, last_seen_at, joined_at, left_at")
+          .eq("call_event_id", evtId);
+        if (cancelled || !rows) return;
+        const FRESH_MS = 30_000;
+        const now = Date.now();
+        for (const r of rows as any[]) {
+          if (r.user_id === user.id) continue;
+          if (r.left_at !== null) continue;
+          const baselineStr = r.last_seen_at ?? r.joined_at;
+          if (!baselineStr) continue;
+          if (now - new Date(baselineStr).getTime() >= FRESH_MS) continue;
+          if (pcsRef.current.has(r.user_id)) continue;
+          console.log("[GroupCall] 🔁 Reconcile: missing PC for live peer", r.user_id, "— re-broadcasting peer-join");
+          // Re-announce so the higher-id side offers to us.
+          channelRef.current?.send({
+            type: "broadcast",
+            event: "group-signal",
+            payload: { type: "peer-join", fromUserId: user.id },
+          });
+          break; // one rebroadcast per tick is enough; next tick re-checks
+        }
+      } catch { /* best-effort */ }
+    };
+    const i = setInterval(tick, 5_000);
+    // First tick after a brief delay so the initial peer-join has a chance.
+    const seed = setTimeout(tick, 2_000);
+    return () => { cancelled = true; clearInterval(i); clearTimeout(seed); };
+  }, [activeCall?.conversationId, user]);
+
+
   return (
     <GroupCallContext.Provider value={{
       activeCall, incomingCall, peers, ping,
