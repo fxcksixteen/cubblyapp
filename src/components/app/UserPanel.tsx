@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 import { useVoice } from "@/contexts/VoiceContext";
 import { playSound } from "@/lib/sounds";
 import ProfilePopup from "./ProfilePopup";
