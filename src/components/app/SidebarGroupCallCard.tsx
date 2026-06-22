@@ -32,9 +32,10 @@ const PingBars = ({ ping }: { ping: number }) => {
  * identical from the sidebar.
  */
 const SidebarGroupCallCard = () => {
-  const { activeCall, leaveCall, ping, toggleVideo } = useGroupCall();
+  const { activeCall, leaveCall, ping, toggleVideo, toggleScreenShare } = useGroupCall();
   const navigate = useNavigate();
   const [elapsed, setElapsed] = useState(0);
+  const [showSharePicker, setShowSharePicker] = useState(false);
   const [serverInfo, setServerInfo] = useState<{ server_id: string; server_name: string; channel_id: string } | null>(null);
 
   // Resolve which server/channel owns this group call so the card can deep-link back.
