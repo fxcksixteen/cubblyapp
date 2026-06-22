@@ -519,10 +519,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     // Get mic
     let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: GROUP_MIC_CONSTRAINTS,
-        video: false,
-      });
+      stream = await getGroupMicSafe();
     } catch (e) {
       console.error("[GroupCall] Failed to get mic:", e);
       return;
