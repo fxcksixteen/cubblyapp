@@ -791,10 +791,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
 
     let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: GROUP_MIC_CONSTRAINTS,
-        video: false,
-      });
+      stream = await getGroupMicSafe();
     } catch (e) {
       console.error("[GroupCall] Mic permission denied:", e);
       return;
