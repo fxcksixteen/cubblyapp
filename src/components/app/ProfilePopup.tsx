@@ -26,22 +26,41 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [bannerUrl, setBannerUrl] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
   const displayName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "User";
   const username = user?.user_metadata?.username || displayName.toLowerCase();
   const profileColor = defaultProfileColor;
 
+  // Pull the live avatar + banner the user actually has on now, not whatever
+  // they had when they first signed up. Also subscribe to changes so it
+  // refreshes immediately after they edit their profile.
   useEffect(() => {
     if (!user) return;
     supabase
       .from("profiles")
-      .select("avatar_url")
+      .select("avatar_url, banner_url")
       .eq("user_id", user.id)
       .maybeSingle()
       .then(({ data }) => {
-        if (data?.avatar_url) setAvatarUrl(data.avatar_url);
+        if (!data) return;
+        setAvatarUrl((data as any).avatar_url || null);
+        setBannerUrl((data as any).banner_url || null);
       });
+    const channel = supabase
+      .channel(`profile-popup:${user.id}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "profiles", filter: `user_id=eq.${user.id}` },
+        (payload) => {
+          const next = payload.new as { avatar_url?: string | null; banner_url?: string | null };
+          setAvatarUrl(next.avatar_url || null);
+          setBannerUrl(next.banner_url || null);
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
   }, [user]);
 
   useEffect(() => {
