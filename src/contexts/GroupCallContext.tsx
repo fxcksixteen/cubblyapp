@@ -440,7 +440,12 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       if (!channelRef.current || !user) return;
       try {
         makingOfferRef.current.set(peerId, true);
-        await pc.setLocalDescription();
+        // Explicit createOffer so we can patch the SDP for stereo high-bitrate
+        // Opus before publishing it; without this, server-call audio defaults
+        // to mono ~32kbps and sounds underwater compared to DM calls.
+        const offer = await pc.createOffer();
+        offer.sdp = mungeGroupCallOpusSdp(offer.sdp);
+        await pc.setLocalDescription(offer);
         channelRef.current.send({
           type: "broadcast",
           event: "group-signal",
