@@ -3,8 +3,10 @@ import { useNavigate } from "react-router-dom";
 import { useGroupCall } from "@/contexts/GroupCallContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import ScreenSharePicker, { ScreenShareType } from "./ScreenSharePicker";
 import callEndIcon from "@/assets/icons/call-end.svg";
 import videoIcon from "@/assets/icons/video-camera.svg";
+import screenshareIcon from "@/assets/icons/screenshare.svg";
 
 const formatPing = (ping: number) => (ping > 0 ? `${ping} ms` : "—");
 
