@@ -677,19 +677,42 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const getUserMedia = useCallback(async () => {
-    // iOS Safari rejects strict sampleRate/sampleSize/channelCount constraints
-    // and returns NO stream at all → mobile users had no mic. On mobile we
-    // pass only the universally-supported booleans and let Safari pick defaults.
+    // v0.3.17: `sampleSize: 24` paired with `deviceId: { exact: ... }` made
+    // Chrome throw OverconstrainedError on a subset of consumer mics (most
+    // famously the kaszy ↔ geassbound pair) — no consumer mic actually does
+    // 24-bit. The throw killed every offer attempt and the call silently died
+    // after the 30s ring timeout. We now drop sampleSize entirely and retry
+    // without sampleRate/channelCount if the strict path still throws.
+    // iOS Safari is even pickier so it gets only the universally-supported
+    // booleans up-front.
     const audioBase: MediaTrackConstraints = {
       deviceId: settings.inputDeviceId !== "default" ? { exact: settings.inputDeviceId } : undefined,
       echoCancellation: settings.echoCancellation,
       noiseSuppression: settings.noiseSuppression,
       autoGainControl: settings.autoGainControl,
     };
-    const audio: MediaTrackConstraints = isMobile
-      ? audioBase
-      : { ...audioBase, sampleRate: 48000, sampleSize: 24, channelCount: 2 } as MediaTrackConstraints;
-    return navigator.mediaDevices.getUserMedia({ audio, video: false });
+    const tryGet = async (audio: MediaTrackConstraints) =>
+      navigator.mediaDevices.getUserMedia({ audio, video: false });
+
+    if (isMobile) {
+      const s = await tryGet(audioBase);
+      try { console.log("[Voice] 🎙️ mic settings:", s.getAudioTracks()[0]?.getSettings?.()); } catch {}
+      return s;
+    }
+    try {
+      const s = await tryGet({ ...audioBase, sampleRate: 48000, channelCount: 2 } as MediaTrackConstraints);
+      try { console.log("[Voice] 🎙️ mic settings (hi-fi):", s.getAudioTracks()[0]?.getSettings?.()); } catch {}
+      return s;
+    } catch (e: any) {
+      const name = e?.name || "";
+      if (name === "OverconstrainedError" || name === "NotReadableError" || name === "TypeError") {
+        console.warn("[Voice] 🎙️ hi-fi constraints rejected (", name, ") — falling back to basic constraints");
+        const s = await tryGet(audioBase);
+        try { console.log("[Voice] 🎙️ mic settings (fallback):", s.getAudioTracks()[0]?.getSettings?.()); } catch {}
+        return s;
+      }
+      throw e;
+    }
   }, [settings.inputDeviceId, settings.echoCancellation, settings.noiseSuppression, settings.autoGainControl]);
 
   const createPeerConnection = useCallback(() => {
