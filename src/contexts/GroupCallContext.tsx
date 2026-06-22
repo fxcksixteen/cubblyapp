@@ -102,6 +102,33 @@ const STUN_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun1.l.google.com:19302" },
 ];
 
+/**
+ * iOS Safari rejects strict sampleRate/sampleSize/channelCount on getUserMedia
+ * — match DM-call constraints so server-call audio doesn't sound underwater
+ * compared to 1:1 calls.
+ */
+const isMobileGC = typeof navigator !== "undefined" && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || "");
+const GROUP_MIC_CONSTRAINTS: MediaTrackConstraints = isMobileGC
+  ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+  : { echoCancellation: true, noiseSuppression: true, autoGainControl: true, sampleRate: 48000, sampleSize: 24, channelCount: 2 } as MediaTrackConstraints;
+
+/**
+ * Force stereo high-bitrate Opus on outgoing SDP so server-call audio matches
+ * DM-call fidelity. Without this the encoder defaults to ~32kbps mono speech
+ * and music/background audio sounds muffled.
+ */
+function mungeGroupCallOpusSdp(sdp: string | undefined | null): string {
+  if (!sdp) return sdp || "";
+  return sdp.replace(/a=fmtp:111 ([^\r\n]*)/g, (_m, existing) => {
+    const filtered = String(existing)
+      .split(";")
+      .map((s) => s.trim())
+      .filter((s) => s && !/^(stereo|sprop-stereo|maxaveragebitrate|useinbandfec|maxplaybackrate)=/i.test(s));
+    filtered.push("stereo=1", "sprop-stereo=1", "maxaveragebitrate=256000", "useinbandfec=1", "maxplaybackrate=48000");
+    return `a=fmtp:111 ${filtered.join(";")}`;
+  });
+}
+
 export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
   const { user } = useAuth();
   const [activeCall, setActiveCall] = useState<GroupActiveCall | null>(null);
