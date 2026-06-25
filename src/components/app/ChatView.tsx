@@ -1013,6 +1013,15 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
             )}
           </div>
 
+          <div className="relative flex-1">
+            {mentionMatch && mentionFiltered.length > 0 && (
+              <MentionPopup
+                filtered={mentionFiltered}
+                activeIndex={Math.min(mentionActiveIndex, mentionFiltered.length - 1)}
+                setActiveIndex={setMentionActiveIndex}
+                onSelect={acceptMention}
+              />
+            )}
           <textarea
             ref={messageInputRef}
             rows={1}
@@ -1022,11 +1031,42 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
               // Hard truncate (defensive — maxLength already enforces it)
               const v = e.target.value.slice(0, 1000);
               setInput(v);
+              setCaretPos(e.target.selectionStart ?? v.length);
               if (v.trim()) broadcastTyping();
               else broadcastStopTyping();
             }}
+            onSelect={(e) => setCaretPos((e.target as HTMLTextAreaElement).selectionStart ?? 0)}
+            onClick={(e) => setCaretPos((e.target as HTMLTextAreaElement).selectionStart ?? 0)}
+            onKeyUp={(e) => setCaretPos((e.target as HTMLTextAreaElement).selectionStart ?? 0)}
             onBlur={broadcastStopTyping}
             onKeyDown={(e) => {
+              // @mention popup navigation takes priority over Enter→send
+              if (mentionMatch && mentionFiltered.length > 0) {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setMentionActiveIndex((i) => (i + 1) % mentionFiltered.length);
+                  return;
+                }
+                if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setMentionActiveIndex((i) => (i - 1 + mentionFiltered.length) % mentionFiltered.length);
+                  return;
+                }
+                if (e.key === "Enter" || e.key === "Tab") {
+                  const pick = mentionFiltered[Math.min(mentionActiveIndex, mentionFiltered.length - 1)];
+                  if (pick) {
+                    e.preventDefault();
+                    acceptMention(pick);
+                    return;
+                  }
+                }
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  // Force-close by jumping caret past the @token
+                  setCaretPos((messageInputRef.current?.value.length) ?? input.length);
+                  return;
+                }
+              }
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 handleSend();
@@ -1066,10 +1106,11 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
               }
             }}
             placeholder={`Message @${recipientName}`}
-            className="flex-1 resize-none bg-transparent text-sm outline-none placeholder:text-[#6d6f78] leading-[1.4] py-1"
+            className="w-full resize-none bg-transparent text-sm outline-none placeholder:text-[#6d6f78] leading-[1.4] py-1"
             data-typing-input
             style={{ color: "var(--app-text-primary, #dbdee1)", maxHeight: "168px" }}
           />
+          </div>
 
           {input.length >= 750 && (
             <span
