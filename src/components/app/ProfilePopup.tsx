@@ -107,19 +107,19 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
       </button>
 
       {open && (
-        <div className="absolute bottom-full left-0 mb-2 w-[300px] rounded-xl shadow-2xl border z-50 overflow-hidden"
+        <div className="absolute bottom-full left-0 mb-2 w-[360px] rounded-xl shadow-2xl border z-50 overflow-hidden"
           style={{ backgroundColor: "var(--app-bg-tertiary, #111214)", borderColor: "var(--app-border, #2b2d31)" }}
         >
           {/* Banner */}
-          <div className="h-[60px]" style={{ background: bannerUrl ? `url(${bannerUrl}) center/cover no-repeat` : profileColor.banner }} />
+          <div className="h-[88px]" style={{ background: bannerUrl ? `url(${bannerUrl}) center/cover no-repeat` : profileColor.banner }} />
 
           {/* Avatar */}
-          <div className="px-4 -mt-6 relative z-10">
+          <div className="px-4 -mt-9 relative z-10">
             {avatarUrl ? (
-              <img src={avatarUrl} alt={displayName} className="h-[52px] w-[52px] rounded-full border-[4px] object-cover" style={{ borderColor: "var(--app-bg-tertiary, #111214)" }} />
+              <img src={avatarUrl} alt={displayName} className="h-[72px] w-[72px] rounded-full border-[5px] object-cover" style={{ borderColor: "var(--app-bg-tertiary, #111214)" }} />
             ) : (
               <div
-                className="flex h-[52px] w-[52px] items-center justify-center rounded-full border-[4px] text-lg font-bold text-white"
+                className="flex h-[72px] w-[72px] items-center justify-center rounded-full border-[5px] text-2xl font-bold text-white"
                 style={{ backgroundColor: profileColor.bg, borderColor: "var(--app-bg-tertiary, #111214)" }}
               >
                 {displayName.charAt(0).toUpperCase()}
@@ -128,12 +128,12 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
           </div>
 
           {/* Info */}
-          <div className="px-4 pt-1.5 pb-3">
-            <p className="text-lg font-bold text-white flex items-center gap-2">
+          <div className="px-4 pt-2 pb-4">
+            <p className="text-xl font-bold text-white flex items-center gap-2">
               <UserDisplayName userId={user?.id} name={displayName} fallbackColor="#ffffff" />
-              <UserBadges userId={user?.id} size={14} withTooltip />
+              <UserBadges userId={user?.id} size={16} withTooltip />
             </p>
-            <p className="text-sm" style={{ color: "var(--app-text-secondary, #949ba4)" }}>{username}</p>
+            <p className="text-[13px] mt-0.5" style={{ color: "var(--app-text-secondary, #949ba4)" }}>{username}</p>
           </div>
 
           <div className="mx-3 h-px" style={{ backgroundColor: "var(--app-border, #2b2d31)" }} />
