@@ -168,6 +168,28 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
   });
   useEffect(() => { setMentionActiveIndex(0); }, [mentionMatch?.token, mentionFiltered.length]);
 
+  // Resolver for <@uuid> chips: prefer a message's own sender (covers
+  // historical messages whose author is no longer in `mentionCandidates`),
+  // then fall back to the candidates list and the recipient/peer.
+  const mentionResolver = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const m of messages) {
+      if (m.sender_id && m.sender_name) map.set(m.sender_id.toLowerCase(), m.sender_name);
+    }
+    for (const c of mentionCandidates) map.set(c.userId.toLowerCase(), c.name);
+    if (user?.id) {
+      const selfName = user.user_metadata?.display_name || user.email?.split("@")[0] || "you";
+      map.set(user.id.toLowerCase(), selfName);
+    }
+    return {
+      resolve: (uid: string) => map.get(uid.toLowerCase()),
+      selfUserId: user?.id ?? null,
+      onClick: (uid: string, name: string, e: React.MouseEvent) => {
+        setProfileCard({ userId: uid, name, x: e.clientX, y: e.clientY });
+      },
+    };
+  }, [messages, mentionCandidates, user?.id, user?.email, user?.user_metadata?.display_name]);
+
   const acceptMention = (c: MentionCandidate) => {
     if (!mentionMatch) return;
     const before = input.slice(0, mentionMatch.start);
