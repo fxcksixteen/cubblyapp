@@ -25,20 +25,41 @@ interface Ctx {
 const UserBadgesContext = createContext<Ctx>({ get: () => [], request: () => {} });
 export const useUserBadges = () => useContext(UserBadgesContext);
 
-function rowsToBadges(rows: any[]): BadgeData[] {
+// Aria (@fawnsly) is grandfathered into the original "Petite" badge name and
+// description. Everyone else (and any future buyers) sees the renamed "Cute"
+// version. Keyed by user_id so it's a fast O(1) check in the render path.
+const ARIA_USER_ID = "b7b10e15-bc39-4871-bebe-4bcf2b3617b9";
+const PETITE_OG = {
+  label: "Petite",
+  description: "Small in size, big in personality.",
+};
+const PETITE_CUTE = {
+  label: "Cute",
+  description: "Adorable through and through — impossible not to smile at.",
+};
+
+function rowsToBadges(userId: string, rows: any[]): BadgeData[] {
+  const isAria = userId === ARIA_USER_ID;
   return rows
     .map((r) => {
       const item = r.shop_items;
       if (!item || item.category !== "badge") return null;
       const cfg = item.config ?? {};
+      let label = cfg.label ?? item.name ?? "Badge";
+      let description = item.description ?? cfg.description ?? undefined;
+      if (r.item_id === "badge_petite") {
+        const skin = isAria ? PETITE_OG : PETITE_CUTE;
+        label = skin.label;
+        description = skin.description;
+      }
       return {
         id: r.item_id,
         icon: cfg.icon ?? "star",
         bg: cfg.bg ?? "#3f4147",
         fg: cfg.fg ?? "#ffffff",
         glow: cfg.glow,
-        label: cfg.label ?? item.name ?? "Badge",
-        description: item.description ?? cfg.description ?? undefined,
+        label,
+        description,
       } as BadgeData;
     })
     .filter(Boolean) as BadgeData[];
@@ -69,7 +90,7 @@ export const UserBadgesProvider = ({ children }: { children: ReactNode }) => {
         if (!grouped.has(row.user_id)) grouped.set(row.user_id, []);
         grouped.get(row.user_id)!.push(row);
       }
-      grouped.forEach((rows, uid) => next.set(uid, rowsToBadges(rows)));
+      grouped.forEach((rows, uid) => next.set(uid, rowsToBadges(uid, rows)));
       return next;
     });
   }, []);

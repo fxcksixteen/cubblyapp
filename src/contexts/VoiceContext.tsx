@@ -375,6 +375,18 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const [remoteScreenStream, setRemoteScreenStream] = useState<MediaStream | null>(null);
+  // v0.3.17: play the screenshare start/stop SFX for the OTHER peer too —
+  // previously only the user who initiated/ended the share heard it.
+  const prevRemoteScreenRef = useRef<MediaStream | null>(null);
+  useEffect(() => {
+    const prev = prevRemoteScreenRef.current;
+    if (!prev && remoteScreenStream) {
+      try { playSound("screenshareStart", { volume: 0.4 }); } catch {}
+    } else if (prev && !remoteScreenStream) {
+      try { playSound("screenshareStop", { volume: 0.4 }); } catch {}
+    }
+    prevRemoteScreenRef.current = remoteScreenStream;
+  }, [remoteScreenStream]);
 
   // Expose a global flag so the heavy activity-poller (ActivityContext) can
   // throttle itself while the user is in a call.
@@ -473,6 +485,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   // duplicate offer retries from the caller's retry loop cannot re-trigger
   // setRemoteDescription on an already-stable PC, which was wiping ICE state.
   const lastAnsweredOfferRef = useRef<string | null>(null);
+  // Forward-ref to startCall so acceptCall (declared above startCall in the
+  // file) can delegate to the exact rejoin code path without circular
+  // useCallback deps. Assigned in an effect after startCall is created.
+  const startCallRef = useRef<((conversationId: string, peerId: string, peerName: string) => Promise<void>) | null>(null);
   // v0.3.12: refs for activeCall + incomingCall so the global voice-global
   // channel effect can stay mounted purely on `user` (it was being torn down
   // and resubscribed on every call state change, causing dropped notifications).
@@ -1967,6 +1983,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [user, setupSignaling, startLoopbackTest, ensureOwnParticipantRow]);
 
+  // Keep the forward-ref in sync so acceptCall can delegate to the
+  // currently-bound startCall closure (matters because startCall is
+  // recreated whenever its deps change).
+  useEffect(() => {
+    startCallRef.current = startCall;
+  }, [startCall]);
+
   /**
    * Dismiss the incoming-call ring on THIS device only — does NOT hang up an
    * already-connected call on a sibling device. Use this when the user clicks
@@ -1983,123 +2006,33 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     try { void broadcastIncomingCallDismiss(conversationId, callEventId); } catch {}
   }, [incomingCall, broadcastIncomingCallDismiss]);
 
+  // v0.3.17: the green "Accept" button now takes EXACTLY the same code path
+  // as the orange "Rejoin" button (which is the path the user has confirmed
+  // works reliably between every account pair). Previous versions had a
+  // separate, fragile SDP-exchange path in acceptCall that intermittently
+  // left the receiver in fake-connected state with no audio — most visibly
+  // on the kaszy ↔ geassbound DM. Dismiss the ring, stop the ringtone, then
+  // hand off to startCall which will see the existing ongoing call_event,
+  // join as a participant, and run the same handshake the rejoin pill uses.
   const acceptCall = useCallback(async () => {
     if (!incomingCall || !user) return;
-
     const acceptedCall = incomingCall;
-    const acceptedCallEventId = acceptedCall.callEventId || crypto.randomUUID();
-    console.log("[Voice] ✅ Accepting call from", acceptedCall.callerName, "hasOffer:", !!acceptedCall.offer);
-
+    console.log("[Voice] ✅ Accepting call (rejoin-style) from", acceptedCall.callerName);
     try {
-      const channel = await setupSignaling(acceptedCall.conversationId);
-      const stream = await getUserMedia();
-      console.log("[Voice] ✅ Callee got media stream, tracks:", stream.getTracks().map(t => `${t.kind}:${t.label}:enabled=${t.enabled}`));
-      setLocalStream(stream);
-      localStreamRef.current = stream;
-      originalMicTrackRef.current = stream.getAudioTracks()[0] || null;
-      startAudioLevelMonitor(stream);
-
-      const pc = createPeerConnection();
-      stream.getTracks().forEach(track => {
-        pc.addTrack(track, stream);
-        console.log("[Voice] ➕ Callee added track:", track.kind, track.label);
-      });
-
-      outgoingCandidateBuffer.current = [];
-      incomingCandidateQueue.current = [];
-      remoteDescriptionSet.current = false;
-
-      pc.onicecandidate = (event) => {
-        if (event.candidate) {
-          console.log("[Voice] 🧊 Callee ICE candidate:", event.candidate.type, event.candidate.protocol);
-          channel.send({
-            type: "broadcast",
-            event: "voice-signal",
-            payload: { type: "ice-candidate", candidate: event.candidate.toJSON(), senderId: user.id },
-          });
-        }
-      };
-
-      acceptedIncomingCallRef.current = acceptedCall;
-      setActiveCall({
-        conversationId: acceptedCall.conversationId,
-        peerId: acceptedCall.callerId,
-        peerName: acceptedCall.callerName,
-        state: "ringing",
-        startedAt: undefined,
-        isMuted: false,
-        isDeafened: false,
-        isVideoOn: false,
-      });
-      peerIdRef.current = acceptedCall.callerId;
+      stopLooping("incomingCall");
       setIncomingCall(null);
-      // v0.3.12: set currentCallEventId BEFORE SDP/ICE can connect so the
-      // syncParticipant call inside oniceconnectionstatechange and the
-      // heartbeat effect both see the right id even on fast LAN/loopback.
-      setCurrentCallEventId(acceptedCallEventId);
-      currentCallEventIdRef.current = acceptedCallEventId;
-      void broadcastIncomingCallDismiss(acceptedCall.conversationId, acceptedCallEventId);
-      await ensureOwnParticipantRow(acceptedCallEventId);
-
-      if (acceptedCall.offer) {
-        console.log("[Voice] 📥 Callee has offer, setting remote description and creating answer...");
-        remoteDescriptionSet.current = true;
-        await pc.setRemoteDescription(new RTCSessionDescription(acceptedCall.offer));
-        await flushQueuedIceCandidates(pc);
-
-        const answer = await pc.createAnswer();
-        let sdp = answer.sdp || "";
-        sdp = setHighQualityOpus(sdp);
-        answer.sdp = sdp;
-        await pc.setLocalDescription(answer);
-
-        await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id }, "answer(accept)");
-        lastAnsweredOfferRef.current = acceptedCallEventId;
-        console.log("[Voice] 📡 Answer sent to caller");
-
-        acceptedIncomingCallRef.current = null;
-        setActiveCall(prev => prev ? { ...prev, state: "calling" } : prev);
-
-      } else {
-        console.log("[Voice] 📡 No offer yet, sending ready-for-offer to caller (with retries)...");
-        const sendReady = () => {
-          void sendSignalReliably(channel, {
-            type: "ready-for-offer",
-            senderId: user.id,
-            senderName: user.user_metadata?.display_name || "User",
-            callEventId: acceptedCallEventId,
-          }, "ready-for-offer(accept)");
-        };
-        sendReady();
-        // v0.3.9: the very first ready-for-offer often races the caller's
-        // signaling subscribe / our own subscribe ack. Retry a few times so
-        // the second peer reliably gets placed in the call instead of
-        // hanging forever in "ringing" with no offer ever arriving.
-        const retryDelays = [600, 1400, 2800, 5000];
-        retryDelays.forEach((ms) => {
-          setTimeout(() => {
-            // Stop retrying once we actually have a remote description set.
-            if (remoteDescriptionSet.current) return;
-            // Or if the call was ended / changed.
-            if (activeCallRef.current?.conversationId !== acceptedCall.conversationId) return;
-            console.log(`[Voice] 🔁 Re-sending ready-for-offer (+${ms}ms)`);
-            try { sendReady(); } catch {}
-          }, ms);
-        });
-      }
-
-      // currentCallEventId was set earlier (before SDP) in v0.3.12.
-
-      // NOTE: do NOT manually insert a CallEvent here. The realtime INSERT
-      // subscription (see `setupCallEventsRealtime`) is the single source of
-      // truth and uses the *real* `started_at` from the DB. Inserting a local
-      // event with `new Date().toISOString()` (the receiver's accept time)
-      // would put the call pill BELOW any messages sent after the call
-      // actually started but before the receiver hit accept — wrong order.
+      acceptedIncomingCallRef.current = null;
+      try { void broadcastIncomingCallDismiss(acceptedCall.conversationId, acceptedCall.callEventId); } catch {}
+      await startCallRef.current?.(
+        acceptedCall.conversationId,
+        acceptedCall.callerId,
+        acceptedCall.callerName,
+      );
     } catch (e) {
-      console.error("Failed to accept call:", e);
+      console.error("Failed to accept call (rejoin-style):", e);
     }
-  }, [incomingCall, user, setupSignaling, getUserMedia, createPeerConnection, startAudioLevelMonitor, flushQueuedIceCandidates, broadcastIncomingCallDismiss, ensureOwnParticipantRow]);
+  }, [incomingCall, user, broadcastIncomingCallDismiss]);
+
 
   // Screen share loopback ref for bot calls
   const screenLoopbackPcRef = useRef<{ local: RTCPeerConnection; remote: RTCPeerConnection } | null>(null);

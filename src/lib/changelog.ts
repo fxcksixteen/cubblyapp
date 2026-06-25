@@ -23,9 +23,28 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.3.16";
+export const CURRENT_VERSION = "0.3.17";
 
 export const CHANGELOG: ChangelogEntry[] = [
+
+  {
+    version: "0.3.17",
+    date: "2026-04-22",
+    hero: bearImage,
+    newFeatures: [
+      "Type @ in any chat to tag people — suggestions show the most recent talkers in that channel.",
+      "Right-click a GIF for the same options you get on images (copy, save, open).",
+      "Click the “+” next to the reaction shortcuts to pick from every emoji.",
+      "Hardware acceleration toggle in Settings → Advanced for older GPUs or driver glitches.",
+      "Profile modals are noticeably bigger and easier to read.",
+      "Petite badge has been renamed to “Cute” with a fresh description (Aria keeps the original).",
+    ],
+    bugFixes: [
+      "Accepting an incoming call now uses the exact same rock-solid path as the Rejoin button — no more silent green-button failures.",
+      "Both sides of a call now hear the screenshare start/stop sound effects.",
+      "Hovering a message only highlights that single message, not the whole batch from the same author.",
+    ],
+  },
 
   {
     version: "0.3.16",

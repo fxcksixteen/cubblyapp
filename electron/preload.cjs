@@ -65,6 +65,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getAutoLaunch: () => ipcRenderer.invoke("auto-launch-get"),
   setAutoLaunch: (value) => ipcRenderer.invoke("auto-launch-set", value),
 
+  // Hardware acceleration toggle (requires restart to take effect).
+  getHardwareAcceleration: () => ipcRenderer.invoke("hwaccel-get"),
+  setHardwareAcceleration: (value) => ipcRenderer.invoke("hwaccel-set", value),
+  relaunchApp: () => ipcRenderer.invoke("relaunch-app"),
+
   // Native per-window audio capture (Windows WASAPI process loopback)
   isWindowAudioCaptureAvailable: () => ipcRenderer.invoke("is-window-audio-capture-available"),
   startWindowAudioCapture: (sourceId) => ipcRenderer.invoke("start-window-audio-capture", sourceId),

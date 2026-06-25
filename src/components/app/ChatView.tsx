@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useMessages, Message, MessageStatus } from "@/hooks/useMessages";
 import { useAuth } from "@/contexts/AuthContext";
 import { useVoice } from "@/contexts/VoiceContext";
@@ -27,6 +27,7 @@ import { useMessageReactions } from "@/hooks/useMessageReactions";
 import MessageReactionsBar from "./chat/MessageReactionsBar";
 import UserDisplayName from "./UserDisplayName";
 import UserBadges from "./UserBadges";
+import { useMentionAutocomplete, MentionPopup, type MentionCandidate } from "./chat/MentionAutocomplete";
 
 const BOT_USER_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -123,6 +124,60 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
   const initialUnreadCapturedRef = useRef(false);
 
   useAutoGrowTextarea(messageInputRef, input, 6);
+
+  // ----- @mention autocomplete state -----
+  // Candidates come from the last ~20 unique message senders in this chat
+  // (covers DMs, group chats, and server channels uniformly with "the last
+  // 1-10 people who typed here"). Excludes the bot and the current user.
+  const [caretPos, setCaretPos] = useState(0);
+  const [mentionActiveIndex, setMentionActiveIndex] = useState(0);
+  const mentionCandidates: MentionCandidate[] = useMemo(() => {
+    const seen = new Set<string>();
+    const out: MentionCandidate[] = [];
+    // walk newest → oldest for "most recent first"
+    for (let i = messages.length - 1; i >= 0 && out.length < 20; i--) {
+      const m = messages[i];
+      if (!m.sender_id || seen.has(m.sender_id)) continue;
+      if (m.sender_id === user?.id) continue;
+      if (m.sender_id === BOT_USER_ID) continue;
+      seen.add(m.sender_id);
+      out.push({
+        userId: m.sender_id,
+        name: m.sender_name,
+        avatarUrl: m.sender_avatar_url ?? null,
+      });
+    }
+    // DM peer fallback (so brand-new DMs still suggest the recipient)
+    if (recipientUserId && !seen.has(recipientUserId) && recipientUserId !== user?.id) {
+      out.unshift({ userId: recipientUserId, name: recipientName, avatarUrl: recipientAvatar ?? null });
+    }
+    return out;
+  }, [messages, recipientUserId, recipientName, recipientAvatar, user?.id]);
+
+  const { match: mentionMatch, filtered: mentionFiltered } = useMentionAutocomplete({
+    value: input,
+    caret: caretPos,
+    candidates: mentionCandidates,
+  });
+  useEffect(() => { setMentionActiveIndex(0); }, [mentionMatch?.token, mentionFiltered.length]);
+
+  const acceptMention = (c: MentionCandidate) => {
+    if (!mentionMatch) return;
+    const before = input.slice(0, mentionMatch.start);
+    const after = input.slice(caretPos);
+    const insert = `@${c.name} `;
+    const next = (before + insert + after).slice(0, 1000);
+    const newCaret = (before + insert).length;
+    setInput(next);
+    requestAnimationFrame(() => {
+      const ta = messageInputRef.current;
+      if (ta) {
+        ta.focus();
+        ta.setSelectionRange(newCaret, newCaret);
+        setCaretPos(newCaret);
+      }
+    });
+  };
 
   const isBotConversation = recipientUserId === BOT_USER_ID;
 
@@ -756,7 +811,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                       <span className="text-[10px] font-bold tracking-wider px-2 rounded" style={{ color: "#ffffff", backgroundColor: "#ed4245" }}>NEW</span>
                     </div>
                   )}
-                <div className="mt-4 first:mt-0 flex gap-3 rounded px-2 py-1 relative group" style={{ transition: "background-color 0.15s" }} onMouseEnter={e => (e.currentTarget.style.backgroundColor = "var(--app-hover, #2e3035)")} onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}>
+                <div className="mt-4 first:mt-0 flex gap-3 px-2 py-1 relative">
                   {item.sender_avatar_url ? (
                     <img
                       src={item.sender_avatar_url}
@@ -802,8 +857,8 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                               if (el) messageRefs.current.set(msg.id, el);
                               else messageRefs.current.delete(msg.id);
                             }}
-                            className="relative group/msg py-0.5 rounded transition-colors"
-                            style={{ backgroundColor: isHighlighted ? "rgba(88,101,242,0.18)" : "transparent" }}
+                            className="relative group/msg py-0.5 -mx-2 px-2 rounded transition-colors hover:bg-[var(--app-hover,#2e3035)]"
+                            style={{ backgroundColor: isHighlighted ? "rgba(88,101,242,0.18)" : undefined }}
                           >
                             {/* Hover action buttons for individual messages */}
                             <div className="absolute -top-3 right-0 flex items-center gap-0.5 rounded-lg border px-1 py-0.5 shadow-lg opacity-0 group-hover/msg:opacity-100 transition-opacity z-10"
@@ -958,6 +1013,15 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
             )}
           </div>
 
+          <div className="relative flex-1">
+            {mentionMatch && mentionFiltered.length > 0 && (
+              <MentionPopup
+                filtered={mentionFiltered}
+                activeIndex={Math.min(mentionActiveIndex, mentionFiltered.length - 1)}
+                setActiveIndex={setMentionActiveIndex}
+                onSelect={acceptMention}
+              />
+            )}
           <textarea
             ref={messageInputRef}
             rows={1}
@@ -967,11 +1031,42 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
               // Hard truncate (defensive — maxLength already enforces it)
               const v = e.target.value.slice(0, 1000);
               setInput(v);
+              setCaretPos(e.target.selectionStart ?? v.length);
               if (v.trim()) broadcastTyping();
               else broadcastStopTyping();
             }}
+            onSelect={(e) => setCaretPos((e.target as HTMLTextAreaElement).selectionStart ?? 0)}
+            onClick={(e) => setCaretPos((e.target as HTMLTextAreaElement).selectionStart ?? 0)}
+            onKeyUp={(e) => setCaretPos((e.target as HTMLTextAreaElement).selectionStart ?? 0)}
             onBlur={broadcastStopTyping}
             onKeyDown={(e) => {
+              // @mention popup navigation takes priority over Enter→send
+              if (mentionMatch && mentionFiltered.length > 0) {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setMentionActiveIndex((i) => (i + 1) % mentionFiltered.length);
+                  return;
+                }
+                if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setMentionActiveIndex((i) => (i - 1 + mentionFiltered.length) % mentionFiltered.length);
+                  return;
+                }
+                if (e.key === "Enter" || e.key === "Tab") {
+                  const pick = mentionFiltered[Math.min(mentionActiveIndex, mentionFiltered.length - 1)];
+                  if (pick) {
+                    e.preventDefault();
+                    acceptMention(pick);
+                    return;
+                  }
+                }
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  // Force-close by jumping caret past the @token
+                  setCaretPos((messageInputRef.current?.value.length) ?? input.length);
+                  return;
+                }
+              }
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 handleSend();
@@ -1011,10 +1106,11 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
               }
             }}
             placeholder={`Message @${recipientName}`}
-            className="flex-1 resize-none bg-transparent text-sm outline-none placeholder:text-[#6d6f78] leading-[1.4] py-1"
+            className="w-full resize-none bg-transparent text-sm outline-none placeholder:text-[#6d6f78] leading-[1.4] py-1"
             data-typing-input
             style={{ color: "var(--app-text-primary, #dbdee1)", maxHeight: "168px" }}
           />
+          </div>
 
           {input.length >= 750 && (
             <span
