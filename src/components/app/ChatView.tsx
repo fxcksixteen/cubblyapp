@@ -17,7 +17,9 @@ import AttachmentItem from "./chat/AttachmentItem";
 import InlineGif from "./chat/InlineGif";
 import LinkPreview from "./chat/LinkPreview";
 import GroupMembersPanel from "./GroupMembersPanel";
-import { linkifyText, extractFirstUrl } from "@/lib/linkify";
+import { extractFirstUrl } from "@/lib/linkify";
+import { renderMessageBody } from "@/lib/renderMessageBody";
+import { serializeMentions, stripMentionTokens } from "@/lib/mentions";
 import { Button } from "@/components/ui/button";
 import sendIcon from "@/assets/icons/send.svg";
 import folderFileIcon from "@/assets/icons/folder-file.svg";
@@ -131,6 +133,11 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
   // 1-10 people who typed here"). Excludes the bot and the current user.
   const [caretPos, setCaretPos] = useState(0);
   const [mentionActiveIndex, setMentionActiveIndex] = useState(0);
+  // userId -> displayName for mentions the user PICKED via autocomplete in
+  // the current draft. Cleared after send. Lets us turn `@Name` back into
+  // `<@uuid>` wire tokens without false positives from people who just typed
+  // `@somebody` by hand.
+  const pickedMentionsRef = useRef<Map<string, string>>(new Map());
   const mentionCandidates: MentionCandidate[] = useMemo(() => {
     const seen = new Set<string>();
     const out: MentionCandidate[] = [];
@@ -168,6 +175,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
     const insert = `@${c.name} `;
     const next = (before + insert + after).slice(0, 1000);
     const newCaret = (before + insert).length;
+    pickedMentionsRef.current.set(c.userId, c.name);
     setInput(next);
     requestAnimationFrame(() => {
       const ta = messageInputRef.current;
