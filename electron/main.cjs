@@ -116,6 +116,19 @@ try {
   applyLoginItem(true);
 }
 
+// ----- Hardware acceleration toggle (Settings → Advanced) -----
+// MUST be called before app `ready` for `app.disableHardwareAcceleration()`
+// to take effect. Default ON; user must restart for changes to apply
+// (Chromium limitation).
+try {
+  if (settingsStore && settingsStore.get("hardwareAcceleration") === false) {
+    app.disableHardwareAcceleration();
+    log.info("[hwaccel] disabled per user setting");
+  }
+} catch (e) {
+  log.warn("[hwaccel] init failed:", e?.message || e);
+}
+
 let mainWindow;
 let appIconImage = null;
 
