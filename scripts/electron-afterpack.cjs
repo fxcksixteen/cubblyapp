@@ -30,13 +30,11 @@ const ALWAYS_DELETE = [
   // Inspector / devtools front-end resources — dev-only, not needed at
   // runtime for end users.
   "resources/inspector",
-  // Software rasterizer fallbacks. Hardware accel is on by default and there
-  // is a Settings → Advanced toggle for users on bad GPUs to fall back to
-  // ANGLE/D3D — they don't need the Vulkan/SwiftShader path too.
-  "vk_swiftshader.dll",
-  "vk_swiftshader_icd.json",
-  "vulkan-1.dll",
-  "swiftshader",
+  // NOTE: SwiftShader / Vulkan software-renderer DLLs are intentionally kept.
+  // They're the safety-net fallback when a user toggles off hardware acceleration
+  // in Settings → Advanced on a machine without working GPU drivers — without
+  // them the window goes black. ~12 MB is worth the reliability.
+
   // Debug symbols that occasionally ship in release builds.
   "d3dcompiler_47.dll.pdb",
   "electron.exe.pdb",
