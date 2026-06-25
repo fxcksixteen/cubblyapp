@@ -33,7 +33,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     hero: bearImage,
     newFeatures: [],
     bugFixes: [
-      "Desktop app is dramatically smaller on disk — stripped ~50 MB of unused Chromium language packs and ~9 MB of bundled license files that were inflating every install.",
+      "Desktop app is dramatically smaller on disk — stripped Chromium's unused language packs, license docs, default-app shell, software-renderer fallbacks (SwiftShader/Vulkan), debug symbols, and source maps from every install.",
     ],
   },
 
