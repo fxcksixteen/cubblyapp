@@ -348,6 +348,36 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                       Remove Friend
                     </ContextMenuItem>
                   )}
+                  {isMuted(conv.id) ? (
+                    <ContextMenuItem
+                      onClick={() => handleUnmute(conv.id)}
+                      className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer"
+                    >
+                      <Bell className="h-4 w-4" />
+                      {mutedUntil(conv.id) ? "Unmute Conversation" : "Unmute Conversation"}
+                    </ContextMenuItem>
+                  ) : (
+                    <ContextMenuSub>
+                      <ContextMenuSubTrigger className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer">
+                        <BellOff className="h-4 w-4" />
+                        Mute Conversation
+                      </ContextMenuSubTrigger>
+                      <ContextMenuSubContent
+                        className="w-56 rounded-xl border p-1.5 shadow-xl"
+                        style={{ backgroundColor: "#111214", borderColor: "var(--app-border, #2b2d31)" }}
+                      >
+                        {MUTE_OPTIONS.map((opt) => (
+                          <ContextMenuItem
+                            key={opt.label}
+                            onClick={() => handleMute(conv.id, opt.value)}
+                            className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer"
+                          >
+                            {opt.label}
+                          </ContextMenuItem>
+                        ))}
+                      </ContextMenuSubContent>
+                    </ContextMenuSub>
+                  )}
                   <ContextMenuItem
                     onClick={() => handleMarkAsRead(conv.id)}
                     className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer"
