@@ -125,6 +125,60 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
 
   useAutoGrowTextarea(messageInputRef, input, 6);
 
+  // ----- @mention autocomplete state -----
+  // Candidates come from the last ~20 unique message senders in this chat
+  // (covers DMs, group chats, and server channels uniformly with "the last
+  // 1-10 people who typed here"). Excludes the bot and the current user.
+  const [caretPos, setCaretPos] = useState(0);
+  const [mentionActiveIndex, setMentionActiveIndex] = useState(0);
+  const mentionCandidates: MentionCandidate[] = useMemo(() => {
+    const seen = new Set<string>();
+    const out: MentionCandidate[] = [];
+    // walk newest → oldest for "most recent first"
+    for (let i = messages.length - 1; i >= 0 && out.length < 20; i--) {
+      const m = messages[i];
+      if (!m.sender_id || seen.has(m.sender_id)) continue;
+      if (m.sender_id === user?.id) continue;
+      if (m.sender_id === BOT_USER_ID) continue;
+      seen.add(m.sender_id);
+      out.push({
+        userId: m.sender_id,
+        name: m.sender_name,
+        avatarUrl: m.sender_avatar_url ?? null,
+      });
+    }
+    // DM peer fallback (so brand-new DMs still suggest the recipient)
+    if (recipientUserId && !seen.has(recipientUserId) && recipientUserId !== user?.id) {
+      out.unshift({ userId: recipientUserId, name: recipientName, avatarUrl: recipientAvatar ?? null });
+    }
+    return out;
+  }, [messages, recipientUserId, recipientName, recipientAvatar, user?.id]);
+
+  const { match: mentionMatch, filtered: mentionFiltered } = useMentionAutocomplete({
+    value: input,
+    caret: caretPos,
+    candidates: mentionCandidates,
+  });
+  useEffect(() => { setMentionActiveIndex(0); }, [mentionMatch?.token, mentionFiltered.length]);
+
+  const acceptMention = (c: MentionCandidate) => {
+    if (!mentionMatch) return;
+    const before = input.slice(0, mentionMatch.start);
+    const after = input.slice(caretPos);
+    const insert = `@${c.name} `;
+    const next = (before + insert + after).slice(0, 1000);
+    const newCaret = (before + insert).length;
+    setInput(next);
+    requestAnimationFrame(() => {
+      const ta = messageInputRef.current;
+      if (ta) {
+        ta.focus();
+        ta.setSelectionRange(newCaret, newCaret);
+        setCaretPos(newCaret);
+      }
+    });
+  };
+
   const isBotConversation = recipientUserId === BOT_USER_ID;
 
   const lastMsgSenderId = messages.length > 0 ? messages[messages.length - 1].sender_id : null;
