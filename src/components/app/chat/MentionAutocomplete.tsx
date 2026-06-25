@@ -115,7 +115,7 @@ export const MentionPopup = ({ filtered, activeIndex, onSelect, setActiveIndex }
             ) : (
               <div
                 className="flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold text-white"
-                style={{ backgroundColor: getAvatarColor(c.userId) }}
+                style={{ backgroundColor: getProfileColor(c.userId).bg }}
               >
                 {c.name.charAt(0).toUpperCase()}
               </div>
