@@ -1,64 +1,61 @@
-## v0.3.16 — Found the real bug (finally)
+# v0.3.17 Plan
 
-The v0.3.15 logs you pasted have the smoking gun I was missing every previous round:
+## 1. Incoming call "accept" button fix
+Make the green accept button take the same path as the orange rejoin button — currently it opens the call UI but doesn't actually join the peer. Reuse the rejoin flow (join existing room + attach tracks) instead of the separate accept handler.
 
-```
-[Voice] Failed to initialize outgoing connection (keeping call alive): OverconstrainedError
-```
+## 2. Screenshare start/end SFX heard by all peers
+Right now the SFX plays locally only. Broadcast a `screenshare_started` / `screenshare_ended` event over the existing call signaling channel; on receive, all remote peers play the same SFX.
 
-Repeated on every `ready-for-offer` from geassbound. This is **not a signaling bug, not a rejoin bug, not a collision bug** — it is `getUserMedia()` itself throwing on YOUR device before any SDP is ever created. That is why:
+## 3. Rename "Petite" badge → "Cute"
+- Shop UI + badge registry: label becomes **Cute**, with a new fitting bio (e.g. "Small, soft, and undeniably cute.").
+- Exception: user `@fawnsly` (Aria) keeps the original "Petite" name and bio displayed for her account only (hardcoded override by user id / username).
 
-- It only happens between you two: one of your two mics doesn't support the strict desktop audio constraints.
-- DB shows both joined and heartbeat'd: the signaling/realtime layer is fine.
-- The peer flips to "Not in call" after 30s: your side never got a local stream, so no offer was ever sent, so the 30s ring timeout fires on the caller.
-- Pickup does "literally nothing": `acceptCall` calls `getUserMedia` → throws → catch swallows it and leaves UI hung.
-- Rejoin shows "Ringing…": same throw on the rejoin path, no PC ever created.
+## 4. New Setting: Hardware Acceleration (functional)
+Add a toggle under Settings → Appearance/Advanced.
+- Web: toggles GPU-accelerated CSS paths (`will-change`, `transform: translateZ(0)`, `backface-visibility`) on heavy surfaces (chat list, video, overlays) + respects `prefers-reduced-motion`.
+- Desktop (Electron wrapper): writes a flag read by the Electron main process on next launch to enable/disable Chromium GPU (`app.disableHardwareAcceleration()` when off). Persisted in localStorage + synced to profile.
+- Shows "Restart required" notice for desktop changes.
 
-### Root cause
+## 5. Slim down Cubbly (700MB → target ~150MB)
+Auditing and trimming without breaking quality:
+- Tree-shake & code-split heavy routes (Settings, Shop, Calls) via `React.lazy`.
+- Drop unused deps (run `depcheck`), dedupe via `npm dedupe`.
+- Replace large libs where possible (e.g. moment → date-fns if present, full lodash → per-method).
+- Electron: prune `node_modules` to production only, enable `asar`, exclude source maps + locales (`electron-builder` `files`/`extraResources` filters, `electronLanguages: ["en"]`).
+- Compress bundled assets (convert oversized PNGs to webp, strip unused fonts).
+- Vite build: `build.minify: 'esbuild'`, drop console in prod, manual chunks.
 
-`src/contexts/VoiceContext.tsx` line 691:
+## 6. Gaming Mode — make it "godly"
+Inspect current implementation, then upgrade to a true gamer feature set:
+- Auto-detect running game (via existing activity detection) and enter Gaming Mode automatically.
+- Push-to-talk priority + ultra-low-latency audio mode (Opus 48k mono, smaller jitter buffer).
+- Notification suppression (banner + sound) while in-game, with a single subtle in-app indicator.
+- Overlay HUD (web: floating mini-panel; desktop: always-on-top mini window) showing current call peers, mute, deafen, mic level, and incoming DMs.
+- "Do not disturb to non-friends" + auto-status "In game — {title}".
+- Performance mode: pauses chat animations, lowers background video FPS, disables sparkle/space backgrounds while active.
+- Quick hotkeys: mute, deafen, PTT, toggle overlay (configurable).
+- Per-game profile memory (last used input/output device, volume).
 
-```ts
-{ ...audioBase, sampleRate: 48000, sampleSize: 24, channelCount: 2 }
-```
+## 7. Bigger profile modal
+Increase `ProfilePopup` width/height (e.g. from ~340px → ~440px, taller banner, larger avatar, larger badges row, larger bio text). Keep layout proportions, ensure it still fits viewport on small screens.
 
-These are passed as **plain values** (which Chrome treats as `ideal`), BUT `deviceId: { exact: ... }` combined with `sampleSize: 24` is the trigger — almost no consumer mic supports 24-bit sample size, and when paired with an exact deviceId Chrome upgrades the whole constraint set to strict and throws `OverconstrainedError`. Your specific device + her specific device just happen to be the combo where one side hits it every time.
+## 8. Right-click menu for GIFs in chat
+Mirror the image context menu (copy, save, copy link, open in new tab, report) for GIFs. Wire to the GIF render path in chat messages.
 
-`GroupCallContext.tsx` line 113 has the identical constraint string, which is why server calls sound muffled — when the strict path silently downgrades it still ends up picking a weird 24-bit fallback profile on some Windows mics.
+## 9. Hover highlight scoped to single message
+Currently hover highlight spans the whole grouped batch from one author. Move the hover background from the group container to the individual message row so only the hovered message highlights.
 
-### Fix plan
+## 10. Reaction picker "+" → full emoji menu
+Add a `+` button at the far right of the quick-reaction row. On click, open the full emoji picker (reuse the existing emoji picker component) to react with any emoji.
 
-**1. `src/contexts/VoiceContext.tsx` — `getUserMedia` (lines 679-693)**
-- Drop `sampleSize: 24` entirely (no consumer mic supports it, it's the actual culprit).
-- Keep `sampleRate: 48000` and `channelCount: 2` but wrap in try/catch: if the strict attempt throws `OverconstrainedError`, retry with just `audioBase`. Log which path succeeded.
-- Log the actual `getSettings()` of the acquired track so we can see sampleRate/channelCount post-acquisition.
+## 11. `@` mention autocomplete in message input
+- DM/group chat: suggest the conversation participants.
+- Server channel: suggest the last 1–10 distinct users who have sent messages in that channel (query recent messages, dedupe by author, cap 10).
+- Standard popup: arrow keys + enter to select, click to insert, inserts `@displayname` linked to user id; render as a mention chip in the sent message.
 
-**2. `src/contexts/GroupCallContext.tsx` — same constraint string (line 113)**
-- Same treatment: drop `sampleSize: 24`, add OverconstrainedError fallback. This also fixes the muffled server-call audio because the failing strict path was silently giving a degraded stream on affected mics.
+## Technical notes
+- Files likely touched: `VoiceCallOverlay.tsx`, `GroupCallPanel.tsx`, `useVoice` hook, `SidebarGroupCallCard.tsx` (calls + SFX), `ShopView.tsx` + `UserBadges.tsx` (badge rename), `SettingsModal.tsx` (hardware accel + gaming mode), `ProfilePopup.tsx` (size), `ChatView.tsx` / `chat/*` (hover scope, reaction +, gif menu, @ mentions), `vite.config.ts` + `package.json` (slim down), Electron config if present.
+- Changelog: short user-facing bullets only, no internals, no version bump beyond 0.3.17 as instructed.
+- DB: may add `last_channel_authors` query (no schema change needed) and a `hardware_acceleration` boolean on `profiles` (optional — localStorage may suffice).
 
-**3. `src/contexts/VoiceContext.tsx` — error handling around `getUserMedia` calls**
-- The four `getUserMedia()` call sites in the outgoing/incoming/rejoin paths catch and swallow. Make them surface a toast "Mic init failed — check input device" so future failures are visible instead of leaving the UI in zombie "Calling…" / "Ringing…" state.
-
-**4. `src/contexts/GroupCallContext.tsx` — m-line ordering bug**
-Logs show:
-```
-Failed to execute 'setLocalDescription' on 'RTCPeerConnection': Failed to set local offer sdp: The order of m-lines in subsequent offer doesn't match order from previous offer/answer.
-```
-This fires when a peer joins late and we call `pc.addTrack` after a prior negotiation. Fix: use `pc.addTransceiver('audio', { direction: 'sendrecv' })` up front when creating each PC so the m-line order is fixed, then `replaceTrack` on the existing transceiver instead of `addTrack` for screen-share audio additions. Standard glare-safe pattern.
-
-**5. Version + changelog**
-- `package.json` → `0.3.16`
-- `src/lib/changelog.ts` → entry: "Calls between kaszy & geassbound (and any pair where one mic rejected 24-bit audio) now work — root cause was getUserMedia OverconstrainedError swallowed silently"; "Server call audio no longer muffled (same constraint fix)"; "Server group call m-line ordering crash on late peer joins fixed".
-- `CURRENT_VERSION` constant in VoiceContext if present.
-
-### Explicitly deferred to a later patch (told you last round, still true)
-- Server-voice UI redesign away from group-DM look
-- SidebarVoiceCard wiring for server calls
-- Screen-share button in server call UI
-- Profile modal space-theme bug
-
-### Files touched
-- `src/contexts/VoiceContext.tsx`
-- `src/contexts/GroupCallContext.tsx`
-- `package.json`
-- `src/lib/changelog.ts`
+Confirm and I'll implement all 11 in v0.3.17.
