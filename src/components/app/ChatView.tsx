@@ -1013,7 +1013,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
             )}
           </div>
 
-          <div className="relative flex-1">
+          <div className="relative flex-1 flex">
             {mentionMatch && mentionFiltered.length > 0 && (
               <MentionPopup
                 filtered={mentionFiltered}
@@ -1106,7 +1106,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
               }
             }}
             placeholder={`Message @${recipientName}`}
-            className="w-full resize-none bg-transparent text-sm outline-none placeholder:text-[#6d6f78] leading-[1.4] py-1"
+            className="block w-full resize-none bg-transparent text-sm outline-none placeholder:text-[#6d6f78] leading-[1.4] py-1"
             data-typing-input
             style={{ color: "var(--app-text-primary, #dbdee1)", maxHeight: "168px" }}
           />
