@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { playSound } from "@/lib/sounds";
+import { playSound, isDndActive } from "@/lib/sounds";
 import { notify, ensureNotificationPermission } from "@/lib/notifications";
 import { getNotificationPreferences } from "@/lib/notificationSettings";
+import { bodyMentionsUser, stripMentionTokens } from "@/lib/mentions";
+import { isConversationMutedNow } from "@/hooks/useConversationMutes";
 
 export interface UnreadInfo {
   conversationId: string;
@@ -166,9 +168,18 @@ export function useUnreadCounts(activeConversationId: string | null) {
         }
 
         const notificationPrefs = getNotificationPreferences();
+        const muted = isConversationMutedNow(msg.conversation_id);
+        const isMention = bodyMentionsUser(msg.content, user.id);
+        const dnd = isDndActive();
 
-        if (notificationPrefs.messageSoundEnabled) {
-          playSound("message", { force: true });
+        // Discord behaviour:
+        //   - Muted conversation → silent even on @mention.
+        //   - DND on → silent unless @mention.
+        //   - Otherwise notify normally.
+        const allowNotify = !muted && (isMention || !dnd);
+
+        if (allowNotify && notificationPrefs.messageSoundEnabled) {
+          playSound("message", { force: isMention });
         }
 
         const { data: profile } = await supabase
@@ -186,28 +197,37 @@ export function useUnreadCounts(activeConversationId: string | null) {
           .maybeSingle();
 
         const senderName = profile?.display_name || "Someone";
-        const preview = (msg.content || "")
+        const cleaned = stripMentionTokens(msg.content || "", () => undefined);
+        const preview = cleaned
           .replace(/\[attachments\].*?\[\/attachments\]/s, "📎 Attachment")
           .trim()
           .slice(0, 140);
-        notify({
-          title: conv?.is_group ? `${senderName} • ${conv.name || "Group"}` : senderName,
-          body: notificationPrefs.showMessagePreview
-            ? preview || "Sent you a message"
-            : "Sent you a message",
-          icon: profile?.avatar_url || "/favicon.ico",
-          tag: `dm:${msg.conversation_id}`,
-          force: true,
-          onClick: () => {
-            const path = `/@me/chat/${msg.conversation_id}`;
-            if (window.location.hash) {
-              window.location.hash = path;
-            } else {
-              window.history.pushState({}, "", path);
-              window.dispatchEvent(new PopStateEvent("popstate"));
-            }
-          },
-        });
+
+        if (allowNotify) {
+          const titleSuffix = isMention ? " mentioned you" : "";
+          notify({
+            title: conv?.is_group
+              ? `${senderName}${titleSuffix} • ${conv.name || "Group"}`
+              : `${senderName}${titleSuffix}`,
+            body: notificationPrefs.showMessagePreview
+              ? preview || "Sent you a message"
+              : "Sent you a message",
+            icon: profile?.avatar_url || "/favicon.ico",
+            tag: `dm:${msg.conversation_id}`,
+            // Force only when mentioned — that's the one case that must
+            // pierce DND. Plain DMs/groups respect DND via the dnd check above.
+            force: isMention,
+            onClick: () => {
+              const path = `/@me/chat/${msg.conversation_id}`;
+              if (window.location.hash) {
+                window.location.hash = path;
+              } else {
+                window.history.pushState({}, "", path);
+                window.dispatchEvent(new PopStateEvent("popstate"));
+              }
+            },
+          });
+        }
 
         setUnreadByConv((prev) => {
           const next = new Map(prev);
