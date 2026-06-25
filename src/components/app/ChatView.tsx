@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useMessages, Message, MessageStatus } from "@/hooks/useMessages";
 import { useAuth } from "@/contexts/AuthContext";
 import { useVoice } from "@/contexts/VoiceContext";
