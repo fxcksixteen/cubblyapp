@@ -96,14 +96,37 @@ fs.mkdirSync(path.dirname(latestBuildFile), { recursive: true });
 fs.writeFileSync(latestBuildFile, `${releaseRoot}\n`, "utf8");
 
 function fmtMB(bytes) { return `${(bytes / (1024 * 1024)).toFixed(1)} MB`; }
+function dirSize(dir) {
+  let total = 0;
+  try {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, entry.name);
+      try {
+        if (entry.isDirectory()) total += dirSize(p);
+        else total += fs.statSync(p).size;
+      } catch {}
+    }
+  } catch {}
+  return total;
+}
+
 const installerPath = path.join(releaseRoot, `Cubbly Setup ${version}.exe`);
 let installerSize = 0;
 try { installerSize = fs.statSync(installerPath).size; } catch {}
 
+// The number that actually matters to users is the INSTALLED footprint
+// (what Windows "Installed apps" shows), not the .exe download size.
+const unpackedDir = path.join(releaseRoot, "win-unpacked");
+const unpackedSize = fs.existsSync(unpackedDir) ? dirSize(unpackedDir) : 0;
+
 console.log(`[build:electron] ✓ Installer build complete`);
-console.log(`[build:electron] Installer size: ${fmtMB(installerSize)} (target ≤ 150 MB)`);
+console.log(`[build:electron] Installer (download):  ${fmtMB(installerSize)} (target ≤ 150 MB)`);
+console.log(`[build:electron] Installed (on disk):   ${fmtMB(unpackedSize)} (target ≤ 350 MB)`);
 if (installerSize > 150 * 1024 * 1024) {
-  console.warn(`[build:electron] ⚠ Installer exceeds 150 MB target — investigate added deps / assets.`);
+  console.warn(`[build:electron] ⚠ Installer exceeds 150 MB target.`);
+}
+if (unpackedSize > 350 * 1024 * 1024) {
+  console.warn(`[build:electron] ⚠ Installed footprint exceeds 350 MB — investigate runtime bloat.`);
 }
 console.log(`[build:electron] Upload these files from: ${releaseRoot}`);
 console.log(`[build:electron]   - Cubbly Setup ${version}.exe`);
