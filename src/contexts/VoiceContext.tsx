@@ -1971,6 +1971,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [user, setupSignaling, startLoopbackTest, ensureOwnParticipantRow]);
 
+  // Keep the forward-ref in sync so acceptCall can delegate to the
+  // currently-bound startCall closure (matters because startCall is
+  // recreated whenever its deps change).
+  useEffect(() => {
+    startCallRef.current = startCall;
+  }, [startCall]);
+
   /**
    * Dismiss the incoming-call ring on THIS device only — does NOT hang up an
    * already-connected call on a sibling device. Use this when the user clicks
