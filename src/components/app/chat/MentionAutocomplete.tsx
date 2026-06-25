@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getAvatarColor } from "@/lib/profileColors";
+import { getProfileColor } from "@/lib/profileColors";
 
 export interface MentionCandidate {
   userId: string;
