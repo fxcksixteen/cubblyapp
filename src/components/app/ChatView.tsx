@@ -568,7 +568,8 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
       }
     }
 
-    let content = currentInput;
+    let content = serializeMentions(currentInput, pickedMentionsRef.current);
+    pickedMentionsRef.current = new Map();
     if (attachmentUrls.length > 0) {
       const attachmentMeta = JSON.stringify(attachmentUrls);
       content = content ? `${content}\n[attachments]${attachmentMeta}[/attachments]` : `[attachments]${attachmentMeta}[/attachments]`;
