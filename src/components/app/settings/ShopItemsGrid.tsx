@@ -179,7 +179,13 @@ const ShopItemsGrid = ({ category, emptyLabel = "No items yet" }: Props) => {
           : Promise.resolve({ data: null }),
       ]);
       if (!alive) return;
-      setItems((catalog as ShopItem[]) ?? []);
+      // v0.3.17: rebrand "Petite" → "Cute" globally in the shop UI.
+      const remapped = ((catalog as ShopItem[]) ?? []).map((it) =>
+        it.id === "badge_petite"
+          ? { ...it, name: "Cute", description: "Adorable through and through — impossible not to smile at." }
+          : it,
+      );
+      setItems(remapped);
       setOwned(new Set((inv ?? []).map((r: any) => r.item_id)));
       setEquipped(new Set((eq ?? []).map((r: any) => r.item_id)));
       setDisplayName((prof as any)?.display_name || "");
