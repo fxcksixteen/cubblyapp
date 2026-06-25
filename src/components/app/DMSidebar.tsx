@@ -64,9 +64,36 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
   const { activeCall, toggleMute, toggleDeafen } = useVoice();
   const { getActivity } = useActivity();
   const { pending } = useFriends();
+  const { isMuted, mutedUntil, setMute } = useConversationMutes();
   const incomingPendingCount = pending.filter((p) => p.addressee_id === user?.id).length;
   const displayName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "User";
   const username = user?.user_metadata?.username || displayName.toLowerCase();
+
+  const MUTE_OPTIONS: Array<{ label: string; value: MuteDuration }> = [
+    { label: "For 15 Minutes", value: { kind: "minutes", minutes: 15 } },
+    { label: "For 1 Hour", value: { kind: "minutes", minutes: 60 } },
+    { label: "For 3 Hours", value: { kind: "minutes", minutes: 180 } },
+    { label: "For 8 Hours", value: { kind: "minutes", minutes: 480 } },
+    { label: "For 24 Hours", value: { kind: "minutes", minutes: 1440 } },
+    { label: "Until I Turn It Back On", value: { kind: "forever" } },
+  ];
+
+  const handleMute = async (convId: string, duration: MuteDuration) => {
+    try {
+      await setMute(convId, duration);
+      toast.success("Conversation muted");
+    } catch {
+      toast.error("Failed to mute");
+    }
+  };
+  const handleUnmute = async (convId: string) => {
+    try {
+      await setMute(convId, null);
+      toast.success("Conversation unmuted");
+    } catch {
+      toast.error("Failed to unmute");
+    }
+  };
 
   const [localMuted, setLocalMuted] = useState(false);
   const [localDeafened, setLocalDeafened] = useState(false);
