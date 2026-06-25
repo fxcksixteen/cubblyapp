@@ -473,6 +473,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   // duplicate offer retries from the caller's retry loop cannot re-trigger
   // setRemoteDescription on an already-stable PC, which was wiping ICE state.
   const lastAnsweredOfferRef = useRef<string | null>(null);
+  // Forward-ref to startCall so acceptCall (declared above startCall in the
+  // file) can delegate to the exact rejoin code path without circular
+  // useCallback deps. Assigned in an effect after startCall is created.
+  const startCallRef = useRef<((conversationId: string, peerId: string, peerName: string) => Promise<void>) | null>(null);
   // v0.3.12: refs for activeCall + incomingCall so the global voice-global
   // channel effect can stay mounted purely on `user` (it was being torn down
   // and resubscribed on every call state change, causing dropped notifications).
