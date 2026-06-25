@@ -756,7 +756,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                       <span className="text-[10px] font-bold tracking-wider px-2 rounded" style={{ color: "#ffffff", backgroundColor: "#ed4245" }}>NEW</span>
                     </div>
                   )}
-                <div className="mt-4 first:mt-0 flex gap-3 rounded px-2 py-1 relative group" style={{ transition: "background-color 0.15s" }} onMouseEnter={e => (e.currentTarget.style.backgroundColor = "var(--app-hover, #2e3035)")} onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}>
+                <div className="mt-4 first:mt-0 flex gap-3 px-2 py-1 relative">
                   {item.sender_avatar_url ? (
                     <img
                       src={item.sender_avatar_url}
@@ -802,8 +802,8 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                               if (el) messageRefs.current.set(msg.id, el);
                               else messageRefs.current.delete(msg.id);
                             }}
-                            className="relative group/msg py-0.5 rounded transition-colors"
-                            style={{ backgroundColor: isHighlighted ? "rgba(88,101,242,0.18)" : "transparent" }}
+                            className="relative group/msg py-0.5 -mx-2 px-2 rounded transition-colors hover:bg-[var(--app-hover,#2e3035)]"
+                            style={{ backgroundColor: isHighlighted ? "rgba(88,101,242,0.18)" : undefined }}
                           >
                             {/* Hover action buttons for individual messages */}
                             <div className="absolute -top-3 right-0 flex items-center gap-0.5 rounded-lg border px-1 py-0.5 shadow-lg opacity-0 group-hover/msg:opacity-100 transition-opacity z-10"
