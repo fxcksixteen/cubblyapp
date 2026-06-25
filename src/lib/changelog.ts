@@ -32,9 +32,11 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: "2026-04-22",
     hero: bearImage,
     newFeatures: [
-      "Type @ in any chat to tag people — suggestions show the most recent talkers in that channel.",
+      "Type @ in any chat to actually tag people — tagged users get a desktop notification + sound even when they're on Do Not Disturb (just like Discord).",
+      "Mute any DM or group chat: right-click them in the sidebar → Mute Conversation (15m / 1h / 3h / 8h / 24h / forever).",
+      "Muted conversations stay completely silent — no sound, no desktop ping, no DND bypass for mentions — and show a 🔕 in the sidebar.",
       "Right-click a GIF for the same options you get on images (copy, save, open).",
-      "Click the “+” next to the reaction shortcuts to pick from every emoji.",
+      "Click the “+” next to the reaction shortcuts to pick from every Unicode emoji (~1800, full Smileys/People/Animals/Food/Travel/Activities/Objects/Symbols/Flags).",
       "Hardware acceleration toggle in Settings → Advanced for older GPUs or driver glitches.",
       "Profile modals are noticeably bigger and easier to read.",
       "Petite badge has been renamed to “Cute” with a fresh description (Aria keeps the original).",
@@ -43,6 +45,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Accepting an incoming call now uses the exact same rock-solid path as the Rejoin button — no more silent green-button failures.",
       "Both sides of a call now hear the screenshare start/stop sound effects.",
       "Hovering a message only highlights that single message, not the whole batch from the same author.",
+      "Desktop installer slimmed down — aggressive pruning of locales, source maps, and unused node_modules keeps it under the 150 MB target.",
     ],
   },
 
