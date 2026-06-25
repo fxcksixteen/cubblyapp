@@ -245,7 +245,7 @@ const ShopView = () => {
       // shop description. Aria keeps the original via UserBadgesContext.
       const remapped = ((catalog as ShopItem[]) ?? []).map((it) =>
         it.id === "badge_petite"
-          ? { ...it, name: "Cute", description: "Adorable through and through — impossible not to smile at." }
+          ? { ...it, name: "Cute", description: "Adorable through and through." }
           : it,
       );
       setItems(remapped);

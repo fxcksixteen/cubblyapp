@@ -182,7 +182,7 @@ const ShopItemsGrid = ({ category, emptyLabel = "No items yet" }: Props) => {
       // v0.3.17: rebrand "Petite" → "Cute" globally in the shop UI.
       const remapped = ((catalog as ShopItem[]) ?? []).map((it) =>
         it.id === "badge_petite"
-          ? { ...it, name: "Cute", description: "Adorable through and through — impossible not to smile at." }
+          ? { ...it, name: "Cute", description: "Adorable through and through." }
           : it,
       );
       setItems(remapped);

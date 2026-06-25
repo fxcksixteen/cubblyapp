@@ -35,7 +35,7 @@ const PETITE_OG = {
 };
 const PETITE_CUTE = {
   label: "Cute",
-  description: "Adorable through and through — impossible not to smile at.",
+  description: "Adorable through and through.",
 };
 
 function rowsToBadges(userId: string, rows: any[]): BadgeData[] {
