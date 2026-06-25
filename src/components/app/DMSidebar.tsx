@@ -277,7 +277,10 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                             <UserBadges userId={conv.participant.user_id} size={12} />
                           </>
                         )}
-                      </p>
+                          )}
+                          {isMuted(conv.id) && (
+                            <BellOff className="h-3 w-3 shrink-0 opacity-70" />
+                          )}
                       {subtitle && (
                         <p
                           className="truncate text-[11px] leading-tight"
