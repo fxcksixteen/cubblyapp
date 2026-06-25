@@ -241,7 +241,14 @@ const ShopView = () => {
           : Promise.resolve({ data: [] as { item_id: string }[] }),
       ]);
       if (!alive) return;
-      setItems((catalog as ShopItem[]) ?? []);
+      // v0.3.17: "Petite" badge is publicly rebranded to "Cute" with a new
+      // shop description. Aria keeps the original via UserBadgesContext.
+      const remapped = ((catalog as ShopItem[]) ?? []).map((it) =>
+        it.id === "badge_petite"
+          ? { ...it, name: "Cute", description: "Adorable through and through — impossible not to smile at." }
+          : it,
+      );
+      setItems(remapped);
       setOwned(new Set((inv ?? []).map((r: any) => r.item_id)));
       setEquipped(new Set((eq ?? []).map((r: any) => r.item_id)));
       setLoading(false);
