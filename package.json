@@ -69,6 +69,8 @@
     },
     "afterPack": "scripts/electron-afterpack.cjs",
     "asar": true,
+    "nodeGypRebuild": false,
+    "buildDependenciesFromSource": false,
     "asarUnpack": [
       "electron/icon.ico",
       "native/win-audio-capture/**/*"
