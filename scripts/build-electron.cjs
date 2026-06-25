@@ -95,7 +95,16 @@ if (missing.length) {
 fs.mkdirSync(path.dirname(latestBuildFile), { recursive: true });
 fs.writeFileSync(latestBuildFile, `${releaseRoot}\n`, "utf8");
 
+function fmtMB(bytes) { return `${(bytes / (1024 * 1024)).toFixed(1)} MB`; }
+const installerPath = path.join(releaseRoot, `Cubbly Setup ${version}.exe`);
+let installerSize = 0;
+try { installerSize = fs.statSync(installerPath).size; } catch {}
+
 console.log(`[build:electron] ✓ Installer build complete`);
+console.log(`[build:electron] Installer size: ${fmtMB(installerSize)} (target ≤ 150 MB)`);
+if (installerSize > 150 * 1024 * 1024) {
+  console.warn(`[build:electron] ⚠ Installer exceeds 150 MB target — investigate added deps / assets.`);
+}
 console.log(`[build:electron] Upload these files from: ${releaseRoot}`);
 console.log(`[build:electron]   - Cubbly Setup ${version}.exe`);
 console.log(`[build:electron]   - Cubbly Setup ${version}.exe.blockmap`);
