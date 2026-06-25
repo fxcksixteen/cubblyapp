@@ -23,9 +23,19 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.3.17";
+export const CURRENT_VERSION = "0.3.18";
 
 export const CHANGELOG: ChangelogEntry[] = [
+
+  {
+    version: "0.3.18",
+    date: "2026-06-25",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Desktop app is dramatically smaller on disk — stripped ~50 MB of unused Chromium language packs and ~9 MB of bundled license files that were inflating every install.",
+    ],
+  },
 
   {
     version: "0.3.17",
