@@ -1,47 +1,39 @@
 import { useMemo, useState } from "react";
+import emojiGroups from "unicode-emoji-json/data-by-group.json";
 
 /**
- * A lightweight, no-dependency emoji picker for message reactions.
- * Grouped into a handful of categories with a search field.
- *
- * Curated for size — covers the most-used reaction emojis without bloating
- * the bundle the way emoji-mart would.
+ * Full-Unicode emoji picker. Sourced from `unicode-emoji-json` so every
+ * standard emoji is reachable (~1800), grouped exactly like Discord with
+ * a keyword search across each emoji's name + slug.
  */
 
-const CATEGORIES: { name: string; emojis: string[] }[] = [
-  {
-    name: "Smileys",
-    emojis: "😀 😃 😄 😁 😆 😅 🤣 😂 🙂 🙃 😉 😊 😇 🥰 😍 🤩 😘 😗 😚 😙 😋 😛 😜 🤪 😝 🤑 🤗 🤭 🤫 🤔 🤐 🤨 😐 😑 😶 😏 😒 🙄 😬 🤥 😌 😔 😪 🤤 😴 😷 🤒 🤕 🥱 🥲 🥹 🥺 😢 😭 😤 😠 😡 🤬 🤯 😳 🥵 🥶 😱 😨 😰 😥 😓 🤗 🤔 😶‍🌫️ 🫠 🫡 🫢 🫣 🫤 🫥".split(" "),
-  },
-  {
-    name: "Gestures",
-    emojis: "👍 👎 👌 🤌 🤏 ✌️ 🤞 🫰 🤟 🤘 🤙 👈 👉 👆 🖕 👇 ☝️ 👋 🤚 🖐️ ✋ 🖖 👏 🙌 🫶 🤝 🙏 ✍️ 💅 🤳 💪 🦾 🦿 🦵 🦶 👂 🦻 👃 🧠 🫀 🫁 🦷 🦴 👀 👁️ 👅 👄 🫦".split(" "),
-  },
-  {
-    name: "Hearts",
-    emojis: "❤️ 🧡 💛 💚 💙 💜 🖤 🤍 🤎 ❣️ 💕 💞 💓 💗 💖 💘 💝 💟 ♥️ 💔 ❤️‍🔥 ❤️‍🩹".split(" "),
-  },
-  {
-    name: "Animals",
-    emojis: "🐶 🐱 🐭 🐹 🐰 🦊 🐻 🐼 🐻‍❄️ 🐨 🐯 🦁 🐮 🐷 🐸 🐵 🙈 🙉 🙊 🐔 🐧 🐦 🐤 🦆 🦅 🦉 🦇 🐺 🐗 🐴 🦄 🐝 🪱 🐛 🦋 🐌 🐞 🐜 🪰 🪲 🪳 🦟 🦗 🕷️".split(" "),
-  },
-  {
-    name: "Food",
-    emojis: "🍏 🍎 🍐 🍊 🍋 🍌 🍉 🍇 🍓 🫐 🍈 🍒 🍑 🥭 🍍 🥥 🥝 🍅 🍆 🥑 🥦 🥬 🥒 🌶️ 🫑 🌽 🥕 🧄 🧅 🥔 🍠 🥐 🍞 🥖 🧀 🥚 🍳 🧈 🥞 🧇 🥓 🥩 🍗 🍖 🌭 🍔 🍟 🍕 🥪 🌮 🌯 🫔 🥙 🧆 🥘 🍝 🍜 🍲 🍛 🍣 🍱 🥟 🦪 🍤 🍙 🍚 🍘 🍢 🍡 🍧 🍨 🍦 🥧 🧁 🍰 🎂 🍮 🍭 🍬 🍫 🍿 🍩 🍪 🌰 🥜 🍯 🥛 🍼 ☕ 🍵 🧃 🥤 🍶 🍺 🍻 🥂 🍷 🥃 🍸 🍹 🍾 🧉".split(" "),
-  },
-  {
-    name: "Activities",
-    emojis: "⚽ 🏀 🏈 ⚾ 🥎 🎾 🏐 🏉 🥏 🎱 🪀 🏓 🏸 🥊 🥋 🥅 ⛳ ⛸️ 🎣 🤿 🎽 🛹 🛼 🛷 ⛷️ 🏂 🪂 🏋️ 🤼 🤸 🏌️ 🏇 🧘 🏄 🏊 🚴 🚵 🎮 🎲 🧩 🎯 🎳 🎰 🃏 🀄 🎴".split(" "),
-  },
-  {
-    name: "Objects",
-    emojis: "💯 🔥 ⭐ 🌟 ✨ ⚡ 💥 💫 ☀️ 🌈 ☁️ ❄️ ☔ 💧 💦 🌊 🎉 🎊 🎁 🎈 🎀 🪩 💎 👑 🏆 🥇 🥈 🥉 🎖️ 🏅 🎗️ 🎫 🎟️ 💰 💵 💸 💳 💼 📱 💻 🖥️ ⌨️ 🖱️ 🎧 🎤 🎵 🎶 🎼 📚 📖 ✏️ 📝 ✂️ 🔒 🔑 🛒".split(" "),
-  },
-  {
-    name: "Symbols",
-    emojis: "✅ ❌ ❗ ❓ ‼️ ⁉️ 💢 ♨️ ⛔ 🚫 🆗 🆒 🆕 🆓 ▶️ ⏸️ ⏹️ ⏺️ ⏭️ ⏮️ 🔼 🔽 ➡️ ⬅️ ⬆️ ⬇️ ↗️ ↘️ ↙️ ↖️ ↔️ ↕️ 🔀 🔁 🔂 🔄 🔃 ♻️ ⚜️ 🔱 ☢️ ☣️ ⚠️ 🚸".split(" "),
-  },
-];
+type RawGroup = { name: string; slug: string; emojis: { emoji: string; name: string; slug: string }[] };
+const GROUPS = emojiGroups as unknown as RawGroup[];
+
+// Friendlier short labels for the tab strip.
+const GROUP_LABEL: Record<string, string> = {
+  smileys_emotion: "Smileys",
+  people_body: "People",
+  component: "People",
+  animals_nature: "Animals",
+  food_drink: "Food",
+  travel_places: "Travel",
+  activities: "Activities",
+  objects: "Objects",
+  symbols: "Symbols",
+  flags: "Flags",
+};
+
+// Flatten + dedupe components into people, drop empty groups.
+const CATEGORIES = (() => {
+  const merged = new Map<string, { name: string; emojis: { emoji: string; name: string; slug: string }[] }>();
+  for (const g of GROUPS) {
+    const label = GROUP_LABEL[g.slug] ?? g.name;
+    if (!merged.has(label)) merged.set(label, { name: label, emojis: [] });
+    merged.get(label)!.emojis.push(...g.emojis);
+  }
+  return Array.from(merged.values()).filter((c) => c.emojis.length > 0);
+})();
 
 const ALL_EMOJIS = CATEGORIES.flatMap((c) => c.emojis);
 
@@ -54,11 +46,18 @@ const FullEmojiPicker = ({ onPick }: Props) => {
   const [activeCat, setActiveCat] = useState(CATEGORIES[0].name);
 
   const list = useMemo(() => {
-    if (!query.trim()) {
+    const q = query.trim().toLowerCase();
+    if (!q) {
       return CATEGORIES.find((c) => c.name === activeCat)?.emojis ?? [];
     }
-    // No emoji name index — fall back to "all", trimmed.
-    return ALL_EMOJIS;
+    const out: { emoji: string; name: string; slug: string }[] = [];
+    for (const e of ALL_EMOJIS) {
+      if (e.name.includes(q) || e.slug.includes(q)) {
+        out.push(e);
+        if (out.length >= 400) break;
+      }
+    }
+    return out;
   }, [query, activeCat]);
 
   return (
@@ -93,19 +92,23 @@ const FullEmojiPicker = ({ onPick }: Props) => {
           </button>
         ))}
       </div>
-      <div
-        className="grid grid-cols-8 gap-0.5 p-2 max-h-[280px] overflow-y-auto"
-      >
+      <div className="grid grid-cols-8 gap-0.5 p-2 max-h-[280px] overflow-y-auto">
         {list.map((e, i) => (
           <button
-            key={`${e}-${i}`}
+            key={`${e.emoji}-${i}`}
             type="button"
-            onClick={() => onPick(e)}
+            title={e.name}
+            onClick={() => onPick(e.emoji)}
             className="flex h-9 w-9 items-center justify-center rounded-md text-xl transition-transform hover:scale-125 hover:bg-white/10"
           >
-            {e}
+            {e.emoji}
           </button>
         ))}
+        {list.length === 0 && (
+          <div className="col-span-8 py-6 text-center text-xs" style={{ color: "#949ba4" }}>
+            No emoji matches "{query}"
+          </div>
+        )}
       </div>
     </div>
   );

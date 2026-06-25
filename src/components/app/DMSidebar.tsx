@@ -7,7 +7,7 @@ import { useActivity } from "@/contexts/ActivityContext";
 import { useFriends } from "@/hooks/useFriends";
 import { Conversation } from "@/hooks/useConversations";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, X, Users, MoreVertical, CheckCheck } from "lucide-react";
+import { Plus, X, Users, MoreVertical, CheckCheck, BellOff, Bell } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { getProfileColor } from "@/lib/profileColors";
 import { activityLabel } from "@/lib/activityLabel";
@@ -18,8 +18,12 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import { useConversationMutes, type MuteDuration } from "@/hooks/useConversationMutes";
 import ProfilePopup from "./ProfilePopup";
 import SettingsModal from "./SettingsModal";
 import SearchBar from "./SearchBar";
@@ -60,9 +64,36 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
   const { activeCall, toggleMute, toggleDeafen } = useVoice();
   const { getActivity } = useActivity();
   const { pending } = useFriends();
+  const { isMuted, mutedUntil, setMute } = useConversationMutes();
   const incomingPendingCount = pending.filter((p) => p.addressee_id === user?.id).length;
   const displayName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "User";
   const username = user?.user_metadata?.username || displayName.toLowerCase();
+
+  const MUTE_OPTIONS: Array<{ label: string; value: MuteDuration }> = [
+    { label: "For 15 Minutes", value: { kind: "minutes", minutes: 15 } },
+    { label: "For 1 Hour", value: { kind: "minutes", minutes: 60 } },
+    { label: "For 3 Hours", value: { kind: "minutes", minutes: 180 } },
+    { label: "For 8 Hours", value: { kind: "minutes", minutes: 480 } },
+    { label: "For 24 Hours", value: { kind: "minutes", minutes: 1440 } },
+    { label: "Until I Turn It Back On", value: { kind: "forever" } },
+  ];
+
+  const handleMute = async (convId: string, duration: MuteDuration) => {
+    try {
+      await setMute(convId, duration);
+      toast.success("Conversation muted");
+    } catch {
+      toast.error("Failed to mute");
+    }
+  };
+  const handleUnmute = async (convId: string) => {
+    try {
+      await setMute(convId, null);
+      toast.success("Conversation unmuted");
+    } catch {
+      toast.error("Failed to unmute");
+    }
+  };
 
   const [localMuted, setLocalMuted] = useState(false);
   const [localDeafened, setLocalDeafened] = useState(false);
@@ -246,6 +277,9 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                             <UserBadges userId={conv.participant.user_id} size={12} />
                           </>
                         )}
+                        {isMuted(conv.id) && (
+                          <BellOff className="h-3 w-3 shrink-0 opacity-70" />
+                        )}
                       </p>
                       {subtitle && (
                         <p
@@ -313,6 +347,36 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                       <img src={removeUserIcon} alt="" className="h-4 w-4 invert opacity-70" />
                       Remove Friend
                     </ContextMenuItem>
+                  )}
+                  {isMuted(conv.id) ? (
+                    <ContextMenuItem
+                      onClick={() => handleUnmute(conv.id)}
+                      className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer"
+                    >
+                      <Bell className="h-4 w-4" />
+                      {mutedUntil(conv.id) ? "Unmute Conversation" : "Unmute Conversation"}
+                    </ContextMenuItem>
+                  ) : (
+                    <ContextMenuSub>
+                      <ContextMenuSubTrigger className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer">
+                        <BellOff className="h-4 w-4" />
+                        Mute Conversation
+                      </ContextMenuSubTrigger>
+                      <ContextMenuSubContent
+                        className="w-56 rounded-xl border p-1.5 shadow-xl"
+                        style={{ backgroundColor: "#111214", borderColor: "var(--app-border, #2b2d31)" }}
+                      >
+                        {MUTE_OPTIONS.map((opt) => (
+                          <ContextMenuItem
+                            key={opt.label}
+                            onClick={() => handleMute(conv.id, opt.value)}
+                            className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer"
+                          >
+                            {opt.label}
+                          </ContextMenuItem>
+                        ))}
+                      </ContextMenuSubContent>
+                    </ContextMenuSub>
                   )}
                   <ContextMenuItem
                     onClick={() => handleMarkAsRead(conv.id)}

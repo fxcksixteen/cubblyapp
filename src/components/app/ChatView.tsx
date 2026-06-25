@@ -17,7 +17,9 @@ import AttachmentItem from "./chat/AttachmentItem";
 import InlineGif from "./chat/InlineGif";
 import LinkPreview from "./chat/LinkPreview";
 import GroupMembersPanel from "./GroupMembersPanel";
-import { linkifyText, extractFirstUrl } from "@/lib/linkify";
+import { extractFirstUrl } from "@/lib/linkify";
+import { renderMessageBody } from "@/lib/renderMessageBody";
+import { serializeMentions, stripMentionTokens } from "@/lib/mentions";
 import { Button } from "@/components/ui/button";
 import sendIcon from "@/assets/icons/send.svg";
 import folderFileIcon from "@/assets/icons/folder-file.svg";
@@ -131,6 +133,11 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
   // 1-10 people who typed here"). Excludes the bot and the current user.
   const [caretPos, setCaretPos] = useState(0);
   const [mentionActiveIndex, setMentionActiveIndex] = useState(0);
+  // userId -> displayName for mentions the user PICKED via autocomplete in
+  // the current draft. Cleared after send. Lets us turn `@Name` back into
+  // `<@uuid>` wire tokens without false positives from people who just typed
+  // `@somebody` by hand.
+  const pickedMentionsRef = useRef<Map<string, string>>(new Map());
   const mentionCandidates: MentionCandidate[] = useMemo(() => {
     const seen = new Set<string>();
     const out: MentionCandidate[] = [];
@@ -161,6 +168,28 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
   });
   useEffect(() => { setMentionActiveIndex(0); }, [mentionMatch?.token, mentionFiltered.length]);
 
+  // Resolver for <@uuid> chips: prefer a message's own sender (covers
+  // historical messages whose author is no longer in `mentionCandidates`),
+  // then fall back to the candidates list and the recipient/peer.
+  const mentionResolver = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const m of messages) {
+      if (m.sender_id && m.sender_name) map.set(m.sender_id.toLowerCase(), m.sender_name);
+    }
+    for (const c of mentionCandidates) map.set(c.userId.toLowerCase(), c.name);
+    if (user?.id) {
+      const selfName = user.user_metadata?.display_name || user.email?.split("@")[0] || "you";
+      map.set(user.id.toLowerCase(), selfName);
+    }
+    return {
+      resolve: (uid: string) => map.get(uid.toLowerCase()),
+      selfUserId: user?.id ?? null,
+      onClick: (uid: string, name: string, e: React.MouseEvent) => {
+        setProfileCard({ userId: uid, name, x: e.clientX, y: e.clientY });
+      },
+    };
+  }, [messages, mentionCandidates, user?.id, user?.email, user?.user_metadata?.display_name]);
+
   const acceptMention = (c: MentionCandidate) => {
     if (!mentionMatch) return;
     const before = input.slice(0, mentionMatch.start);
@@ -168,6 +197,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
     const insert = `@${c.name} `;
     const next = (before + insert + after).slice(0, 1000);
     const newCaret = (before + insert).length;
+    pickedMentionsRef.current.set(c.userId, c.name);
     setInput(next);
     requestAnimationFrame(() => {
       const ta = messageInputRef.current;
@@ -560,7 +590,8 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
       }
     }
 
-    let content = currentInput;
+    let content = serializeMentions(currentInput, pickedMentionsRef.current);
+    pickedMentionsRef.current = new Map();
     if (attachmentUrls.length > 0) {
       const attachmentMeta = JSON.stringify(attachmentUrls);
       content = content ? `${content}\n[attachments]${attachmentMeta}[/attachments]` : `[attachments]${attachmentMeta}[/attachments]`;
@@ -893,7 +924,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                                     </span>
                                   ) : (
                                     <span className="truncate opacity-80 min-w-0">
-                                      {rawReply || "Attachment"}
+                                      {stripMentionTokens(rawReply, mentionResolver.resolve) || "Attachment"}
                                     </span>
                                   )}
                                 </button>
@@ -905,7 +936,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                               ) : (
                                 <>
                                   <p className={`text-[15px] leading-relaxed whitespace-pre-wrap break-words ${msg.status === "sending" ? "opacity-50" : ""}`} style={{ color: "var(--app-text-primary, #dbdee1)" }}>
-                                    {linkifyText(text)}
+                                    {renderMessageBody(text, mentionResolver)}
                                   </p>
                                   {(() => {
                                     const firstUrl = extractFirstUrl(text);
