@@ -25,6 +25,11 @@ export default defineConfig(({ mode }) => ({
       overlay: false,
     },
   },
+  build: {
+    // NEVER ship sourcemaps in the desktop bundle — they roughly double
+    // dist size and inflate the installer for no user benefit.
+    sourcemap: false,
+  },
   plugins: [
     react(),
     mode === "development" && componentTagger(),
