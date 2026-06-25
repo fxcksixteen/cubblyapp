@@ -375,6 +375,18 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const [remoteScreenStream, setRemoteScreenStream] = useState<MediaStream | null>(null);
+  // v0.3.17: play the screenshare start/stop SFX for the OTHER peer too —
+  // previously only the user who initiated/ended the share heard it.
+  const prevRemoteScreenRef = useRef<MediaStream | null>(null);
+  useEffect(() => {
+    const prev = prevRemoteScreenRef.current;
+    if (!prev && remoteScreenStream) {
+      try { playSound("screenshareStart", { volume: 0.4 }); } catch {}
+    } else if (prev && !remoteScreenStream) {
+      try { playSound("screenshareStop", { volume: 0.4 }); } catch {}
+    }
+    prevRemoteScreenRef.current = remoteScreenStream;
+  }, [remoteScreenStream]);
 
   // Expose a global flag so the heavy activity-poller (ActivityContext) can
   // throttle itself while the user is in a call.
