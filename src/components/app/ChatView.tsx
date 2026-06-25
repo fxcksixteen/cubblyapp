@@ -902,7 +902,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                                     </span>
                                   ) : (
                                     <span className="truncate opacity-80 min-w-0">
-                                      {rawReply || "Attachment"}
+                                      {stripMentionTokens(rawReply, mentionResolver.resolve) || "Attachment"}
                                     </span>
                                   )}
                                 </button>
@@ -914,7 +914,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                               ) : (
                                 <>
                                   <p className={`text-[15px] leading-relaxed whitespace-pre-wrap break-words ${msg.status === "sending" ? "opacity-50" : ""}`} style={{ color: "var(--app-text-primary, #dbdee1)" }}>
-                                    {linkifyText(text)}
+                                    {renderMessageBody(text, mentionResolver)}
                                   </p>
                                   {(() => {
                                     const firstUrl = extractFirstUrl(text);
