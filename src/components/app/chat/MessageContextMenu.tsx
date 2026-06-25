@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -5,11 +6,13 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { Reply, Trash2 } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Reply, Trash2, Plus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import copyIcon from "@/assets/icons/copy.svg";
 import { QUICK_REACTIONS } from "@/hooks/useMessageReactions";
+import FullEmojiPicker from "./FullEmojiPicker";
 
 interface MessageContextMenuProps {
   children: React.ReactNode;
@@ -21,6 +24,8 @@ interface MessageContextMenuProps {
 }
 
 const MessageContextMenu = ({ children, messageId, messageContent, isOwnMessage, onReply, onReact }: MessageContextMenuProps) => {
+  const [pickerOpen, setPickerOpen] = useState(false);
+
   const handleCopy = () => {
     const clean = messageContent.replace(/\[attachments\].*?\[\/attachments\]/s, "").trim();
     navigator.clipboard.writeText(clean);
@@ -40,7 +45,7 @@ const MessageContextMenu = ({ children, messageId, messageContent, isOwnMessage,
         className="w-56 rounded-xl border p-1.5 shadow-xl"
         style={{ backgroundColor: "#111214", borderColor: "#2b2d31" }}
       >
-        {/* Quick emoji slider */}
+        {/* Quick emoji slider + "more" picker */}
         <div className="flex items-center gap-0.5 px-1 py-1">
           {QUICK_REACTIONS.map((e) => (
             <button
@@ -52,6 +57,21 @@ const MessageContextMenu = ({ children, messageId, messageContent, isOwnMessage,
               {e}
             </button>
           ))}
+          <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                onClick={(e) => e.stopPropagation()}
+                className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-[#b5bac1] transition-colors hover:bg-white/10 hover:text-white"
+                title="More emojis"
+              >
+                <Plus className="h-4 w-4" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent side="top" align="end" sideOffset={6} className="p-0 border-0 bg-transparent shadow-none">
+              <FullEmojiPicker onPick={(e) => { onReact?.(e); setPickerOpen(false); }} />
+            </PopoverContent>
+          </Popover>
         </div>
         <ContextMenuSeparator className="my-1 bg-[#2b2d31]" />
         <ContextMenuItem
@@ -86,3 +106,4 @@ const MessageContextMenu = ({ children, messageId, messageContent, isOwnMessage,
 };
 
 export default MessageContextMenu;
+
