@@ -15,12 +15,35 @@ const path = require("path");
 const KEEP_LOCALES = new Set(["en-US.pak"]);
 
 // Files we always delete from the packaged app (paths relative to appOutDir).
+// All of these are non-functional for a Win10/11 desktop running Cubbly with
+// hardware-accelerated Chromium and an English UI.
 const ALWAYS_DELETE = [
+  // License/notice docs shipped with prebuilt Electron — not legally required
+  // to remain inside the installed app for an end-user runtime.
   "LICENSES.chromium.html",
   "LICENSE.electron.txt",
-  // Debug PDBs occasionally slip into release builds of Electron.
+  "LICENSE",
+  "LICENSE.txt",
+  // Electron's built-in "default app" (the welcome window). We always load
+  // our own app, so this is dead weight.
+  "resources/default_app.asar",
+  // Inspector / devtools front-end resources — dev-only, not needed at
+  // runtime for end users.
+  "resources/inspector",
+  // Software rasterizer fallbacks. Hardware accel is on by default and there
+  // is a Settings → Advanced toggle for users on bad GPUs to fall back to
+  // ANGLE/D3D — they don't need the Vulkan/SwiftShader path too.
+  "vk_swiftshader.dll",
+  "vk_swiftshader_icd.json",
+  "vulkan-1.dll",
+  "swiftshader",
+  // Debug symbols that occasionally ship in release builds.
   "d3dcompiler_47.dll.pdb",
+  "electron.exe.pdb",
 ];
+
+// File suffixes to recursively strip from the packaged app.
+const STRIP_SUFFIXES = [".pdb", ".map"];
 
 function fmtMB(bytes) { return `${(bytes / (1024 * 1024)).toFixed(1)} MB`; }
 
@@ -38,12 +61,32 @@ function dirSize(dir) {
   return total;
 }
 
+function walkAndStrip(dir, freedRef) {
+  let entries;
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+  for (const entry of entries) {
+    const p = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      walkAndStrip(p, freedRef);
+    } else {
+      const lower = entry.name.toLowerCase();
+      if (STRIP_SUFFIXES.some((s) => lower.endsWith(s))) {
+        try {
+          const sz = fs.statSync(p).size;
+          fs.rmSync(p, { force: true });
+          freedRef.bytes += sz;
+        } catch {}
+      }
+    }
+  }
+}
+
 exports.default = async function afterPack(context) {
   const appOutDir = context.appOutDir;
   if (!appOutDir || !fs.existsSync(appOutDir)) return;
 
   const before = dirSize(appOutDir);
-  let freed = 0;
+  const freed = { bytes: 0 };
 
   // 1) Strip non-English Chromium locales.
   const localesDir = path.join(appOutDir, "locales");
@@ -54,26 +97,30 @@ exports.default = async function afterPack(context) {
       try {
         const sz = fs.statSync(p).size;
         fs.rmSync(p, { force: true, recursive: true });
-        freed += sz;
+        freed.bytes += sz;
       } catch {}
     }
   }
 
-  // 2) Delete always-unused top-level files.
+  // 2) Delete always-unused files/dirs.
   for (const rel of ALWAYS_DELETE) {
     const p = path.join(appOutDir, rel);
     try {
       if (fs.existsSync(p)) {
-        const sz = fs.statSync(p).size;
+        const sz = fs.statSync(p).isDirectory() ? dirSize(p) : fs.statSync(p).size;
         fs.rmSync(p, { force: true, recursive: true });
-        freed += sz;
+        freed.bytes += sz;
       }
     } catch {}
   }
 
+  // 3) Recursively strip debug symbols / source maps that slipped through.
+  walkAndStrip(appOutDir, freed);
+
   const after = dirSize(appOutDir);
   console.log(
-    `[afterPack] stripped ${fmtMB(freed)} from Electron runtime ` +
+    `[afterPack] stripped ${fmtMB(freed.bytes)} from Electron runtime ` +
     `(installed app: ${fmtMB(before)} → ${fmtMB(after)})`
   );
 };
+
