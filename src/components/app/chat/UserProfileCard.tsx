@@ -158,22 +158,22 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
         <div
           ref={ref}
           onClick={(e) => e.stopPropagation()}
-          className="w-[440px] rounded-2xl overflow-hidden shadow-2xl border border-[#2b2d31] bg-[#111214] animate-in fade-in-0 zoom-in-95 duration-200"
+          className="w-[520px] rounded-2xl overflow-hidden shadow-2xl border border-[#2b2d31] bg-[#111214] animate-in fade-in-0 zoom-in-95 duration-200"
         >
           {/* Banner */}
-           <div className="h-[100px] relative" style={{ background: profile?.banner_url ? `url(${profile.banner_url}) center/cover no-repeat` : color.banner }}>
+           <div className="h-[130px] relative" style={{ background: profile?.banner_url ? `url(${profile.banner_url}) center/cover no-repeat` : color.banner }}>
             <button onClick={onClose} className="absolute top-3 right-3 flex h-7 w-7 items-center justify-center rounded-full bg-black/40 text-white hover:bg-black/60 transition-colors">
               <X className="h-4 w-4" />
             </button>
           </div>
 
           {/* Avatar - with z-index above banner */}
-          <div className="px-5 -mt-10 relative z-10">
+          <div className="px-5 -mt-12 relative z-10">
             <div className="relative inline-block">
               {profile?.avatar_url ? (
-                <img src={profile.avatar_url} alt={displayName} className="h-[80px] w-[80px] rounded-full border-[6px] border-[#111214] object-cover" />
+                <img src={profile.avatar_url} alt={displayName} className="h-[96px] w-[96px] rounded-full border-[6px] border-[#111214] object-cover" />
               ) : (
-                <div className="flex h-[80px] w-[80px] items-center justify-center rounded-full border-[6px] border-[#111214] text-2xl font-bold text-white" style={{ backgroundColor: color.bg }}>
+                <div className="flex h-[96px] w-[96px] items-center justify-center rounded-full border-[6px] border-[#111214] text-3xl font-bold text-white" style={{ backgroundColor: color.bg }}>
                   {displayName.charAt(0).toUpperCase()}
                 </div>
               )}
@@ -185,11 +185,11 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
 
           {/* Info */}
           <div className="px-5 pt-3 pb-4">
-            <p className="text-xl font-bold text-white flex items-center gap-2">
+            <p className="text-2xl font-bold text-white flex items-center gap-2">
               <UserDisplayName userId={userId} name={displayName} fallbackColor="#ffffff" />
-              <UserBadges userId={userId} size={16} withTooltip />
+              <UserBadges userId={userId} size={18} withTooltip />
             </p>
-            <p className="text-sm text-[#949ba4]">@{profile?.username || displayName.toLowerCase()}</p>
+            <p className="text-[15px] text-[#949ba4]">@{profile?.username || displayName.toLowerCase()}</p>
 
             {userActivity?.name && isUserOnline && (
               <div className="mt-3">
