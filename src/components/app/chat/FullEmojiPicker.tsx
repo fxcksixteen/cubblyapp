@@ -2,8 +2,8 @@ import { useMemo, useState } from "react";
 import emojiGroups from "@/data/emoji-by-group.json";
 
 /**
- * Full-Unicode emoji picker. Sourced from `unicode-emoji-json` so every
- * standard emoji is reachable (~1800), grouped exactly like Discord with
+ * Full-Unicode emoji picker. Sourced from vendored emoji data so every
+ * standard emoji is reachable, grouped exactly like Discord with
  * a keyword search across each emoji's name + slug.
  */
 
