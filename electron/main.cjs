@@ -423,6 +423,28 @@ ipcMain.handle("auto-launch-set", (_evt, value) => {
   }
 });
 
+// ----- Hardware acceleration getter/setter -----
+ipcMain.handle("hwaccel-get", () => {
+  try {
+    if (settingsStore && settingsStore.has("hardwareAcceleration")) {
+      return !!settingsStore.get("hardwareAcceleration");
+    }
+    return true; // default ON
+  } catch { return true; }
+});
+ipcMain.handle("hwaccel-set", (_evt, value) => {
+  try {
+    if (settingsStore) settingsStore.set("hardwareAcceleration", !!value);
+    return true;
+  } catch (e) {
+    log.warn("[hwaccel] set failed:", e?.message || e);
+    return false;
+  }
+});
+ipcMain.handle("relaunch-app", () => {
+  try { app.relaunch(); app.exit(0); } catch (e) { log.warn("[relaunch] failed:", e?.message || e); }
+});
+
 // ----- Process scanner (for activity detection) -----
 // Cache the result aggressively. The renderer polls every 60s in the best
 // case, but if it bugs out and asks more often, we'd block the main thread
