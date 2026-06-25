@@ -1,61 +1,68 @@
-# v0.3.17 Plan
+## v0.3.17 — Tagging, DND respect, DM mute, slim Electron, full emoji set
 
-## 1. Incoming call "accept" button fix
-Make the green accept button take the same path as the orange rejoin button — currently it opens the call UI but doesn't actually join the peer. Reuse the rejoin flow (join existing room + attach tracks) instead of the separate accept handler.
+### 1. Real @mentions that bypass DND
 
-## 2. Screenshare start/end SFX heard by all peers
-Right now the SFX plays locally only. Broadcast a `screenshare_started` / `screenshare_ended` event over the existing call signaling channel; on receive, all remote peers play the same SFX.
+Today `MentionAutocomplete` only autofills the display name as plain text — nothing in the message identifies the tagged user, and `useUnreadCounts` notifies with `force: true` for every new message, so DND is bypassed for everyone, mentioned or not.
 
-## 3. Rename "Petite" badge → "Cute"
-- Shop UI + badge registry: label becomes **Cute**, with a new fitting bio (e.g. "Small, soft, and undeniably cute.").
-- Exception: user `@fawnsly` (Aria) keeps the original "Petite" name and bio displayed for her account only (hardcoded override by user id / username).
+**Send side (`ChatView.tsx` + `MentionAutocomplete.tsx`)**
+- When the user picks a candidate, insert a Discord-style token `<@USER_ID>` into the textarea state instead of the bare `@Name`. Display it visually as a styled `@Name` chip using a controlled overlay (keep textarea logic simple: store the raw token; rendering for sent messages happens below).
+- Right before insert into `messages.content`, the textarea already contains tokens — send as-is.
 
-## 4. New Setting: Hardware Acceleration (functional)
-Add a toggle under Settings → Appearance/Advanced.
-- Web: toggles GPU-accelerated CSS paths (`will-change`, `transform: translateZ(0)`, `backface-visibility`) on heavy surfaces (chat list, video, overlays) + respects `prefers-reduced-motion`.
-- Desktop (Electron wrapper): writes a flag read by the Electron main process on next launch to enable/disable Chromium GPU (`app.disableHardwareAcceleration()` when off). Persisted in localStorage + synced to profile.
-- Shows "Restart required" notice for desktop changes.
+**Render side (message renderer used by `ChatView`)**
+- In the existing text renderer, parse `<@uuid>` tokens and render them as blue mention chips (`@DisplayName`, resolved from participants / profile cache). Highlight chips that target the current user with a yellow-tinted background like Discord.
 
-## 5. Slim down Cubbly (700MB → target ~150MB)
-Auditing and trimming without breaking quality:
-- Tree-shake & code-split heavy routes (Settings, Shop, Calls) via `React.lazy`.
-- Drop unused deps (run `depcheck`), dedupe via `npm dedupe`.
-- Replace large libs where possible (e.g. moment → date-fns if present, full lodash → per-method).
-- Electron: prune `node_modules` to production only, enable `asar`, exclude source maps + locales (`electron-builder` `files`/`extraResources` filters, `electronLanguages: ["en"]`).
-- Compress bundled assets (convert oversized PNGs to webp, strip unused fonts).
-- Vite build: `build.minify: 'esbuild'`, drop console in prod, manual chunks.
+**Notification side (`useUnreadCounts.ts`)**
+- Detect `<@${user.id}>` in the incoming `msg.content`. Set `isMention = true`.
+- Stop unconditional `force: true`. New rules:
+  - DM (1-on-1): notify + sound, gated by DND unless mentioned.
+  - Group: notify + sound only if mentioned, or if DND is off (mirrors Discord "Only @mentions" behavior we already imply for groups).
+  - If conversation is muted (see §3) → suppress everything regardless.
+- Pass `force: isMention && !muted` to `notify()` and to `playSound("message", { force })`.
 
-## 6. Gaming Mode — make it "godly"
-Inspect current implementation, then upgrade to a true gamer feature set:
-- Auto-detect running game (via existing activity detection) and enter Gaming Mode automatically.
-- Push-to-talk priority + ultra-low-latency audio mode (Opus 48k mono, smaller jitter buffer).
-- Notification suppression (banner + sound) while in-game, with a single subtle in-app indicator.
-- Overlay HUD (web: floating mini-panel; desktop: always-on-top mini window) showing current call peers, mute, deafen, mic level, and incoming DMs.
-- "Do not disturb to non-friends" + auto-status "In game — {title}".
-- Performance mode: pauses chat animations, lowers background video FPS, disables sparkle/space backgrounds while active.
-- Quick hotkeys: mute, deafen, PTT, toggle overlay (configurable).
-- Per-game profile memory (last used input/output device, volume).
+### 2. DND really suppresses everything else
 
-## 7. Bigger profile modal
-Increase `ProfilePopup` width/height (e.g. from ~340px → ~440px, taller banner, larger avatar, larger badges row, larger bio text). Keep layout proportions, ensure it still fits viewport on small screens.
+Audit the other call sites that bypass DND:
+- `playSound("message", { force: true })` → only force when mention.
+- Ringing sounds (`VoiceContext`, `GroupCallContext`): already respect DND? Quick check; if they use `force`, gate behind `!dndActive`. Incoming-call desktop notifications should also be suppressed under DND (Discord behavior).
 
-## 8. Right-click menu for GIFs in chat
-Mirror the image context menu (copy, save, copy link, open in new tab, report) for GIFs. Wire to the GIF render path in chat messages.
+### 3. Mute system for DMs and groups
 
-## 9. Hover highlight scoped to single message
-Currently hover highlight spans the whole grouped batch from one author. Move the hover background from the group container to the individual message row so only the hovered message highlights.
+Schema already has `dm_preferences.muted` + `muted_until` per (user_id, conversation_id). Add full UX.
 
-## 10. Reaction picker "+" → full emoji menu
-Add a `+` button at the far right of the quick-reaction row. On click, open the full emoji picker (reuse the existing emoji picker component) to react with any emoji.
+- **Helper**: `src/hooks/useDmMutes.ts` — loads the current user's `dm_preferences` rows once, exposes `isMuted(conversationId)` (true if `muted` OR `muted_until > now()`), and `setMute(conversationId, durationMs | "forever" | null)` which upserts the row.
+- **Sidebar context menu (`DMSidebar.tsx`)**: add a "Mute Conversation" submenu before "Mark As Read", with options: 15 min / 1 hour / 3 hours / 8 hours / 24 hours / Until I turn it back on. If already muted, show "Unmute Conversation" instead and a small "muted until X" hint.
+- **Visual cue**: render a small muted-bell icon next to the conversation name when muted; dim unread badge styling.
+- **Hook into notifications**: `useUnreadCounts` consults `isMuted(conv.id)` and suppresses notify + sound + browser tab title flash. Muted conversations still increment unread count but stay silent (Discord behavior). Mentions in a muted conv are also silent.
+- RLS on `dm_preferences` already restricts to the row owner, no migration needed.
 
-## 11. `@` mention autocomplete in message input
-- DM/group chat: suggest the conversation participants.
-- Server channel: suggest the last 1–10 distinct users who have sent messages in that channel (query recent messages, dedupe by author, cap 10).
-- Standard popup: arrow keys + enter to select, click to insert, inserts `@displayname` linked to user id; render as a mention chip in the sent message.
+### 4. Slim Electron build down to ~150 MB
 
-## Technical notes
-- Files likely touched: `VoiceCallOverlay.tsx`, `GroupCallPanel.tsx`, `useVoice` hook, `SidebarGroupCallCard.tsx` (calls + SFX), `ShopView.tsx` + `UserBadges.tsx` (badge rename), `SettingsModal.tsx` (hardware accel + gaming mode), `ProfilePopup.tsx` (size), `ChatView.tsx` / `chat/*` (hover scope, reaction +, gif menu, @ mentions), `vite.config.ts` + `package.json` (slim down), Electron config if present.
-- Changelog: short user-facing bullets only, no internals, no version bump beyond 0.3.17 as instructed.
-- DB: may add `last_channel_authors` query (no schema change needed) and a `hardware_acceleration` boolean on `profiles` (optional — localStorage may suffice).
+Audit current `scripts/build-electron.cjs` + `electron:package:*` scripts and tighten:
+- Confirm `--prune=true` actually runs (sometimes silently skipped when `node_modules` has dev deps interleaved). Force `npm prune --omit=dev` against a staging copy before packaging.
+- Expand `--ignore` list: `^/supabase$`, `^/ios-native$`, `^/scripts$`, `^/electron-release$`, `^/dist-ssr$`, `\.map$`, `\.md$`, `^/\.git`, `^/\.github$`, `^/docs$`, `^/tests?$`, `^/\.vscode$`, `^/native/.*/(build|src|obj)$` (keep only the platform-matching `prebuilds/` dir).
+- Enable `--asar=true` (or confirm enabled) with `--asar.unpack=native/win-audio-capture/prebuilds/**` so the WASAPI addon stays loadable.
+- Keep `electronLanguages: ["en-US"]` and verify it's applied at packaging time (currently in `build` block, not in the `@electron/packager` CLI — pass `--electron-language=en-US` or strip extra `locales/*.pak` post-package).
+- Strip `LICENSES.chromium.html`, `*.pdb`, leftover `swiftshader/` if unused.
+- Print `du -sh` of the packaged folder in the build script so size regressions are visible.
 
-Confirm and I'll implement all 11 in v0.3.17.
+Target: the unpacked tree under ~150 MB and the resulting NSIS/zip noticeably smaller than current.
+
+### 5. Full Unicode emoji set in reactions
+
+`FullEmojiPicker.tsx` ships a hand-curated subset (~400 emojis). Replace with the full standard set:
+
+- Add a tiny dependency: `unicode-emoji-json` (pure JSON, ~90 KB gzipped) — gives all emojis with group + subgroup + name.
+- Rebuild `FullEmojiPicker` around its data: render Discord-style category tabs (Smileys, People, Animals, Food, Activities, Travel, Objects, Symbols, Flags) sourced from the JSON's `group` field, virtualized grid so the longer list still scrolls smoothly.
+- Implement real keyword search using the JSON's `name` / `slug` fields (the current picker has no search index).
+- Keep the existing `onPick(emoji)` contract so `EmojiReactionPicker`, message composer, and any other call sites work unchanged.
+
+### Out of scope
+- No version bump (still v0.3.17 per project rules).
+- No changes to the iOS app.
+- No changelog wording yet — will be added once implementation lands.
+
+### Technical notes
+- Mention token format `<@uuid>`: matches Discord; one regex `/<@([0-9a-f-]{36})>/g` handles parse + render + notification check.
+- `dm_preferences` upserts use `(user_id, conversation_id)` as the conflict target — confirm a unique index exists; if missing, add a migration with the required `GRANT`s.
+- `notify()` already has a `force` flag; no API change needed there.
+- For the muted-bell icon, reuse the existing `bell-off` lucide icon already imported elsewhere to avoid asset bloat.
