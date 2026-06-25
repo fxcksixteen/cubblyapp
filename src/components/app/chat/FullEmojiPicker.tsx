@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import emojiGroups from "unicode-emoji-json/data-by-group.json";
+import emojiGroups from "@/data/emoji-by-group.json";
 
 /**
  * Full-Unicode emoji picker. Sourced from `unicode-emoji-json` so every
