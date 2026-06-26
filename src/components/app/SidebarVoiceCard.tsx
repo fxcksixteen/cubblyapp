@@ -274,6 +274,8 @@ const SidebarVoiceCard = ({ conversations, onOpenCall }: Props) => {
           startScreenShare(type, options);
         }}
       />
+
+      <CallDiagnosticsModal open={showDiagnostics} onClose={() => setShowDiagnostics(false)} />
     </div>
   );
 };
