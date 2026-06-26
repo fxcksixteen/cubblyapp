@@ -3,6 +3,8 @@ import { useVoice } from "@/contexts/VoiceContext";
 import { Conversation } from "@/hooks/useConversations";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import ScreenSharePicker, { ScreenShareType } from "./ScreenSharePicker";
+import CallDiagnosticsModal from "./CallDiagnosticsModal";
+import { Activity } from "lucide-react";
 import callEndIcon from "@/assets/icons/call-end.svg";
 import videoIcon from "@/assets/icons/video-camera.svg";
 import screenshareIcon from "@/assets/icons/screenshare.svg";
@@ -61,6 +63,7 @@ const SidebarVoiceCard = ({ conversations, onOpenCall }: Props) => {
   // Local picker state so the bottom-corner Share button opens the same
   // chooser as the call panel button (not just full-screen by default).
   const [showSharePicker, setShowSharePicker] = useState(false);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
 
   useEffect(() => {
     if (!activeCall?.startedAt) { setElapsed(0); return; }
@@ -125,18 +128,41 @@ const SidebarVoiceCard = ({ conversations, onOpenCall }: Props) => {
             {stateLabel}
           </span>
         </button>
-        <TooltipProvider delayDuration={150}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button className="ml-2 rounded p-0.5 cursor-help" aria-label="Network ping">
-                <PingBars ping={ping} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="top" className="text-xs">
-              Ping: {formatPing(ping)}
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        <div className="flex flex-col items-end gap-0.5 ml-2">
+          <TooltipProvider delayDuration={150}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button className="rounded p-0.5 cursor-help" aria-label="Network ping">
+                  <PingBars ping={ping} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">
+                Ping: {formatPing(ping)}
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => setShowDiagnostics(true)}
+                  className="flex items-center gap-0.5 rounded px-1 py-[1px] transition-colors"
+                  style={{
+                    backgroundColor: "rgba(255,255,255,0.06)",
+                    color: "var(--app-text-secondary, #949ba4)",
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.12)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.06)")}
+                  aria-label="Open call diagnostics"
+                >
+                  <Activity className="h-[9px] w-[9px]" />
+                  <span className="text-[9px] font-semibold uppercase tracking-wide leading-none">Info</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">
+                Call diagnostics
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
       </div>
 
       <button
@@ -248,6 +274,8 @@ const SidebarVoiceCard = ({ conversations, onOpenCall }: Props) => {
           startScreenShare(type, options);
         }}
       />
+
+      <CallDiagnosticsModal open={showDiagnostics} onClose={() => setShowDiagnostics(false)} />
     </div>
   );
 };
