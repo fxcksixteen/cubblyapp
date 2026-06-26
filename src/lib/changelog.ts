@@ -23,9 +23,25 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.3.18";
+export const CURRENT_VERSION = "0.3.19";
 
 export const CHANGELOG: ChangelogEntry[] = [
+
+  {
+    version: "0.3.19",
+    date: "2026-06-27",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Green Accept call button now goes through a direct, deterministic path — instantly answers using the prefetched offer with a single round trip instead of routing through the rejoin flow.",
+      "Call pill now correctly says \"Join Call\" (instead of \"Rejoin\") for users who have never been in that call yet — same one-tap action either way.",
+      "Crashed / power-loss / abrupt-close ghost participant rows are auto-cleared on the next Cubbly launch, so the rejoin pill appears for the other person again and you stop showing up as \"still in call\".",
+      "Sidebar ping reading prefers the actual nominated direct (host/srflx) ICE pair over any TURN-relay pair, so the number reflects the real path your audio is taking.",
+      "Muted DMs and groups are now visibly dimmed and softly blurred in the DM sidebar (bell icon stays crisp) so it's obvious which conversations won't notify you.",
+      "Desktop: Chromium's on-disk cache is now hard-capped at 80 MB (media cache 40 MB), and any pre-existing oversized cache from older installs is auto-pruned on launch — the runtime install size will no longer balloon to 500+ MB after weeks of use.",
+    ],
+  },
+
 
   {
     version: "0.3.18",

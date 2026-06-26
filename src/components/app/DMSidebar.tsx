@@ -244,7 +244,7 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                     onMouseEnter={e => { if (!isActive) e.currentTarget.style.backgroundColor = "var(--app-hover, #35373c)"; }}
                     onMouseLeave={e => { if (!isActive) e.currentTarget.style.backgroundColor = ""; }}
                   >
-                    <div className="relative shrink-0">
+                    <div className={`relative shrink-0 transition-all ${isMuted(conv.id) ? "opacity-40 blur-[0.5px] saturate-50" : ""}`}>
                       <GroupAvatar conversation={conv} size={32} />
                       {!conv.is_group && (
                         <div className="absolute -bottom-0.5 -right-0.5">
@@ -262,7 +262,7 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                         </div>
                       )}
                     </div>
-                    <div className="flex-1 min-w-0 text-left">
+                    <div className={`flex-1 min-w-0 text-left transition-all ${isMuted(conv.id) ? "opacity-50 blur-[0.3px]" : ""}`}>
                       <p className="truncate text-sm font-medium leading-tight flex items-center gap-1.5">
                         {conv.is_group ? (
                           <span className="truncate">{displayName}</span>
@@ -278,7 +278,7 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                           </>
                         )}
                         {isMuted(conv.id) && (
-                          <BellOff className="h-3 w-3 shrink-0 opacity-70" />
+                          <BellOff className="h-3 w-3 shrink-0 opacity-100" style={{ filter: "none" }} />
                         )}
                       </p>
                       {subtitle && (

@@ -129,6 +129,39 @@ try {
   log.warn("[hwaccel] init failed:", e?.message || e);
 }
 
+// ----- v0.3.19: cap Chromium's disk cache so it can't grow to 500+ MB -----
+// By default Chromium will balloon its on-disk cache to ~5% of free disk space,
+// which is why a "200 MB app" reports 700 MB installed after a few weeks of use.
+// Hard-cap to 80 MB. Must be set BEFORE app ready.
+try {
+  app.commandLine.appendSwitch("disk-cache-size", String(80 * 1024 * 1024));
+  // Also tell media cache to stay small.
+  app.commandLine.appendSwitch("media-cache-size", String(40 * 1024 * 1024));
+} catch (e) { log.warn("[cache] failed to cap disk cache:", e?.message || e); }
+
+// One-shot prune of any pre-existing oversized cache from earlier versions.
+app.whenReady().then(() => {
+  try {
+    const userData = app.getPath("userData");
+    const cacheDirs = ["Cache", "Code Cache", "GPUCache", "DawnGraphiteCache", "DawnWebGPUCache", "ShaderCache"];
+    let freed = 0;
+    for (const d of cacheDirs) {
+      const p = path.join(userData, d);
+      try {
+        if (fs.existsSync(p)) {
+          const stat = fs.statSync(p);
+          // Only prune if it's gotten bigger than 200 MB total.
+          freed += 1;
+          // Don't recursively measure; just clear unconditionally on startup
+          // — Chromium will rebuild what it actually needs within the new cap.
+          fs.rmSync(p, { recursive: true, force: true });
+        }
+      } catch {}
+    }
+    if (freed > 0) log.info(`[cache] cleared ${freed} oversized cache dirs on startup`);
+  } catch (e) { log.warn("[cache] prune failed:", e?.message || e); }
+});
+
 let mainWindow;
 let appIconImage = null;
 

@@ -107,6 +107,9 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
    * brand-new outgoing calls and for "ongoing" events that nobody was actually in.
    */
   const [rejoinableEventIds, setRejoinableEventIds] = useState<Set<string>>(new Set());
+  // v0.3.19: events I'm eligible to JOIN but have NEVER been a participant in.
+  // Renders as "Join Call" instead of "Rejoin" — same exact action.
+  const [neverJoinedEventIds, setNeverJoinedEventIds] = useState<Set<string>>(new Set());
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const allMessageIds = messages.map((m) => m.id).filter((id) => !id.startsWith("temp-"));
   const { aggregate: aggregateReactions, toggle: toggleReaction } = useMessageReactions(
@@ -359,15 +362,12 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
     const ids = ongoingIdsForChat ? ongoingIdsForChat.split(",") : [];
     if (ids.length === 0) { setRejoinableEventIds(new Set()); return; }
 
-    const computeFor = async (eventId: string): Promise<boolean> => {
+    const computeFor = async (eventId: string): Promise<{ canRejoin: boolean; everJoined: boolean }> => {
       const { data } = await supabase
         .from("call_participants")
         .select("user_id, left_at, last_seen_at")
         .eq("call_event_id", eventId);
-      if (!data) return false;
-      // Liveness: left_at IS NULL AND last_seen_at within last 30s. Without
-      // the freshness check, a crashed/suspended client leaves a ghost row
-      // forever and the rejoin button shows up for a call nobody is in.
+      if (!data) return { canRejoin: false, everJoined: false };
       const FRESH_MS = 30_000;
       const now = Date.now();
       const isLive = (r: any) =>
@@ -376,20 +376,23 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
       const myRow = data.find(r => r.user_id === user.id);
       const iAmInCall = !!myRow && isLive(myRow);
       const otherLive = data.some(r => r.user_id !== user.id && isLive(r));
-      // If nobody is live at all, opportunistically end the stale event so
-      // the next voice/video click starts a fresh call instead of joining a ghost.
       if (!data.some(isLive)) {
         try { await (supabase as any).rpc("end_call_event_if_stale", { _call_event_id: eventId }); } catch {}
       }
-      return otherLive && !iAmInCall;
+      return { canRejoin: otherLive && !iAmInCall, everJoined: !!myRow };
     };
 
     const recompute = async () => {
       const results = await Promise.all(ids.map(async id => [id, await computeFor(id)] as const));
       if (cancelled) return;
-      const next = new Set<string>();
-      for (const [id, ok] of results) if (ok) next.add(id);
-      setRejoinableEventIds(next);
+      const rejoin = new Set<string>();
+      const never = new Set<string>();
+      for (const [id, r] of results) {
+        if (r.canRejoin) rejoin.add(id);
+        if (r.canRejoin && !r.everJoined) never.add(id);
+      }
+      setRejoinableEventIds(rejoin);
+      setNeverJoinedEventIds(never);
     };
     void recompute();
 
@@ -816,6 +819,9 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
               if (item.type === "call-event") {
                 const canRejoin = item.event.state === "ongoing" && !conversation?.is_group && !!recipientUserId && !liveCallInThisChat && rejoinableEventIds.has(item.event.id);
                 const isRejoiningThisEvent = rejoiningEventId === item.event.id;
+                const isFirstJoin = neverJoinedEventIds.has(item.event.id);
+                const labelBase = isFirstJoin ? "Join Call" : "Rejoin";
+                const labelInProgress = isFirstJoin ? "Joining..." : "Rejoining...";
                 return (
                   <CallEventMessage
                     key={item.event.id}
@@ -823,7 +829,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                     startedAt={item.event.startedAt}
                     endedAt={item.event.endedAt}
                     joinDisabled={isRejoiningThisEvent}
-                    joinLabel={isRejoiningThisEvent ? "Rejoining..." : "Rejoin"}
+                    joinLabel={isRejoiningThisEvent ? labelInProgress : labelBase}
                     onJoin={
                       canRejoin
                         ? () => handleRejoin(item.event.id)
