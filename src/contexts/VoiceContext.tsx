@@ -271,6 +271,41 @@ interface VoiceContextType {
   /** Local-only mute for a specific peer (does not affect what others hear). */
   isUserMuted: (userId: string) => boolean;
   setUserMuted: (userId: string, muted: boolean) => void;
+  /** v0.3.19: Live WebRTC diagnostics for the current call. Null when not connected. */
+  getCallDiagnostics: () => Promise<CallDiagnostics | null>;
+}
+
+export interface CallDiagnostics {
+  // ICE pair
+  localCandidateType: string;       // host / srflx / prflx / relay
+  remoteCandidateType: string;
+  localProtocol: string;            // udp / tcp
+  remoteProtocol: string;
+  localAddress: string;             // masked
+  remoteAddress: string;            // masked
+  relayProtocol?: string;           // udp/tcp/tls when relayed
+  isRelay: boolean;
+  nominated: boolean;
+  currentRttMs: number | null;
+  // Connection
+  connectionState: string;
+  iceConnectionState: string;
+  iceGatheringState: string;
+  signalingState: string;
+  // Audio inbound (from peer)
+  inboundCodec?: string;
+  inboundJitterMs?: number;
+  inboundPacketsLost?: number;
+  inboundPacketsReceived?: number;
+  inboundBytesReceived?: number;
+  inboundAudioLevel?: number;
+  // Audio outbound (from us)
+  outboundCodec?: string;
+  outboundBytesSent?: number;
+  outboundPacketsSent?: number;
+  // Server / region
+  serverRegion: string;
+  turnServerHost?: string;
 }
 
 const VoiceContext = createContext<VoiceContextType>({} as VoiceContextType);
