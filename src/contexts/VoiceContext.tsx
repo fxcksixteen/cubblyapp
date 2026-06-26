@@ -3061,13 +3061,32 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       if (!pc) return;
       try {
         const stats = await pc.getStats();
-        let rtt: number | null = null;
+        // Prefer the NOMINATED pair (the one the browser actually picked).
+        // If multiple succeed, prefer non-relay (TURN adds round-trip cost,
+        // ~+80-120ms in our PA↔AT case). This stops the sidebar from showing
+        // a 200ms relay number when a P2P host pair is also available.
+        let bestRtt: number | null = null;
+        let bestIsRelay = true;
+        let bestNominated = false;
         stats.forEach((report: any) => {
-          if (report.type === "candidate-pair" && report.state === "succeeded" && typeof report.currentRoundTripTime === "number") {
-            rtt = report.currentRoundTripTime;
+          if (report.type !== "candidate-pair" || report.state !== "succeeded") return;
+          if (typeof report.currentRoundTripTime !== "number") return;
+          const local = stats.get(report.localCandidateId) as any;
+          const remote = stats.get(report.remoteCandidateId) as any;
+          const isRelay = local?.candidateType === "relay" || remote?.candidateType === "relay";
+          const nominated = !!report.nominated;
+          // Prefer: nominated > non-relay > anything.
+          const better =
+            bestRtt == null ||
+            (nominated && !bestNominated) ||
+            (nominated === bestNominated && !isRelay && bestIsRelay);
+          if (better) {
+            bestRtt = report.currentRoundTripTime;
+            bestIsRelay = isRelay;
+            bestNominated = nominated;
           }
         });
-        if (rtt != null) setPing(Math.round(rtt * 1000));
+        if (bestRtt != null) setPing(Math.round(bestRtt * 1000));
       } catch {
         /* ignore */
       }
