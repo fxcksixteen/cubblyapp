@@ -515,6 +515,26 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     if (!user) return;
+
+    // v0.3.19: One-shot cleanup of MY own ghost call_participants rows from a
+    // prior crash / power loss / abrupt disconnect. Without this, every time
+    // I reopened Cubbly I was treated as "still in" some past call — which
+    // made the rejoin/join pill never appear for the other side and made my
+    // sidebar show me as in a call I was never in.
+    void (async () => {
+      try {
+        const cutoff = new Date(Date.now() - 30_000).toISOString();
+        await supabase
+          .from("call_participants")
+          .update({ left_at: new Date().toISOString() } as any)
+          .eq("user_id", user.id)
+          .is("left_at", null)
+          .or(`last_seen_at.is.null,last_seen_at.lt.${cutoff}`);
+      } catch (e) {
+        console.warn("[Voice] startup ghost cleanup failed:", e);
+      }
+    })();
+
     supabase
       .from("call_events")
       .select("*")
