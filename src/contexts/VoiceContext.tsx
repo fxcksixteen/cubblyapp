@@ -3149,6 +3149,88 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     return () => clearInterval(interval);
   }, [activeCall?.state]);
 
+  // v0.3.19: Expose a one-shot diagnostics snapshot for the call info modal.
+  const getCallDiagnostics = useCallback(async (): Promise<CallDiagnostics | null> => {
+    const pc = pcRef.current;
+    if (!pc) return null;
+    const maskAddr = (a?: string) => {
+      if (!a) return "—";
+      // IPv4: x.x.x.* ; IPv6: keep first 4 hextets
+      if (a.includes(":")) {
+        const parts = a.split(":");
+        return parts.slice(0, 4).join(":") + "::*";
+      }
+      const parts = a.split(".");
+      if (parts.length === 4) return `${parts[0]}.${parts[1]}.${parts[2]}.*`;
+      return a;
+    };
+    try {
+      const stats = await pc.getStats();
+      // Pick best candidate pair, same logic as ping poll
+      let bestPair: any = null;
+      let bestRank = -1;
+      stats.forEach((r: any) => {
+        if (r.type !== "candidate-pair" || r.state !== "succeeded") return;
+        const local = stats.get(r.localCandidateId) as any;
+        const remote = stats.get(r.remoteCandidateId) as any;
+        const isRelay = local?.candidateType === "relay" || remote?.candidateType === "relay";
+        const rank = (r.nominated ? 10 : 0) + (!isRelay ? 5 : 0) + (typeof r.currentRoundTripTime === "number" ? 1 : 0);
+        if (rank > bestRank) { bestRank = rank; bestPair = { r, local, remote, isRelay }; }
+      });
+      let inbound: any = null, outbound: any = null, inboundCodec: any = null, outboundCodec: any = null;
+      stats.forEach((r: any) => {
+        if (r.type === "inbound-rtp" && r.kind === "audio") inbound = r;
+        if (r.type === "outbound-rtp" && r.kind === "audio") outbound = r;
+      });
+      if (inbound?.codecId) inboundCodec = stats.get(inbound.codecId);
+      if (outbound?.codecId) outboundCodec = stats.get(outbound.codecId);
+
+      const local = bestPair?.local;
+      const remote = bestPair?.remote;
+      // Try to extract TURN server hostname from configured ICE servers when relayed
+      let turnServerHost: string | undefined;
+      if (bestPair?.isRelay) {
+        const turn = (iceServersRef.current || []).find((s: any) =>
+          (Array.isArray(s.urls) ? s.urls : [s.urls]).some((u: string) => u?.startsWith("turn:") || u?.startsWith("turns:"))
+        ) as any;
+        if (turn) {
+          const url: string = Array.isArray(turn.urls) ? turn.urls[0] : turn.urls;
+          turnServerHost = url.replace(/^turns?:/, "").split("?")[0];
+        }
+      }
+      return {
+        localCandidateType: local?.candidateType || "—",
+        remoteCandidateType: remote?.candidateType || "—",
+        localProtocol: local?.protocol || "—",
+        remoteProtocol: remote?.protocol || "—",
+        localAddress: maskAddr(local?.address || local?.ip),
+        remoteAddress: maskAddr(remote?.address || remote?.ip),
+        relayProtocol: local?.relayProtocol,
+        isRelay: !!bestPair?.isRelay,
+        nominated: !!bestPair?.r?.nominated,
+        currentRttMs: typeof bestPair?.r?.currentRoundTripTime === "number" ? Math.round(bestPair.r.currentRoundTripTime * 1000) : null,
+        connectionState: pc.connectionState,
+        iceConnectionState: pc.iceConnectionState,
+        iceGatheringState: pc.iceGatheringState,
+        signalingState: pc.signalingState,
+        inboundCodec: inboundCodec?.mimeType,
+        inboundJitterMs: typeof inbound?.jitter === "number" ? Math.round(inbound.jitter * 1000) : undefined,
+        inboundPacketsLost: inbound?.packetsLost,
+        inboundPacketsReceived: inbound?.packetsReceived,
+        inboundBytesReceived: inbound?.bytesReceived,
+        inboundAudioLevel: inbound?.audioLevel,
+        outboundCodec: outboundCodec?.mimeType,
+        outboundBytesSent: outbound?.bytesSent,
+        outboundPacketsSent: outbound?.packetsSent,
+        serverRegion: detectedRegion || settings.serverRegion || "auto",
+        turnServerHost,
+      };
+    } catch {
+      return null;
+    }
+  }, [detectedRegion, settings.serverRegion]);
+
+
   // When the app/tab closes mid-call, mark our own participant row as left.
   // Do NOT force-end the entire call_event — that was kicking the other user
   // out whenever we backgrounded a mobile tab / minimized / hit bfcache.
