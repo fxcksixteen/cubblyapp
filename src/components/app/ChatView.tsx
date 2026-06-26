@@ -362,15 +362,12 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
     const ids = ongoingIdsForChat ? ongoingIdsForChat.split(",") : [];
     if (ids.length === 0) { setRejoinableEventIds(new Set()); return; }
 
-    const computeFor = async (eventId: string): Promise<boolean> => {
+    const computeFor = async (eventId: string): Promise<{ canRejoin: boolean; everJoined: boolean }> => {
       const { data } = await supabase
         .from("call_participants")
         .select("user_id, left_at, last_seen_at")
         .eq("call_event_id", eventId);
-      if (!data) return false;
-      // Liveness: left_at IS NULL AND last_seen_at within last 30s. Without
-      // the freshness check, a crashed/suspended client leaves a ghost row
-      // forever and the rejoin button shows up for a call nobody is in.
+      if (!data) return { canRejoin: false, everJoined: false };
       const FRESH_MS = 30_000;
       const now = Date.now();
       const isLive = (r: any) =>
@@ -379,20 +376,23 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
       const myRow = data.find(r => r.user_id === user.id);
       const iAmInCall = !!myRow && isLive(myRow);
       const otherLive = data.some(r => r.user_id !== user.id && isLive(r));
-      // If nobody is live at all, opportunistically end the stale event so
-      // the next voice/video click starts a fresh call instead of joining a ghost.
       if (!data.some(isLive)) {
         try { await (supabase as any).rpc("end_call_event_if_stale", { _call_event_id: eventId }); } catch {}
       }
-      return otherLive && !iAmInCall;
+      return { canRejoin: otherLive && !iAmInCall, everJoined: !!myRow };
     };
 
     const recompute = async () => {
       const results = await Promise.all(ids.map(async id => [id, await computeFor(id)] as const));
       if (cancelled) return;
-      const next = new Set<string>();
-      for (const [id, ok] of results) if (ok) next.add(id);
-      setRejoinableEventIds(next);
+      const rejoin = new Set<string>();
+      const never = new Set<string>();
+      for (const [id, r] of results) {
+        if (r.canRejoin) rejoin.add(id);
+        if (r.canRejoin && !r.everJoined) never.add(id);
+      }
+      setRejoinableEventIds(rejoin);
+      setNeverJoinedEventIds(never);
     };
     void recompute();
 
