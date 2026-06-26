@@ -128,18 +128,41 @@ const SidebarVoiceCard = ({ conversations, onOpenCall }: Props) => {
             {stateLabel}
           </span>
         </button>
-        <TooltipProvider delayDuration={150}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button className="ml-2 rounded p-0.5 cursor-help" aria-label="Network ping">
-                <PingBars ping={ping} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="top" className="text-xs">
-              Ping: {formatPing(ping)}
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        <div className="flex flex-col items-end gap-0.5 ml-2">
+          <TooltipProvider delayDuration={150}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button className="rounded p-0.5 cursor-help" aria-label="Network ping">
+                  <PingBars ping={ping} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">
+                Ping: {formatPing(ping)}
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => setShowDiagnostics(true)}
+                  className="flex items-center gap-0.5 rounded px-1 py-[1px] transition-colors"
+                  style={{
+                    backgroundColor: "rgba(255,255,255,0.06)",
+                    color: "var(--app-text-secondary, #949ba4)",
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.12)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.06)")}
+                  aria-label="Open call diagnostics"
+                >
+                  <Activity className="h-[9px] w-[9px]" />
+                  <span className="text-[9px] font-semibold uppercase tracking-wide leading-none">Info</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">
+                Call diagnostics
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
       </div>
 
       <button
