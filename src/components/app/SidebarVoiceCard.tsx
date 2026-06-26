@@ -3,6 +3,8 @@ import { useVoice } from "@/contexts/VoiceContext";
 import { Conversation } from "@/hooks/useConversations";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import ScreenSharePicker, { ScreenShareType } from "./ScreenSharePicker";
+import CallDiagnosticsModal from "./CallDiagnosticsModal";
+import { Activity } from "lucide-react";
 import callEndIcon from "@/assets/icons/call-end.svg";
 import videoIcon from "@/assets/icons/video-camera.svg";
 import screenshareIcon from "@/assets/icons/screenshare.svg";
