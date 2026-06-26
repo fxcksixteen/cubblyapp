@@ -107,6 +107,9 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
    * brand-new outgoing calls and for "ongoing" events that nobody was actually in.
    */
   const [rejoinableEventIds, setRejoinableEventIds] = useState<Set<string>>(new Set());
+  // v0.3.19: events I'm eligible to JOIN but have NEVER been a participant in.
+  // Renders as "Join Call" instead of "Rejoin" — same exact action.
+  const [neverJoinedEventIds, setNeverJoinedEventIds] = useState<Set<string>>(new Set());
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const allMessageIds = messages.map((m) => m.id).filter((id) => !id.startsWith("temp-"));
   const { aggregate: aggregateReactions, toggle: toggleReaction } = useMessageReactions(
