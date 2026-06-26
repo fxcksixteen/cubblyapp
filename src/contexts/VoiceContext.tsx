@@ -3304,6 +3304,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       ping,
       peerInstantState,
       getUserVolume, setUserVolume, isUserMuted, setUserMuted,
+      getCallDiagnostics,
     }}>
       {children}
     </VoiceContext.Provider>
