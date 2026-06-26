@@ -63,6 +63,7 @@ const SidebarVoiceCard = ({ conversations, onOpenCall }: Props) => {
   // Local picker state so the bottom-corner Share button opens the same
   // chooser as the call panel button (not just full-screen by default).
   const [showSharePicker, setShowSharePicker] = useState(false);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
 
   useEffect(() => {
     if (!activeCall?.startedAt) { setElapsed(0); return; }
