@@ -2014,24 +2014,163 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   // on the kaszy ↔ geassbound DM. Dismiss the ring, stop the ringtone, then
   // hand off to startCall which will see the existing ongoing call_event,
   // join as a participant, and run the same handshake the rejoin pill uses.
+  // v0.3.19: green Accept button now takes a direct, deterministic path
+  // instead of routing through startCall (which does an expensive DB liveness
+  // probe that intermittently caused the receiver to silently soft-close the
+  // caller before joining — the "green button does nothing" symptom).
+  //   1. Stop ring + dismiss locally.
+  //   2. Set activeCall=calling immediately so UI flips off the ring view.
+  //   3. Heartbeat our participant row so the caller sees us live.
+  //   4. Reuse / create the signaling channel for this conversation.
+  //   5. If the caller's offer was already prefetched (incomingCall.offer),
+  //      build the PC and answer it RIGHT NOW — single round trip.
+  //      Otherwise stash acceptedIncomingCallRef and send ready-for-offer;
+  //      the existing offer-handler (line ~1264) finishes the handshake.
   const acceptCall = useCallback(async () => {
     if (!incomingCall || !user) return;
     const acceptedCall = incomingCall;
-    console.log("[Voice] ✅ Accepting call (rejoin-style) from", acceptedCall.callerName);
+    console.log("[Voice] ✅ Accepting call (direct path) from", acceptedCall.callerName);
+
     try {
       stopLooping("incomingCall");
-      setIncomingCall(null);
-      acceptedIncomingCallRef.current = null;
       try { void broadcastIncomingCallDismiss(acceptedCall.conversationId, acceptedCall.callEventId); } catch {}
-      await startCallRef.current?.(
-        acceptedCall.conversationId,
-        acceptedCall.callerId,
-        acceptedCall.callerName,
-      );
+
+      // Flip UI to "calling" immediately so the user gets feedback even before
+      // the SDP round-trip finishes.
+      setActiveCall({
+        conversationId: acceptedCall.conversationId,
+        peerId: acceptedCall.callerId,
+        peerName: acceptedCall.callerName,
+        state: "calling",
+        isMuted: false,
+        isDeafened: false,
+        isVideoOn: false,
+      });
+      activeCallRef.current = {
+        conversationId: acceptedCall.conversationId,
+        peerId: acceptedCall.callerId,
+        peerName: acceptedCall.callerName,
+        state: "calling",
+        isMuted: false,
+        isDeafened: false,
+        isVideoOn: false,
+      };
+      peerIdRef.current = acceptedCall.callerId;
+      setCurrentCallEventId(acceptedCall.callEventId);
+      isRemoteHangup.current = false;
+
+      // Heartbeat now so caller's live-peer check flips us to "in call".
+      try { await ensureOwnParticipantRow(acceptedCall.callEventId); } catch {}
+
+      const channel = await setupSignaling(acceptedCall.conversationId);
+
+      // FAST PATH — caller's offer was prefetched during the pre-accept
+      // ready-for-offer. Just answer it.
+      if (acceptedCall.offer) {
+        console.log("[Voice] ⚡ Using prefetched offer — direct answer");
+        try {
+          incomingCandidateQueue.current = [];
+          outgoingCandidateBuffer.current = [];
+          remoteDescriptionSet.current = false;
+
+          const stream = await getUserMedia();
+          setLocalStream(stream);
+          localStreamRef.current = stream;
+          originalMicTrackRef.current = stream.getAudioTracks()[0] || null;
+          startAudioLevelMonitor(stream);
+
+          const pc = createPeerConnection();
+          stream.getTracks().forEach(t => pc.addTrack(t, stream));
+          pc.onicecandidate = (event) => {
+            if (event.candidate) {
+              channel.send({
+                type: "broadcast",
+                event: "voice-signal",
+                payload: { type: "ice-candidate", candidate: event.candidate.toJSON(), senderId: user.id },
+              });
+            }
+          };
+
+          remoteDescriptionSet.current = true;
+          await pc.setRemoteDescription(new RTCSessionDescription(acceptedCall.offer));
+          await flushQueuedIceCandidates(pc);
+
+          const answer = await pc.createAnswer();
+          let sdp = answer.sdp || "";
+          sdp = setHighQualityOpus(sdp);
+          answer.sdp = sdp;
+          await pc.setLocalDescription(answer);
+          await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id }, "answer(accept-direct)");
+          if (acceptedCall.callEventId) lastAnsweredOfferRef.current = acceptedCall.callEventId;
+
+          setIncomingCall(null);
+          acceptedIncomingCallRef.current = null;
+          // Second heartbeat after answer so the caller's UI updates quickly.
+          void (async () => {
+            try { await (supabase as any).rpc("heartbeat_call_participant", { _call_event_id: acceptedCall.callEventId }); } catch {}
+          })();
+          return;
+        } catch (e) {
+          console.error("[Voice] Direct-answer accept failed, falling back to ready-for-offer:", e);
+          // fall through
+        }
+      }
+
+      // SLOW PATH — no cached offer yet. Stash acceptedIncomingCallRef so the
+      // standard offer handler picks it up, then ask the caller to (re)send.
+      acceptedIncomingCallRef.current = {
+        conversationId: acceptedCall.conversationId,
+        callerId: acceptedCall.callerId,
+        callerName: acceptedCall.callerName,
+        callEventId: acceptedCall.callEventId,
+      };
+
+      // Prepare a fresh PC + tracks BEFORE the offer arrives so the offer
+      // handler at line ~1264 can answer it without re-checking pc existence.
+      try {
+        if (!pcRef.current) {
+          const stream = await getUserMedia();
+          setLocalStream(stream);
+          localStreamRef.current = stream;
+          originalMicTrackRef.current = stream.getAudioTracks()[0] || null;
+          startAudioLevelMonitor(stream);
+          const pc = createPeerConnection();
+          stream.getTracks().forEach(t => pc.addTrack(t, stream));
+          pc.onicecandidate = (event) => {
+            if (event.candidate) {
+              channel.send({
+                type: "broadcast",
+                event: "voice-signal",
+                payload: { type: "ice-candidate", candidate: event.candidate.toJSON(), senderId: user.id },
+              });
+            }
+          };
+        }
+      } catch (e) {
+        console.warn("[Voice] could not pre-build PC on accept:", e);
+      }
+
+      const sendReady = () => {
+        void sendSignalReliably(channel, {
+          type: "ready-for-offer",
+          senderId: user.id,
+          senderName: user.user_metadata?.display_name || "User",
+          callEventId: acceptedCall.callEventId,
+        }, "ready-for-offer(accept)");
+      };
+      sendReady();
+      [400, 1200, 2500, 4500].forEach(ms => {
+        setTimeout(() => {
+          if (remoteDescriptionSet.current) return;
+          console.log(`[Voice] 🔁 Accept re-sending ready-for-offer (+${ms}ms)`);
+          try { sendReady(); } catch {}
+        }, ms);
+      });
+      setIncomingCall(null);
     } catch (e) {
-      console.error("Failed to accept call (rejoin-style):", e);
+      console.error("Failed to accept call (direct path):", e);
     }
-  }, [incomingCall, user, broadcastIncomingCallDismiss]);
+  }, [incomingCall, user, broadcastIncomingCallDismiss, ensureOwnParticipantRow, setupSignaling, getUserMedia, createPeerConnection, startAudioLevelMonitor]);
 
 
   // Screen share loopback ref for bot calls
