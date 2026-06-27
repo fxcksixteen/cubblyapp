@@ -288,19 +288,26 @@ const SharedNoteModal = ({ payload, isOwn, onClose }: { payload: SharedNotePaylo
           {payload.body?.trim() || "(empty)"}
         </div>
 
-        <div className="px-5 py-3 border-t text-[11px] flex items-center gap-2" style={{ borderColor: "#2b2d31", color: "var(--app-text-secondary)" }}>
-          {payload.viewOnce
-            ? (
-              <>
-                <Flame className="h-3.5 w-3.5 shrink-0" style={{ color: accent }} />
-                <span className="leading-snug">
-                  {isOwn
-                    ? "Recipient can open this once. On desktop, the app blocks screen-capture tools while it's open; on web, screenshots can't be prevented."
-                    : "Closing burns this for good. Copy, select & right-click are off. On the desktop app, screenshot tools see only a black window."}
-                </span>
-              </>
-            )
-            : "Shared from a personal note."}
+        <div className="px-5 py-3 border-t flex items-center gap-3" style={{ borderColor: "#2b2d31" }}>
+          <div className="text-[11px] flex items-center gap-2 flex-1 min-w-0" style={{ color: "var(--app-text-secondary)" }}>
+            {payload.viewOnce
+              ? (
+                <>
+                  <Flame className="h-3.5 w-3.5 shrink-0" style={{ color: accent }} />
+                  <span className="leading-snug">
+                    {isOwn
+                      ? "Recipient can open this once. On desktop, the app blocks screen-capture tools while it's open; on web, screenshots can't be prevented."
+                      : "Closing burns this for good. Copy, select & right-click are off. On the desktop app, screenshot tools see only a black window."}
+                  </span>
+                </>
+              )
+              : payload.live
+                ? (<><Radio className="h-3.5 w-3.5 shrink-0" style={{ color: accent }} /><span>Live · updates as the sender edits.</span></>)
+                : <span>Shared from a personal note.</span>}
+          </div>
+          {!isOwn && !payload.viewOnce && payload.allowSave && (
+            <SaveToNotesButton payload={payload} />
+          )}
         </div>
       </div>
     </div>
