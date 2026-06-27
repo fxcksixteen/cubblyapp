@@ -659,12 +659,33 @@ const ShareNoteModal = ({ note, onClose }: { note: NoteRow; onClose: () => void 
   const { user } = useAuth();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [viewOnce, setViewOnce] = useState(false);
+  // v0.3.21: "Live edits" — sender's later edits to this note propagate to all
+  // already-shared copies (last-write-wins). Mutually exclusive with viewOnce.
+  const [live, setLive] = useState(false);
+  // v0.3.21: "Allow recipient to save" — adds a "Save to my notes" button on
+  // the recipient's card. Always off for view-once notes.
+  const [allowSave, setAllowSave] = useState(true);
   const [sending, setSending] = useState(false);
   const [query, setQuery] = useState("");
 
   const title = note.decrypted?.title || "Untitled";
   const bodyPlain = stripHtml(note.decrypted?.body || "").trim();
   const previewBody = bodyPlain.slice(0, 140) || "(empty note)";
+
+  // Enforce mutual exclusions in one place so toggling can never produce an
+  // invalid combination (e.g. view-once + live).
+  const onToggleViewOnce = (next: boolean) => {
+    setViewOnce(next);
+    if (next) { setLive(false); setAllowSave(false); }
+  };
+  const onToggleLive = (next: boolean) => {
+    setLive(next);
+    if (next) setViewOnce(false);
+  };
+  const onToggleAllowSave = (next: boolean) => {
+    setAllowSave(next);
+    if (next) setViewOnce(false);
+  };
 
   const toggle = (id: string) =>
     setSelectedIds((prev) => {
@@ -689,18 +710,28 @@ const ShareNoteModal = ({ note, onClose }: { note: NoteRow; onClose: () => void 
     setSending(true);
     try {
       const body = bodyPlain || "(empty)";
-      const payload = JSON.stringify({ title, body, viewOnce });
+      const payload = JSON.stringify({
+        title,
+        body,
+        viewOnce,
+        live: viewOnce ? false : live,
+        allowSave: viewOnce ? false : allowSave,
+        noteId: note.id,
+      });
       const content = `[[cubbly:shared-note:v1]]${payload}`;
       const rows = Array.from(selectedIds).map((conversation_id) => ({
         conversation_id,
         sender_id: user.id,
         content,
+        // Only stamp note_ref when live-sync is on — that's the only case
+        // where the server needs to find these rows again to update them.
+        ...(live && !viewOnce ? { note_ref: note.id } : {}),
       } as any));
       const { error } = await supabase.from("messages").insert(rows);
       if (error) throw error;
       toast.success(
         selectedIds.size === 1
-          ? (viewOnce ? "View-once note sent" : "Note shared")
+          ? (viewOnce ? "View-once note sent" : live ? "Live note shared" : "Note shared")
           : `Shared to ${selectedIds.size} chats`
       );
       onClose();
