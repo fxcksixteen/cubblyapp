@@ -2509,6 +2509,14 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       // Normal call: send via signaling channel
       if (!channelRef.current) return;
 
+      // v0.3.21: defense — close any stale outgoing PC from a prior share so
+      // we never end up with two screen-out PCs racing each other (peer would
+      // answer one offer and ignore the other, leaving the viewer black).
+      if (screenPcOutRef.current) {
+        try { screenPcOutRef.current.close(); } catch {}
+        screenPcOutRef.current = null;
+      }
+
       const screenPc = new RTCPeerConnection({ iceServers: iceServersRef.current });
       screenPcOutRef.current = screenPc;
 
