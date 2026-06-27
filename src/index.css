@@ -446,3 +446,30 @@ html[data-keyboard-outlines="false"] *:focus-visible { outline: none !important;
 
 /* Zoom (set by AccessibilitySettings) */
 html { zoom: var(--app-zoom, 1); }
+
+/* ============================================================
+   v0.3.21 — Low-power mode
+   Applied to <html> when hardware acceleration is disabled in
+   the Electron desktop app. Strips out every effect that forces
+   Chromium onto the slow software-renderer paths (backdrop-blur,
+   big box-shadows, transform animations) — gigantic FPS win on
+   machines that needed HA-off in the first place.
+   ============================================================ */
+html.cubbly-low-power * {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+html.cubbly-low-power *,
+html.cubbly-low-power *::before,
+html.cubbly-low-power *::after {
+  /* Kill expensive blurs, glow shadows, and decorative filters. */
+  filter: none !important;
+}
+html.cubbly-low-power *:not(.cubbly-keep-shadow) {
+  box-shadow: none !important;
+}
+html.cubbly-low-power * {
+  /* Disable non-essential transitions/animations; keep opacity/colors snappy. */
+  transition-duration: 0ms !important;
+  animation-duration: 0ms !important;
+}
