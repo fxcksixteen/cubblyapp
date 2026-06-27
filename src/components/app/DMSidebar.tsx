@@ -425,6 +425,15 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                     <X className="h-4 w-4" />
                     {conv.is_group ? "Hide Group" : "Close DM"}
                   </ContextMenuItem>
+                  {conv.is_group && (
+                    <ContextMenuItem
+                      onClick={() => handleLeaveGroup(conv.id, conv.name || "Group")}
+                      className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#ed4245] hover:bg-[#ed4245] hover:text-white cursor-pointer"
+                    >
+                      <img src={removeUserIcon} alt="" className="h-4 w-4" style={{ filter: "invert(36%) sepia(93%) saturate(7471%) hue-rotate(348deg) brightness(101%) contrast(88%)" }} />
+                      Leave Group
+                    </ContextMenuItem>
+                  )}
                   {!conv.is_group && (
                     <>
                       <ContextMenuSeparator className="my-1" style={{ backgroundColor: "var(--app-border, #2b2d31)" }} />
