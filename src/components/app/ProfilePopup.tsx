@@ -49,7 +49,7 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
         setBannerUrl((data as any).banner_url || null);
       });
     const channel = supabase
-      .channel(`profile-popup:${user.id}`)
+      .channel(`profile-popup:${user.id}:${Math.random().toString(36).slice(2)}`)
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "profiles", filter: `user_id=eq.${user.id}` },
