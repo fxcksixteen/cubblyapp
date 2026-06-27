@@ -669,8 +669,10 @@ const ShareNoteModal = ({ note, onClose }: { note: NoteRow; onClose: () => void 
     try {
       const title = note.decrypted?.title || "Untitled note";
       const body = stripHtml(note.decrypted?.body || "").trim();
-      const header = viewOnce ? `👁 Shared a one-time-view note` : `📝 Shared a personal note`;
-      const content = `${header}\n\n**${title}**\n\n${body || "(empty)"}`;
+      // Encode as a structured marker so the chat renderer can show a
+      // proper card (and enforce view-once on the recipient device).
+      const payload = JSON.stringify({ title, body: body || "(empty)", viewOnce });
+      const content = `[[cubbly:shared-note:v1]]${payload}`;
       const { error } = await supabase.from("messages").insert({
         conversation_id: selectedConvId,
         sender_id: user.id,
