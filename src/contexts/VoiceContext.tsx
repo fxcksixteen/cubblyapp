@@ -1581,6 +1581,17 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         }
 
         if (payload.type === "screen-offer") {
+          // v0.3.21: when a peer stops + restarts their share within the same
+          // call, a fresh `screen-offer` arrives. Close any prior incoming PC
+          // and clear remoteScreenStream first, otherwise the new offer/answer
+          // exchange races against a still-open stale PC and the viewer ends
+          // up showing a frozen first frame (or nothing at all). This is the
+          // "screenshare invisible after toggle" fix.
+          if (screenPcInRef.current) {
+            try { screenPcInRef.current.close(); } catch {}
+            screenPcInRef.current = null;
+            setRemoteScreenStream(null);
+          }
           const screenPc = new RTCPeerConnection({ iceServers: iceServersRef.current });
           screenPc.ontrack = (event) => {
             const remoteScreen = event.streams[0];
