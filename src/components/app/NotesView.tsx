@@ -1424,6 +1424,15 @@ const NoteEditor = ({ note, onBack, onRequestDelete, onShare }: { note: NoteRow;
         >
           {note.pinned ? <PinOff className="h-4 w-4" style={{ color: "var(--app-text-secondary)" }} /> : <Pin className="h-4 w-4" style={{ color: "var(--app-text-secondary)" }} />}
         </button>
+        {onShare && (
+          <button
+            onClick={() => onShare()}
+            className="flex h-8 w-8 items-center justify-center rounded transition-colors active:bg-[var(--app-hover)]"
+            title="Share note"
+          >
+            <Share2 className="h-4 w-4" style={{ color: "var(--app-text-secondary)" }} />
+          </button>
+        )}
         <button
           onClick={() => onRequestDelete?.()}
           className="flex h-8 w-8 items-center justify-center rounded transition-colors active:bg-[var(--app-hover)]"
