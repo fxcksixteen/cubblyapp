@@ -558,6 +558,7 @@ const NoteListItem = ({
   onTogglePin,
   onDuplicate,
   onCopyText,
+  onShare,
   onRequestDelete,
 }: {
   note: NoteRow;
@@ -566,6 +567,7 @@ const NoteListItem = ({
   onTogglePin: () => void;
   onDuplicate: () => void;
   onCopyText: () => void;
+  onShare: () => void;
   onRequestDelete: () => void;
 }) => {
   const title = note.decrypted?.title || (note.decryptError ? "🔒 Decryption error" : "Untitled");
@@ -621,6 +623,13 @@ const NoteListItem = ({
         >
           <Copy className="h-4 w-4" />
           Copy Text
+        </ContextMenuItem>
+        <ContextMenuItem
+          onClick={onShare}
+          className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer"
+        >
+          <Share2 className="h-4 w-4" />
+          Share Note…
         </ContextMenuItem>
         <ContextMenuSeparator className="my-1" style={{ backgroundColor: "var(--app-border, #2b2d31)" }} />
         <ContextMenuItem
