@@ -92,18 +92,6 @@ const ServerView = () => {
   const [membersCollapsed, setMembersCollapsed] = useState(false);
   const [profileCard, setProfileCard] = useState<{ userId: string; name: string; x: number; y: number } | null>(null);
 
-  // Split members into Online / Offline so the panel mirrors Discord's
-  // collapsible role groups.
-  const { onlineMembers, offlineMembers } = useMemo(() => {
-    const on: typeof members = [];
-    const off: typeof members = [];
-    for (const m of members) {
-      const s = getEffectivePresenceStatus(m.user_id, m.status, onlineUserIds);
-      if (s === "offline" || s === "invisible") off.push(m); else on.push(m);
-    }
-    return { onlineMembers: on, offlineMembers: off };
-  }, [members, onlineUserIds]);
-
   const onLeave = async () => {
     if (!server || !user) return;
     if (isOwner) {
