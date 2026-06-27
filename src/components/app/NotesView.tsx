@@ -1491,6 +1491,18 @@ const NoteEditor = ({ note, onBack, onRequestDelete, onShare }: { note: NoteRow;
           onDragLeave={onEditorDragLeave}
           onDrop={onEditorDrop}
           onPaste={onEditorPaste}
+          onCopy={(e) => {
+            // Guarantee Ctrl/Cmd+C copies the current selection from the
+            // contenteditable. Some embedded media nodes can otherwise
+            // swallow the native copy behavior.
+            const sel = window.getSelection?.()?.toString() ?? "";
+            if (sel) {
+              try {
+                e.clipboardData.setData("text/plain", sel);
+                e.preventDefault();
+              } catch { /* let browser handle it */ }
+            }
+          }}
           onDragStart={(e) => e.preventDefault()}
           className="px-6 py-4 outline-none prose prose-sm max-w-none"
           style={{
