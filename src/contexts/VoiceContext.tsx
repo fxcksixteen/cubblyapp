@@ -135,9 +135,12 @@ async function applyScreenBitrate(sender: RTCRtpSender, maxBitrate: number) {
     (params.encodings[0] as any).maxFramerate = (params.encodings[0] as any).maxFramerate ?? 60;
     (params.encodings[0] as any).networkPriority = "medium";
     (params.encodings[0] as any).priority = "medium";
-    // balanced → drop both FPS and resolution as needed; "maintain-resolution"
-    // was forcing resolution and starving the voice transceiver of bandwidth.
-    (params as any).degradationPreference = "balanced";
+    // maintain-framerate → drop resolution before frames. This is what stops
+    // Marvel-Rivals-style fast-motion gameplay from looking like a slideshow:
+    // a steady 30/60 fps at a lower res reads as smoother than full-res at
+    // 8 fps. Previous "balanced" was letting the encoder collapse FPS first,
+    // which is exactly the "starts choppy and slowly improves" symptom.
+    (params as any).degradationPreference = "maintain-framerate";
     await sender.setParameters(params);
   } catch (e) {
     console.warn("[Voice] Could not set screen encoding bitrate:", e);
@@ -2122,8 +2125,22 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       // FAST PATH — caller's offer was prefetched during the pre-accept
       // ready-for-offer. Just answer it.
       if (acceptedCall.offer) {
-        console.log("[Voice] ⚡ Using prefetched offer — direct answer");
+        console.log("[acceptDiag] ⚡ Using prefetched offer — direct answer", {
+          callEventId: acceptedCall.callEventId,
+          existingPc: !!pcRef.current,
+          existingPcState: pcRef.current?.connectionState,
+          existingSignalingState: pcRef.current?.signalingState,
+        });
         try {
+          // CRITICAL: tear down any stale PC from a previous (failed) accept
+          // attempt or pre-build, otherwise createPeerConnection silently
+          // orphans it AND its tracks stay attached to nothing — that was
+          // the root cause of "green pickup does nothing".
+          if (pcRef.current) {
+            console.log("[acceptDiag] closing stale pcRef before fast-path PC");
+            try { pcRef.current.close(); } catch {}
+            pcRef.current = null;
+          }
           incomingCandidateQueue.current = [];
           outgoingCandidateBuffer.current = [];
           remoteDescriptionSet.current = false;
@@ -2526,13 +2543,17 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
 
   const stopScreenShare = useCallback(() => {
-    const wasSharing = screenStream !== null || isScreenSharing;
+    // Always play the stop sound when stopScreenShare is invoked, regardless
+    // of whether React state has already been flipped. Previously the guard
+    // (`wasSharing`) was racing with `track.onended` firing AFTER state was
+    // cleared by an earlier stopScreenShare call → no sound when the user
+    // closed the shared window/app externally.
+    try { playSound("screenshareStop", { volume: 0.4 }); } catch {}
     screenStream?.getTracks().forEach(t => t.stop());
     setScreenStream(null);
     setIsScreenSharing(false);
     // NOTE: do NOT clear remoteScreenStream here — that belongs to the peer's
     // share and must stay alive when WE stop ours (Discord-style multi-stream).
-    if (wasSharing) playSound("screenshareStop", { volume: 0.4 });
 
     // Tear down native per-window audio if it was active
     if (nativeWindowAudioStopRef.current) {

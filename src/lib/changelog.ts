@@ -23,10 +23,26 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.3.19";
+export const CURRENT_VERSION = "0.3.20";
 
 export const CHANGELOG: ChangelogEntry[] = [
-
+  {
+    version: "0.3.20",
+    title: "Call pickup overhaul + screenshare smoothness",
+    date: "2026-04-22",
+    hero: bearImage,
+    newFeatures: [
+      "Muted DMs/groups are now fully blurred in the sidebar and reveal on hover.",
+      "Right-clicking a group chat now offers a 'Leave Group' option (permanent), in addition to 'Hide'.",
+      "Screenshare end sound now plays reliably even when the shared window is closed externally.",
+      "Installer trims landing-page background videos (~4.5 MB) that the desktop shell never displays.",
+    ],
+    bugFixes: [
+      "Rewrote the green pickup-call accept path with explicit teardown of any stale RTCPeerConnection before answering — fixes 'accept does nothing' on direct calls.",
+      "Screenshare degradationPreference is now 'maintain-framerate' in motion/ultra mode so games stay smooth instead of starting choppy and slowly recovering.",
+      "Verbose [acceptDiag] / [shareDiag] logging added to capture the exact failure surface for the kaszy↔geassbound call.",
+    ],
+  },
   {
     version: "0.3.19",
     date: "2026-06-27",
