@@ -416,13 +416,19 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   // v0.3.17: play the screenshare start/stop SFX for the OTHER peer too —
   // previously only the user who initiated/ended the share heard it.
   const prevRemoteScreenRef = useRef<MediaStream | null>(null);
+  // v0.3.21: when teardown is caused by a peer-leave (not a screenshare-end
+  // event), suppress the screenshareStop SFX so the staying user doesn't hear
+  // a "stream ended" sound on top of their friend leaving the call.
+  const suppressNextRemoteScreenSfxRef = useRef<boolean>(false);
   useEffect(() => {
     const prev = prevRemoteScreenRef.current;
+    const suppress = suppressNextRemoteScreenSfxRef.current;
     if (!prev && remoteScreenStream) {
-      try { playSound("screenshareStart", { volume: 0.4 }); } catch {}
+      if (!suppress) { try { playSound("screenshareStart", { volume: 0.4 }); } catch {} }
     } else if (prev && !remoteScreenStream) {
-      try { playSound("screenshareStop", { volume: 0.4 }); } catch {}
+      if (!suppress) { try { playSound("screenshareStop", { volume: 0.4 }); } catch {} }
     }
+    suppressNextRemoteScreenSfxRef.current = false;
     prevRemoteScreenRef.current = remoteScreenStream;
   }, [remoteScreenStream]);
 
@@ -1498,6 +1504,14 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             return;
           }
           console.log("[Voice] 👋 Peer left — keeping call alive locally; hard-resetting signaling state");
+          // v0.3.21: play "left call" SFX for the staying user so they know
+          // their friend dropped (previously only the leaver themselves heard
+          // a SFX). And suppress the next screenshareStop SFX so we don't
+          // stack "stream ended" on top of it when the peer was sharing.
+          if (prevRemoteScreenRef.current) {
+            suppressNextRemoteScreenSfxRef.current = true;
+          }
+          try { playSound("leaveCall", { volume: 0.45 }); } catch {}
           try { pcRef.current?.close(); } catch {}
           pcRef.current = null;
           try { screenPcOutRef.current?.close(); } catch {}
