@@ -199,6 +199,17 @@ const SharedNoteModal = ({ payload, isOwn, onClose }: { payload: SharedNotePaylo
     return () => window.removeEventListener("keydown", onKey, true);
   }, [payload.viewOnce]);
 
+  // v0.3.21: enable Electron native content-protection while a view-once note
+  // is on screen so external screenshot tools (Lightshot, Snipping Tool, OBS,
+  // Discord screenshare, etc.) capture only a black window. No-op on web.
+  useEffect(() => {
+    if (!payload.viewOnce) return;
+    const api: any = (window as any).electronAPI;
+    if (!api?.setContentProtection) return;
+    try { api.setContentProtection(true); } catch {}
+    return () => { try { api.setContentProtection(false); } catch {} };
+  }, [payload.viewOnce]);
+
   const lockProps = payload.viewOnce
     ? {
         onCopy: (e: React.ClipboardEvent) => { e.preventDefault(); },
@@ -269,10 +280,12 @@ const SharedNoteModal = ({ payload, isOwn, onClose }: { payload: SharedNotePaylo
           {payload.viewOnce
             ? (
               <>
-                <Flame className="h-3.5 w-3.5" style={{ color: accent }} />
-                {isOwn
-                  ? "Recipient can only open this note once. Copy & screenshot deterrents are on."
-                  : "Closing this will burn the note for good. Copy, select, and right-click are disabled."}
+                <Flame className="h-3.5 w-3.5 shrink-0" style={{ color: accent }} />
+                <span className="leading-snug">
+                  {isOwn
+                    ? "Recipient can open this once. On desktop, the app blocks screen-capture tools while it's open; on web, screenshots can't be prevented."
+                    : "Closing burns this for good. Copy, select & right-click are off. On the desktop app, screenshot tools see only a black window."}
+                </span>
               </>
             )
             : "Shared from a personal note."}

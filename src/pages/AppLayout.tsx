@@ -38,6 +38,7 @@ import MobileNotificationPrompt from "@/components/app/MobileNotificationPrompt"
 import CallConflictModal from "@/components/app/CallConflictModal";
 import { useActiveCallElsewhere, useRemoteHangupListener } from "@/hooks/useActiveCallElsewhere";
 import CoinPill from "@/components/app/CoinPill";
+import UserProfileCard from "@/components/app/chat/UserProfileCard";
 
 type FriendTab = "online" | "all" | "pending" | "blocked" | "add";
 
@@ -70,6 +71,9 @@ const AppLayout = () => {
   const [activeNowOpen, setActiveNowOpen] = useState(true);
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [showMembersPanel, setShowMembersPanel] = useState(true);
+  // v0.3.21: clicking the avatar/name in the DM header opens the profile card
+  // (matches every other place in the app — was the only missing surface).
+  const [headerProfileCard, setHeaderProfileCard] = useState<{ userId: string; name: string; x: number; y: number } | null>(null);
 
   // Mobile: which panel is currently slid open ("none" = main view visible)
   const [mobilePanel, setMobilePanel] = useState<"none" | "dms" | "members">("none");
@@ -555,28 +559,47 @@ const AppLayout = () => {
           <div className="flex h-14 items-center justify-between border-b px-5 shadow-sm" style={{ backgroundColor: "var(--app-bg-primary)", borderColor: "var(--app-border)" }}>
             {isDM && activeConvId && activeConv ? (
               <>
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="relative shrink-0">
-                    <GroupAvatar conversation={activeConv} size={32} />
-                    {!activeConv.is_group && (
-                      <div className="absolute -bottom-0.5 -right-0.5">
-                        <StatusIndicator status={activeParticipantStatus} size="sm" borderColor="var(--app-bg-primary)" />
+                {(() => {
+                  const clickable = !activeConv.is_group && activeParticipant;
+                  const openProfile = (e: React.MouseEvent) => {
+                    if (!clickable || !activeParticipant) return;
+                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                    setHeaderProfileCard({
+                      userId: activeParticipant.user_id,
+                      name: activeParticipant.display_name,
+                      x: rect.left,
+                      y: rect.bottom + 6,
+                    });
+                  };
+                  return (
+                    <div
+                      className={`flex items-center gap-3 min-w-0 ${clickable ? "cursor-pointer hover:opacity-90" : ""}`}
+                      onClick={openProfile}
+                      role={clickable ? "button" : undefined}
+                    >
+                      <div className="relative shrink-0">
+                        <GroupAvatar conversation={activeConv} size={32} />
+                        {!activeConv.is_group && (
+                          <div className="absolute -bottom-0.5 -right-0.5">
+                            <StatusIndicator status={activeParticipantStatus} size="sm" borderColor="var(--app-bg-primary)" />
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="truncate text-[15px] font-semibold leading-tight" style={{ color: "var(--app-text-primary)" }}>
-                      {activeConv.is_group
-                        ? (activeConv.name || activeConv.members.map((m) => m.display_name).slice(0, 3).join(", ") || "Group")
-                        : activeParticipant?.display_name || "Conversation"}
-                    </p>
-                    {activeConv.is_group && (
-                      <p className="text-[11px] leading-tight" style={{ color: "var(--app-text-secondary)" }}>
-                        {activeConv.members.length + 1} members
-                      </p>
-                    )}
-                  </div>
-                </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-[15px] font-semibold leading-tight" style={{ color: "var(--app-text-primary)" }}>
+                          {activeConv.is_group
+                            ? (activeConv.name || activeConv.members.map((m) => m.display_name).slice(0, 3).join(", ") || "Group")
+                            : activeParticipant?.display_name || "Conversation"}
+                        </p>
+                        {activeConv.is_group && (
+                          <p className="text-[11px] leading-tight" style={{ color: "var(--app-text-secondary)" }}>
+                            {activeConv.members.length + 1} members
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
                 <div className="flex items-center gap-2" style={{ color: "var(--app-text-secondary)" }}>
                   {!activeConv.is_group && (
                     <>
@@ -719,6 +742,14 @@ const AppLayout = () => {
         onConfirm={async () => { const p = conflictModal?.pending; setConflictModal(null); if (p) await p(); }}
         onCancel={() => setConflictModal(null)}
       />
+      {headerProfileCard && (
+        <UserProfileCard
+          userId={headerProfileCard.userId}
+          displayName={headerProfileCard.name}
+          position={{ x: headerProfileCard.x, y: headerProfileCard.y }}
+          onClose={() => setHeaderProfileCard(null)}
+        />
+      )}
     </div>
   );
 };

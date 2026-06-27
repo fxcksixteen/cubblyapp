@@ -243,6 +243,8 @@ const GroupMembersPanel = ({ conversation, onClose, onLeftGroup }: GroupMembersP
               userId={m.user_id}
               displayName={m.display_name}
               isYou={m.isYou}
+              canKick={isOwner && !m.isYou}
+              onKick={() => setConfirmKick(m.user_id)}
               onViewProfile={() => setProfileCard({ userId: m.user_id, name: m.display_name, x: window.innerWidth / 2, y: window.innerHeight / 2 })}
             >
               <div

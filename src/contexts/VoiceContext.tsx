@@ -416,13 +416,19 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   // v0.3.17: play the screenshare start/stop SFX for the OTHER peer too —
   // previously only the user who initiated/ended the share heard it.
   const prevRemoteScreenRef = useRef<MediaStream | null>(null);
+  // v0.3.21: when teardown is caused by a peer-leave (not a screenshare-end
+  // event), suppress the screenshareStop SFX so the staying user doesn't hear
+  // a "stream ended" sound on top of their friend leaving the call.
+  const suppressNextRemoteScreenSfxRef = useRef<boolean>(false);
   useEffect(() => {
     const prev = prevRemoteScreenRef.current;
+    const suppress = suppressNextRemoteScreenSfxRef.current;
     if (!prev && remoteScreenStream) {
-      try { playSound("screenshareStart", { volume: 0.4 }); } catch {}
+      if (!suppress) { try { playSound("screenshareStart", { volume: 0.4 }); } catch {} }
     } else if (prev && !remoteScreenStream) {
-      try { playSound("screenshareStop", { volume: 0.4 }); } catch {}
+      if (!suppress) { try { playSound("screenshareStop", { volume: 0.4 }); } catch {} }
     }
+    suppressNextRemoteScreenSfxRef.current = false;
     prevRemoteScreenRef.current = remoteScreenStream;
   }, [remoteScreenStream]);
 
@@ -1498,6 +1504,14 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             return;
           }
           console.log("[Voice] 👋 Peer left — keeping call alive locally; hard-resetting signaling state");
+          // v0.3.21: play "left call" SFX for the staying user so they know
+          // their friend dropped (previously only the leaver themselves heard
+          // a SFX). And suppress the next screenshareStop SFX so we don't
+          // stack "stream ended" on top of it when the peer was sharing.
+          if (prevRemoteScreenRef.current) {
+            suppressNextRemoteScreenSfxRef.current = true;
+          }
+          try { playSound("leaveCall", { volume: 0.45 }); } catch {}
           try { pcRef.current?.close(); } catch {}
           pcRef.current = null;
           try { screenPcOutRef.current?.close(); } catch {}
@@ -2543,12 +2557,14 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
 
   const stopScreenShare = useCallback(() => {
-    // Always play the stop sound when stopScreenShare is invoked, regardless
-    // of whether React state has already been flipped. Previously the guard
-    // (`wasSharing`) was racing with `track.onended` firing AFTER state was
-    // cleared by an earlier stopScreenShare call → no sound when the user
-    // closed the shared window/app externally.
-    try { playSound("screenshareStop", { volume: 0.4 }); } catch {}
+    // v0.3.21: only play the stop SFX if we were ACTUALLY sharing. Previously
+    // endCall() always invoked stopScreenShare() during teardown, so users
+    // heard "stream end" + "leave call" stacked even when they were never
+    // sharing in the first place.
+    const wasSharing = isScreenSharing || !!screenStream;
+    if (wasSharing) {
+      try { playSound("screenshareStop", { volume: 0.4 }); } catch {}
+    }
     screenStream?.getTracks().forEach(t => t.stop());
     setScreenStream(null);
     setIsScreenSharing(false);
@@ -3003,6 +3019,30 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           activeNow?.conversationId === payload.conversationId ||
           incomingNow?.callEventId === payload.callEventId;
         if (payload.targetId !== user.id || activeNow || sameCallAlreadyOpen) return;
+
+        // v0.3.21: cross-device suppression — if THIS user already has a live
+        // call_participants row for this call_event on another device (e.g.
+        // they picked up on desktop, and the web tab is also subscribed),
+        // don't show the incoming-call ring on this device. Without this,
+        // opening the web app while already on a desktop call would pop up
+        // an "incoming call" toast from the very person you're talking to.
+        if (payload.callEventId) {
+          try {
+            const cutoff = new Date(Date.now() - 30_000).toISOString();
+            const { data: liveRow } = await (supabase as any)
+              .from("call_participants")
+              .select("user_id, last_seen_at, left_at")
+              .eq("call_event_id", payload.callEventId)
+              .eq("user_id", user.id)
+              .is("left_at", null)
+              .gt("last_seen_at", cutoff)
+              .maybeSingle();
+            if (liveRow) {
+              console.log("[Voice] 🔕 Suppressing incoming-call ring — already in this call on another device");
+              return;
+            }
+          } catch (e) { /* non-fatal; fall through and ring */ }
+        }
 
         try {
           const channel = await setupSignaling(payload.conversationId);

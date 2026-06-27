@@ -23,9 +23,28 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.3.20";
+export const CURRENT_VERSION = "0.3.21";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.3.21",
+    title: "Call SFX cleanup + view-once anti-screenshot",
+    date: "2026-04-23",
+    hero: bearImage,
+    newFeatures: [
+      "Owner-only 'Remove from group' option now appears when you right-click a member in a group chat you own.",
+      "The display name and avatar at the top of a DM are now clickable and open that user's profile card — matches every other surface in the app.",
+      "View-once shared notes now activate native screen-capture protection on the desktop app, so tools like Lightshot, Snipping Tool, OBS, and Discord screenshare see only a black window while the note is open.",
+      "Low-power mode: when hardware acceleration is OFF, the app auto-strips heavy backdrop-blurs, big shadows, and decorative animations for a massive FPS boost on the machines that needed HA-off in the first place.",
+    ],
+    bugFixes: [
+      "The bottom DM panel no longer says 'Ringing…' forever after a call goes unanswered — it now correctly flips to 'Not in call'.",
+      "The 'stream ended' SFX no longer fires when you leave a call without ever sharing your screen.",
+      "When a peer leaves a call, the staying user now hears the 'left call' SFX (previously only the person who left heard it), and the 'stream ended' SFX no longer stacks on top of it if they were sharing.",
+      "Cross-device suppression: picking up a call on the desktop app no longer pops up an 'incoming voice call' toast on the web tab from the very person you're already talking to.",
+    ],
+  },
+
   {
     version: "0.3.20",
     title: "Call pickup overhaul + screenshare smoothness",
