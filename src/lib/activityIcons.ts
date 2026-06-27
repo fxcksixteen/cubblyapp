@@ -10,9 +10,11 @@
  * Stick to CDNs that allow hotlinking: SteamGridDB, Steam CDN, simpleicons,
  * cdn.jsdelivr.net (for github raw), etc.
  */
+import marvelRivalsIcon from "@/assets/marvel-rivals.png";
 
 /** Direct image URLs for popular games & software. Keyed by lowercased name OR process name. */
 export const CURATED_ICONS: Record<string, string> = {
+
   // --- Riot ---
   "valorant": "https://cdn.simpleicons.org/valorant/FF4654",
   "valorant-win64-shipping": "https://cdn.simpleicons.org/valorant/FF4654",
