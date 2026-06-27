@@ -32,6 +32,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: "2026-04-22",
     hero: bearImage,
     newFeatures: [
+      "Share a personal note to any DM or group — with an optional View Once toggle that locks the note to a single open, disables copy/select, and burns itself after viewing.",
       "Muted DMs/groups are now fully blurred in the sidebar and reveal on hover.",
       "Right-clicking a group chat now offers a 'Leave Group' option (permanent), in addition to 'Hide'.",
       "Screenshare end sound now plays reliably even when the shared window is closed externally.",

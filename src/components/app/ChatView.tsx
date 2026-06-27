@@ -16,6 +16,7 @@ import { useAutoGrowTextarea } from "@/hooks/useAutoGrowTextarea";
 import AttachmentItem from "./chat/AttachmentItem";
 import InlineGif from "./chat/InlineGif";
 import LinkPreview from "./chat/LinkPreview";
+import SharedNoteMessage, { parseSharedNote } from "./chat/SharedNoteMessage";
 import GroupMembersPanel from "./GroupMembersPanel";
 import { extractFirstUrl } from "@/lib/linkify";
 import { renderMessageBody } from "@/lib/renderMessageBody";
@@ -936,21 +937,30 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                                 </button>
                               );
                             })()}
-                            {text && (
-                              /^https?:\/\/.*\.(gif|giphy)/i.test(text) ? (
-                                <InlineGif url={text} />
-                              ) : (
+                            {text && (() => {
+                              const shared = parseSharedNote(text);
+                              if (shared) {
+                                return (
+                                  <SharedNoteMessage
+                                    messageId={msg.id}
+                                    payload={shared}
+                                    isOwn={msg.sender_id === user?.id}
+                                  />
+                                );
+                              }
+                              if (/^https?:\/\/.*\.(gif|giphy)/i.test(text)) {
+                                return <InlineGif url={text} />;
+                              }
+                              const firstUrl = extractFirstUrl(text);
+                              return (
                                 <>
                                   <p className={`text-[15px] leading-relaxed whitespace-pre-wrap break-words ${msg.status === "sending" ? "opacity-50" : ""}`} style={{ color: "var(--app-text-primary, #dbdee1)" }}>
                                     {renderMessageBody(text, mentionResolver)}
                                   </p>
-                                  {(() => {
-                                    const firstUrl = extractFirstUrl(text);
-                                    return firstUrl ? <LinkPreview url={firstUrl} /> : null;
-                                  })()}
+                                  {firstUrl ? <LinkPreview url={firstUrl} /> : null}
                                 </>
-                              )
-                            )}
+                              );
+                            })()}
                             {attachments.map((att, ai) => (
                               <AttachmentItem key={ai} attachment={att} />
                             ))}
