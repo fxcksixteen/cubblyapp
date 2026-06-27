@@ -1,31 +1,34 @@
 import { useEffect, useMemo, useState } from "react";
-import { Eye, FileText, Lock, X, Flame } from "lucide-react";
+import { Eye, FileText, Lock, X, Flame, Save, Radio, Check, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { useNotes } from "@/contexts/NotesContext";
+import { toast } from "sonner";
 
 /**
  * Shared-note message renderer.
  *
  * Wire format embedded in `messages.content`:
- *   [[cubbly:shared-note:v1]]{"title":"...","body":"...","viewOnce":true|false,"burnt":?}
- *
- * View-once enforcement is layered:
- *  1. UI: clicking opens a modal exactly once per recipient device
- *     (tracked in localStorage). Selection, copy, cut, drag, and the
- *     native context menu are all blocked inside the modal.
- *  2. Server: when the modal closes, the recipient calls the
- *     `burn_view_once_note` RPC which permanently replaces the
- *     stored body with `burnt:true` so reopening from another device
- *     or after a cache wipe shows nothing.
+ *   [[cubbly:shared-note:v1]]{
+ *     "title":"...","body":"...",
+ *     "viewOnce":bool,"burnt"?:bool,
+ *     "live"?:bool,        // sender's edits keep syncing (last-write-wins)
+ *     "allowSave"?:bool,   // recipient may copy into their own vault
+ *     "noteId"?:string     // original note id, used for live sync
+ *   }
  */
 
 const MARKER = "[[cubbly:shared-note:v1]]";
 const SEEN_KEY = "cubbly-viewonce-notes-seen";
+const SAVED_KEY = "cubbly-shared-notes-saved";
 
 interface SharedNotePayload {
   title: string;
   body: string;
   viewOnce: boolean;
   burnt?: boolean;
+  live?: boolean;
+  allowSave?: boolean;
+  noteId?: string;
 }
 
 export const parseSharedNote = (raw: string): SharedNotePayload | null => {
@@ -39,6 +42,9 @@ export const parseSharedNote = (raw: string): SharedNotePayload | null => {
       body: obj.body,
       viewOnce: !!obj.viewOnce,
       burnt: !!obj.burnt,
+      live: !!obj.live,
+      allowSave: !!obj.allowSave,
+      noteId: typeof obj.noteId === "string" ? obj.noteId : undefined,
     };
   } catch {
     return null;
