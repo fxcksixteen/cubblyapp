@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState, lazy, Suspense } from "react";
 import { useNotes, NoteAttachment, NoteRow, NotePlaintext } from "@/contexts/NotesContext";
-import { Pin, PinOff, Trash2, Plus, Paperclip, ShieldCheck, Loader2, FileText, Download, X, EyeOff, ArrowLeft, KeyRound, Edit3, Copy, AlertTriangle, Play, Maximize2, Undo2, Redo2 } from "lucide-react";
+import { useConversations } from "@/hooks/useConversations";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
+import GroupAvatar from "@/components/app/GroupAvatar";
+import { Pin, PinOff, Trash2, Plus, Paperclip, ShieldCheck, Loader2, FileText, Download, X, EyeOff, ArrowLeft, KeyRound, Edit3, Copy, AlertTriangle, Play, Maximize2, Undo2, Redo2, Share2, Eye, Send } from "lucide-react";
 import { toast } from "sonner";
 import notesIcon from "@/assets/password-lock.svg";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -446,6 +450,7 @@ const NotesEditor = () => {
             onTogglePin={() => n.togglePin(note.id, !note.pinned)}
             onDuplicate={() => handleDuplicate(note)}
             onCopyText={() => handleCopyText(note)}
+            onShare={() => setSharingNote(note)}
             onRequestDelete={() => setPendingDeleteId(note.id)}
           />
         ))}
