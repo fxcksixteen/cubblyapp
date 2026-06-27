@@ -24,6 +24,7 @@ export interface Message {
   sender_name?: string;
   sender_avatar_url?: string | null;
   status?: MessageStatus;
+  note_ref?: string | null;
 }
 
 const getSenderName = (senderId: string, displayName?: string | null) => {
