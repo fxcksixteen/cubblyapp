@@ -10,9 +10,11 @@
  * Stick to CDNs that allow hotlinking: SteamGridDB, Steam CDN, simpleicons,
  * cdn.jsdelivr.net (for github raw), etc.
  */
+import marvelRivalsIcon from "@/assets/marvel-rivals.png";
 
 /** Direct image URLs for popular games & software. Keyed by lowercased name OR process name. */
 export const CURATED_ICONS: Record<string, string> = {
+
   // --- Riot ---
   "valorant": "https://cdn.simpleicons.org/valorant/FF4654",
   "valorant-win64-shipping": "https://cdn.simpleicons.org/valorant/FF4654",
@@ -41,8 +43,11 @@ export const CURATED_ICONS: Record<string, string> = {
   "rocketleague": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/252950/capsule_184x69.jpg",
 
   // --- Marvel Rivals ---
-  "marvel rivals": "https://cdn2.steamgriddb.com/icon_thumb/3b1a87f43db61e70c2b0ed2c4eb1b3df.png",
-  "marvel-win64-shipping": "https://cdn2.steamgriddb.com/icon_thumb/3b1a87f43db61e70c2b0ed2c4eb1b3df.png",
+  "marvel rivals": marvelRivalsIcon,
+  "marvelrivals": marvelRivalsIcon,
+  "marvel-win64-shipping": marvelRivalsIcon,
+
+
 
   // --- Minecraft ---
   "minecraft": "https://cdn.simpleicons.org/minecraft/62B47A",
