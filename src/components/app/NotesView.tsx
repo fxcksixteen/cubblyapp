@@ -1091,6 +1091,19 @@ const NoteEditor = ({ note, onBack, onRequestDelete, onShare }: { note: NoteRow;
   // so the UI receives correct image/video/PDF metadata on first render.
 
 
+  // v0.3.21: push live-sync updates to any shared-note messages that
+  // referenced this note. Best-effort, fire-and-forget. The RPC itself filters
+  // out non-live / burnt / view-once rows, so calling it on every save is safe.
+  const pushLiveSync = (t: string, plainBody: string) => {
+    void supabase.rpc("sync_shared_note" as any, {
+      _note_id: note.id,
+      _title: t,
+      _body: plainBody,
+    }).then(({ error }) => {
+      if (error) console.warn("[shared-note] live sync failed:", error.message);
+    });
+  };
+
   const flush = async () => {
     if (!dirty.current) return;
     const t = latestRef.current.title;
@@ -1099,6 +1112,7 @@ const NoteEditor = ({ note, onBack, onRequestDelete, onShare }: { note: NoteRow;
     try {
       await n.updateNote(note.id, { title: t, body: b, attachments: a });
       dirty.current = false;
+      pushLiveSync(t, stripHtml(b).trim());
     } catch {
       // toast handled below
     }
@@ -1110,8 +1124,10 @@ const NoteEditor = ({ note, onBack, onRequestDelete, onShare }: { note: NoteRow;
     const t = setTimeout(async () => {
       setSaving(true);
       try {
-        await n.updateNote(note.id, { title, body: serializeBody(), attachments });
+        const b = serializeBody();
+        await n.updateNote(note.id, { title, body: b, attachments });
         dirty.current = false;
+        pushLiveSync(title, stripHtml(b).trim());
       } catch {
         toast.error("Failed to save");
       } finally {
