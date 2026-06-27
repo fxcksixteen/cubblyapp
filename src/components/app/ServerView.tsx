@@ -20,6 +20,8 @@ import UserBadges from "@/components/app/UserBadges";
 import { getEffectivePresenceStatus } from "@/lib/presence";
 import { getProfileColor } from "@/lib/profileColors";
 import { Button } from "@/components/ui/button";
+import MemberRowMenu from "@/components/app/MemberRowMenu";
+import UserProfileCard from "@/components/app/chat/UserProfileCard";
 
 const ServerView = () => {
   const location = useLocation();
