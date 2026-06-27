@@ -38,6 +38,7 @@ import MobileNotificationPrompt from "@/components/app/MobileNotificationPrompt"
 import CallConflictModal from "@/components/app/CallConflictModal";
 import { useActiveCallElsewhere, useRemoteHangupListener } from "@/hooks/useActiveCallElsewhere";
 import CoinPill from "@/components/app/CoinPill";
+import UserProfileCard from "@/components/app/chat/UserProfileCard";
 
 type FriendTab = "online" | "all" | "pending" | "blocked" | "add";
 
