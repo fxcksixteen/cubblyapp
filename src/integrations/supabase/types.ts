@@ -1071,6 +1071,7 @@ export type Database = {
         }
         Returns: number
       }
+      burn_view_once_note: { Args: { _message_id: string }; Returns: undefined }
       can_access_message: { Args: { _message_id: string }; Returns: boolean }
       create_dm_conversation: {
         Args: { other_user_id: string }
