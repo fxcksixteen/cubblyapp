@@ -492,6 +492,7 @@ export type Database = {
           conversation_id: string
           created_at: string
           id: string
+          note_ref: string | null
           reply_to_id: string | null
           sender_id: string
           updated_at: string
@@ -501,6 +502,7 @@ export type Database = {
           conversation_id: string
           created_at?: string
           id?: string
+          note_ref?: string | null
           reply_to_id?: string | null
           sender_id: string
           updated_at?: string
@@ -510,6 +512,7 @@ export type Database = {
           conversation_id?: string
           created_at?: string
           id?: string
+          note_ref?: string | null
           reply_to_id?: string | null
           sender_id?: string
           updated_at?: string
@@ -1155,6 +1158,7 @@ export type Database = {
           conversation_id: string
           created_at: string
           id: string
+          note_ref: string | null
           reply_to_id: string | null
           sender_id: string
           updated_at: string
@@ -1173,6 +1177,10 @@ export type Database = {
           _reason: string
           _source_ref?: string
         }
+        Returns: number
+      }
+      sync_shared_note: {
+        Args: { _body: string; _note_id: string; _title: string }
         Returns: number
       }
       unequip_shop_item: { Args: { _item_id: string }; Returns: undefined }
