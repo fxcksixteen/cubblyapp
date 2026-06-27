@@ -80,4 +80,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("window-audio-pcm", listener);
     return () => ipcRenderer.removeListener("window-audio-pcm", listener);
   },
+
+  // v0.3.21: enable Windows DRM-style content protection on the main window
+  // when a view-once shared note is being read. This makes the BrowserWindow
+  // appear black in any screen-capture API (OBS, Lightshot, Snipping Tool,
+  // Discord Screenshare, etc.) so private notes can't be screenshotted.
+  setContentProtection: (enabled) => ipcRenderer.invoke("set-content-protection", !!enabled),
 });

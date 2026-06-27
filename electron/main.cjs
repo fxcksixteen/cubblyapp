@@ -342,6 +342,20 @@ ipcMain.on("window-maximize", () => {
 ipcMain.on("window-close", () => { mainWindow?.close(); });
 ipcMain.handle("window-is-maximized", () => mainWindow?.isMaximized() ?? false);
 
+// v0.3.21: toggle native content protection (Windows SetWindowDisplayAffinity
+// / macOS NSWindowSharingNone). When ON, screen-capture tools see only black
+// for our window. Used while a view-once shared note is open.
+ipcMain.handle("set-content-protection", (_evt, enabled) => {
+  try {
+    mainWindow?.setContentProtection(!!enabled);
+    log.info("[content-protection]", enabled ? "ON" : "OFF");
+    return true;
+  } catch (e) {
+    log.warn("[content-protection] failed:", e?.message || e);
+    return false;
+  }
+});
+
 // IPC: real packaged app version (proves to renderer what was actually installed)
 ipcMain.handle("get-app-version", () => {
   try { return app.getVersion(); } catch { return null; }
