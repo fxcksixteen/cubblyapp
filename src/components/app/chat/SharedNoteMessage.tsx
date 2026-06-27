@@ -314,4 +314,58 @@ const SharedNoteModal = ({ payload, isOwn, onClose }: { payload: SharedNotePaylo
   );
 };
 
+/**
+ * "Save to my notes" — appears on the recipient side of any non-view-once
+ * shared note where the sender enabled `allowSave`. We dedupe per device via
+ * localStorage so the button can't be tapped twice to spam the vault.
+ */
+const SaveToNotesButton = ({ payload }: { payload: SharedNotePayload }) => {
+  const notes = useNotes();
+  const savedKey = useMemo(() => {
+    try { return JSON.parse(localStorage.getItem(SAVED_KEY) || "{}") as Record<string, number>; }
+    catch { return {}; }
+  }, []);
+  const dedupeId = `${payload.noteId || ""}::${payload.title}::${payload.body.length}`;
+  const [saved, setSaved] = useState<boolean>(!!savedKey[dedupeId]);
+  const [busy, setBusy] = useState(false);
+
+  const onSave = async () => {
+    if (saved || busy) return;
+    setBusy(true);
+    try {
+      const row = await notes.createNote({
+        title: payload.title || "Shared note",
+        body: payload.body || "",
+      });
+      if (!row) {
+        toast.error("Unlock your notes vault first");
+        return;
+      }
+      try {
+        const map = JSON.parse(localStorage.getItem(SAVED_KEY) || "{}") || {};
+        map[dedupeId] = Date.now();
+        localStorage.setItem(SAVED_KEY, JSON.stringify(map));
+      } catch {}
+      setSaved(true);
+      toast.success("Saved to your notes");
+    } catch (e: any) {
+      toast.error(e?.message || "Couldn't save");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={onSave}
+      disabled={saved || busy}
+      className="shrink-0 inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11.5px] font-semibold transition-colors disabled:opacity-60"
+      style={{ backgroundColor: saved ? "#2b2d31" : "hsl(var(--primary))", color: saved ? "var(--app-text-secondary)" : "white" }}
+    >
+      {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : saved ? <Check className="h-3 w-3" /> : <Save className="h-3 w-3" />}
+      {saved ? "Saved" : busy ? "Saving…" : "Save to my notes"}
+    </button>
+  );
+};
+
 export default SharedNoteMessage;
