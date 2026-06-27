@@ -652,6 +652,183 @@ const NoteListItem = ({
   );
 };
 
+/* ─────────── Share-Note modal ─────────── */
+const ShareNoteModal = ({ note, onClose }: { note: NoteRow; onClose: () => void }) => {
+  const { conversations } = useConversations();
+  const { user } = useAuth();
+  const [step, setStep] = useState<1 | 2>(1);
+  const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
+  const [viewOnce, setViewOnce] = useState(false);
+  const [sending, setSending] = useState(false);
+
+  const selectedConv = conversations.find((c) => c.id === selectedConvId) || null;
+
+  const handleSend = async () => {
+    if (!selectedConvId || !user || sending) return;
+    setSending(true);
+    try {
+      const title = note.decrypted?.title || "Untitled note";
+      const body = stripHtml(note.decrypted?.body || "").trim();
+      const header = viewOnce ? `👁 Shared a one-time-view note` : `📝 Shared a personal note`;
+      const content = `${header}\n\n**${title}**\n\n${body || "(empty)"}`;
+      const { error } = await supabase.from("messages").insert({
+        conversation_id: selectedConvId,
+        sender_id: user.id,
+        content,
+      } as any);
+      if (error) throw error;
+      toast.success(viewOnce ? "View-once note sent" : "Note shared");
+      onClose();
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to share note");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const title = note.decrypted?.title || "Untitled";
+
+  return (
+    <div
+      className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+      style={{ backgroundColor: "rgba(0,0,0,0.6)" }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-2xl overflow-hidden flex flex-col"
+        style={{ backgroundColor: "var(--app-bg-secondary)", boxShadow: "0 24px 48px rgba(0,0,0,0.5)", maxHeight: "85vh" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: "var(--app-border)" }}>
+          <div className="flex items-center gap-2">
+            <Share2 className="h-4 w-4" style={{ color: "hsl(var(--primary))" }} />
+            <span className="text-sm font-semibold" style={{ color: "var(--app-text-primary)" }}>
+              {step === 1 ? "Share Note" : "Confirm Share"}
+            </span>
+          </div>
+          <button onClick={onClose} className="rounded p-1 hover:bg-[var(--app-hover)]">
+            <X className="h-4 w-4" style={{ color: "var(--app-text-secondary)" }} />
+          </button>
+        </div>
+
+        {step === 1 ? (
+          <>
+            <div className="px-5 pt-4 pb-2 text-xs" style={{ color: "var(--app-text-secondary)" }}>
+              Sharing <span className="font-semibold" style={{ color: "var(--app-text-primary)" }}>"{title}"</span> with a friend or group.
+            </div>
+            <div className="flex-1 overflow-y-auto px-2 py-2 min-h-[200px]">
+              {conversations.length === 0 ? (
+                <div className="px-3 py-6 text-xs text-center" style={{ color: "var(--app-text-secondary)" }}>
+                  No open DMs. Open a DM first.
+                </div>
+              ) : conversations.map((c) => {
+                const label = c.is_group
+                  ? (c.name || "Group")
+                  : (c.members[0]?.display_name || c.members[0]?.username || "Direct Message");
+                const active = c.id === selectedConvId;
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => setSelectedConvId(c.id)}
+                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors"
+                    style={{ backgroundColor: active ? "var(--app-active, #404249)" : undefined }}
+                    onMouseEnter={(e) => { if (!active) e.currentTarget.style.backgroundColor = "var(--app-hover)"; }}
+                    onMouseLeave={(e) => { if (!active) e.currentTarget.style.backgroundColor = ""; }}
+                  >
+                    {c.is_group ? (
+                      <GroupAvatar conversationId={c.id} pictureUrl={c.picture_url} name={c.name} size={32} />
+                    ) : c.members[0]?.avatar_url ? (
+                      <img src={c.members[0].avatar_url} alt="" className="h-8 w-8 rounded-full object-cover" />
+                    ) : (
+                      <div className="h-8 w-8 rounded-full bg-[var(--app-bg-tertiary)] flex items-center justify-center text-xs font-semibold" style={{ color: "var(--app-text-primary)" }}>
+                        {label.slice(0, 1).toUpperCase()}
+                      </div>
+                    )}
+                    <span className="text-sm truncate" style={{ color: "var(--app-text-primary)" }}>{label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <label className="flex items-center gap-2 px-5 py-3 border-t cursor-pointer select-none" style={{ borderColor: "var(--app-border)" }}>
+              <input
+                type="checkbox"
+                checked={viewOnce}
+                onChange={(e) => setViewOnce(e.target.checked)}
+                className="h-4 w-4"
+              />
+              <Eye className="h-4 w-4" style={{ color: viewOnce ? "hsl(var(--primary))" : "var(--app-text-secondary)" }} />
+              <span className="text-xs" style={{ color: "var(--app-text-primary)" }}>
+                View once — recipient can only open this note one time
+              </span>
+            </label>
+
+            <div className="flex gap-2 px-4 py-3 border-t" style={{ borderColor: "var(--app-border)" }}>
+              <button
+                onClick={onClose}
+                className="flex-1 rounded-lg py-2 text-sm font-medium"
+                style={{ backgroundColor: "var(--app-bg-tertiary)", color: "var(--app-text-primary)" }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => setStep(2)}
+                disabled={!selectedConvId}
+                className="flex-1 rounded-lg py-2 text-sm font-semibold text-white disabled:opacity-50"
+                style={{ backgroundColor: "hsl(var(--primary))" }}
+              >
+                Continue
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="px-5 py-5 flex flex-col gap-3">
+              <div
+                className="flex h-12 w-12 self-center items-center justify-center rounded-full"
+                style={{ backgroundColor: "rgba(237,193,66,0.12)" }}
+              >
+                <ShieldCheck className="h-6 w-6" style={{ color: "#f0b132" }} />
+              </div>
+              <div className="text-center text-sm font-semibold" style={{ color: "var(--app-text-primary)" }}>
+                Are you sure?
+              </div>
+              <div className="text-center text-xs leading-relaxed" style={{ color: "var(--app-text-secondary)" }}>
+                Personal notes are <span className="font-semibold">encrypted and private</span> on your device. Sharing will send the contents of <span className="font-semibold" style={{ color: "var(--app-text-primary)" }}>"{title}"</span> to{" "}
+                <span className="font-semibold" style={{ color: "var(--app-text-primary)" }}>
+                  {selectedConv?.is_group ? (selectedConv?.name || "this group") : (selectedConv?.members[0]?.display_name || "this user")}
+                </span>
+                {viewOnce ? <> as a <span className="font-semibold" style={{ color: "hsl(var(--primary))" }}>one-time view</span> message.</> : "."}
+              </div>
+            </div>
+            <div className="flex gap-2 px-4 py-3 border-t" style={{ borderColor: "var(--app-border)" }}>
+              <button
+                onClick={() => setStep(1)}
+                disabled={sending}
+                className="flex-1 rounded-lg py-2 text-sm font-medium"
+                style={{ backgroundColor: "var(--app-bg-tertiary)", color: "var(--app-text-primary)" }}
+              >
+                Back
+              </button>
+              <button
+                onClick={handleSend}
+                disabled={sending}
+                className="flex-1 rounded-lg py-2 text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-1.5"
+                style={{ backgroundColor: "hsl(var(--primary))" }}
+              >
+                {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                {sending ? "Sending…" : "Share Now"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+
+
 const NoteEditor = ({ note, onBack, onRequestDelete, onShare }: { note: NoteRow; onBack?: () => void; onRequestDelete?: () => void; onShare?: () => void }) => {
   const n = useNotes();
   // RESET state per note id (was leaking between notes before)
