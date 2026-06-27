@@ -354,6 +354,7 @@ const NotesEditor = () => {
   const isMobile = useIsMobile();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [sharingNote, setSharingNote] = useState<NoteRow | null>(null);
   const active = n.notes.find((x) => x.id === activeId) || null;
   const pendingDeleteNote = n.notes.find((x) => x.id === pendingDeleteId) || null;
   const pendingDeleteTitle = pendingDeleteNote?.decrypted?.title || "Untitled";
@@ -515,13 +516,18 @@ const NotesEditor = () => {
     </AlertDialog>
   );
 
+  const ShareModal = sharingNote ? (
+    <ShareNoteModal note={sharingNote} onClose={() => setSharingNote(null)} />
+  ) : null;
+
   // ── MOBILE: stacked layout — list OR editor (not both) ──
   if (isMobile) {
     if (active) {
       return (
         <div className="flex flex-1 min-h-0 flex-col" style={{ backgroundColor: "var(--app-bg-primary)" }}>
-          <NoteEditor note={active} key={active.id} onBack={() => setActiveId(null)} onRequestDelete={() => setPendingDeleteId(active.id)} />
+          <NoteEditor note={active} key={active.id} onBack={() => setActiveId(null)} onRequestDelete={() => setPendingDeleteId(active.id)} onShare={() => setSharingNote(active)} />
           {DeleteDialog}
+          {ShareModal}
         </div>
       );
     }
@@ -529,6 +535,7 @@ const NotesEditor = () => {
       <div className="flex flex-1 min-h-0" style={{ backgroundColor: "var(--app-bg-primary)" }}>
         {NotesList}
         {DeleteDialog}
+        {ShareModal}
       </div>
     );
   }
@@ -539,7 +546,7 @@ const NotesEditor = () => {
       {NotesList}
       <div className="flex-1 min-w-0 flex flex-col">
         {active ? (
-          <NoteEditor note={active} key={active.id} onRequestDelete={() => setPendingDeleteId(active.id)} />
+          <NoteEditor note={active} key={active.id} onRequestDelete={() => setPendingDeleteId(active.id)} onShare={() => setSharingNote(active)} />
         ) : (
           <div className="flex flex-1 items-center justify-center text-sm" style={{ color: "var(--app-text-secondary)" }}>
             Select or create a note
@@ -547,6 +554,7 @@ const NotesEditor = () => {
         )}
       </div>
       {DeleteDialog}
+      {ShareModal}
     </div>
   );
 };
