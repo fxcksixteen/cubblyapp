@@ -652,7 +652,7 @@ const NoteListItem = ({
   );
 };
 
-const NoteEditor = ({ note, onBack, onRequestDelete }: { note: NoteRow; onBack?: () => void; onRequestDelete?: () => void }) => {
+const NoteEditor = ({ note, onBack, onRequestDelete, onShare }: { note: NoteRow; onBack?: () => void; onRequestDelete?: () => void; onShare?: () => void }) => {
   const n = useNotes();
   // RESET state per note id (was leaking between notes before)
   const [title, setTitle] = useState(note.decrypted?.title || "");
