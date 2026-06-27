@@ -565,7 +565,7 @@ const AppLayout = () => {
                     if (!clickable || !activeParticipant) return;
                     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
                     setHeaderProfileCard({
-                      userId: activeParticipant.id,
+                      userId: activeParticipant.user_id,
                       name: activeParticipant.display_name,
                       x: rect.left,
                       y: rect.bottom + 6,
