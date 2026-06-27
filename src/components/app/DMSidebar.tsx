@@ -244,7 +244,13 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                     onMouseEnter={e => { if (!isActive) e.currentTarget.style.backgroundColor = "var(--app-hover, #35373c)"; }}
                     onMouseLeave={e => { if (!isActive) e.currentTarget.style.backgroundColor = ""; }}
                   >
-                    <div className={`relative shrink-0 transition-all ${isMuted(conv.id) ? "opacity-40 blur-[0.5px] saturate-50" : ""}`}>
+                    <div
+                      className={`relative shrink-0 transition-all duration-200 ${
+                        isMuted(conv.id)
+                          ? "opacity-40 blur-[3px] saturate-50 group-hover:blur-0 group-hover:opacity-70 group-hover:saturate-100"
+                          : ""
+                      }`}
+                    >
                       <GroupAvatar conversation={conv} size={32} />
                       {!conv.is_group && (
                         <div className="absolute -bottom-0.5 -right-0.5">
@@ -262,7 +268,13 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                         </div>
                       )}
                     </div>
-                    <div className={`flex-1 min-w-0 text-left transition-all ${isMuted(conv.id) ? "opacity-50 blur-[0.3px]" : ""}`}>
+                    <div
+                      className={`flex-1 min-w-0 text-left transition-all duration-200 ${
+                        isMuted(conv.id)
+                          ? "opacity-50 blur-[2.5px] group-hover:blur-0 group-hover:opacity-80"
+                          : ""
+                      }`}
+                    >
                       <p className="truncate text-sm font-medium leading-tight flex items-center gap-1.5">
                         {conv.is_group ? (
                           <span className="truncate">{displayName}</span>
