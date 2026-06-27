@@ -3020,6 +3020,30 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           incomingNow?.callEventId === payload.callEventId;
         if (payload.targetId !== user.id || activeNow || sameCallAlreadyOpen) return;
 
+        // v0.3.21: cross-device suppression — if THIS user already has a live
+        // call_participants row for this call_event on another device (e.g.
+        // they picked up on desktop, and the web tab is also subscribed),
+        // don't show the incoming-call ring on this device. Without this,
+        // opening the web app while already on a desktop call would pop up
+        // an "incoming call" toast from the very person you're talking to.
+        if (payload.callEventId) {
+          try {
+            const cutoff = new Date(Date.now() - 30_000).toISOString();
+            const { data: liveRow } = await (supabase as any)
+              .from("call_participants")
+              .select("user_id, last_seen_at, left_at")
+              .eq("call_event_id", payload.callEventId)
+              .eq("user_id", user.id)
+              .is("left_at", null)
+              .gt("last_seen_at", cutoff)
+              .maybeSingle();
+            if (liveRow) {
+              console.log("[Voice] 🔕 Suppressing incoming-call ring — already in this call on another device");
+              return;
+            }
+          } catch (e) { /* non-fatal; fall through and ring */ }
+        }
+
         try {
           const channel = await setupSignaling(payload.conversationId);
           setIncomingCall({
