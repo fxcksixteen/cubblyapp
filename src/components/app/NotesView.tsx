@@ -659,12 +659,33 @@ const ShareNoteModal = ({ note, onClose }: { note: NoteRow; onClose: () => void 
   const { user } = useAuth();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [viewOnce, setViewOnce] = useState(false);
+  // v0.3.21: "Live edits" — sender's later edits to this note propagate to all
+  // already-shared copies (last-write-wins). Mutually exclusive with viewOnce.
+  const [live, setLive] = useState(false);
+  // v0.3.21: "Allow recipient to save" — adds a "Save to my notes" button on
+  // the recipient's card. Always off for view-once notes.
+  const [allowSave, setAllowSave] = useState(true);
   const [sending, setSending] = useState(false);
   const [query, setQuery] = useState("");
 
   const title = note.decrypted?.title || "Untitled";
   const bodyPlain = stripHtml(note.decrypted?.body || "").trim();
   const previewBody = bodyPlain.slice(0, 140) || "(empty note)";
+
+  // Enforce mutual exclusions in one place so toggling can never produce an
+  // invalid combination (e.g. view-once + live).
+  const onToggleViewOnce = (next: boolean) => {
+    setViewOnce(next);
+    if (next) { setLive(false); setAllowSave(false); }
+  };
+  const onToggleLive = (next: boolean) => {
+    setLive(next);
+    if (next) setViewOnce(false);
+  };
+  const onToggleAllowSave = (next: boolean) => {
+    setAllowSave(next);
+    if (next) setViewOnce(false);
+  };
 
   const toggle = (id: string) =>
     setSelectedIds((prev) => {
@@ -689,18 +710,28 @@ const ShareNoteModal = ({ note, onClose }: { note: NoteRow; onClose: () => void 
     setSending(true);
     try {
       const body = bodyPlain || "(empty)";
-      const payload = JSON.stringify({ title, body, viewOnce });
+      const payload = JSON.stringify({
+        title,
+        body,
+        viewOnce,
+        live: viewOnce ? false : live,
+        allowSave: viewOnce ? false : allowSave,
+        noteId: note.id,
+      });
       const content = `[[cubbly:shared-note:v1]]${payload}`;
       const rows = Array.from(selectedIds).map((conversation_id) => ({
         conversation_id,
         sender_id: user.id,
         content,
+        // Only stamp note_ref when live-sync is on — that's the only case
+        // where the server needs to find these rows again to update them.
+        ...(live && !viewOnce ? { note_ref: note.id } : {}),
       } as any));
       const { error } = await supabase.from("messages").insert(rows);
       if (error) throw error;
       toast.success(
         selectedIds.size === 1
-          ? (viewOnce ? "View-once note sent" : "Note shared")
+          ? (viewOnce ? "View-once note sent" : live ? "Live note shared" : "Note shared")
           : `Shared to ${selectedIds.size} chats`
       );
       onClose();
@@ -830,26 +861,62 @@ const ShareNoteModal = ({ note, onClose }: { note: NoteRow; onClose: () => void 
           })}
         </div>
 
-        {/* View-once toggle */}
+        {/* More settings — view-once, live sync, allow save */}
         <div
-          className="flex items-center justify-between gap-3 px-5 py-3.5 border-t"
+          className="border-t flex flex-col"
           style={{ borderColor: "#2b2d31", backgroundColor: "#181a1d" }}
         >
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md"
-              style={{ backgroundColor: viewOnce ? "rgba(240,177,50,0.16)" : "#2b2d31" }}
-            >
-              <Eye className="h-3.5 w-3.5" style={{ color: viewOnce ? "#f0b132" : "var(--app-text-secondary)" }} />
-            </div>
-            <div className="min-w-0">
-              <div className="text-[13px] font-semibold" style={{ color: "var(--app-text-primary)" }}>View once</div>
-              <div className="text-[11px] leading-tight" style={{ color: "var(--app-text-secondary)" }}>
-                Recipient can open once. Copy & screenshot deterrents on.
+          <div className="px-5 pt-3 pb-1 text-[10.5px] font-bold uppercase tracking-wider" style={{ color: "var(--app-text-secondary)" }}>
+            More settings
+          </div>
+
+          {/* View-once */}
+          <div className="flex items-center justify-between gap-3 px-5 py-2.5">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md" style={{ backgroundColor: viewOnce ? "rgba(240,177,50,0.16)" : "#2b2d31" }}>
+                <Eye className="h-3.5 w-3.5" style={{ color: viewOnce ? "#f0b132" : "var(--app-text-secondary)" }} />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[13px] font-semibold" style={{ color: "var(--app-text-primary)" }}>View once</div>
+                <div className="text-[11px] leading-tight" style={{ color: "var(--app-text-secondary)" }}>
+                  Opens once, then burns. Copy & screenshot deterrents on.
+                </div>
               </div>
             </div>
+            <Switch checked={viewOnce} onCheckedChange={onToggleViewOnce} />
           </div>
-          <Switch checked={viewOnce} onCheckedChange={setViewOnce} />
+
+          {/* Live edits */}
+          <div className="flex items-center justify-between gap-3 px-5 py-2.5">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md" style={{ backgroundColor: live ? "rgba(88,101,242,0.18)" : "#2b2d31", opacity: viewOnce ? 0.5 : 1 }}>
+                <Edit3 className="h-3.5 w-3.5" style={{ color: live ? "hsl(var(--primary))" : "var(--app-text-secondary)" }} />
+              </div>
+              <div className="min-w-0" style={{ opacity: viewOnce ? 0.5 : 1 }}>
+                <div className="text-[13px] font-semibold" style={{ color: "var(--app-text-primary)" }}>Live edits</div>
+                <div className="text-[11px] leading-tight" style={{ color: "var(--app-text-secondary)" }}>
+                  Your future edits to this note update the shared copy.
+                </div>
+              </div>
+            </div>
+            <Switch checked={live} onCheckedChange={onToggleLive} disabled={viewOnce} />
+          </div>
+
+          {/* Allow recipient to save */}
+          <div className="flex items-center justify-between gap-3 px-5 py-2.5 pb-3.5">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md" style={{ backgroundColor: allowSave && !viewOnce ? "rgba(88,101,242,0.18)" : "#2b2d31", opacity: viewOnce ? 0.5 : 1 }}>
+                <Copy className="h-3.5 w-3.5" style={{ color: allowSave && !viewOnce ? "hsl(var(--primary))" : "var(--app-text-secondary)" }} />
+              </div>
+              <div className="min-w-0" style={{ opacity: viewOnce ? 0.5 : 1 }}>
+                <div className="text-[13px] font-semibold" style={{ color: "var(--app-text-primary)" }}>Allow recipient to save</div>
+                <div className="text-[11px] leading-tight" style={{ color: "var(--app-text-secondary)" }}>
+                  Adds a “Save to my notes” button on their card.
+                </div>
+              </div>
+            </div>
+            <Switch checked={allowSave && !viewOnce} onCheckedChange={onToggleAllowSave} disabled={viewOnce} />
+          </div>
         </div>
 
         {/* Footer */}
@@ -1024,6 +1091,19 @@ const NoteEditor = ({ note, onBack, onRequestDelete, onShare }: { note: NoteRow;
   // so the UI receives correct image/video/PDF metadata on first render.
 
 
+  // v0.3.21: push live-sync updates to any shared-note messages that
+  // referenced this note. Best-effort, fire-and-forget. The RPC itself filters
+  // out non-live / burnt / view-once rows, so calling it on every save is safe.
+  const pushLiveSync = (t: string, plainBody: string) => {
+    void supabase.rpc("sync_shared_note" as any, {
+      _note_id: note.id,
+      _title: t,
+      _body: plainBody,
+    }).then(({ error }) => {
+      if (error) console.warn("[shared-note] live sync failed:", error.message);
+    });
+  };
+
   const flush = async () => {
     if (!dirty.current) return;
     const t = latestRef.current.title;
@@ -1032,6 +1112,7 @@ const NoteEditor = ({ note, onBack, onRequestDelete, onShare }: { note: NoteRow;
     try {
       await n.updateNote(note.id, { title: t, body: b, attachments: a });
       dirty.current = false;
+      pushLiveSync(t, stripHtml(b).trim());
     } catch {
       // toast handled below
     }
@@ -1043,8 +1124,10 @@ const NoteEditor = ({ note, onBack, onRequestDelete, onShare }: { note: NoteRow;
     const t = setTimeout(async () => {
       setSaving(true);
       try {
-        await n.updateNote(note.id, { title, body: serializeBody(), attachments });
+        const b = serializeBody();
+        await n.updateNote(note.id, { title, body: b, attachments });
         dirty.current = false;
+        pushLiveSync(title, stripHtml(b).trim());
       } catch {
         toast.error("Failed to save");
       } finally {

@@ -1,31 +1,34 @@
 import { useEffect, useMemo, useState } from "react";
-import { Eye, FileText, Lock, X, Flame } from "lucide-react";
+import { Eye, FileText, Lock, X, Flame, Save, Radio, Check, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { useNotes } from "@/contexts/NotesContext";
+import { toast } from "sonner";
 
 /**
  * Shared-note message renderer.
  *
  * Wire format embedded in `messages.content`:
- *   [[cubbly:shared-note:v1]]{"title":"...","body":"...","viewOnce":true|false,"burnt":?}
- *
- * View-once enforcement is layered:
- *  1. UI: clicking opens a modal exactly once per recipient device
- *     (tracked in localStorage). Selection, copy, cut, drag, and the
- *     native context menu are all blocked inside the modal.
- *  2. Server: when the modal closes, the recipient calls the
- *     `burn_view_once_note` RPC which permanently replaces the
- *     stored body with `burnt:true` so reopening from another device
- *     or after a cache wipe shows nothing.
+ *   [[cubbly:shared-note:v1]]{
+ *     "title":"...","body":"...",
+ *     "viewOnce":bool,"burnt"?:bool,
+ *     "live"?:bool,        // sender's edits keep syncing (last-write-wins)
+ *     "allowSave"?:bool,   // recipient may copy into their own vault
+ *     "noteId"?:string     // original note id, used for live sync
+ *   }
  */
 
 const MARKER = "[[cubbly:shared-note:v1]]";
 const SEEN_KEY = "cubbly-viewonce-notes-seen";
+const SAVED_KEY = "cubbly-shared-notes-saved";
 
 interface SharedNotePayload {
   title: string;
   body: string;
   viewOnce: boolean;
   burnt?: boolean;
+  live?: boolean;
+  allowSave?: boolean;
+  noteId?: string;
 }
 
 export const parseSharedNote = (raw: string): SharedNotePayload | null => {
@@ -39,6 +42,9 @@ export const parseSharedNote = (raw: string): SharedNotePayload | null => {
       body: obj.body,
       viewOnce: !!obj.viewOnce,
       burnt: !!obj.burnt,
+      live: !!obj.live,
+      allowSave: !!obj.allowSave,
+      noteId: typeof obj.noteId === "string" ? obj.noteId : undefined,
     };
   } catch {
     return null;
@@ -131,12 +137,18 @@ const SharedNoteMessage = ({ messageId, payload, isOwn }: Props) => {
                 ? (isOwn ? "View-once note · sent" : "View-once note")
                 : "Shared note"}
           </span>
-          {payload.viewOnce && !burnt && (
-            <span className="ml-auto flex items-center gap-1 text-[10px] font-semibold" style={{ color: accent }}>
-              <Lock className="h-3 w-3" />
-              1×
-            </span>
-          )}
+          <div className="ml-auto flex items-center gap-1.5">
+            {payload.live && !burnt && (
+              <span className="flex items-center gap-1 text-[10px] font-semibold" style={{ color: accent }}>
+                <Radio className="h-3 w-3" /> LIVE
+              </span>
+            )}
+            {payload.viewOnce && !burnt && (
+              <span className="flex items-center gap-1 text-[10px] font-semibold" style={{ color: accent }}>
+                <Lock className="h-3 w-3" /> 1×
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Body */}
@@ -276,22 +288,83 @@ const SharedNoteModal = ({ payload, isOwn, onClose }: { payload: SharedNotePaylo
           {payload.body?.trim() || "(empty)"}
         </div>
 
-        <div className="px-5 py-3 border-t text-[11px] flex items-center gap-2" style={{ borderColor: "#2b2d31", color: "var(--app-text-secondary)" }}>
-          {payload.viewOnce
-            ? (
-              <>
-                <Flame className="h-3.5 w-3.5 shrink-0" style={{ color: accent }} />
-                <span className="leading-snug">
-                  {isOwn
-                    ? "Recipient can open this once. On desktop, the app blocks screen-capture tools while it's open; on web, screenshots can't be prevented."
-                    : "Closing burns this for good. Copy, select & right-click are off. On the desktop app, screenshot tools see only a black window."}
-                </span>
-              </>
-            )
-            : "Shared from a personal note."}
+        <div className="px-5 py-3 border-t flex items-center gap-3" style={{ borderColor: "#2b2d31" }}>
+          <div className="text-[11px] flex items-center gap-2 flex-1 min-w-0" style={{ color: "var(--app-text-secondary)" }}>
+            {payload.viewOnce
+              ? (
+                <>
+                  <Flame className="h-3.5 w-3.5 shrink-0" style={{ color: accent }} />
+                  <span className="leading-snug">
+                    {isOwn
+                      ? "Recipient can open this once. On desktop, the app blocks screen-capture tools while it's open; on web, screenshots can't be prevented."
+                      : "Closing burns this for good. Copy, select & right-click are off. On the desktop app, screenshot tools see only a black window."}
+                  </span>
+                </>
+              )
+              : payload.live
+                ? (<><Radio className="h-3.5 w-3.5 shrink-0" style={{ color: accent }} /><span>Live · updates as the sender edits.</span></>)
+                : <span>Shared from a personal note.</span>}
+          </div>
+          {!isOwn && !payload.viewOnce && payload.allowSave && (
+            <SaveToNotesButton payload={payload} />
+          )}
         </div>
       </div>
     </div>
+  );
+};
+
+/**
+ * "Save to my notes" — appears on the recipient side of any non-view-once
+ * shared note where the sender enabled `allowSave`. We dedupe per device via
+ * localStorage so the button can't be tapped twice to spam the vault.
+ */
+const SaveToNotesButton = ({ payload }: { payload: SharedNotePayload }) => {
+  const notes = useNotes();
+  const savedKey = useMemo(() => {
+    try { return JSON.parse(localStorage.getItem(SAVED_KEY) || "{}") as Record<string, number>; }
+    catch { return {}; }
+  }, []);
+  const dedupeId = `${payload.noteId || ""}::${payload.title}::${payload.body.length}`;
+  const [saved, setSaved] = useState<boolean>(!!savedKey[dedupeId]);
+  const [busy, setBusy] = useState(false);
+
+  const onSave = async () => {
+    if (saved || busy) return;
+    setBusy(true);
+    try {
+      const row = await notes.createNote({
+        title: payload.title || "Shared note",
+        body: payload.body || "",
+      });
+      if (!row) {
+        toast.error("Unlock your notes vault first");
+        return;
+      }
+      try {
+        const map = JSON.parse(localStorage.getItem(SAVED_KEY) || "{}") || {};
+        map[dedupeId] = Date.now();
+        localStorage.setItem(SAVED_KEY, JSON.stringify(map));
+      } catch {}
+      setSaved(true);
+      toast.success("Saved to your notes");
+    } catch (e: any) {
+      toast.error(e?.message || "Couldn't save");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={onSave}
+      disabled={saved || busy}
+      className="shrink-0 inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11.5px] font-semibold transition-colors disabled:opacity-60"
+      style={{ backgroundColor: saved ? "#2b2d31" : "hsl(var(--primary))", color: saved ? "var(--app-text-secondary)" : "white" }}
+    >
+      {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : saved ? <Check className="h-3 w-3" /> : <Save className="h-3 w-3" />}
+      {saved ? "Saved" : busy ? "Saving…" : "Save to my notes"}
+    </button>
   );
 };
 

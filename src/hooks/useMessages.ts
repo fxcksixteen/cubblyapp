@@ -24,6 +24,7 @@ export interface Message {
   sender_name?: string;
   sender_avatar_url?: string | null;
   status?: MessageStatus;
+  note_ref?: string | null;
 }
 
 const getSenderName = (senderId: string, displayName?: string | null) => {
@@ -248,6 +249,30 @@ export function useMessages(conversationId: string | null) {
                   status: "delivered",
                 },
               ];
+            });
+          },
+        )
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` },
+          (payload) => {
+            // Used by:
+            //  - View-once notes: server replaces content with burnt payload.
+            //  - Live-sync shared notes: sender's edits push fresh title/body.
+            // We only merge mutable fields and never overwrite the local
+            // sender_name/avatar/reply_to/status that were hydrated on insert.
+            const updated = payload.new as any;
+            if (!updated?.id) return;
+            setMessages((prev) => {
+              const idx = prev.findIndex((m) => m.id === updated.id);
+              if (idx < 0) return prev;
+              const next = [...prev];
+              next[idx] = {
+                ...next[idx],
+                content: updated.content ?? next[idx].content,
+                note_ref: updated.note_ref ?? (next[idx] as any).note_ref ?? null,
+              };
+              return next;
             });
           },
         )
