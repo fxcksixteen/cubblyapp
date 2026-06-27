@@ -459,10 +459,13 @@ html.cubbly-low-power * {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
-html.cubbly-low-power *,
-html.cubbly-low-power *::before,
-html.cubbly-low-power *::after {
-  /* Kill expensive blurs, glow shadows, and decorative filters. */
+/* Kill expensive blurs/glows, but NEVER on img/svg — icons use
+   `filter: invert(...)` / hue-rotate to recolor black-fill SVGs,
+   and wiping that turns every icon black. Opt-in escape hatch:
+   add `.cubbly-keep-filter` to preserve a filter on any element. */
+html.cubbly-low-power *:not(img):not(svg):not(.cubbly-keep-filter),
+html.cubbly-low-power *:not(img):not(svg):not(.cubbly-keep-filter)::before,
+html.cubbly-low-power *:not(img):not(svg):not(.cubbly-keep-filter)::after {
   filter: none !important;
 }
 html.cubbly-low-power *:not(.cubbly-keep-shadow) {
