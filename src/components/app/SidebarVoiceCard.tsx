@@ -79,8 +79,14 @@ const SidebarVoiceCard = ({ conversations, onOpenCall }: Props) => {
   if (!activeCall) return null;
 
   const isConnected = activeCall.state === "connected";
+  // v0.3.21: once the 30s ring timeout fires (or the peer leaves), the call
+  // is technically still ongoing but nobody's actually on the other end —
+  // so flip the label from "Ringing…" to "Not in call" instead of pretending
+  // it's still ringing forever.
+  const idleAlone = (activeCall as any).ringTimedOut || (activeCall as any).peerLeftAt;
   const stateLabel =
     activeCall.state === "connected" ? "Voice Connected" :
+    idleAlone ? "Not in call" :
     activeCall.state === "calling" ? "Calling..." :
     activeCall.state === "ringing" ? "Ringing..." :
     "Connecting...";

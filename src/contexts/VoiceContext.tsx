@@ -2543,12 +2543,14 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
 
   const stopScreenShare = useCallback(() => {
-    // Always play the stop sound when stopScreenShare is invoked, regardless
-    // of whether React state has already been flipped. Previously the guard
-    // (`wasSharing`) was racing with `track.onended` firing AFTER state was
-    // cleared by an earlier stopScreenShare call → no sound when the user
-    // closed the shared window/app externally.
-    try { playSound("screenshareStop", { volume: 0.4 }); } catch {}
+    // v0.3.21: only play the stop SFX if we were ACTUALLY sharing. Previously
+    // endCall() always invoked stopScreenShare() during teardown, so users
+    // heard "stream end" + "leave call" stacked even when they were never
+    // sharing in the first place.
+    const wasSharing = isScreenSharing || !!screenStream;
+    if (wasSharing) {
+      try { playSound("screenshareStop", { volume: 0.4 }); } catch {}
+    }
     screenStream?.getTracks().forEach(t => t.stop());
     setScreenStream(null);
     setIsScreenSharing(false);
