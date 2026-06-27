@@ -95,6 +95,27 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
     }
   };
 
+  const handleLeaveGroup = async (convId: string, groupName: string) => {
+    if (!user) return;
+    const ok = window.confirm(
+      `Leave "${groupName}"?\n\nYou will no longer receive messages from this group and would need to be re-invited to rejoin.`
+    );
+    if (!ok) return;
+    try {
+      const { error } = await (supabase as any)
+        .from("conversation_participants")
+        .delete()
+        .eq("conversation_id", convId)
+        .eq("user_id", user.id);
+      if (error) throw error;
+      toast.success(`Left "${groupName}"`);
+      onCloseConversation(convId);
+    } catch (e: any) {
+      console.error("[DMSidebar] leave group failed:", e);
+      toast.error("Couldn't leave group — try again");
+    }
+  };
+
   const [localMuted, setLocalMuted] = useState(false);
   const [localDeafened, setLocalDeafened] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -244,7 +265,13 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                     onMouseEnter={e => { if (!isActive) e.currentTarget.style.backgroundColor = "var(--app-hover, #35373c)"; }}
                     onMouseLeave={e => { if (!isActive) e.currentTarget.style.backgroundColor = ""; }}
                   >
-                    <div className={`relative shrink-0 transition-all ${isMuted(conv.id) ? "opacity-40 blur-[0.5px] saturate-50" : ""}`}>
+                    <div
+                      className={`relative shrink-0 transition-all duration-200 ${
+                        isMuted(conv.id)
+                          ? "opacity-40 blur-[3px] saturate-50 group-hover:blur-0 group-hover:opacity-70 group-hover:saturate-100"
+                          : ""
+                      }`}
+                    >
                       <GroupAvatar conversation={conv} size={32} />
                       {!conv.is_group && (
                         <div className="absolute -bottom-0.5 -right-0.5">
@@ -262,7 +289,13 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                         </div>
                       )}
                     </div>
-                    <div className={`flex-1 min-w-0 text-left transition-all ${isMuted(conv.id) ? "opacity-50 blur-[0.3px]" : ""}`}>
+                    <div
+                      className={`flex-1 min-w-0 text-left transition-all duration-200 ${
+                        isMuted(conv.id)
+                          ? "opacity-50 blur-[2.5px] group-hover:blur-0 group-hover:opacity-80"
+                          : ""
+                      }`}
+                    >
                       <p className="truncate text-sm font-medium leading-tight flex items-center gap-1.5">
                         {conv.is_group ? (
                           <span className="truncate">{displayName}</span>
@@ -392,6 +425,15 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                     <X className="h-4 w-4" />
                     {conv.is_group ? "Hide Group" : "Close DM"}
                   </ContextMenuItem>
+                  {conv.is_group && (
+                    <ContextMenuItem
+                      onClick={() => handleLeaveGroup(conv.id, conv.name || "Group")}
+                      className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#ed4245] hover:bg-[#ed4245] hover:text-white cursor-pointer"
+                    >
+                      <img src={removeUserIcon} alt="" className="h-4 w-4" style={{ filter: "invert(36%) sepia(93%) saturate(7471%) hue-rotate(348deg) brightness(101%) contrast(88%)" }} />
+                      Leave Group
+                    </ContextMenuItem>
+                  )}
                   {!conv.is_group && (
                     <>
                       <ContextMenuSeparator className="my-1" style={{ backgroundColor: "var(--app-border, #2b2d31)" }} />

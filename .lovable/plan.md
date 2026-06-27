@@ -1,70 +1,92 @@
-## v0.3.19 — desktop/web
+# v0.3.20 — Cubbly Web/Desktop Patch Plan
 
-Six items below. Calling fixes are surgical so we don't regress v0.3.17/18.
+## 1. Call accept/pickup — fix root cause (CRITICAL)
 
----
+The "green button does nothing, but Rejoin works after the caller leaves" symptom means the callee's accept path never produces a usable answer for the original offer — only after the caller tears down and the callee re-initiates as a fresh offerer does media flow. Plan:
 
-### 1) Green pickup button "does nothing" — fix for real
+- In `VoiceContext.tsx`, instrument the accept path with structured logs (`[accept]` tag) at every branch: cached-offer hit, DB-offer fetch, setRemoteDescription, createAnswer, setLocalDescription, signal send, ICE-candidate flush. Ship these logs in v0.3.20 so the next failure is diagnosable in one pass.
+- Replace the current "cached offer fast path vs DB liveness probe" split with a single deterministic accept flow:
+  1. On ring, always pre-cache the offer (already done).
+  2. On accept: if no cached offer, poll `call_events` for the latest `offer` row for this conversation for up to 1.5s before failing.
+  3. Always create a fresh `RTCPeerConnection` on accept (never reuse one from a previous ring of the same conversation).
+  4. Always flush queued remote ICE candidates *after* setRemoteDescription, in arrival order.
+- Add a perfect-negotiation guard: the side with the lower user_id is "polite". If both sides race (caller and callee both end up as offerer on the same conversation), the impolite side rolls back and accepts the polite side's offer. This is what makes "Rejoin from the callee = works" — we're going to make accept reach the same converged state without requiring the caller to leave.
+- Tear down any stale `RTCPeerConnection` for the same conversation before accept (close + nuke ICE listeners) so the answer is always written to a fresh PC.
 
-**Root cause:** Since v0.3.17 the green button calls `acceptCall`, which currently re-runs `startCall(conversationId, callerId)`. `startCall` immediately checks `call_participants` for a "freshly live" peer (last_seen_at < 30s). For a brand-new outbound ring, the caller has only just inserted their row — sometimes with no heartbeat yet — so `otherActive` is `false`, the receiver path hits the `else` branch, calls `end_call_event_if_stale` + soft-closes the caller's row, then starts a **brand new** `call_event`. To the caller this looks like "they hung up" (their event got ended and they were marked left); the receiver thinks they joined a fresh empty call. That exactly matches the symptom only seen between you and your gf (depends on heartbeat timing).
+## 2. "Join Call" vs "Rejoin" reliability
 
-The Rejoin button works because by then the caller has been heartbeating for ≥10s, so the freshness check passes.
+- Verify the v0.3.19 label logic actually keys off `call_participants.has_ever_joined` (or equivalent) per-user, not per-call. If not, fix.
+- Make both buttons call the exact same `acceptCall()` entry point — no second code path.
 
-**Fix in `src/contexts/VoiceContext.tsx` `acceptCall`:** when accepting an incoming ring, pass the known `callEventId` (already in `incomingCall.callEventId`) straight through to `startCall` so it joins THAT event unconditionally — no liveness probe, no stale-cleanup branch. Add an optional `forceJoinEventId` param to `startCall` that short-circuits the lookup-or-create block and goes straight to `isJoiningExisting = true` with the provided id. Also do an immediate `heartbeat_call_participant` for the joiner before the ICE handshake so the caller's UI flips them to "in call" instantly.
+## 3. Ping / TURN region
 
-### 2) "Rejoin" vs "Join Call" wording (caller-side)
+- Frankfurt showing ~70ms for an Austria↔Palestine pair means audio is being relayed through TURN even when a direct path exists, OR the picker is still reading the relay candidate-pair RTT.
+- In `VoiceContext.tsx`, after ICE connected, log every candidate-pair (`local.type`, `remote.type`, `nominated`, `currentRoundTripTime`) once. Pick the lowest-RTT nominated non-relay pair; only fall back to relay RTT if no host/srflx pair is nominated.
+- In `get-turn-credentials` edge function, log which region was returned and why. If we're handing out a single global TURN, add a simple geo-pick (EU vs US vs ME) based on request `cf-ipcountry` / `x-forwarded-for` country.
 
-In `src/components/app/ChatView.tsx` the inline `CallEventMessage` for an ongoing call always shows `joinLabel="Rejoin"`. Compute it per event:
+## 4. Screenshare quality (laggy/choppy)
 
-- If `event.created_by === user.id` AND we have **never** appeared in `call_participants` for this `call_event_id` (i.e. user is the original caller and never joined their own ring) → label = `"Join Call"`.
-- Otherwise (we were in it and left, or someone else started it) → `"Rejoin"`.
+- In the screenshare capture path, current constraints likely cap framerate poorly and let the encoder starve. Plan:
+  - Set explicit `contentHint = "motion"` on the screen video track (currently likely "detail" or unset — "detail" is what makes gameplay choppy).
+  - Raise encoder bitrate floor: `RTCRtpSender.setParameters` with `maxBitrate: 4_000_000`, `maxFramerate: 60` for the "high" quality preset, and proportionally for medium/low. Currently "lowest" likely sets a bitrate so low it stays choppy forever.
+  - Prefer VP9/AV1 in SDP munging when both peers support it; fall back to VP8.
+  - Add adaptive degradation preference `"maintain-framerate"` (currently default = "balanced" which drops fps to keep resolution = the "choppy" you saw).
+- Add a "Screenshare Quality" dropdown that actually maps to real `maxBitrate`/`maxFramerate`/resolution values, and persist the choice.
 
-Same logic for the top sticky banner. Behaviour stays identical (still calls `handleRejoin` → `startCall`). Add a tiny membership check inside the existing `rejoinableEventIds` effect — it already pulls participants for these events, so we can derive `iAmFormerMember` from the same query and pass it down.
+## 5. Screenshare end sound
 
-### 3) Stale "still in call" after abrupt close / power loss
+- In the `onended` handler for the local screen track, call the same `playStreamEndedSound()` that the manual "Stop sharing" button calls. Currently only the manual path plays it.
 
-Today an unclean exit leaves `left_at = NULL` and `last_seen_at` frozen. `startCall`'s 30s freshness gate already filters those out for **other** users, but the same user re-opening Cubbly doesn't see a Rejoin button because `rejoinableEventIds` in ChatView only considers events where ANOTHER live peer is present from MY perspective — and on re-open my own ghost row is the one rotting, not the peer's.
+## 6. Multi-screenshare + click-to-focus UI
 
-Two-part fix:
+- In `ServerVoicePanel.tsx` and the DM `GroupCallPanel`, when ≥2 peers (incl. self) are sharing, render a split grid (1×2, 2×2 for 3–4 shares). Non-sharing peers collapse into a thumbnail strip at the bottom.
+- Clicking any share/cam tile sets it as the focused tile (large, center); the others shrink to a side strip. Clicking the focused tile or pressing Esc/back goes back to the grid. This is *not* fullscreen — stays inside the call viewport.
+- Same focus interaction for camera tiles. A click on a small cam tile makes it the focused tile.
+- Add a `focusedTileId` state to the panel component; no context changes needed.
 
-- **On client startup** (in `VoiceContext`'s mount effect, gated to `user`): one-shot `update call_participants set left_at = now() where user_id = me and left_at is null and last_seen_at < now() - interval '45 seconds'`. Kills my own ghosts so I can cleanly rejoin.
-- **`beforeunload` + Electron `before-quit`**: best-effort `navigator.sendBeacon` to a tiny edge function `voice-leave` (or reuse an existing RPC via fetch keepalive) that soft-closes my open `call_participants` rows. Already partially attempted on tab close — make it actually fire on Electron quit by wiring `app.on("before-quit")` in `electron/main.cjs` to send an IPC `voice:leaving` to the renderer with a 250ms grace window before quitting.
+## 7. Opt-in viewing of a peer's screenshare
 
-### 4) Ping showing 200ms+
+- Currently when a peer starts sharing we auto-attach the video element and play it. Change: on peer screenshare start, show a "Watch <name>'s screen" pill in their tile instead of auto-playing. Click = subscribe + play. Click again = leave the share (detach video element but keep the audio track if it was a combined stream).
+- Track per-peer `isWatching` locally; multiple simultaneous watches are allowed (this already works at the WebRTC layer — we're only changing the UI gating).
 
-The DM sidebar "ping" number comes from the WebRTC RTT — but right now it's reading the relay RTT through the TURN server because both peers were being forced onto TURN by the v0.3.16 `iceTransportPolicy` tweak.
+## 8. Camera "medium" size
 
-- Verify in `VoiceContext.tsx` that `iceTransportPolicy` is `"all"` (not `"relay"`); if it's `"relay"`, flip back to `"all"` so the host/srflx candidates can form a direct p2p path. PA↔AT direct should be ~70–90ms.
-- In the sidebar ping pill, switch the displayed value from "currentRoundTripTime" of the **selected** candidate pair only when `remoteCandidateType !== "relay"`; if relayed, append a small "(relay)" suffix so it's clear that the high number is the relay path, not real network latency.
+- Add a 3-state size cycle on cam tiles: small (default) → medium (≈40% of call viewport, in-grid) → fullscreen. Click cycles small→medium; existing Maximize button still goes to fullscreen. Medium uses the same focused-tile mechanism from item 6.
 
-### 5) Muted DMs/groups — visual blur
+## 9. Muted DM blur
 
-In `src/components/app/DMSidebar.tsx`, the conversation row currently only renders the 🔕 icon when `isMuted(conv.id)`. Add:
+- In `DMSidebar.tsx`, replace the current opacity-only style on muted rows with `filter: blur(3px)` + reduced opacity. On hover, transition to `filter: none` + lowered opacity only. Keep the close (X) button always interactive and unblurred.
 
-- Row wrapper gets `className` with `opacity-50 grayscale-[40%]` when muted (Tailwind already available).
-- Unread badge for muted convs goes from red to a neutral muted-grey pill (Discord parity).
-- Close (X) action stays available — no behavioural change.
-- Hovering still highlights normally so it's obvious the row is interactive.
+## 10. Group chat "Leave Group" context menu
 
-### 6) Desktop app still ~697 MB
+- In the DM sidebar right-click menu for group conversations, add a "Leave Group" item below "Hide". On click, show a confirm dialog, then remove the user's row from `conversation_participants` for that conversation. If they're the last participant, also archive the conversation.
 
-What you're seeing in Windows "Installed apps" is **install footprint + user data cache** (`%AppData%\Cubbly\Cache`, `Code Cache`, `GPUCache`, `Service Worker\CacheStorage` — Chromium happily lets this grow into the hundreds of MB after a few weeks of use). The `win-unpacked` itself after v0.3.18's afterPack should be ~280–320 MB; the rest is runtime cache, not anything the installer controls.
+## 11. Hardware acceleration / gaming-mode lag
 
-Three real fixes:
+- Investigation only this patch (don't ship a change without confirming): add a one-line debug log of `app.getGPUFeatureStatus()` to `electron/main.cjs` at startup and a log of the gaming-mode "throttle" state transitions in `GamingModeContext.tsx`. The reported lag with HWA off + gaming mode on is most likely gaming-mode throttling the React render loop while HWA-off forces software compositing — combined that's brutal. Once we have logs from one session we'll fix in v0.3.21 (either auto-disable gaming-mode throttling when HWA is off, or warn the user).
 
-1. **Verify afterPack actually ran.** Add a `[afterPack] ✓` sentinel write to `electron-release/.afterpack-ran-vX.Y.Z` and have `scripts/build-electron.cjs` fail the build if missing. (If it never ran in v0.3.18, that alone explains another ~120 MB.)
-2. **Cap Chromium disk cache** in `electron/main.cjs` via `app.commandLine.appendSwitch("disk-cache-size", String(80 * 1024 * 1024))` (80 MB hard cap) before `app.whenReady`. Stops the cache from growing unbounded.
-3. **One-shot cache prune on startup**: in `electron/main.cjs` after `app.whenReady`, if `app.getPath("userData")/Cache` size > 150 MB, delete the `Cache`, `Code Cache`, `GPUCache` subfolders. Logs `[cache] pruned X MB`. Runs once per launch.
+## 12. Share a note to a DM
 
-After updating, the installed-size reading drops back toward ~350 MB and stays there.
+- In the personal notes right-click menu, add "Share to DM…".
+- Modal step 1: pick a DM from the user's existing open DMs (list from `useConversations`). Toggle: "View once (disappears after first open)".
+- Modal step 2: confirmation screen explicitly stating the note will be decrypted and posted as a message to the chosen DM, and (if view-once) will self-destruct after the recipient opens it. Requires a second click to confirm.
+- Implementation: decrypt the note client-side (existing `notesCrypto.ts`), post as a new message with `metadata.kind = "shared_note"`, `metadata.viewOnce: bool`, `metadata.title`, `metadata.body`. Renderer shows a "Shared Note" card; if `viewOnce`, the body is hidden behind a "Tap to view" gate, and on open the client deletes the message row.
+- No new tables needed; reuses `messages` + a metadata flag.
 
-### Version + changelog
+## 13. Desktop bundle size (697 MB)
 
-Bump `package.json` to `0.3.19`. `src/lib/changelog.ts` entry (short, user-facing only):
+- The user is still seeing 697 MB which is the *exact* number from before the slimming work. That means either (a) they're testing an old installer, or (b) `afterPack` isn't actually running in their build pipeline.
+- Plan: add a `console.log('[afterPack] running, removed X MB')` to `scripts/electron-afterpack.cjs` and verify the GitHub Actions / local build script invokes it. Also add a post-build assertion that fails the build if the unpacked app dir is >350 MB, so we can't silently ship a 697 MB build again.
+- Realistic target remains ~180–230 MB installed; if the build is honoring afterPack and still 697 MB, we'll need a screenshot of the install folder breakdown to find what's actually big.
 
-- Fix: green pickup button now actually joins the call.
-- Fresh outgoing calls show "Join Call" instead of "Rejoin" for the caller.
-- If the app crashes or loses power mid-call, you can rejoin cleanly on next launch.
-- Ping in the sidebar now reflects the real network path, not the relay fallback.
-- Muted DMs and groups now appear faded in the sidebar.
-- Further desktop-app slimming + a hard cap on the Chromium disk cache.
+## 14. Version bump + changelog
+
+- `package.json` → `0.3.20`.
+- `src/lib/changelog.ts` → short user-facing bullets only.
+
+## Technical notes section
+
+- Perfect-negotiation reference: WebRTC spec "perfect negotiation" pattern (polite/impolite roles).
+- `contentHint`, `degradationPreference`, and `RTCRtpSender.setParameters` are the three knobs that actually move screenshare quality in Chromium; SDP tweaks alone don't.
+- View-once notes don't need server-side enforcement for v0.3.20 (client-deletes-on-open is honest-client only); a server-side TTL/edge-function gate can come later if abuse becomes a concern.
+- Items 1, 4, 6, 12 are the biggest pieces; 2, 5, 9, 10 are small; 3, 11, 13 are partly diagnostic this patch.

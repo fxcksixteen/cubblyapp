@@ -1,7 +1,7 @@
 {
   "name": "cubbly",
   "private": true,
-  "version": "0.3.19",
+  "version": "0.3.20",
   "type": "module",
   "main": "electron/main.cjs",
   "build": {
@@ -58,7 +58,10 @@
       "!**/{.eslintrc*,.prettierrc*,.editorconfig,.npmignore,.travis.yml,.gitattributes,.gitignore,tsconfig*.json,rollup.config.*,webpack.config.*,.babelrc*,jest.config.*}",
       "!**/*.{ts,tsx,map,d.ts}",
       "!**/*.{md,markdown,log,bak,orig,old}",
-      "!**/{LICENSE,LICENCE,COPYING,CHANGES}*"
+      "!**/{LICENSE,LICENCE,COPYING,CHANGES}*",
+      "!dist/hero-bg.webm",
+      "!dist/hero-bg-new.webm",
+      "!dist/hero-bg-register.webm"
     ],
     "compression": "maximum",
     "electronLanguages": ["en-US"],
