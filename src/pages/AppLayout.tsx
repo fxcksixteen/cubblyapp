@@ -742,6 +742,14 @@ const AppLayout = () => {
         onConfirm={async () => { const p = conflictModal?.pending; setConflictModal(null); if (p) await p(); }}
         onCancel={() => setConflictModal(null)}
       />
+      {headerProfileCard && (
+        <UserProfileCard
+          userId={headerProfileCard.userId}
+          displayName={headerProfileCard.name}
+          position={{ x: headerProfileCard.x, y: headerProfileCard.y }}
+          onClose={() => setHeaderProfileCard(null)}
+        />
+      )}
     </div>
   );
 };
