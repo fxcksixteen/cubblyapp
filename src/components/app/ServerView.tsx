@@ -255,6 +255,15 @@ const ServerView = () => {
 
       {createChanOpen && <CreateChannelModal serverId={server.id} onClose={() => setCreateChanOpen(false)} />}
       {inviteOpen && <InviteModal serverId={server.id} onClose={() => setInviteOpen(false)} />}
+      {profileCard && (
+        <UserProfileCard
+          userId={profileCard.userId}
+          displayName={profileCard.name}
+          position={{ x: profileCard.x, y: profileCard.y }}
+          onClose={() => setProfileCard(null)}
+          startExpanded
+        />
+      )}
     </div>
   );
 };
