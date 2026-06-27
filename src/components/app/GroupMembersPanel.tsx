@@ -41,6 +41,8 @@ const GroupMembersPanel = ({ conversation, onClose, onLeftGroup }: GroupMembersP
   const [confirmKick, setConfirmKick] = useState<string | null>(null);
   const [uploadingPic, setUploadingPic] = useState(false);
   const [myAvatarUrl, setMyAvatarUrl] = useState<string | null>(null);
+  const [membersCollapsed, setMembersCollapsed] = useState(false);
+  const [profileCard, setProfileCard] = useState<{ userId: string; name: string; x: number; y: number } | null>(null);
 
   // Pull current user's avatar so the "you" row in the member list shows the
   // real profile picture instead of a colored initial fallback.
