@@ -1,16 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
-import { Eye, FileText, Lock, X } from "lucide-react";
+import { Eye, FileText, Lock, X, Flame } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 /**
  * Shared-note message renderer.
  *
  * Wire format embedded in `messages.content`:
- *   [[cubbly:shared-note:v1]]{"title":"...","body":"...","viewOnce":true|false}
+ *   [[cubbly:shared-note:v1]]{"title":"...","body":"...","viewOnce":true|false,"burnt":?}
  *
- * When `viewOnce` is true, the modal:
- *  - reveals the body exactly once per recipient device (tracked in localStorage)
- *  - disables text selection, copy, drag, and the native context menu
- *  - replaces itself with a "Burnt" state on close
+ * View-once enforcement is layered:
+ *  1. UI: clicking opens a modal exactly once per recipient device
+ *     (tracked in localStorage). Selection, copy, cut, drag, and the
+ *     native context menu are all blocked inside the modal.
+ *  2. Server: when the modal closes, the recipient calls the
+ *     `burn_view_once_note` RPC which permanently replaces the
+ *     stored body with `burnt:true` so reopening from another device
+ *     or after a cache wipe shows nothing.
  */
 
 const MARKER = "[[cubbly:shared-note:v1]]";
@@ -20,6 +25,7 @@ interface SharedNotePayload {
   title: string;
   body: string;
   viewOnce: boolean;
+  burnt?: boolean;
 }
 
 export const parseSharedNote = (raw: string): SharedNotePayload | null => {
@@ -32,6 +38,7 @@ export const parseSharedNote = (raw: string): SharedNotePayload | null => {
       title: obj.title,
       body: obj.body,
       viewOnce: !!obj.viewOnce,
+      burnt: !!obj.burnt,
     };
   } catch {
     return null;
@@ -58,56 +65,118 @@ interface Props {
 
 const SharedNoteMessage = ({ messageId, payload, isOwn }: Props) => {
   const [open, setOpen] = useState(false);
-  const seen = useMemo(() => !!loadSeen()[messageId], [messageId, open]);
-  const burnt = payload.viewOnce && seen && !open;
+  // Bump when the modal closes so we re-read the seen flag.
+  const [, setTick] = useState(0);
+  const locallySeen = useMemo(() => !!loadSeen()[messageId], [messageId, open]);
+  const serverBurnt = !!payload.burnt;
+
+  // For the recipient the note becomes inert once it's been opened OR once the
+  // sender's server-side copy was burnt. The sender always sees an
+  // un-clickable preview chip so they can see what they sent.
+  const burnt = serverBurnt || (payload.viewOnce && locallySeen && !open);
+
+  const handleClose = async () => {
+    setOpen(false);
+    if (payload.viewOnce && !isOwn && !serverBurnt) {
+      // Best-effort: burn server-side. If it fails (offline, etc.) the
+      // localStorage flag still prevents re-opening on this device.
+      try { await supabase.rpc("burn_view_once_note" as any, { _message_id: messageId }); } catch {}
+    }
+    setTick((t) => t + 1);
+  };
 
   const openCard = () => {
-    if (burnt) return;
-    setOpen(true);
+    if (burnt || isOwn) return;
     if (payload.viewOnce) markSeen(messageId);
+    setOpen(true);
   };
+
+  const accent = payload.viewOnce ? "#f0b132" : "hsl(var(--primary))";
+  const accentBg = payload.viewOnce ? "rgba(240,177,50,0.12)" : "rgba(88,101,242,0.14)";
+  const previewBody = payload.viewOnce
+    ? "Tap to reveal — opens only once"
+    : (payload.body?.trim().slice(0, 140) || "(empty note)");
 
   return (
     <>
       <button
         type="button"
         onClick={openCard}
-        disabled={burnt}
-        className="flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors disabled:cursor-not-allowed"
+        disabled={burnt || isOwn}
+        className="group block w-full text-left rounded-2xl overflow-hidden transition-all disabled:cursor-default"
         style={{
-          backgroundColor: burnt ? "var(--app-bg-tertiary, #1e1f22)" : "var(--app-bg-secondary, #2b2d31)",
-          borderColor: "var(--app-border, #2b2d31)",
-          maxWidth: 360,
+          maxWidth: 380,
+          backgroundColor: "#1e1f22",
+          border: `1px solid ${burnt ? "#2b2d31" : "#313338"}`,
           opacity: burnt ? 0.55 : 1,
+          boxShadow: burnt ? "none" : "0 1px 2px rgba(0,0,0,0.25)",
         }}
+        onMouseEnter={(e) => { if (!burnt && !isOwn) e.currentTarget.style.borderColor = accent; }}
+        onMouseLeave={(e) => { e.currentTarget.style.borderColor = burnt ? "#2b2d31" : "#313338"; }}
       >
-        <div
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
-          style={{ backgroundColor: payload.viewOnce ? "rgba(237,193,66,0.14)" : "rgba(88,101,242,0.14)" }}
-        >
-          {payload.viewOnce
-            ? <Eye className="h-4 w-4" style={{ color: "#f0b132" }} />
-            : <FileText className="h-4 w-4" style={{ color: "hsl(var(--primary))" }} />}
+        {/* Accent header strip */}
+        <div className="flex items-center gap-2 px-3.5 py-2" style={{ backgroundColor: accentBg }}>
+          {burnt
+            ? <Flame className="h-3.5 w-3.5" style={{ color: "var(--app-text-secondary)" }} />
+            : payload.viewOnce
+              ? <Eye className="h-3.5 w-3.5" style={{ color: accent }} />
+              : <FileText className="h-3.5 w-3.5" style={{ color: accent }} />}
+          <span
+            className="text-[10.5px] font-bold uppercase tracking-wider"
+            style={{ color: burnt ? "var(--app-text-secondary)" : accent }}
+          >
+            {burnt
+              ? "Note · burnt"
+              : payload.viewOnce
+                ? (isOwn ? "View-once note · sent" : "View-once note")
+                : "Shared note"}
+          </span>
+          {payload.viewOnce && !burnt && (
+            <span className="ml-auto flex items-center gap-1 text-[10px] font-semibold" style={{ color: accent }}>
+              <Lock className="h-3 w-3" />
+              1×
+            </span>
+          )}
         </div>
-        <div className="flex flex-col min-w-0">
-          <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: payload.viewOnce ? "#f0b132" : "var(--app-text-secondary)" }}>
-            {payload.viewOnce ? (burnt ? "View-once · opened" : "View-once note") : "Shared note"}
-          </span>
-          <span className="text-sm font-medium truncate" style={{ color: "var(--app-text-primary)" }}>
+
+        {/* Body */}
+        <div className="px-3.5 py-3">
+          <div className="text-[15px] font-semibold leading-snug truncate" style={{ color: "var(--app-text-primary)" }}>
             {payload.title || "Untitled"}
-          </span>
-          <span className="text-[11px] mt-0.5" style={{ color: "var(--app-text-secondary)" }}>
-            {burnt ? "This note can't be opened again" : payload.viewOnce ? "Click to open once · copy disabled" : "Click to read"}
-          </span>
+          </div>
+          <div
+            className={`mt-1 text-[12.5px] leading-snug ${payload.viewOnce && !burnt ? "italic" : ""}`}
+            style={{
+              color: "var(--app-text-secondary)",
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+              // Blur the body for view-once notes so a quick scroll doesn't
+              // leak the contents before the recipient opens it.
+              filter: payload.viewOnce && !burnt && !isOwn ? "blur(6px)" : undefined,
+              userSelect: payload.viewOnce ? "none" : undefined,
+            }}
+          >
+            {burnt
+              ? "This note can't be opened again."
+              : payload.viewOnce && !isOwn
+                ? "•••••• •••• ••••• •••"
+                : previewBody}
+          </div>
+          {!burnt && !isOwn && (
+            <div
+              className="mt-2.5 inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold"
+              style={{ backgroundColor: accentBg, color: accent }}
+            >
+              {payload.viewOnce ? "Tap to reveal once" : "Tap to open"}
+            </div>
+          )}
         </div>
       </button>
 
       {open && (
-        <SharedNoteModal
-          payload={payload}
-          isOwn={isOwn}
-          onClose={() => setOpen(false)}
-        />
+        <SharedNoteModal payload={payload} isOwn={isOwn} onClose={handleClose} />
       )}
     </>
   );
@@ -118,9 +187,12 @@ const SharedNoteModal = ({ payload, isOwn, onClose }: { payload: SharedNotePaylo
   useEffect(() => {
     if (!payload.viewOnce) return;
     const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && (e.key === "c" || e.key === "C" || e.key === "x" || e.key === "X" || e.key === "a" || e.key === "A")) {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "c" || e.key === "C" || e.key === "x" || e.key === "X" || e.key === "a" || e.key === "A" || e.key === "p" || e.key === "P" || e.key === "s" || e.key === "S")) {
         e.preventDefault();
         e.stopPropagation();
+      }
+      if (e.key === "PrintScreen") {
+        e.preventDefault();
       }
     };
     window.addEventListener("keydown", onKey, true);
@@ -137,50 +209,72 @@ const SharedNoteModal = ({ payload, isOwn, onClose }: { payload: SharedNotePaylo
           userSelect: "none" as const,
           WebkitUserSelect: "none" as const,
           MozUserSelect: "none" as const,
+          WebkitTouchCallout: "none" as const,
         },
       }
     : {};
 
+  const accent = payload.viewOnce ? "#f0b132" : "hsl(var(--primary))";
+  const accentBg = payload.viewOnce ? "rgba(240,177,50,0.12)" : "rgba(88,101,242,0.14)";
+
   return (
     <div
       className="fixed inset-0 z-[300] flex items-center justify-center p-4"
-      style={{ backgroundColor: "rgba(0,0,0,0.7)" }}
+      style={{ backgroundColor: "rgba(0,0,0,0.72)", backdropFilter: "blur(4px)" }}
       onClick={onClose}
     >
       <div
         className="w-full max-w-lg rounded-2xl overflow-hidden flex flex-col"
-        style={{ backgroundColor: "var(--app-bg-secondary)", boxShadow: "0 24px 48px rgba(0,0,0,0.5)", maxHeight: "85vh" }}
+        style={{ backgroundColor: "#1e1f22", boxShadow: "0 24px 56px rgba(0,0,0,0.6)", maxHeight: "85vh", border: "1px solid #2b2d31" }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: "var(--app-border)" }}>
-          <div className="flex items-center gap-2 min-w-0">
-            {payload.viewOnce
-              ? <Eye className="h-4 w-4 shrink-0" style={{ color: "#f0b132" }} />
-              : <FileText className="h-4 w-4 shrink-0" style={{ color: "hsl(var(--primary))" }} />}
-            <span className="text-sm font-semibold truncate" style={{ color: "var(--app-text-primary)" }}>
-              {payload.title || "Untitled"}
-            </span>
+        <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: "#2b2d31" }}>
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: accentBg }}>
+              {payload.viewOnce
+                ? <Eye className="h-4 w-4" style={{ color: accent }} />
+                : <FileText className="h-4 w-4" style={{ color: accent }} />}
+            </div>
+            <div className="min-w-0 flex flex-col">
+              <span className="text-[15px] font-semibold truncate" style={{ color: "var(--app-text-primary)" }}>
+                {payload.title || "Untitled"}
+              </span>
+              <span className="text-[11px]" style={{ color: "var(--app-text-secondary)" }}>
+                {payload.viewOnce ? "View-once · closing will permanently burn this note" : "Shared note"}
+              </span>
+            </div>
             {payload.viewOnce && (
-              <span className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold shrink-0" style={{ backgroundColor: "rgba(240,177,50,0.16)", color: "#f0b132" }}>
-                <Lock className="h-3 w-3" /> view once
+              <span
+                className="ml-1 flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold shrink-0"
+                style={{ backgroundColor: accentBg, color: accent }}
+              >
+                <Lock className="h-3 w-3" /> 1×
               </span>
             )}
           </div>
-          <button onClick={onClose} className="rounded p-1 hover:bg-[var(--app-hover)]">
+          <button onClick={onClose} className="rounded-md p-1.5 hover:bg-[var(--app-hover)]">
             <X className="h-4 w-4" style={{ color: "var(--app-text-secondary)" }} />
           </button>
         </div>
 
         <div
           {...lockProps}
-          className="flex-1 overflow-y-auto px-5 py-4 text-[15px] leading-relaxed whitespace-pre-wrap break-words"
+          className="flex-1 overflow-y-auto px-5 py-5 text-[15px] leading-relaxed whitespace-pre-wrap break-words"
+          style={{ ...((lockProps as any).style || {}), color: "var(--app-text-primary)" }}
         >
           {payload.body?.trim() || "(empty)"}
         </div>
 
-        <div className="px-5 py-3 border-t text-[11px]" style={{ borderColor: "var(--app-border)", color: "var(--app-text-secondary)" }}>
+        <div className="px-5 py-3 border-t text-[11px] flex items-center gap-2" style={{ borderColor: "#2b2d31", color: "var(--app-text-secondary)" }}>
           {payload.viewOnce
-            ? (isOwn ? "Recipients can only open this note once; copy is disabled on their device." : "This note is view-once. Once you close it, it can't be reopened, and copy/select is disabled.")
+            ? (
+              <>
+                <Flame className="h-3.5 w-3.5" style={{ color: accent }} />
+                {isOwn
+                  ? "Recipient can only open this note once. Copy & screenshot deterrents are on."
+                  : "Closing this will burn the note for good. Copy, select, and right-click are disabled."}
+              </>
+            )
             : "Shared from a personal note."}
         </div>
       </div>
