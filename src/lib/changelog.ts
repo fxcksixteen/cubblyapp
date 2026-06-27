@@ -32,7 +32,11 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: "2026-04-22",
     hero: bearImage,
     newFeatures: [
-      "Share a personal note to any DM or group — with an optional View Once toggle that locks the note to a single open, disables copy/select, and burns itself after viewing.",
+      "Redesigned Share Note flow — multi-select recipients with a clean searchable picker, note preview card, and an iOS-style toggle for View Once.",
+      "Shared notes now render as a beautiful accented card in chat instead of raw text, with title, preview, and a clear 'view once' lock badge.",
+      "View-once notes are bulletproof: server-side burn via the new burn_view_once_note RPC permanently destroys the body after opening, plus blocked copy/cut/select/right-click/screenshot shortcuts and a blurred preview before reveal.",
+      "Server members panel is now collapsible (matches the group chat panel), and right-clicking any member in a server or group sidebar opens a context menu with View Profile, Mention, and Copy User ID.",
+      "Clicking a member in the server or group sidebar now opens their full profile card — same flow as the DM sidebar.",
       "Muted DMs/groups are now fully blurred in the sidebar and reveal on hover.",
       "Right-clicking a group chat now offers a 'Leave Group' option (permanent), in addition to 'Hide'.",
       "Screenshare end sound now plays reliably even when the shared window is closed externally.",
