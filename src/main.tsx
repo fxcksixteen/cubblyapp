@@ -34,6 +34,19 @@ if (electronApi?.getAppVersion) {
   });
 }
 
+// v0.3.21: when hardware acceleration is OFF (Electron flag), auto-apply a
+// `cubbly-low-power` class to <html> so we can disable heavy backdrop-blurs,
+// shadows, and decorative animations across the app via CSS. Massive perf win
+// on machines where users already turned HA off because the app was laggy.
+if (electronApi?.getHardwareAcceleration) {
+  electronApi.getHardwareAcceleration().then((on: boolean) => {
+    if (on === false) {
+      document.documentElement.classList.add("cubbly-low-power");
+      console.log("[cubbly] low-power mode ON (hardware acceleration disabled)");
+    }
+  }).catch(() => {});
+}
+
 // Preload notification sounds in the background
 preloadAllSounds();
 
