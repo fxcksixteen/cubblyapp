@@ -137,12 +137,18 @@ const SharedNoteMessage = ({ messageId, payload, isOwn }: Props) => {
                 ? (isOwn ? "View-once note · sent" : "View-once note")
                 : "Shared note"}
           </span>
-          {payload.viewOnce && !burnt && (
-            <span className="ml-auto flex items-center gap-1 text-[10px] font-semibold" style={{ color: accent }}>
-              <Lock className="h-3 w-3" />
-              1×
-            </span>
-          )}
+          <div className="ml-auto flex items-center gap-1.5">
+            {payload.live && !burnt && (
+              <span className="flex items-center gap-1 text-[10px] font-semibold" style={{ color: accent }}>
+                <Radio className="h-3 w-3" /> LIVE
+              </span>
+            )}
+            {payload.viewOnce && !burnt && (
+              <span className="flex items-center gap-1 text-[10px] font-semibold" style={{ color: accent }}>
+                <Lock className="h-3 w-3" /> 1×
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Body */}
