@@ -656,30 +656,52 @@ const NoteListItem = ({
 const ShareNoteModal = ({ note, onClose }: { note: NoteRow; onClose: () => void }) => {
   const { conversations } = useConversations();
   const { user } = useAuth();
-  const [step, setStep] = useState<1 | 2>(1);
-  const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [viewOnce, setViewOnce] = useState(false);
   const [sending, setSending] = useState(false);
+  const [query, setQuery] = useState("");
 
-  const selectedConv = conversations.find((c) => c.id === selectedConvId) || null;
+  const title = note.decrypted?.title || "Untitled";
+  const bodyPlain = stripHtml(note.decrypted?.body || "").trim();
+  const previewBody = bodyPlain.slice(0, 140) || "(empty note)";
+
+  const toggle = (id: string) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+
+  const filtered = conversations.filter((c) => {
+    if (!query.trim()) return true;
+    const q = query.toLowerCase();
+    const label = c.is_group
+      ? (c.name || "Group")
+      : (c.members[0]?.display_name || c.members[0]?.username || "");
+    return label.toLowerCase().includes(q);
+  });
+
+  const selectedConvs = conversations.filter((c) => selectedIds.has(c.id));
 
   const handleSend = async () => {
-    if (!selectedConvId || !user || sending) return;
+    if (!selectedIds.size || !user || sending) return;
     setSending(true);
     try {
-      const title = note.decrypted?.title || "Untitled note";
-      const body = stripHtml(note.decrypted?.body || "").trim();
-      // Encode as a structured marker so the chat renderer can show a
-      // proper card (and enforce view-once on the recipient device).
-      const payload = JSON.stringify({ title, body: body || "(empty)", viewOnce });
+      const body = bodyPlain || "(empty)";
+      const payload = JSON.stringify({ title, body, viewOnce });
       const content = `[[cubbly:shared-note:v1]]${payload}`;
-      const { error } = await supabase.from("messages").insert({
-        conversation_id: selectedConvId,
+      const rows = Array.from(selectedIds).map((conversation_id) => ({
+        conversation_id,
         sender_id: user.id,
         content,
-      } as any);
+      } as any));
+      const { error } = await supabase.from("messages").insert(rows);
       if (error) throw error;
-      toast.success(viewOnce ? "View-once note sent" : "Note shared");
+      toast.success(
+        selectedIds.size === 1
+          ? (viewOnce ? "View-once note sent" : "Note shared")
+          : `Shared to ${selectedIds.size} chats`
+      );
       onClose();
     } catch (err: any) {
       toast.error(err?.message || "Failed to share note");
@@ -688,142 +710,166 @@ const ShareNoteModal = ({ note, onClose }: { note: NoteRow; onClose: () => void 
     }
   };
 
-  const title = note.decrypted?.title || "Untitled";
-
   return (
     <div
       className="fixed inset-0 z-[200] flex items-center justify-center p-4"
-      style={{ backgroundColor: "rgba(0,0,0,0.6)" }}
+      style={{ backgroundColor: "rgba(0,0,0,0.65)", backdropFilter: "blur(4px)" }}
       onClick={onClose}
     >
       <div
         className="w-full max-w-md rounded-2xl overflow-hidden flex flex-col"
-        style={{ backgroundColor: "var(--app-bg-secondary)", boxShadow: "0 24px 48px rgba(0,0,0,0.5)", maxHeight: "85vh" }}
+        style={{ backgroundColor: "#1e1f22", boxShadow: "0 24px 56px rgba(0,0,0,0.55)", maxHeight: "88vh", border: "1px solid #2b2d31" }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: "var(--app-border)" }}>
-          <div className="flex items-center gap-2">
-            <Share2 className="h-4 w-4" style={{ color: "hsl(var(--primary))" }} />
-            <span className="text-sm font-semibold" style={{ color: "var(--app-text-primary)" }}>
-              {step === 1 ? "Share Note" : "Confirm Share"}
-            </span>
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: "#2b2d31" }}>
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ backgroundColor: "rgba(88,101,242,0.16)" }}>
+              <Share2 className="h-4 w-4" style={{ color: "hsl(var(--primary))" }} />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-sm font-semibold" style={{ color: "var(--app-text-primary)" }}>Share Note</span>
+              <span className="text-[11px]" style={{ color: "var(--app-text-secondary)" }}>Send to one or more chats</span>
+            </div>
           </div>
-          <button onClick={onClose} className="rounded p-1 hover:bg-[var(--app-hover)]">
+          <button onClick={onClose} className="rounded-md p-1.5 hover:bg-[var(--app-hover)]">
             <X className="h-4 w-4" style={{ color: "var(--app-text-secondary)" }} />
           </button>
         </div>
 
-        {step === 1 ? (
-          <>
-            <div className="px-5 pt-4 pb-2 text-xs" style={{ color: "var(--app-text-secondary)" }}>
-              Sharing <span className="font-semibold" style={{ color: "var(--app-text-primary)" }}>"{title}"</span> with a friend or group.
+        {/* Note preview chip */}
+        <div className="px-4 pt-4">
+          <div className="flex items-start gap-3 rounded-xl p-3" style={{ backgroundColor: "#2b2d31", border: "1px solid #313338" }}>
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: "rgba(88,101,242,0.18)" }}>
+              <FileText className="h-4 w-4" style={{ color: "hsl(var(--primary))" }} />
             </div>
-            <div className="flex-1 overflow-y-auto px-2 py-2 min-h-[200px]">
-              {conversations.length === 0 ? (
-                <div className="px-3 py-6 text-xs text-center" style={{ color: "var(--app-text-secondary)" }}>
-                  No open DMs. Open a DM first.
-                </div>
-              ) : conversations.map((c) => {
-                const label = c.is_group
-                  ? (c.name || "Group")
-                  : (c.members[0]?.display_name || c.members[0]?.username || "Direct Message");
-                const active = c.id === selectedConvId;
-                return (
-                  <button
-                    key={c.id}
-                    onClick={() => setSelectedConvId(c.id)}
-                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors"
-                    style={{ backgroundColor: active ? "var(--app-active, #404249)" : undefined }}
-                    onMouseEnter={(e) => { if (!active) e.currentTarget.style.backgroundColor = "var(--app-hover)"; }}
-                    onMouseLeave={(e) => { if (!active) e.currentTarget.style.backgroundColor = ""; }}
-                  >
-                    {c.is_group ? (
-                      <GroupAvatar conversation={c} size={32} />
-                    ) : c.members[0]?.avatar_url ? (
-                      <img src={c.members[0].avatar_url} alt="" className="h-8 w-8 rounded-full object-cover" />
-                    ) : (
-                      <div className="h-8 w-8 rounded-full bg-[var(--app-bg-tertiary)] flex items-center justify-center text-xs font-semibold" style={{ color: "var(--app-text-primary)" }}>
-                        {label.slice(0, 1).toUpperCase()}
-                      </div>
-                    )}
-                    <span className="text-sm truncate" style={{ color: "var(--app-text-primary)" }}>{label}</span>
-                  </button>
-                );
-              })}
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-semibold truncate" style={{ color: "var(--app-text-primary)" }}>{title}</div>
+              <div className="mt-0.5 text-[12px] leading-snug line-clamp-2" style={{ color: "var(--app-text-secondary)" }}>
+                {previewBody}
+              </div>
             </div>
+          </div>
+        </div>
 
-            <label className="flex items-center gap-2 px-5 py-3 border-t cursor-pointer select-none" style={{ borderColor: "var(--app-border)" }}>
-              <input
-                type="checkbox"
-                checked={viewOnce}
-                onChange={(e) => setViewOnce(e.target.checked)}
-                className="h-4 w-4"
-              />
-              <Eye className="h-4 w-4" style={{ color: viewOnce ? "hsl(var(--primary))" : "var(--app-text-secondary)" }} />
-              <span className="text-xs" style={{ color: "var(--app-text-primary)" }}>
-                View once — recipient can only open this note one time
-              </span>
-            </label>
+        {/* Search */}
+        <div className="px-4 pt-3">
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search friends or groups…"
+            className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+            style={{ backgroundColor: "#111214", color: "var(--app-text-primary)", border: "1px solid #2b2d31" }}
+          />
+        </div>
 
-            <div className="flex gap-2 px-4 py-3 border-t" style={{ borderColor: "var(--app-border)" }}>
-              <button
-                onClick={onClose}
-                className="flex-1 rounded-lg py-2 text-sm font-medium"
-                style={{ backgroundColor: "var(--app-bg-tertiary)", color: "var(--app-text-primary)" }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => setStep(2)}
-                disabled={!selectedConvId}
-                className="flex-1 rounded-lg py-2 text-sm font-semibold text-white disabled:opacity-50"
-                style={{ backgroundColor: "hsl(var(--primary))" }}
-              >
-                Continue
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="px-5 py-5 flex flex-col gap-3">
-              <div
-                className="flex h-12 w-12 self-center items-center justify-center rounded-full"
-                style={{ backgroundColor: "rgba(237,193,66,0.12)" }}
-              >
-                <ShieldCheck className="h-6 w-6" style={{ color: "#f0b132" }} />
-              </div>
-              <div className="text-center text-sm font-semibold" style={{ color: "var(--app-text-primary)" }}>
-                Are you sure?
-              </div>
-              <div className="text-center text-xs leading-relaxed" style={{ color: "var(--app-text-secondary)" }}>
-                Personal notes are <span className="font-semibold">encrypted and private</span> on your device. Sharing will send the contents of <span className="font-semibold" style={{ color: "var(--app-text-primary)" }}>"{title}"</span> to{" "}
-                <span className="font-semibold" style={{ color: "var(--app-text-primary)" }}>
-                  {selectedConv?.is_group ? (selectedConv?.name || "this group") : (selectedConv?.members[0]?.display_name || "this user")}
-                </span>
-                {viewOnce ? <> as a <span className="font-semibold" style={{ color: "hsl(var(--primary))" }}>one-time view</span> message.</> : "."}
-              </div>
-            </div>
-            <div className="flex gap-2 px-4 py-3 border-t" style={{ borderColor: "var(--app-border)" }}>
-              <button
-                onClick={() => setStep(1)}
-                disabled={sending}
-                className="flex-1 rounded-lg py-2 text-sm font-medium"
-                style={{ backgroundColor: "var(--app-bg-tertiary)", color: "var(--app-text-primary)" }}
-              >
-                Back
-              </button>
-              <button
-                onClick={handleSend}
-                disabled={sending}
-                className="flex-1 rounded-lg py-2 text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-1.5"
-                style={{ backgroundColor: "hsl(var(--primary))" }}
-              >
-                {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-                {sending ? "Sending…" : "Share Now"}
-              </button>
-            </div>
-          </>
+        {/* Selected pills */}
+        {selectedConvs.length > 0 && (
+          <div className="px-4 pt-3 flex flex-wrap gap-1.5">
+            {selectedConvs.map((c) => {
+              const label = c.is_group
+                ? (c.name || "Group")
+                : (c.members[0]?.display_name || c.members[0]?.username || "DM");
+              return (
+                <button
+                  key={c.id}
+                  onClick={() => toggle(c.id)}
+                  className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-medium"
+                  style={{ backgroundColor: "rgba(88,101,242,0.2)", color: "#dbdee1" }}
+                >
+                  {label}
+                  <X className="h-3 w-3" />
+                </button>
+              );
+            })}
+          </div>
         )}
+
+        {/* List */}
+        <div className="flex-1 overflow-y-auto px-2 pt-3 pb-2 min-h-[180px]">
+          {filtered.length === 0 ? (
+            <div className="px-3 py-8 text-xs text-center" style={{ color: "var(--app-text-secondary)" }}>
+              {conversations.length === 0 ? "No open DMs yet — open one first." : "No matches."}
+            </div>
+          ) : filtered.map((c) => {
+            const label = c.is_group
+              ? (c.name || "Group")
+              : (c.members[0]?.display_name || c.members[0]?.username || "Direct Message");
+            const checked = selectedIds.has(c.id);
+            return (
+              <button
+                key={c.id}
+                onClick={() => toggle(c.id)}
+                className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors"
+                style={{ backgroundColor: checked ? "rgba(88,101,242,0.14)" : undefined }}
+                onMouseEnter={(e) => { if (!checked) e.currentTarget.style.backgroundColor = "var(--app-hover)"; }}
+                onMouseLeave={(e) => { if (!checked) e.currentTarget.style.backgroundColor = ""; }}
+              >
+                {c.is_group ? (
+                  <GroupAvatar conversation={c} size={32} />
+                ) : c.members[0]?.avatar_url ? (
+                  <img src={c.members[0].avatar_url} alt="" className="h-8 w-8 rounded-full object-cover" />
+                ) : (
+                  <div className="h-8 w-8 rounded-full bg-[var(--app-bg-tertiary)] flex items-center justify-center text-xs font-semibold" style={{ color: "var(--app-text-primary)" }}>
+                    {label.slice(0, 1).toUpperCase()}
+                  </div>
+                )}
+                <span className="flex-1 text-sm truncate" style={{ color: "var(--app-text-primary)" }}>{label}</span>
+                <span
+                  className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-md transition-colors"
+                  style={{
+                    backgroundColor: checked ? "hsl(var(--primary))" : "transparent",
+                    border: checked ? "1px solid hsl(var(--primary))" : "1.5px solid #4e5058",
+                  }}
+                >
+                  {checked && <Check className="h-3 w-3 text-white" />}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* View-once toggle */}
+        <div
+          className="flex items-center justify-between gap-3 px-5 py-3.5 border-t"
+          style={{ borderColor: "#2b2d31", backgroundColor: "#181a1d" }}
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md"
+              style={{ backgroundColor: viewOnce ? "rgba(240,177,50,0.16)" : "#2b2d31" }}
+            >
+              <Eye className="h-3.5 w-3.5" style={{ color: viewOnce ? "#f0b132" : "var(--app-text-secondary)" }} />
+            </div>
+            <div className="min-w-0">
+              <div className="text-[13px] font-semibold" style={{ color: "var(--app-text-primary)" }}>View once</div>
+              <div className="text-[11px] leading-tight" style={{ color: "var(--app-text-secondary)" }}>
+                Recipient can open once. Copy & screenshot deterrents on.
+              </div>
+            </div>
+          </div>
+          <Switch checked={viewOnce} onCheckedChange={setViewOnce} />
+        </div>
+
+        {/* Footer */}
+        <div className="flex gap-2 px-4 py-3 border-t" style={{ borderColor: "#2b2d31" }}>
+          <button
+            onClick={onClose}
+            className="flex-1 rounded-lg py-2 text-sm font-medium transition-colors"
+            style={{ backgroundColor: "#2b2d31", color: "var(--app-text-primary)" }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSend}
+            disabled={!selectedIds.size || sending}
+            className="flex-[1.4] rounded-lg py-2 text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors"
+            style={{ backgroundColor: "hsl(var(--primary))" }}
+          >
+            {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+            {sending ? "Sending…" : selectedIds.size > 1 ? `Share to ${selectedIds.size}` : "Share"}
+          </button>
+        </div>
       </div>
     </div>
   );
