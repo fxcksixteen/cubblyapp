@@ -736,7 +736,7 @@ const ShareNoteModal = ({ note, onClose }: { note: NoteRow; onClose: () => void 
                     onMouseLeave={(e) => { if (!active) e.currentTarget.style.backgroundColor = ""; }}
                   >
                     {c.is_group ? (
-                      <GroupAvatar conversationId={c.id} pictureUrl={c.picture_url} name={c.name} size={32} />
+                      <GroupAvatar conversation={c} size={32} />
                     ) : c.members[0]?.avatar_url ? (
                       <img src={c.members[0].avatar_url} alt="" className="h-8 w-8 rounded-full object-cover" />
                     ) : (
