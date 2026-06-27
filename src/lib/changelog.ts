@@ -23,9 +23,20 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.3.21";
+export const CURRENT_VERSION = "0.3.22";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.3.22",
+    title: "Icon visibility fix in low-power mode",
+    date: "2026-04-24",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Fixed sidebar, composer, and menu icons appearing black/invisible when Hardware Acceleration was turned off — low-power mode no longer strips the filters that recolor icons.",
+    ],
+  },
+
   {
     version: "0.3.21",
     title: "Call SFX cleanup + view-once anti-screenshot",
