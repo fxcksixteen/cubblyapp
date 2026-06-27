@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Hash, Volume2, Plus, Settings, UserPlus, LogOut, Copy, Loader2, ChevronDown, Crown, MicOff, Headphones, Video, MonitorUp, type LucideIcon } from "lucide-react";
+import { Hash, Volume2, Plus, Settings, UserPlus, LogOut, Copy, Loader2, ChevronDown, ChevronRight, Crown, MicOff, Headphones, Video, MonitorUp, type LucideIcon } from "lucide-react";
 import { useServers, type ServerChannel } from "@/contexts/ServersContext";
 import { useServerChannels, useServerMembers } from "@/hooks/useServerChannels";
 import { useChannelVoiceParticipants } from "@/hooks/useChannelVoiceParticipants";
@@ -20,6 +20,8 @@ import UserBadges from "@/components/app/UserBadges";
 import { getEffectivePresenceStatus } from "@/lib/presence";
 import { getProfileColor } from "@/lib/profileColors";
 import { Button } from "@/components/ui/button";
+import MemberRowMenu from "@/components/app/MemberRowMenu";
+import UserProfileCard from "@/components/app/chat/UserProfileCard";
 
 const ServerView = () => {
   const location = useLocation();
@@ -87,6 +89,8 @@ const ServerView = () => {
   const [createChanOpen, setCreateChanOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  const [membersCollapsed, setMembersCollapsed] = useState(false);
+  const [profileCard, setProfileCard] = useState<{ userId: string; name: string; x: number; y: number } | null>(null);
 
   const onLeave = async () => {
     if (!server || !user) return;
@@ -189,40 +193,77 @@ const ServerView = () => {
 
       {/* Members panel */}
       <div className="w-60 flex flex-col border-l" style={{ backgroundColor: "var(--app-bg-secondary)", borderColor: "var(--app-border)" }}>
-        <div className="px-3 py-3 text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--app-text-secondary)" }}>
-          Members — {members.length}
-        </div>
-        <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
-          {members.map((m) => {
-            const status = getEffectivePresenceStatus(m.user_id, m.status, onlineUserIds);
-            const color = getProfileColor(m.user_id);
-            return (
-              <div key={m.user_id} className="flex items-center gap-2 px-2 py-1 rounded transition-colors hover:bg-[var(--app-hover)]">
-                <div className="relative shrink-0">
-                  {m.avatar_url ? (
-                    <img src={m.avatar_url} alt="" className="h-8 w-8 rounded-full object-cover" />
-                  ) : (
-                    <div className="h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold" style={{ backgroundColor: color.bg, color: "white" }}>
-                      {m.display_name.charAt(0).toUpperCase()}
+        <button
+          onClick={() => setMembersCollapsed((v) => !v)}
+          className="flex w-full items-center justify-between px-3 py-3 text-[11px] font-bold uppercase tracking-wide transition-colors"
+          style={{ color: "var(--app-text-secondary)" }}
+          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--app-hover)")}
+          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "")}
+        >
+          <span>Members — {members.length}</span>
+          <ChevronDown
+            className="h-3.5 w-3.5 transition-transform"
+            style={{ transform: membersCollapsed ? "rotate(-90deg)" : "none" }}
+          />
+        </button>
+        {!membersCollapsed && (
+          <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
+            {members.map((m) => {
+              const status = getEffectivePresenceStatus(m.user_id, m.status, onlineUserIds);
+              const color = getProfileColor(m.user_id);
+              const openProfile = (e: React.MouseEvent) => {
+                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                setProfileCard({ userId: m.user_id, name: m.display_name, x: rect.left, y: rect.top });
+              };
+              const isYou = m.user_id === user?.id;
+              return (
+                <MemberRowMenu
+                  key={m.user_id}
+                  userId={m.user_id}
+                  displayName={m.display_name}
+                  isYou={isYou}
+                  onViewProfile={() => setProfileCard({ userId: m.user_id, name: m.display_name, x: window.innerWidth / 2, y: window.innerHeight / 2 })}
+                >
+                  <div
+                    onClick={openProfile}
+                    className="flex items-center gap-2 px-2 py-1 rounded transition-colors hover:bg-[var(--app-hover)] cursor-pointer"
+                  >
+                    <div className="relative shrink-0">
+                      {m.avatar_url ? (
+                        <img src={m.avatar_url} alt="" className="h-8 w-8 rounded-full object-cover" />
+                      ) : (
+                        <div className="h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold" style={{ backgroundColor: color.bg, color: "white" }}>
+                          {m.display_name.charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                      <div className="absolute -bottom-0.5 -right-0.5">
+                        <StatusIndicator status={status} size="sm" borderColor="var(--app-bg-secondary)" />
+                      </div>
                     </div>
-                  )}
-                  <div className="absolute -bottom-0.5 -right-0.5">
-                    <StatusIndicator status={status} size="sm" borderColor="var(--app-bg-secondary)" />
+                    <div className="min-w-0 flex-1 flex items-center gap-1">
+                      <UserDisplayName userId={m.user_id} name={m.display_name} className="truncate text-sm font-medium" />
+                      <UserBadges userId={m.user_id} size={12} />
+                      {m.role === "owner" && <Crown aria-label="Owner" className="h-3.5 w-3.5 shrink-0" style={{ color: "#faa61a" }} />}
+                    </div>
                   </div>
-                </div>
-                <div className="min-w-0 flex-1 flex items-center gap-1">
-                  <UserDisplayName userId={m.user_id} name={m.display_name} className="truncate text-sm font-medium" />
-                  <UserBadges userId={m.user_id} size={12} />
-                  {m.role === "owner" && <Crown aria-label="Owner" className="h-3.5 w-3.5 shrink-0" style={{ color: "#faa61a" }} />}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+                </MemberRowMenu>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {createChanOpen && <CreateChannelModal serverId={server.id} onClose={() => setCreateChanOpen(false)} />}
       {inviteOpen && <InviteModal serverId={server.id} onClose={() => setInviteOpen(false)} />}
+      {profileCard && (
+        <UserProfileCard
+          userId={profileCard.userId}
+          displayName={profileCard.name}
+          position={{ x: profileCard.x, y: profileCard.y }}
+          onClose={() => setProfileCard(null)}
+          startExpanded
+        />
+      )}
     </div>
   );
 };

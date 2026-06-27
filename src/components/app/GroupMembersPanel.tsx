@@ -10,7 +10,9 @@ import StatusIndicator from "./StatusIndicator";
 import GroupAvatar from "./GroupAvatar";
 import UserDisplayName from "./UserDisplayName";
 import UserBadges from "./UserBadges";
-import { Crown, UserMinus, LogOut, Pencil, Image as ImageIcon, Check, X } from "lucide-react";
+import MemberRowMenu from "./MemberRowMenu";
+import UserProfileCard from "./chat/UserProfileCard";
+import { Crown, UserMinus, LogOut, Pencil, Image as ImageIcon, Check, X, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -39,6 +41,8 @@ const GroupMembersPanel = ({ conversation, onClose, onLeftGroup }: GroupMembersP
   const [confirmKick, setConfirmKick] = useState<string | null>(null);
   const [uploadingPic, setUploadingPic] = useState(false);
   const [myAvatarUrl, setMyAvatarUrl] = useState<string | null>(null);
+  const [membersCollapsed, setMembersCollapsed] = useState(false);
+  const [profileCard, setProfileCard] = useState<{ userId: string; name: string; x: number; y: number } | null>(null);
 
   // Pull current user's avatar so the "you" row in the member list shows the
   // real profile picture instead of a colored initial fallback.
@@ -210,10 +214,18 @@ const GroupMembersPanel = ({ conversation, onClose, onLeftGroup }: GroupMembersP
 
       {/* Members list */}
       <div className="flex-1 px-2 py-3">
-        <p className="px-2 mb-2 text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--app-text-secondary)" }}>
-          Members — {allMembers.length}
-        </p>
-        {allMembers.map((m) => {
+        <button
+          onClick={() => setMembersCollapsed((v) => !v)}
+          className="w-full flex items-center justify-between px-2 mb-2 text-[11px] font-bold uppercase tracking-wide transition-colors"
+          style={{ color: "var(--app-text-secondary)" }}
+        >
+          <span>Members — {allMembers.length}</span>
+          <ChevronDown
+            className="h-3.5 w-3.5 transition-transform"
+            style={{ transform: membersCollapsed ? "rotate(-90deg)" : "none" }}
+          />
+        </button>
+        {!membersCollapsed && allMembers.map((m) => {
           const color = getProfileColor(m.user_id);
           // Use the user's actual selected status (idle/dnd/invisible/online).
           // For "you", invisible appears as offline-style only to others; locally show real selection.
@@ -221,61 +233,73 @@ const GroupMembersPanel = ({ conversation, onClose, onLeftGroup }: GroupMembersP
             ? (m.status === "invisible" ? "invisible" : m.status)
             : getEffectivePresenceStatus(m.user_id, m.status, onlineUserIds);
           const memberIsOwner = m.user_id === conversation.owner_id;
+          const openProfile = (e: React.MouseEvent) => {
+            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            setProfileCard({ userId: m.user_id, name: m.display_name, x: rect.left, y: rect.top });
+          };
           return (
-            <div
+            <MemberRowMenu
               key={m.user_id}
-              className="group flex items-center gap-2.5 rounded px-2 py-1.5 transition-colors"
-              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--app-hover, #35373c)")}
-              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "")}
+              userId={m.user_id}
+              displayName={m.display_name}
+              isYou={m.isYou}
+              onViewProfile={() => setProfileCard({ userId: m.user_id, name: m.display_name, x: window.innerWidth / 2, y: window.innerHeight / 2 })}
             >
-              <div className="relative shrink-0">
-                {m.avatar_url ? (
-                  <img src={m.avatar_url} alt="" className="h-8 w-8 rounded-full object-cover" />
-                ) : (
-                  <div
-                    className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold text-white"
-                    style={{ backgroundColor: color.bg }}
-                  >
-                    {m.display_name.charAt(0).toUpperCase()}
+              <div
+                onClick={openProfile}
+                className="group flex items-center gap-2.5 rounded px-2 py-1.5 transition-colors cursor-pointer"
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--app-hover, #35373c)")}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "")}
+              >
+                <div className="relative shrink-0">
+                  {m.avatar_url ? (
+                    <img src={m.avatar_url} alt="" className="h-8 w-8 rounded-full object-cover" />
+                  ) : (
+                    <div
+                      className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold text-white"
+                      style={{ backgroundColor: color.bg }}
+                    >
+                      {m.display_name.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="absolute -bottom-0.5 -right-0.5">
+                    <StatusIndicator status={status} size="sm" borderColor="var(--app-bg-secondary, #2b2d31)" />
                   </div>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1">
+                    <p className="truncate text-sm font-medium text-white flex items-center gap-1.5">
+                      <UserDisplayName userId={m.user_id} name={m.display_name} fallbackColor="#ffffff" className="truncate" />
+                      {m.isYou && <span className="ml-0.5 text-[10px] opacity-60">(you)</span>}
+                      <UserBadges userId={m.user_id} size={12} />
+                    </p>
+                    {memberIsOwner && <Crown className="h-3 w-3 shrink-0" style={{ color: "#faa61a" }} />}
+                  </div>
+                  {(() => {
+                    const act = getActivity(m.user_id);
+                    const memberOnline = m.isYou || onlineUserIds.has(m.user_id);
+                    const label = activityLabel(act, memberOnline);
+                    if (label) {
+                      return (
+                        <p className="truncate text-[11px] leading-tight" style={{ color: "#3ba55c" }}>
+                          {label}
+                        </p>
+                      );
+                    }
+                    return null;
+                  })()}
+                </div>
+                {isOwner && !m.isYou && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setConfirmKick(m.user_id); }}
+                    className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-[#ed4245]/20 transition-opacity"
+                    title="Remove from group"
+                  >
+                    <UserMinus className="h-3.5 w-3.5 text-[#ed4245]" />
+                  </button>
                 )}
-                <div className="absolute -bottom-0.5 -right-0.5">
-                  <StatusIndicator status={status} size="sm" borderColor="var(--app-bg-secondary, #2b2d31)" />
-                </div>
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1">
-                  <p className="truncate text-sm font-medium text-white flex items-center gap-1.5">
-                    <UserDisplayName userId={m.user_id} name={m.display_name} fallbackColor="#ffffff" className="truncate" />
-                    {m.isYou && <span className="ml-0.5 text-[10px] opacity-60">(you)</span>}
-                    <UserBadges userId={m.user_id} size={12} />
-                  </p>
-                  {memberIsOwner && <Crown className="h-3 w-3 shrink-0" style={{ color: "#faa61a" }} />}
-                </div>
-                {(() => {
-                  const act = getActivity(m.user_id);
-                  const memberOnline = m.isYou || onlineUserIds.has(m.user_id);
-                  const label = activityLabel(act, memberOnline);
-                  if (label) {
-                    return (
-                      <p className="truncate text-[11px] leading-tight" style={{ color: "#3ba55c" }}>
-                        {label}
-                      </p>
-                    );
-                  }
-                  return null;
-                })()}
-              </div>
-              {isOwner && !m.isYou && (
-                <button
-                  onClick={() => setConfirmKick(m.user_id)}
-                  className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-[#ed4245]/20 transition-opacity"
-                  title="Remove from group"
-                >
-                  <UserMinus className="h-3.5 w-3.5 text-[#ed4245]" />
-                </button>
-              )}
-            </div>
+            </MemberRowMenu>
           );
         })}
       </div>
@@ -329,6 +353,16 @@ const GroupMembersPanel = ({ conversation, onClose, onLeftGroup }: GroupMembersP
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {profileCard && (
+        <UserProfileCard
+          userId={profileCard.userId}
+          displayName={profileCard.name}
+          position={{ x: profileCard.x, y: profileCard.y }}
+          onClose={() => setProfileCard(null)}
+          startExpanded
+        />
+      )}
     </aside>
   );
 };
