@@ -95,6 +95,27 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
     }
   };
 
+  const handleLeaveGroup = async (convId: string, groupName: string) => {
+    if (!user) return;
+    const ok = window.confirm(
+      `Leave "${groupName}"?\n\nYou will no longer receive messages from this group and would need to be re-invited to rejoin.`
+    );
+    if (!ok) return;
+    try {
+      const { error } = await (supabase as any)
+        .from("conversation_participants")
+        .delete()
+        .eq("conversation_id", convId)
+        .eq("user_id", user.id);
+      if (error) throw error;
+      toast.success(`Left "${groupName}"`);
+      onCloseConversation(convId);
+    } catch (e: any) {
+      console.error("[DMSidebar] leave group failed:", e);
+      toast.error("Couldn't leave group — try again");
+    }
+  };
+
   const [localMuted, setLocalMuted] = useState(false);
   const [localDeafened, setLocalDeafened] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
