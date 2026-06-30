@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useLocalSetting } from "@/hooks/useLocalSetting";
-import { Download, Trash2, Shield, BarChart, AlertTriangle, Users } from "lucide-react";
+import { Download, Trash2, Shield, BarChart, AlertTriangle, Users, Gift } from "lucide-react";
 import { toast } from "sonner";
 import { SettingsCard, SettingsToggleRow, SettingsPrimaryButton } from "./_shared";
 
