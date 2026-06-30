@@ -24,6 +24,7 @@ import ChatView from "@/components/app/ChatView";
 import ShopView from "@/components/app/ShopView";
 import NotesView from "@/components/app/NotesView";
 import HoneyPage from "@/pages/HoneyPage";
+import MessageRequestsView from "@/components/app/MessageRequestsView";
 import ServerView from "@/components/app/ServerView";
 import VoiceCallOverlay from "@/components/app/VoiceCallOverlay";
 import TitleBar from "@/components/app/TitleBar";
@@ -106,6 +107,7 @@ const AppLayout = () => {
     : pathParts[1] === "shop" ? "shop"
     : pathParts[1] === "honey" ? "honey"
     : pathParts[1] === "notes" ? "notes"
+    : pathParts[1] === "requests" ? "requests"
     : isYouRoute ? "you"
     : "friends";
 
@@ -139,6 +141,7 @@ const AppLayout = () => {
   const isShop = activeView === "shop";
   const isHoney = activeView === "honey";
   const isNotes = activeView === "notes";
+  const isRequests = activeView === "requests";
   const isYou = activeView === "you";
   const activeConvId = isDM ? activeView.replace("dm:", "") : null;
   const activeConv = conversations.find((conversation) => conversation.id === activeConvId);
@@ -289,6 +292,9 @@ const AppLayout = () => {
     if (isHoney) {
       return <span className="font-semibold" style={{ color: "var(--app-text-primary)" }}>Honey</span>;
     }
+    if (isRequests) {
+      return <span className="font-semibold" style={{ color: "var(--app-text-primary)" }}>Message Requests</span>;
+    }
     return (
       <>
         <div className="hidden sm:flex items-center gap-2">
@@ -367,6 +373,9 @@ const AppLayout = () => {
     }
     if (isNotes) {
       return <NotesView />;
+    }
+    if (isRequests) {
+      return <MessageRequestsView onOpenConversation={(id) => navigate(`/@me/chat/${id}`, { replace: true })} />;
     }
     if (isServerRoute) {
       return <ServerView />;
@@ -467,6 +476,8 @@ const AppLayout = () => {
                 navigate("/@me/honey", { replace: true });
               } else if (view === "notes") {
                 navigate("/@me/notes", { replace: true });
+              } else if (view === "requests") {
+                navigate("/@me/requests", { replace: true });
               } else {
                 navigate(`/@me/${friendTab}`, { replace: true });
               }
@@ -558,6 +569,8 @@ const AppLayout = () => {
                 navigate("/@me/honey", { replace: true });
               } else if (view === "notes") {
                 navigate("/@me/notes", { replace: true });
+              } else if (view === "requests") {
+                navigate("/@me/requests", { replace: true });
               } else {
                 navigate(`/@me/${friendTab}`, { replace: true });
               }
@@ -718,7 +731,7 @@ const AppLayout = () => {
               <>
                 <div className="flex items-center gap-4">{renderHeader()}</div>
                 <div className="flex items-center gap-3" style={{ color: "var(--app-text-secondary)" }}>
-                  {!activeNowOpen && !isDM && !isShop && !isNotes && !isHoney && (
+                  {!activeNowOpen && !isDM && !isShop && !isNotes && !isHoney && !isRequests && (
                     <button
                       onClick={() => setActiveNowOpen(true)}
                       className="transition-opacity duration-200 animate-fade-in"

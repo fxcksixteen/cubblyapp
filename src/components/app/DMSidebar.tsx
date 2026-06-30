@@ -7,7 +7,7 @@ import { useActivity } from "@/contexts/ActivityContext";
 import { useFriends } from "@/hooks/useFriends";
 import { Conversation } from "@/hooks/useConversations";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, X, Users, MoreVertical, CheckCheck, BellOff, Bell } from "lucide-react";
+import { Plus, X, Users, MoreVertical, CheckCheck, BellOff, Bell, Inbox } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { getProfileColor } from "@/lib/profileColors";
 import { activityLabel } from "@/lib/activityLabel";
@@ -69,6 +69,30 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
   const incomingPendingCount = pending.filter((p) => p.addressee_id === user?.id).length;
   const displayName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "User";
   const username = user?.user_metadata?.username || displayName.toLowerCase();
+
+  // Pending DM requests count for the badge on the "Requests" nav entry.
+  const [requestCount, setRequestCount] = useState(0);
+  useEffect(() => {
+    if (!user) return;
+    let alive = true;
+    const fetchCount = async () => {
+      const { count } = await supabase
+        .from("message_requests")
+        .select("id", { count: "exact", head: true })
+        .eq("recipient_id", user.id)
+        .eq("status", "pending");
+      if (alive) setRequestCount(count ?? 0);
+    };
+    fetchCount();
+    const ch = supabase
+      .channel(`msg-requests-count:${user.id}`)
+      .on("postgres_changes",
+        { event: "*", schema: "public", table: "message_requests", filter: `recipient_id=eq.${user.id}` },
+        () => fetchCount(),
+      )
+      .subscribe();
+    return () => { alive = false; supabase.removeChannel(ch); };
+  }, [user]);
 
   const MUTE_OPTIONS: Array<{ label: string; value: MuteDuration }> = [
     { label: "For 15 Minutes", value: { kind: "minutes", minutes: 15 } },
@@ -178,6 +202,7 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
 
   const navItems: Array<{ id: string; label: string; icon?: string; lucide?: React.ComponentType<{ className?: string; style?: React.CSSProperties }>; isNew?: boolean }> = [
     { id: "friends", icon: friendsIcon, label: "Friends" },
+    { id: "requests", lucide: Inbox, label: "Message Requests" },
     { id: "notes", icon: notesIcon, label: "Personal Notes" },
     { id: "honey", icon: honeyIcon, label: "Honey", isNew: true },
     { id: "shop", icon: shopIcon, label: "Shop" },
@@ -228,7 +253,7 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
               <img
                 src={item.icon}
                 alt=""
-                className={`shrink-0 invert opacity-80 ${item.id === "honey" ? "h-4 w-4 mx-0.5" : "h-5 w-5"}`}
+                className={`shrink-0 invert opacity-80 ${item.id === "honey" ? "h-[14px] w-[14px] mx-[3px]" : "h-5 w-5"}`}
               />
             ) : item.lucide ? (
               <item.lucide className="h-5 w-5 shrink-0 opacity-80" />
@@ -250,6 +275,14 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                 title={`${incomingPendingCount} pending friend request${incomingPendingCount === 1 ? "" : "s"}`}
               >
                 {incomingPendingCount > 9 ? "9+" : incomingPendingCount}
+              </span>
+            )}
+            {item.id === "requests" && requestCount > 0 && (
+              <span
+                className="ml-auto flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#ed4245] px-1 text-[10px] font-bold text-white animate-fade-in"
+                title={`${requestCount} pending message request${requestCount === 1 ? "" : "s"}`}
+              >
+                {requestCount > 9 ? "9+" : requestCount}
               </span>
             )}
           </button>

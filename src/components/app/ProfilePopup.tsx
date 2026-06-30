@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { Copy, Pencil, User, Check } from "lucide-react";
+import { Copy, Pencil, User, Check, Smile } from "lucide-react";
+import CustomStatusModal from "@/components/app/CustomStatusModal";
 import { toast } from "sonner";
 import { defaultProfileColor } from "@/lib/profileColors";
 import StatusIndicator from "@/components/app/StatusIndicator";
@@ -27,6 +28,8 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
   const [copied, setCopied] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [bannerUrl, setBannerUrl] = useState<string | null>(null);
+  const [customStatusOpen, setCustomStatusOpen] = useState(false);
+  const [customStatus, setCustomStatus] = useState<{ text: string; emoji: string | null } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
   const displayName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "User";
@@ -62,6 +65,23 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [user]);
+
+  // Load any active custom status so we can show it inline and let the user clear it.
+  useEffect(() => {
+    if (!user) { setCustomStatus(null); return; }
+    let alive = true;
+    supabase.from("custom_statuses")
+      .select("text, emoji, expires_at")
+      .eq("user_id", user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!alive) return;
+        if (!data?.text && !data?.emoji) { setCustomStatus(null); return; }
+        if (data.expires_at && new Date(data.expires_at).getTime() < Date.now()) { setCustomStatus(null); return; }
+        setCustomStatus({ text: data.text || "", emoji: (data as any).emoji ?? null });
+      });
+    return () => { alive = false; };
+  }, [user, customStatusOpen]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -134,6 +154,12 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
               <UserBadges userId={user?.id} size={16} withTooltip />
             </p>
             <p className="text-[13px] mt-0.5" style={{ color: "var(--app-text-secondary, #949ba4)" }}>{username}</p>
+            {customStatus && (customStatus.text || customStatus.emoji) && (
+              <p className="text-[12px] mt-1.5 truncate flex items-center gap-1" style={{ color: "var(--app-text-primary, #dbdee1)" }}>
+                {customStatus.emoji && <span>{customStatus.emoji}</span>}
+                {customStatus.text && <span className="truncate">{customStatus.text}</span>}
+              </p>
+            )}
           </div>
 
           <div className="mx-3 h-px" style={{ backgroundColor: "var(--app-border, #2b2d31)" }} />
@@ -159,6 +185,17 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
             ))}
 
             <div className="my-1.5 h-px" style={{ backgroundColor: "var(--app-border, #2b2d31)" }} />
+
+            <button
+              onClick={() => { setOpen(false); setCustomStatusOpen(true); }}
+              className="flex w-full items-center gap-2.5 rounded px-2 py-1.5 text-sm transition-colors"
+              style={{ color: "var(--app-text-primary, #dbdee1)" }}
+              onMouseEnter={e => { e.currentTarget.style.backgroundColor = "var(--app-hover, #35373c)"; }}
+              onMouseLeave={e => { e.currentTarget.style.backgroundColor = ""; }}
+            >
+              <Smile className="h-4 w-4" style={{ color: "var(--app-text-secondary, #949ba4)" }} />
+              {customStatus ? "Edit custom status" : "Set a custom status"}
+            </button>
 
             <button
               onClick={() => { setOpen(false); onOpenSettings(); }}
@@ -192,6 +229,11 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
           </div>
         </div>
       )}
+      <CustomStatusModal
+        open={customStatusOpen}
+        onClose={() => setCustomStatusOpen(false)}
+        onSaved={(s) => setCustomStatus(s ? { text: s.text, emoji: s.emoji } : null)}
+      />
     </div>
   );
 };

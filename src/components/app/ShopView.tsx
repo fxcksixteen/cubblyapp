@@ -6,7 +6,10 @@ import { useGems } from "@/contexts/GemsContext";
 import { useTheme, ThemeName } from "@/contexts/ThemeContext";
 import { toast } from "sonner";
 import { playSound } from "@/lib/sounds";
-import { Heart } from "lucide-react";
+import heartIcon from "@/assets/icons/heart.svg";
+import heartFilledIcon from "@/assets/icons/heart-filled.svg";
+import giftIcon from "@/assets/icons/gift.svg";
+import GiftSendModal from "@/components/app/GiftSendModal";
 import shopIcon from "@/assets/icons/shop.svg";
 import coinStack from "@/assets/coins/coin-stack.png";
 import coinNotEnough from "@/assets/coins/coin-not-enough.png";
@@ -214,6 +217,7 @@ const ShopView = () => {
   const [owned, setOwned] = useState<Set<string>>(new Set());
   const [equipped, setEquipped] = useState<Set<string>>(new Set());
   const [wishlist, setWishlist] = useState<Set<string>>(new Set());
+  const [giftItem, setGiftItem] = useState<ShopItem | null>(null);
   const [activeTab, setActiveTab] = useState<Category | "all" | "wishlist">(() => {
     if (typeof window === "undefined") return "all";
     const m = window.location.hash.match(/tab=(name_color|theme|badge|all|wishlist)/);
@@ -571,18 +575,25 @@ const ShopView = () => {
                 {!isOwned && (
                   <button
                     onClick={() => toggleWishlist(item)}
-                    className="absolute top-2 right-2 z-10 flex h-7 w-7 items-center justify-center rounded-full transition-all hover:scale-110"
+                    className={`absolute top-2 right-2 z-10 flex h-7 w-7 items-center justify-center rounded-full transition-all hover:scale-110 ${
+                      isWished ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus:opacity-100"
+                    }`}
                     style={{
-                      backgroundColor: isWished ? "rgba(236,72,153,0.18)" : "rgba(0,0,0,0.35)",
-                      border: `1px solid ${isWished ? "rgba(236,72,153,0.5)" : "transparent"}`,
+                      backgroundColor: isWished ? "rgba(236,72,153,0.18)" : "rgba(0,0,0,0.55)",
+                      border: `1px solid ${isWished ? "rgba(236,72,153,0.55)" : "rgba(255,255,255,0.08)"}`,
                       backdropFilter: "blur(4px)",
                     }}
                     title={isWished ? "Remove from wishlist" : "Add to wishlist"}
                   >
-                    <Heart
-                      className="h-3.5 w-3.5"
-                      fill={isWished ? "#f472b6" : "none"}
-                      style={{ color: isWished ? "#f472b6" : "#ffffff" }}
+                    <img
+                      src={isWished ? heartFilledIcon : heartIcon}
+                      alt=""
+                      className="h-4 w-4"
+                      style={{
+                        filter: isWished
+                          ? "invert(60%) sepia(82%) saturate(2500%) hue-rotate(295deg) brightness(101%) contrast(95%)"
+                          : "invert(100%)",
+                      }}
                     />
                   </button>
                 )}
@@ -640,6 +651,26 @@ const ShopView = () => {
                         <span>{item.price_gems!.toLocaleString()}</span>
                       </button>
                     )}
+                    <button
+                      onClick={() => setGiftItem(item)}
+                      disabled={isBusy}
+                      title="Send as a gift (gems)"
+                      aria-label="Send as a gift"
+                      className="rounded-lg px-2.5 py-2 transition-all flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed hover:-translate-y-0.5"
+                      style={{
+                        backgroundColor: "var(--app-bg-tertiary, #1e1f22)",
+                        border: "1px solid rgba(244,114,182,0.4)",
+                      }}
+                    >
+                      <img
+                        src={giftIcon}
+                        alt=""
+                        className="h-[18px] w-[18px]"
+                        style={{
+                          filter: "invert(72%) sepia(46%) saturate(2200%) hue-rotate(295deg) brightness(105%) contrast(92%)",
+                        }}
+                      />
+                    </button>
                   </div>
                 )}
               </div>
@@ -685,6 +716,15 @@ const ShopView = () => {
           );
         })()}
       </div>
+      <GiftSendModal
+        open={!!giftItem}
+        onClose={() => setGiftItem(null)}
+        item={giftItem}
+        onSent={(item) => {
+          setOwned((prev) => prev); // refresh trigger no-op
+          toast.success(`Gift sent: ${item.name}`);
+        }}
+      />
     </div>
   );
 };
