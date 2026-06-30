@@ -31,6 +31,8 @@ import MessageReactionsBar from "./chat/MessageReactionsBar";
 import UserDisplayName from "./UserDisplayName";
 import UserBadges from "./UserBadges";
 import { useMentionAutocomplete, MentionPopup, type MentionCandidate } from "./chat/MentionAutocomplete";
+import { useEmojiAutocomplete, EmojiPopup, type EmojiCandidate } from "./chat/EmojiAutocomplete";
+
 
 const BOT_USER_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -212,6 +214,36 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
       }
     });
   };
+
+  // Emoji autocomplete (`:smile` → 😄). Mirrors the @mention popup so keyboard
+  // navigation feels identical. Suppressed while the mention popup is active
+  // so we never have two suggestion lists fighting over Enter/Tab.
+  const [emojiActiveIndex, setEmojiActiveIndex] = useState(0);
+  const { match: emojiMatch, filtered: emojiFiltered } = useEmojiAutocomplete({
+    value: input,
+    caret: caretPos,
+  });
+  const showEmojiPopup = !!emojiMatch && emojiFiltered.length > 0 && !mentionMatch;
+  useEffect(() => { setEmojiActiveIndex(0); }, [emojiMatch?.token, emojiFiltered.length]);
+
+  const acceptEmoji = (c: EmojiCandidate) => {
+    if (!emojiMatch) return;
+    const before = input.slice(0, emojiMatch.start);
+    const after = input.slice(caretPos);
+    const insert = `${c.emoji} `;
+    const next = (before + insert + after).slice(0, 1000);
+    const newCaret = (before + insert).length;
+    setInput(next);
+    requestAnimationFrame(() => {
+      const ta = messageInputRef.current;
+      if (ta) {
+        ta.focus();
+        ta.setSelectionRange(newCaret, newCaret);
+        setCaretPos(newCaret);
+      }
+    });
+  };
+
 
   const isBotConversation = recipientUserId === BOT_USER_ID;
 
