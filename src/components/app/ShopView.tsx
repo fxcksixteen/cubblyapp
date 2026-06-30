@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useCoins } from "@/contexts/CoinsContext";
 import { useGems } from "@/contexts/GemsContext";
 import { useTheme, ThemeName } from "@/contexts/ThemeContext";
+import { useEntitlements } from "@/hooks/useEntitlements";
 import { toast } from "sonner";
 import { playSound } from "@/lib/sounds";
 import heartIcon from "@/assets/icons/heart.svg";
