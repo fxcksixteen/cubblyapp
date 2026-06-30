@@ -247,6 +247,7 @@ const GroupMembersPanel = ({ conversation, onClose, onLeftGroup }: GroupMembersP
               isYou={m.isYou}
               canKick={isOwner && !m.isYou}
               onKick={() => setConfirmKick(m.user_id)}
+              onGift={!m.isYou ? () => setGiftTarget({ userId: m.user_id, name: m.display_name }) : undefined}
               onViewProfile={() => setProfileCard({ userId: m.user_id, name: m.display_name, x: window.innerWidth / 2, y: window.innerHeight / 2 })}
             >
               <div
