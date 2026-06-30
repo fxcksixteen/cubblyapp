@@ -1,9 +1,10 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { Loader2, Check, X, Inbox } from "lucide-react";
+import { Loader2, Check, X } from "lucide-react";
 import { toast } from "sonner";
 import { defaultProfileColor, getProfileColor } from "@/lib/profileColors";
+import inboxIcon from "@/assets/icons/messages.svg";
 
 interface RequestRow {
   id: string;
@@ -21,9 +22,9 @@ interface MessageRequestsViewProps {
 }
 
 /**
- * MessageRequestsView — inbox for incoming DMs from non-friends.
- * Accepting hands the user back into the regular DM flow; declining
- * removes the row. Subscribes to message_requests for live updates.
+ * MessageRequestsView — clean sidebar-style inbox for incoming DMs
+ * from non-friends. Uses the custom messages SVG (same as topbar icon)
+ * for visual consistency.
  */
 const MessageRequestsView = ({ onOpenConversation }: MessageRequestsViewProps) => {
   const { user } = useAuth();
@@ -89,48 +90,74 @@ const MessageRequestsView = ({ onOpenConversation }: MessageRequestsViewProps) =
 
   return (
     <div className="flex-1 min-h-0 flex flex-col" style={{ backgroundColor: "var(--app-bg-primary)" }}>
-      <div className="h-12 flex items-center px-4 border-b" style={{ borderColor: "var(--app-border,#1f2024)" }}>
-        <Inbox className="h-5 w-5 mr-2" style={{ color: "var(--app-text-secondary,#949ba4)" }} />
-        <span className="font-bold text-white">Message Requests</span>
+      {/* Header */}
+      <div
+        className="h-14 flex items-center px-5 border-b shrink-0"
+        style={{ borderColor: "var(--app-border,#1f2024)" }}
+      >
+        <img src={inboxIcon} alt="" className="h-5 w-5 invert opacity-80 mr-2.5" />
+        <span className="font-bold text-[15px] text-white">Message Requests</span>
         {rows.length > 0 && (
-          <span className="ml-2 text-[11px] font-semibold px-2 py-0.5 rounded-full"
-            style={{ backgroundColor: "var(--app-bg-tertiary,#1e1f22)", color: "var(--app-text-secondary)" }}>
+          <span
+            className="ml-2.5 text-[11px] font-bold px-2 py-0.5 rounded-full text-white"
+            style={{ backgroundColor: "#ed4245" }}
+          >
             {rows.length}
           </span>
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      {/* Body */}
+      <div className="flex-1 overflow-y-auto px-3 py-3">
         {loading ? (
-          <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-[var(--app-text-secondary)]" /></div>
+          <div className="flex justify-center py-12">
+            <Loader2 className="h-6 w-6 animate-spin text-[var(--app-text-secondary)]" />
+          </div>
         ) : rows.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
-            <Inbox className="h-12 w-12 mb-3" style={{ color: "var(--app-text-secondary,#949ba4)" }} />
-            <p className="text-white font-semibold">No message requests</p>
-            <p className="text-sm mt-1" style={{ color: "var(--app-text-secondary,#949ba4)" }}>
-              When someone you don't know DMs you, it'll land here first.
+          <div className="flex flex-col items-center justify-center py-24 px-6 text-center">
+            <div
+              className="h-20 w-20 rounded-full flex items-center justify-center mb-4"
+              style={{ backgroundColor: "var(--app-bg-tertiary,#1e1f22)" }}
+            >
+              <img src={inboxIcon} alt="" className="h-9 w-9 invert opacity-50" />
+            </div>
+            <p className="text-white font-semibold text-[15px]">No message requests</p>
+            <p className="text-[13px] mt-1.5 max-w-xs" style={{ color: "var(--app-text-secondary,#949ba4)" }}>
+              When someone you don't know DMs you, it'll land here first so your inbox stays cozy.
             </p>
           </div>
         ) : (
-          <ul className="divide-y" style={{ borderColor: "var(--app-border,#1f2024)" }}>
+          <ul className="space-y-1.5">
             {rows.map((r) => {
               const p = r.sender_profile;
               const color = p ? getProfileColor(p.user_id) : defaultProfileColor;
               const initial = (p?.display_name || "?").charAt(0).toUpperCase();
               return (
-                <li key={r.id} className="px-4 py-3 flex items-center gap-3 hover:bg-[var(--app-hover,#35373c)]">
+                <li
+                  key={r.id}
+                  className="group px-3 py-2.5 flex items-center gap-3 rounded-lg transition-colors cursor-default"
+                  style={{ backgroundColor: "transparent" }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--app-hover,#35373c)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                >
                   {p?.avatar_url ? (
-                    <img src={p.avatar_url} alt="" className="h-10 w-10 rounded-full object-cover" />
+                    <img src={p.avatar_url} alt="" className="h-11 w-11 rounded-full object-cover shrink-0" />
                   ) : (
-                    <div className="h-10 w-10 rounded-full flex items-center justify-center font-bold text-white" style={{ backgroundColor: color.bg }}>
+                    <div
+                      className="h-11 w-11 rounded-full flex items-center justify-center font-bold text-white text-base shrink-0"
+                      style={{ backgroundColor: color.bg }}
+                    >
                       {initial}
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-white truncate">
+                    <div className="text-[14px] font-semibold text-white truncate leading-tight">
                       {p?.display_name || "Unknown user"}
                     </div>
-                    <div className="text-[12px] truncate" style={{ color: "var(--app-text-secondary,#949ba4)" }}>
+                    <div
+                      className="text-[12.5px] truncate mt-0.5"
+                      style={{ color: "var(--app-text-secondary,#949ba4)" }}
+                    >
                       {r.preview || (p ? `@${p.username}` : "Wants to send you a message")}
                     </div>
                   </div>
@@ -139,19 +166,23 @@ const MessageRequestsView = ({ onOpenConversation }: MessageRequestsViewProps) =
                       onClick={() => handleDecline(r)}
                       disabled={busyId === r.id}
                       title="Decline"
-                      className="h-8 w-8 rounded-md flex items-center justify-center transition-colors disabled:opacity-60"
+                      className="h-9 w-9 rounded-full flex items-center justify-center transition-all disabled:opacity-60 hover:scale-105"
                       style={{ backgroundColor: "var(--app-bg-tertiary,#1e1f22)", color: "#ed4245" }}
                     >
-                      <X className="h-4 w-4" />
+                      <X className="h-[18px] w-[18px]" strokeWidth={2.5} />
                     </button>
                     <button
                       onClick={() => handleAccept(r)}
                       disabled={busyId === r.id}
                       title="Accept"
-                      className="h-8 w-8 rounded-md flex items-center justify-center transition-colors disabled:opacity-60 text-white"
+                      className="h-9 w-9 rounded-full flex items-center justify-center transition-all disabled:opacity-60 hover:scale-105 text-white"
                       style={{ backgroundColor: "#3ba55c" }}
                     >
-                      {busyId === r.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                      {busyId === r.id ? (
+                        <Loader2 className="h-[18px] w-[18px] animate-spin" />
+                      ) : (
+                        <Check className="h-[18px] w-[18px]" strokeWidth={2.5} />
+                      )}
                     </button>
                   </div>
                 </li>
