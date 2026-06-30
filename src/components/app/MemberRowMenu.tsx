@@ -6,7 +6,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { MessageSquare, UserRound, AtSign, Copy, UserMinus } from "lucide-react";
+import { MessageSquare, UserRound, AtSign, Copy, UserMinus, Gift } from "lucide-react";
 import { toast } from "sonner";
 
 /**
