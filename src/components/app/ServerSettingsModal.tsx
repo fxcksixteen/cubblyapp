@@ -13,6 +13,7 @@ import {
   Loader2,
   Plus,
   ArrowUpRightFromCircle,
+  Shield,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useServers, type Server } from "@/contexts/ServersContext";
@@ -21,7 +22,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { getProfileColor } from "@/lib/profileColors";
 
-type Tab = "overview" | "channels" | "members" | "invites";
+type Tab = "overview" | "channels" | "roles" | "members" | "invites";
 
 interface Props {
   server: Server;
@@ -60,6 +61,7 @@ const ServerSettingsModal = ({ server, onClose, onDeleted }: Props) => {
           </div>
           <RailItem label="Overview" active={tab === "overview"} onClick={() => setTab("overview")} />
           <RailItem label="Channels" active={tab === "channels"} onClick={() => setTab("channels")} />
+          <RailItem label="Roles" active={tab === "roles"} onClick={() => setTab("roles")} />
           <RailItem label="Members" active={tab === "members"} onClick={() => setTab("members")} />
           <RailItem label="Invites" active={tab === "invites"} onClick={() => setTab("invites")} />
         </div>
@@ -76,6 +78,7 @@ const ServerSettingsModal = ({ server, onClose, onDeleted }: Props) => {
 
           {tab === "overview" && <OverviewTab server={server} onDeleted={onDeleted} onClose={onClose} />}
           {tab === "channels" && <ChannelsTab serverId={server.id} />}
+          {tab === "roles" && <RolesTab />}
           {tab === "members" && <MembersTab server={server} onClose={onClose} />}
           {tab === "invites" && <InvitesTab serverId={server.id} />}
         </div>
@@ -345,6 +348,42 @@ const ChannelsTab = ({ serverId }: { serverId: string }) => {
     </div>
   );
 };
+
+// =============== Roles ===============
+
+const RolesTab = () => (
+  <div className="max-w-xl">
+    <h2 className="text-xl font-bold mb-2" style={{ color: "var(--app-text-primary)" }}>
+      Roles
+    </h2>
+    <p className="text-sm mb-6" style={{ color: "var(--app-text-secondary)" }}>
+      Group members and grant them permissions. Use roles to separate moderators,
+      VIPs, and bots with their own colors and abilities.
+    </p>
+
+    <div
+      className="rounded-xl border-2 border-dashed p-8 flex flex-col items-center text-center gap-3"
+      style={{ borderColor: "var(--app-border)", backgroundColor: "var(--app-bg-primary)" }}
+    >
+      <div
+        className="flex h-14 w-14 items-center justify-center rounded-2xl"
+        style={{ background: "linear-gradient(135deg,#5865f2,#a78bfa)" }}
+      >
+        <Shield className="h-7 w-7 text-white" />
+      </div>
+      <div>
+        <p className="text-sm font-bold" style={{ color: "var(--app-text-primary)" }}>
+          Coming with Cubbly v0.4.1
+        </p>
+        <p className="mt-1 text-xs leading-relaxed max-w-sm" style={{ color: "var(--app-text-secondary)" }}>
+          Create custom roles with their own colors, hoist them in the member list,
+          and grant fine-grained permissions per channel. Owners get full control today —
+          custom roles unlock next patch.
+        </p>
+      </div>
+    </div>
+  </div>
+);
 
 // =============== Members ===============
 

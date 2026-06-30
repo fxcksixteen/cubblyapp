@@ -6,7 +6,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { MessageSquare, UserRound, AtSign, Copy, UserMinus } from "lucide-react";
+import { MessageSquare, UserRound, AtSign, Copy, UserMinus, Gift } from "lucide-react";
 import { toast } from "sonner";
 
 /**
@@ -25,12 +25,14 @@ interface Props {
   onViewProfile: () => void;
   onMessage?: () => void;
   onMention?: () => void;
+  /** v0.4.0: opens the gem-shop gifting modal targeted at this user. */
+  onGift?: () => void;
   canKick?: boolean;
   onKick?: () => void;
   children: ReactNode;
 }
 
-const MemberRowMenu = ({ userId, displayName, isYou, onViewProfile, onMessage, onMention, canKick, onKick, children }: Props) => {
+const MemberRowMenu = ({ userId, displayName, isYou, onViewProfile, onMessage, onMention, onGift, canKick, onKick, children }: Props) => {
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
@@ -61,6 +63,15 @@ const MemberRowMenu = ({ userId, displayName, isYou, onViewProfile, onMessage, o
           >
             <AtSign className="h-4 w-4" />
             Mention
+          </ContextMenuItem>
+        )}
+        {!isYou && onGift && (
+          <ContextMenuItem
+            onClick={onGift}
+            className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer"
+          >
+            <Gift className="h-4 w-4" />
+            Send a gift
           </ContextMenuItem>
         )}
         <ContextMenuSeparator className="my-1" style={{ backgroundColor: "var(--app-border, #2b2d31)" }} />

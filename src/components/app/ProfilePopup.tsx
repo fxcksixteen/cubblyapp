@@ -29,7 +29,7 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [bannerUrl, setBannerUrl] = useState<string | null>(null);
   const [customStatusOpen, setCustomStatusOpen] = useState(false);
-  const [customStatus, setCustomStatus] = useState<{ text: string; emoji: string | null } | null>(null);
+  const [customStatus, setCustomStatus] = useState<{ text: string; emoji: string | null; expires_at: string | null } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
   const displayName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "User";
@@ -78,10 +78,21 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
         if (!alive) return;
         if (!data?.text && !data?.emoji) { setCustomStatus(null); return; }
         if (data.expires_at && new Date(data.expires_at).getTime() < Date.now()) { setCustomStatus(null); return; }
-        setCustomStatus({ text: data.text || "", emoji: (data as any).emoji ?? null });
+        setCustomStatus({ text: data.text || "", emoji: (data as any).emoji ?? null, expires_at: (data as any).expires_at ?? null });
       });
     return () => { alive = false; };
   }, [user, customStatusOpen]);
+
+  // Live-tick: when the active custom status passes its expires_at, clear it
+  // immediately without requiring a reload or popup reopen.
+  useEffect(() => {
+    if (!customStatus?.expires_at) return;
+    const expiresAt = new Date(customStatus.expires_at).getTime();
+    const msLeft = expiresAt - Date.now();
+    if (msLeft <= 0) { setCustomStatus(null); return; }
+    const t = setTimeout(() => setCustomStatus(null), msLeft + 250);
+    return () => clearTimeout(t);
+  }, [customStatus?.expires_at]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -232,7 +243,7 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
       <CustomStatusModal
         open={customStatusOpen}
         onClose={() => setCustomStatusOpen(false)}
-        onSaved={(s) => setCustomStatus(s ? { text: s.text, emoji: s.emoji } : null)}
+        onSaved={(s) => setCustomStatus(s ? { text: s.text, emoji: s.emoji, expires_at: s.expires_at } : null)}
       />
     </div>
   );

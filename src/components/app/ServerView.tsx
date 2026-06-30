@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import MemberRowMenu from "@/components/app/MemberRowMenu";
 import UserProfileCard from "@/components/app/chat/UserProfileCard";
 import ServerSettingsModal from "@/components/app/ServerSettingsModal";
+import GiftItemModal from "@/components/app/GiftItemModal";
 
 
 const ServerView = () => {
@@ -95,6 +96,7 @@ const ServerView = () => {
 
   const [membersCollapsed, setMembersCollapsed] = useState(false);
   const [profileCard, setProfileCard] = useState<{ userId: string; name: string; x: number; y: number } | null>(null);
+  const [giftTarget, setGiftTarget] = useState<{ userId: string; name: string } | null>(null);
 
   const onLeave = async () => {
     if (!server || !user) return;
@@ -226,6 +228,7 @@ const ServerView = () => {
                   userId={m.user_id}
                   displayName={m.display_name}
                   isYou={isYou}
+                  onGift={!isYou ? () => setGiftTarget({ userId: m.user_id, name: m.display_name }) : undefined}
                   onViewProfile={() => setProfileCard({ userId: m.user_id, name: m.display_name, x: window.innerWidth / 2, y: window.innerHeight / 2 })}
                 >
                   <div
@@ -274,6 +277,15 @@ const ServerView = () => {
           position={{ x: profileCard.x, y: profileCard.y }}
           onClose={() => setProfileCard(null)}
           startExpanded
+        />
+      )}
+
+      {giftTarget && (
+        <GiftItemModal
+          open
+          onClose={() => setGiftTarget(null)}
+          recipientId={giftTarget.userId}
+          recipientName={giftTarget.name}
         />
       )}
     </div>

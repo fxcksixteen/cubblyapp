@@ -1,14 +1,22 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useLocalSetting } from "@/hooks/useLocalSetting";
-import { Download, Trash2, Shield, Lock, BarChart, AlertTriangle } from "lucide-react";
+import { Download, Trash2, Shield, BarChart, AlertTriangle, Users } from "lucide-react";
 import { toast } from "sonner";
 import { SettingsCard, SettingsToggleRow, SettingsPrimaryButton } from "./_shared";
 
 interface DataPrivacySettingsProps {
   cardStyle: React.CSSProperties;
 }
+
+type WhoCanDM = "everyone" | "friends_of_friends" | "friends_only";
+
+const WHO_OPTIONS: { id: WhoCanDM; label: string; desc: string }[] = [
+  { id: "everyone", label: "Everyone", desc: "Anyone on Cubbly can send you a DM." },
+  { id: "friends_of_friends", label: "Friends of friends", desc: "Only friends and people who share a mutual friend." },
+  { id: "friends_only", label: "Friends only", desc: "Strangers will land in your Message Requests." },
+];
 
 const DataPrivacySettings = ({ cardStyle }: DataPrivacySettingsProps) => {
   const { user, signOut } = useAuth();
@@ -20,9 +28,45 @@ const DataPrivacySettings = ({ cardStyle }: DataPrivacySettingsProps) => {
   const [usageAnalytics, setUsageAnalytics] = useLocalSetting("privacy.usageAnalytics", true);
   const [crashReports, setCrashReports] = useLocalSetting("privacy.crashReports", true);
   const [personalizedRec, setPersonalizedRec] = useLocalSetting("privacy.personalizedRec", true);
-  const [dmFromFriendsOnly, setDmFromFriendsOnly] = useLocalSetting("privacy.dmFromFriendsOnly", false);
   const [allowFriendRequests, setAllowFriendRequests] = useLocalSetting("privacy.allowFriendRequests", true);
   const [showOnlineStatus, setShowOnlineStatus] = useLocalSetting("privacy.showOnlineStatus", true);
+
+  const [whoCanDm, setWhoCanDm] = useState<WhoCanDM>("everyone");
+  const [savingWho, setSavingWho] = useState<WhoCanDM | null>(null);
+
+  // Hydrate the user's current who_can_dm preference from dm_preferences.
+  useEffect(() => {
+    if (!user) return;
+    let alive = true;
+    (supabase as any).from("dm_preferences")
+      .select("who_can_dm")
+      .eq("user_id", user.id)
+      .maybeSingle()
+      .then(({ data }: { data: { who_can_dm?: string } | null }) => {
+        if (!alive) return;
+        const v = (data?.who_can_dm as WhoCanDM) || "everyone";
+        if (["everyone", "friends_of_friends", "friends_only"].includes(v)) setWhoCanDm(v);
+      });
+    return () => { alive = false; };
+  }, [user]);
+
+  const handleWhoChange = async (next: WhoCanDM) => {
+    if (!user || next === whoCanDm) return;
+    setSavingWho(next);
+    const prev = whoCanDm;
+    setWhoCanDm(next);
+    const { error } = await (supabase as any).from("dm_preferences").upsert(
+      { user_id: user.id, who_can_dm: next, updated_at: new Date().toISOString() },
+      { onConflict: "user_id" },
+    );
+    setSavingWho(null);
+    if (error) {
+      setWhoCanDm(prev);
+      toast.error("Couldn't save DM preference");
+    } else {
+      toast.success("DM privacy updated");
+    }
+  };
 
   const handleExport = async () => {
     if (!user) return;
@@ -99,8 +143,40 @@ const DataPrivacySettings = ({ cardStyle }: DataPrivacySettingsProps) => {
     <div className="space-y-5">
       <SettingsCard cardStyle={cardStyle}>
         <SettingsToggleRow icon={<Shield className="h-5 w-5" />} title="Allow friend requests" description="Let other users send you friend requests." checked={allowFriendRequests} onChange={setAllowFriendRequests} />
-        <SettingsToggleRow icon={<Lock className="h-5 w-5" />} title="Friends-only DMs" description="Only friends can start a direct message with you." checked={dmFromFriendsOnly} onChange={setDmFromFriendsOnly} />
         <SettingsToggleRow icon={<Shield className="h-5 w-5" />} title="Show my online status" description="When off, you appear offline to everyone." checked={showOnlineStatus} onChange={setShowOnlineStatus} />
+
+        <div className="pt-4 border-t" style={{ borderColor: "var(--app-border)" }}>
+          <div className="flex items-start gap-3 mb-3">
+            <Users className="h-5 w-5 mt-0.5 shrink-0" style={{ color: "var(--app-text-secondary)" }} />
+            <div className="flex-1">
+              <p className="text-sm font-semibold" style={{ color: "var(--app-text-primary)" }}>Who can send me direct messages</p>
+              <p className="mt-0.5 text-xs" style={{ color: "var(--app-text-secondary)" }}>
+                Anyone you block this way will land in your Message Requests instead. You'll never miss a message — you just decide who skips the filter.
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            {WHO_OPTIONS.map((opt) => {
+              const active = whoCanDm === opt.id;
+              const busy = savingWho === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  onClick={() => handleWhoChange(opt.id)}
+                  disabled={busy}
+                  className="text-left rounded-lg p-3 transition-all disabled:opacity-60"
+                  style={{
+                    backgroundColor: active ? "rgba(88,101,242,0.15)" : "var(--app-bg-tertiary)",
+                    border: `1px solid ${active ? "#5865f2" : "var(--app-border)"}`,
+                  }}
+                >
+                  <p className="text-sm font-bold" style={{ color: active ? "#5865f2" : "var(--app-text-primary)" }}>{opt.label}</p>
+                  <p className="mt-1 text-[11px] leading-snug" style={{ color: "var(--app-text-secondary)" }}>{opt.desc}</p>
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </SettingsCard>
 
       <SettingsCard cardStyle={cardStyle}>

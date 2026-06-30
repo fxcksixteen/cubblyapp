@@ -12,6 +12,7 @@ import UserDisplayName from "./UserDisplayName";
 import UserBadges from "./UserBadges";
 import MemberRowMenu from "./MemberRowMenu";
 import UserProfileCard from "./chat/UserProfileCard";
+import GiftItemModal from "./GiftItemModal";
 import { Crown, UserMinus, LogOut, Pencil, Image as ImageIcon, Check, X, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -43,6 +44,7 @@ const GroupMembersPanel = ({ conversation, onClose, onLeftGroup }: GroupMembersP
   const [myAvatarUrl, setMyAvatarUrl] = useState<string | null>(null);
   const [membersCollapsed, setMembersCollapsed] = useState(false);
   const [profileCard, setProfileCard] = useState<{ userId: string; name: string; x: number; y: number } | null>(null);
+  const [giftTarget, setGiftTarget] = useState<{ userId: string; name: string } | null>(null);
 
   // Pull current user's avatar so the "you" row in the member list shows the
   // real profile picture instead of a colored initial fallback.
@@ -245,6 +247,7 @@ const GroupMembersPanel = ({ conversation, onClose, onLeftGroup }: GroupMembersP
               isYou={m.isYou}
               canKick={isOwner && !m.isYou}
               onKick={() => setConfirmKick(m.user_id)}
+              onGift={!m.isYou ? () => setGiftTarget({ userId: m.user_id, name: m.display_name }) : undefined}
               onViewProfile={() => setProfileCard({ userId: m.user_id, name: m.display_name, x: window.innerWidth / 2, y: window.innerHeight / 2 })}
             >
               <div
@@ -363,6 +366,16 @@ const GroupMembersPanel = ({ conversation, onClose, onLeftGroup }: GroupMembersP
           position={{ x: profileCard.x, y: profileCard.y }}
           onClose={() => setProfileCard(null)}
           startExpanded
+        />
+      )}
+
+      {giftTarget && (
+        <GiftItemModal
+          open
+          onClose={() => setGiftTarget(null)}
+          recipientId={giftTarget.userId}
+          recipientName={giftTarget.name}
+          conversationId={conversation.id}
         />
       )}
     </aside>

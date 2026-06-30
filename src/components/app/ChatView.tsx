@@ -26,6 +26,8 @@ import sendIcon from "@/assets/icons/send.svg";
 import folderFileIcon from "@/assets/icons/folder-file.svg";
 import gifIcon from "@/assets/icons/gif.svg";
 import GifPicker from "./GifPicker";
+import GiftItemModal from "./GiftItemModal";
+import { Gift as GiftIcon } from "lucide-react";
 import { useMessageReactions } from "@/hooks/useMessageReactions";
 import MessageReactionsBar from "./chat/MessageReactionsBar";
 import UserDisplayName from "./UserDisplayName";
@@ -91,6 +93,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
   const [uploading, setUploading] = useState(false);
   const [botTyping, setBotTyping] = useState(false);
   const [gifPickerOpen, setGifPickerOpen] = useState(false);
+  const [giftModalOpen, setGiftModalOpen] = useState(false);
   const [profileCard, setProfileCard] = useState<{ userId: string; name: string; x: number; y: number } | null>(null);
   const [peerTyping, setPeerTyping] = useState(false);
   const [replyTo, setReplyTo] = useState<{ id: string; sender_name: string; content: string } | null>(null);
@@ -1257,6 +1260,18 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
             />
           </div>
 
+          {recipientUserId && !conversation?.is_group && !isBotConversation && recipientUserId !== user?.id && (
+            <div className="relative flex items-center pb-1">
+              <button
+                onClick={() => setGiftModalOpen(true)}
+                className="flex items-center justify-center"
+                title={`Send ${recipientName} a gift`}
+              >
+                <GiftIcon className="h-5 w-5 opacity-60 hover:opacity-100 transition-opacity" style={{ color: "var(--app-text-secondary,#b5bac1)" }} />
+              </button>
+            </div>
+          )}
+
           <button
             onClick={handleSend}
             disabled={uploading || (!input.trim() && pendingFiles.length === 0)}
@@ -1275,6 +1290,16 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
           displayName={profileCard.name}
           position={{ x: profileCard.x, y: profileCard.y }}
           onClose={() => setProfileCard(null)}
+        />
+      )}
+
+      {giftModalOpen && recipientUserId && (
+        <GiftItemModal
+          open
+          onClose={() => setGiftModalOpen(false)}
+          recipientId={recipientUserId}
+          recipientName={recipientName}
+          conversationId={conversationId}
         />
       )}
     </div>
