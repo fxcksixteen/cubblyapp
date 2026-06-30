@@ -13,6 +13,7 @@ import {
   Loader2,
   Plus,
   ArrowUpRightFromCircle,
+  Shield,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useServers, type Server } from "@/contexts/ServersContext";
