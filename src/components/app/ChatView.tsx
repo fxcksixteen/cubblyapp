@@ -1292,6 +1292,16 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
           onClose={() => setProfileCard(null)}
         />
       )}
+
+      {giftModalOpen && recipientUserId && (
+        <GiftItemModal
+          open
+          onClose={() => setGiftModalOpen(false)}
+          recipientId={recipientUserId}
+          recipientName={recipientName}
+          conversationId={conversationId}
+        />
+      )}
     </div>
       {showMembersPanel && conversation && (
         <GroupMembersPanel
