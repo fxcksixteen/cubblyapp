@@ -40,7 +40,7 @@ interface ProfileData {
 
 const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage, startExpanded = false }: UserProfileCardProps) => {
   const { user, onlineUserIds } = useAuth();
-  const { getActivity } = useActivity();
+  const { getActivity, getActivityDetails } = useActivity();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [friendshipStatus, setFriendshipStatus] = useState<string | null>(null);
   const [friendshipId, setFriendshipId] = useState<string | null>(null);
