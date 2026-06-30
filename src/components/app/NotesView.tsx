@@ -678,34 +678,44 @@ const NoteListItem = ({
 const ShareNoteModal = ({ note, onClose }: { note: NoteRow; onClose: () => void }) => {
   const { conversations } = useConversations();
   const { user } = useAuth();
+  const ent = useEntitlements();
+  const honeyLocked = !ent.canShareNoteAdvanced;
+
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [viewOnce, setViewOnce] = useState(false);
-  // v0.3.21: "Live edits" — sender's later edits to this note propagate to all
-  // already-shared copies (last-write-wins). Mutually exclusive with viewOnce.
   const [live, setLive] = useState(false);
-  // v0.3.21: "Allow recipient to save" — adds a "Save to my notes" button on
-  // the recipient's card. Always off for view-once notes.
   const [allowSave, setAllowSave] = useState(true);
+  const [recipientCanEdit, setRecipientCanEdit] = useState(false);
   const [sending, setSending] = useState(false);
   const [query, setQuery] = useState("");
+  // Two-page swipe: 0 = recipients, 1 = more settings.
+  const [page, setPage] = useState<0 | 1>(0);
 
   const title = note.decrypted?.title || "Untitled";
   const bodyPlain = stripHtml(note.decrypted?.body || "").trim();
   const previewBody = bodyPlain.slice(0, 140) || "(empty note)";
 
-  // Enforce mutual exclusions in one place so toggling can never produce an
-  // invalid combination (e.g. view-once + live).
+  // Honey-locked toggles short-circuit to a nudge toast.
+  const honeyNudge = () => toast.error("Honey-only feature — upgrade to unlock");
+
   const onToggleViewOnce = (next: boolean) => {
+    if (honeyLocked) { honeyNudge(); return; }
     setViewOnce(next);
     if (next) { setLive(false); setAllowSave(false); }
   };
   const onToggleLive = (next: boolean) => {
+    if (honeyLocked) { honeyNudge(); return; }
     setLive(next);
     if (next) setViewOnce(false);
   };
   const onToggleAllowSave = (next: boolean) => {
+    if (honeyLocked) { honeyNudge(); return; }
     setAllowSave(next);
     if (next) setViewOnce(false);
+  };
+  const onToggleRecipientEdit = (next: boolean) => {
+    if (honeyLocked) { honeyNudge(); return; }
+    setRecipientCanEdit(next);
   };
 
   const toggle = (id: string) =>
@@ -726,6 +736,10 @@ const ShareNoteModal = ({ note, onClose }: { note: NoteRow; onClose: () => void 
 
   const selectedConvs = conversations.filter((c) => selectedIds.has(c.id));
 
+  // Count of non-default toggles, used for the badge on "More settings".
+  const activeExtras =
+    (viewOnce ? 1 : 0) + (live ? 1 : 0) + (recipientCanEdit ? 1 : 0) + (!allowSave ? 1 : 0);
+
   const handleSend = async () => {
     if (!selectedIds.size || !user || sending) return;
     setSending(true);
@@ -737,6 +751,8 @@ const ShareNoteModal = ({ note, onClose }: { note: NoteRow; onClose: () => void 
         viewOnce,
         live: viewOnce ? false : live,
         allowSave: viewOnce ? false : allowSave,
+        recipientCanEdit,
+        recipientEditUsed: false,
         noteId: note.id,
       });
       const content = `[[cubbly:shared-note:v1]]${payload}`;
@@ -744,9 +760,9 @@ const ShareNoteModal = ({ note, onClose }: { note: NoteRow; onClose: () => void 
         conversation_id,
         sender_id: user.id,
         content,
-        // Only stamp note_ref when live-sync is on — that's the only case
-        // where the server needs to find these rows again to update them.
-        ...(live && !viewOnce ? { note_ref: note.id } : {}),
+        // Stamp note_ref whenever live-sync OR recipient-edit is on so
+        // the server can mirror updates across all copies.
+        ...((live || recipientCanEdit) && !viewOnce ? { note_ref: note.id } : recipientCanEdit ? { note_ref: note.id } : {}),
       } as any));
       const { error } = await supabase.from("messages").insert(rows);
       if (error) throw error;
@@ -774,15 +790,30 @@ const ShareNoteModal = ({ note, onClose }: { note: NoteRow; onClose: () => void 
         style={{ backgroundColor: "#1e1f22", boxShadow: "0 24px 56px rgba(0,0,0,0.55)", maxHeight: "88vh", border: "1px solid #2b2d31" }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
+        {/* Header — swaps between the two pages */}
         <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: "#2b2d31" }}>
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5 min-w-0">
+            {page === 1 && (
+              <button
+                onClick={() => setPage(0)}
+                className="rounded-md p-1 hover:bg-[var(--app-hover)] -ml-1"
+                aria-label="Back"
+              >
+                <ArrowLeft className="h-4 w-4" style={{ color: "var(--app-text-secondary)" }} />
+              </button>
+            )}
             <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ backgroundColor: "rgba(88,101,242,0.16)" }}>
-              <Share2 className="h-4 w-4" style={{ color: "hsl(var(--primary))" }} />
+              {page === 0
+                ? <Share2 className="h-4 w-4" style={{ color: "hsl(var(--primary))" }} />
+                : <Sparkles className="h-4 w-4" style={{ color: "hsl(var(--primary))" }} />}
             </div>
-            <div className="flex flex-col">
-              <span className="text-sm font-semibold" style={{ color: "var(--app-text-primary)" }}>Share Note</span>
-              <span className="text-[11px]" style={{ color: "var(--app-text-secondary)" }}>Send to one or more chats</span>
+            <div className="flex flex-col min-w-0">
+              <span className="text-sm font-semibold truncate" style={{ color: "var(--app-text-primary)" }}>
+                {page === 0 ? "Share Note" : "More Settings"}
+              </span>
+              <span className="text-[11px] truncate" style={{ color: "var(--app-text-secondary)" }}>
+                {page === 0 ? "Send to one or more chats" : "Honey-only sharing perks"}
+              </span>
             </div>
           </div>
           <button onClick={onClose} className="rounded-md p-1.5 hover:bg-[var(--app-hover)]">
@@ -790,164 +821,221 @@ const ShareNoteModal = ({ note, onClose }: { note: NoteRow; onClose: () => void 
           </button>
         </div>
 
-        {/* Note preview chip */}
-        <div className="px-4 pt-4">
-          <div className="flex items-start gap-3 rounded-xl p-3" style={{ backgroundColor: "#2b2d31", border: "1px solid #313338" }}>
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: "rgba(88,101,242,0.18)" }}>
-              <FileText className="h-4 w-4" style={{ color: "hsl(var(--primary))" }} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="text-sm font-semibold truncate" style={{ color: "var(--app-text-primary)" }}>{title}</div>
-              <div className="mt-0.5 text-[12px] leading-snug line-clamp-2" style={{ color: "var(--app-text-secondary)" }}>
-                {previewBody}
+        {/* Sliding track — two pages, same modal */}
+        <div className="relative flex-1 overflow-hidden" style={{ minHeight: 360 }}>
+          <div
+            className="flex w-[200%] h-full"
+            style={{
+              transform: page === 0 ? "translateX(0%)" : "translateX(-50%)",
+              transition: "transform 320ms cubic-bezier(0.22, 0.61, 0.36, 1)",
+            }}
+          >
+            {/* ───── PAGE 1: Recipients ───── */}
+            <div className="w-1/2 flex flex-col min-h-0">
+              {/* Note preview chip */}
+              <div className="px-4 pt-4">
+                <div className="flex items-start gap-3 rounded-xl p-3" style={{ backgroundColor: "#2b2d31", border: "1px solid #313338" }}>
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: "rgba(88,101,242,0.18)" }}>
+                    <FileText className="h-4 w-4" style={{ color: "hsl(var(--primary))" }} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-semibold truncate" style={{ color: "var(--app-text-primary)" }}>{title}</div>
+                    <div className="mt-0.5 text-[12px] leading-snug line-clamp-2" style={{ color: "var(--app-text-secondary)" }}>
+                      {previewBody}
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
-        </div>
 
-        {/* Search */}
-        <div className="px-4 pt-3">
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search friends or groups…"
-            className="w-full rounded-lg px-3 py-2 text-sm outline-none"
-            style={{ backgroundColor: "#111214", color: "var(--app-text-primary)", border: "1px solid #2b2d31" }}
-          />
-        </div>
+              {/* Search */}
+              <div className="px-4 pt-3">
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search friends or groups…"
+                  className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+                  style={{ backgroundColor: "#111214", color: "var(--app-text-primary)", border: "1px solid #2b2d31" }}
+                />
+              </div>
 
-        {/* Selected pills */}
-        {selectedConvs.length > 0 && (
-          <div className="px-4 pt-3 flex flex-wrap gap-1.5">
-            {selectedConvs.map((c) => {
-              const label = c.is_group
-                ? (c.name || "Group")
-                : (c.members[0]?.display_name || c.members[0]?.username || "DM");
-              return (
-                <button
-                  key={c.id}
-                  onClick={() => toggle(c.id)}
-                  className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-medium"
-                  style={{ backgroundColor: "rgba(88,101,242,0.2)", color: "#dbdee1" }}
-                >
-                  {label}
-                  <X className="h-3 w-3" />
-                </button>
-              );
-            })}
-          </div>
-        )}
+              {/* Selected pills */}
+              {selectedConvs.length > 0 && (
+                <div className="px-4 pt-3 flex flex-wrap gap-1.5">
+                  {selectedConvs.map((c) => {
+                    const label = c.is_group
+                      ? (c.name || "Group")
+                      : (c.members[0]?.display_name || c.members[0]?.username || "DM");
+                    return (
+                      <button
+                        key={c.id}
+                        onClick={() => toggle(c.id)}
+                        className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-medium"
+                        style={{ backgroundColor: "rgba(88,101,242,0.2)", color: "#dbdee1" }}
+                      >
+                        {label}
+                        <X className="h-3 w-3" />
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
 
-        {/* List */}
-        <div className="flex-1 overflow-y-auto px-2 pt-3 pb-2 min-h-[180px]">
-          {filtered.length === 0 ? (
-            <div className="px-3 py-8 text-xs text-center" style={{ color: "var(--app-text-secondary)" }}>
-              {conversations.length === 0 ? "No open DMs yet — open one first." : "No matches."}
-            </div>
-          ) : filtered.map((c) => {
-            const label = c.is_group
-              ? (c.name || "Group")
-              : (c.members[0]?.display_name || c.members[0]?.username || "Direct Message");
-            const checked = selectedIds.has(c.id);
-            return (
+              {/* List */}
+              <div className="flex-1 overflow-y-auto px-2 pt-3 pb-2 min-h-[180px]">
+                {filtered.length === 0 ? (
+                  <div className="px-3 py-8 text-xs text-center" style={{ color: "var(--app-text-secondary)" }}>
+                    {conversations.length === 0 ? "No open DMs yet — open one first." : "No matches."}
+                  </div>
+                ) : filtered.map((c) => {
+                  const label = c.is_group
+                    ? (c.name || "Group")
+                    : (c.members[0]?.display_name || c.members[0]?.username || "Direct Message");
+                  const checked = selectedIds.has(c.id);
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => toggle(c.id)}
+                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors"
+                      style={{ backgroundColor: checked ? "rgba(88,101,242,0.14)" : undefined }}
+                      onMouseEnter={(e) => { if (!checked) e.currentTarget.style.backgroundColor = "var(--app-hover)"; }}
+                      onMouseLeave={(e) => { if (!checked) e.currentTarget.style.backgroundColor = ""; }}
+                    >
+                      {c.is_group ? (
+                        <GroupAvatar conversation={c} size={32} />
+                      ) : c.members[0]?.avatar_url ? (
+                        <img src={c.members[0].avatar_url} alt="" className="h-8 w-8 rounded-full object-cover" />
+                      ) : (
+                        <div className="h-8 w-8 rounded-full bg-[var(--app-bg-tertiary)] flex items-center justify-center text-xs font-semibold" style={{ color: "var(--app-text-primary)" }}>
+                          {label.slice(0, 1).toUpperCase()}
+                        </div>
+                      )}
+                      <span className="flex-1 text-sm truncate" style={{ color: "var(--app-text-primary)" }}>{label}</span>
+                      <span
+                        className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-md transition-colors"
+                        style={{
+                          backgroundColor: checked ? "hsl(var(--primary))" : "transparent",
+                          border: checked ? "1px solid hsl(var(--primary))" : "1.5px solid #4e5058",
+                        }}
+                      >
+                        {checked && <Check className="h-3 w-3 text-white" />}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* "More settings" row — opens page 2 */}
               <button
-                key={c.id}
-                onClick={() => toggle(c.id)}
-                className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors"
-                style={{ backgroundColor: checked ? "rgba(88,101,242,0.14)" : undefined }}
-                onMouseEnter={(e) => { if (!checked) e.currentTarget.style.backgroundColor = "var(--app-hover)"; }}
-                onMouseLeave={(e) => { if (!checked) e.currentTarget.style.backgroundColor = ""; }}
+                onClick={() => setPage(1)}
+                className="flex items-center justify-between gap-3 px-5 py-3 border-t transition-colors hover:bg-[var(--app-hover)]"
+                style={{ borderColor: "#2b2d31" }}
               >
-                {c.is_group ? (
-                  <GroupAvatar conversation={c} size={32} />
-                ) : c.members[0]?.avatar_url ? (
-                  <img src={c.members[0].avatar_url} alt="" className="h-8 w-8 rounded-full object-cover" />
-                ) : (
-                  <div className="h-8 w-8 rounded-full bg-[var(--app-bg-tertiary)] flex items-center justify-center text-xs font-semibold" style={{ color: "var(--app-text-primary)" }}>
-                    {label.slice(0, 1).toUpperCase()}
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md" style={{ backgroundColor: "rgba(240,177,50,0.16)" }}>
+                    <Sparkles className="h-3.5 w-3.5" style={{ color: "#f0b132" }} />
+                  </div>
+                  <div className="min-w-0 text-left">
+                    <div className="text-[13px] font-semibold flex items-center gap-2" style={{ color: "var(--app-text-primary)" }}>
+                      More Settings
+                      {activeExtras > 0 && (
+                        <span
+                          className="rounded-full px-1.5 py-px text-[10px] font-bold"
+                          style={{ backgroundColor: "hsl(var(--primary))", color: "white" }}
+                        >
+                          {activeExtras}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[11px] leading-tight" style={{ color: "var(--app-text-secondary)" }}>
+                      View-once, live edits, recipient edit, saving…
+                    </div>
+                  </div>
+                </div>
+                <ChevronRight className="h-4 w-4 shrink-0" style={{ color: "var(--app-text-secondary)" }} />
+              </button>
+            </div>
+
+            {/* ───── PAGE 2: More Settings ───── */}
+            <div className="w-1/2 flex flex-col min-h-0">
+              <div className="flex-1 overflow-y-auto px-4 pt-4 pb-4">
+                {honeyLocked && (
+                  <div
+                    className="mb-3 flex items-center gap-2.5 rounded-xl px-3 py-2.5"
+                    style={{ backgroundColor: "rgba(240,177,50,0.10)", border: "1px solid rgba(240,177,50,0.30)" }}
+                  >
+                    <Sparkles className="h-4 w-4 shrink-0" style={{ color: "#f0b132" }} />
+                    <div className="text-[12px] leading-snug" style={{ color: "var(--app-text-primary)" }}>
+                      These are <span style={{ color: "#f0b132", fontWeight: 700 }}>Honey-only</span> sharing perks. Upgrade to use them.
+                    </div>
                   </div>
                 )}
-                <span className="flex-1 text-sm truncate" style={{ color: "var(--app-text-primary)" }}>{label}</span>
-                <span
-                  className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-md transition-colors"
-                  style={{
-                    backgroundColor: checked ? "hsl(var(--primary))" : "transparent",
-                    border: checked ? "1px solid hsl(var(--primary))" : "1.5px solid #4e5058",
-                  }}
-                >
-                  {checked && <Check className="h-3 w-3 text-white" />}
-                </span>
-              </button>
-            );
-          })}
-        </div>
 
-        {/* More settings — view-once, live sync, allow save */}
-        <div
-          className="border-t flex flex-col"
-          style={{ borderColor: "#2b2d31", backgroundColor: "#181a1d" }}
-        >
-          <div className="px-5 pt-3 pb-1 text-[10.5px] font-bold uppercase tracking-wider" style={{ color: "var(--app-text-secondary)" }}>
-            More settings
-          </div>
+                {/* View-once */}
+                <SettingRow
+                  icon={<Eye className="h-3.5 w-3.5" />}
+                  iconColor="#f0b132"
+                  iconBg={viewOnce ? "rgba(240,177,50,0.16)" : "#2b2d31"}
+                  title="View once"
+                  desc="Opens once, then burns. Copy & screenshot deterrents on."
+                  checked={viewOnce}
+                  onChange={onToggleViewOnce}
+                  locked={honeyLocked}
+                />
 
-          {/* View-once */}
-          <div className="flex items-center justify-between gap-3 px-5 py-2.5">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md" style={{ backgroundColor: viewOnce ? "rgba(240,177,50,0.16)" : "#2b2d31" }}>
-                <Eye className="h-3.5 w-3.5" style={{ color: viewOnce ? "#f0b132" : "var(--app-text-secondary)" }} />
-              </div>
-              <div className="min-w-0">
-                <div className="text-[13px] font-semibold" style={{ color: "var(--app-text-primary)" }}>View once</div>
-                <div className="text-[11px] leading-tight" style={{ color: "var(--app-text-secondary)" }}>
-                  Opens once, then burns. Copy & screenshot deterrents on.
-                </div>
+                {/* Live edits */}
+                <SettingRow
+                  icon={<Radio className="h-3.5 w-3.5" />}
+                  iconColor="hsl(var(--primary))"
+                  iconBg={live ? "rgba(88,101,242,0.18)" : "#2b2d31"}
+                  title="Live edits from me"
+                  desc="Your future edits to this note update the shared copy."
+                  checked={live}
+                  onChange={onToggleLive}
+                  disabled={viewOnce}
+                  locked={honeyLocked}
+                />
+
+                {/* Recipient can edit — NEW */}
+                <SettingRow
+                  icon={<PencilLine className="h-3.5 w-3.5" />}
+                  iconColor="#43b581"
+                  iconBg={recipientCanEdit ? "rgba(67,181,129,0.18)" : "#2b2d31"}
+                  title="Let recipient edit"
+                  desc={
+                    viewOnce
+                      ? "They can rewrite it once before it burns — and that edit shows up in your shared copy."
+                      : "They can rewrite it as much as they want — edits update live for both of you everywhere."
+                  }
+                  checked={recipientCanEdit}
+                  onChange={onToggleRecipientEdit}
+                  locked={honeyLocked}
+                />
+
+                {/* Allow save */}
+                <SettingRow
+                  icon={<Copy className="h-3.5 w-3.5" />}
+                  iconColor="hsl(var(--primary))"
+                  iconBg={allowSave && !viewOnce ? "rgba(88,101,242,0.18)" : "#2b2d31"}
+                  title="Allow recipient to save"
+                  desc="Adds a “Save to my notes” button on their card."
+                  checked={allowSave && !viewOnce}
+                  onChange={onToggleAllowSave}
+                  disabled={viewOnce}
+                  locked={honeyLocked}
+                />
               </div>
             </div>
-            <Switch checked={viewOnce} onCheckedChange={onToggleViewOnce} />
-          </div>
-
-          {/* Live edits */}
-          <div className="flex items-center justify-between gap-3 px-5 py-2.5">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md" style={{ backgroundColor: live ? "rgba(88,101,242,0.18)" : "#2b2d31", opacity: viewOnce ? 0.5 : 1 }}>
-                <Edit3 className="h-3.5 w-3.5" style={{ color: live ? "hsl(var(--primary))" : "var(--app-text-secondary)" }} />
-              </div>
-              <div className="min-w-0" style={{ opacity: viewOnce ? 0.5 : 1 }}>
-                <div className="text-[13px] font-semibold" style={{ color: "var(--app-text-primary)" }}>Live edits</div>
-                <div className="text-[11px] leading-tight" style={{ color: "var(--app-text-secondary)" }}>
-                  Your future edits to this note update the shared copy.
-                </div>
-              </div>
-            </div>
-            <Switch checked={live} onCheckedChange={onToggleLive} disabled={viewOnce} />
-          </div>
-
-          {/* Allow recipient to save */}
-          <div className="flex items-center justify-between gap-3 px-5 py-2.5 pb-3.5">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md" style={{ backgroundColor: allowSave && !viewOnce ? "rgba(88,101,242,0.18)" : "#2b2d31", opacity: viewOnce ? 0.5 : 1 }}>
-                <Copy className="h-3.5 w-3.5" style={{ color: allowSave && !viewOnce ? "hsl(var(--primary))" : "var(--app-text-secondary)" }} />
-              </div>
-              <div className="min-w-0" style={{ opacity: viewOnce ? 0.5 : 1 }}>
-                <div className="text-[13px] font-semibold" style={{ color: "var(--app-text-primary)" }}>Allow recipient to save</div>
-                <div className="text-[11px] leading-tight" style={{ color: "var(--app-text-secondary)" }}>
-                  Adds a “Save to my notes” button on their card.
-                </div>
-              </div>
-            </div>
-            <Switch checked={allowSave && !viewOnce} onCheckedChange={onToggleAllowSave} disabled={viewOnce} />
           </div>
         </div>
 
         {/* Footer */}
         <div className="flex gap-2 px-4 py-3 border-t" style={{ borderColor: "#2b2d31" }}>
           <button
-            onClick={onClose}
+            onClick={page === 1 ? () => setPage(0) : onClose}
             className="flex-1 rounded-lg py-2 text-sm font-medium transition-colors"
             style={{ backgroundColor: "#2b2d31", color: "var(--app-text-primary)" }}
           >
-            Cancel
+            {page === 1 ? "Back" : "Cancel"}
           </button>
           <button
             onClick={handleSend}
@@ -963,6 +1051,44 @@ const ShareNoteModal = ({ note, onClose }: { note: NoteRow; onClose: () => void 
     </div>
   );
 };
+
+/* Compact toggle row used inside the Share modal's "More Settings" page. */
+const SettingRow = ({
+  icon, iconColor, iconBg, title, desc, checked, onChange, disabled, locked,
+}: {
+  icon: React.ReactNode; iconColor: string; iconBg: string;
+  title: string; desc: string;
+  checked: boolean; onChange: (next: boolean) => void;
+  disabled?: boolean; locked?: boolean;
+}) => {
+  const dim = disabled || locked;
+  return (
+    <div className="flex items-center justify-between gap-3 py-2.5">
+      <div className="flex items-center gap-2.5 min-w-0">
+        <div
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md"
+          style={{ backgroundColor: iconBg, opacity: dim ? 0.5 : 1, color: iconColor }}
+        >
+          {icon}
+        </div>
+        <div className="min-w-0" style={{ opacity: dim ? 0.55 : 1 }}>
+          <div className="text-[13px] font-semibold flex items-center gap-1.5" style={{ color: "var(--app-text-primary)" }}>
+            {title}
+            {locked && (
+              <Sparkles className="h-3 w-3" style={{ color: "#f0b132" }} />
+            )}
+          </div>
+          <div className="text-[11px] leading-tight" style={{ color: "var(--app-text-secondary)" }}>
+            {desc}
+          </div>
+        </div>
+      </div>
+      <Switch checked={checked} onCheckedChange={onChange} disabled={disabled} />
+    </div>
+  );
+};
+
+
 
 
 
