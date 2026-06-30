@@ -36,6 +36,15 @@ interface ProfileData {
   username: string;
   bio: string | null;
   status: string;
+  public_wishlist?: boolean;
+}
+
+interface WishlistEntry {
+  item_id: string;
+  name: string;
+  price: number | null;
+  price_gems: number | null;
+  category: string;
 }
 
 const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage, startExpanded = false }: UserProfileCardProps) => {
