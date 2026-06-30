@@ -61,6 +61,7 @@ const ServerSettingsModal = ({ server, onClose, onDeleted }: Props) => {
           </div>
           <RailItem label="Overview" active={tab === "overview"} onClick={() => setTab("overview")} />
           <RailItem label="Channels" active={tab === "channels"} onClick={() => setTab("channels")} />
+          <RailItem label="Roles" active={tab === "roles"} onClick={() => setTab("roles")} />
           <RailItem label="Members" active={tab === "members"} onClick={() => setTab("members")} />
           <RailItem label="Invites" active={tab === "invites"} onClick={() => setTab("invites")} />
         </div>
