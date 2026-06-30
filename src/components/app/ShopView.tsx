@@ -2,12 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCoins } from "@/contexts/CoinsContext";
+import { useGems } from "@/contexts/GemsContext";
 import { useTheme, ThemeName } from "@/contexts/ThemeContext";
 import { toast } from "sonner";
 import { playSound } from "@/lib/sounds";
+import { Heart } from "lucide-react";
 import shopIcon from "@/assets/icons/shop.svg";
 import coinStack from "@/assets/coins/coin-stack.png";
 import coinNotEnough from "@/assets/coins/coin-not-enough.png";
+import gemIcon from "@/assets/gems/gem.png";
 import imgChatChampion from "@/assets/badges/chat_champion.svg";
 import imgEarlySupporter from "@/assets/badges/early_supporter.svg";
 import imgFriendly from "@/assets/badges/friendly.svg";
@@ -54,15 +57,17 @@ interface ShopItem {
   name: string;
   description: string | null;
   price: number;
+  price_gems: number | null;
   config: any;
   sort_order: number;
 }
 
-const TABS: { id: Category | "all"; label: string }[] = [
+const TABS: { id: Category | "all" | "wishlist"; label: string }[] = [
   { id: "all", label: "All" },
   { id: "name_color", label: "Name Colors" },
   { id: "theme", label: "Themes" },
   { id: "badge", label: "Badges" },
+  { id: "wishlist", label: "♥ Wishlist" },
 ];
 
 /** Renders a small visual preview matching the item type. */
