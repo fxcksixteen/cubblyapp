@@ -1442,7 +1442,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
                   channel.send({
                     type: "broadcast",
                     event: "voice-signal",
-                    payload: { type: "ice-candidate", candidate: event.candidate.toJSON(), senderId: user.id },
+                    payload: { type: "ice-candidate", candidate: event.candidate.toJSON(), senderId: user.id, callEventId: payload.callEventId || currentCallEventIdRef.current },
                   });
                 }
               };
@@ -1457,7 +1457,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               answer.sdp = sdp;
               await newPc.setLocalDescription(answer);
 
-              await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id }, "answer(rejoin)");
+              await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id, callEventId: payload.callEventId || currentCallEventIdRef.current }, "answer(rejoin)");
               if (payload.callEventId) lastAnsweredOfferRef.current = payload.callEventId;
 
               setActiveCall(prev => prev ? {
@@ -1473,7 +1473,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               const evtId = payload.callEventId || currentCallEventIdRef.current;
               if (evtId) {
                 void (async () => {
-                  try { await (supabase as any).rpc("heartbeat_call_participant", { _call_event_id: evtId }); } catch {}
+            try { await (supabase as any).rpc("heartbeat_call_participant", { _call_event_id: evtId }); } catch {}
                 })();
               }
 
@@ -1500,6 +1500,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         if (payload.type === "answer" && pc) {
           if (payload.callEventId && callEventIdSnapshot && payload.callEventId !== callEventIdSnapshot) {
             console.log(`[Voice] 🛑 Ignoring answer for stale call ${payload.callEventId} (current=${callEventIdSnapshot})`);
+            return;
+          }
+          if (pc.signalingState !== "have-local-offer") {
+            console.log(`[Voice] 🛑 Ignoring answer while signalingState=${pc.signalingState}`);
             return;
           }
           console.log("[Voice] 📥 Answer received, setting remote description...");
