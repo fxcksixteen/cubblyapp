@@ -10,6 +10,7 @@ import { GroupCallProvider } from "@/contexts/GroupCallContext";
 import { ActivityProvider } from "@/contexts/ActivityContext";
 import { GamingModeProvider } from "@/contexts/GamingModeContext";
 import { CoinsProvider } from "@/contexts/CoinsContext";
+import { GemsProvider } from "@/contexts/GemsContext";
 import { NameColorsProvider } from "@/contexts/NameColorsContext";
 import { UserBadgesProvider } from "@/contexts/UserBadgesContext";
 import { NotesProvider } from "@/contexts/NotesContext";
@@ -48,6 +49,7 @@ const App = () => (
             <ActivityProvider>
               <GamingModeProvider>
               <CoinsProvider>
+              <GemsProvider>
               <NameColorsProvider>
               <UserBadgesProvider>
               <NotesProvider>
@@ -81,6 +83,7 @@ const App = () => (
               </NotesProvider>
               </UserBadgesProvider>
               </NameColorsProvider>
+              </GemsProvider>
               </CoinsProvider>
               </GamingModeProvider>
             </ActivityProvider>

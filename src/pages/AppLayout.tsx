@@ -39,6 +39,7 @@ import MobileNotificationPrompt from "@/components/app/MobileNotificationPrompt"
 import CallConflictModal from "@/components/app/CallConflictModal";
 import { useActiveCallElsewhere, useRemoteHangupListener } from "@/hooks/useActiveCallElsewhere";
 import CoinPill from "@/components/app/CoinPill";
+import GemPill from "@/components/app/GemPill";
 import UserProfileCard from "@/components/app/chat/UserProfileCard";
 
 type FriendTab = "online" | "all" | "pending" | "blocked" | "add";
@@ -729,7 +730,9 @@ const AppLayout = () => {
                   {!isServerRoute && (
                     <img src={messagesInboxIcon} alt="Inbox" className="h-5 w-5 cursor-pointer invert opacity-60 hover:opacity-100 transition-opacity" />
                   )}
+                  {isShop && <GemPill />}
                   {isShop && <CoinPill />}
+                  {isHoney && <GemPill />}
                 </div>
               </>
             )}
