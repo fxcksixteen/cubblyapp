@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import MemberRowMenu from "@/components/app/MemberRowMenu";
 import UserProfileCard from "@/components/app/chat/UserProfileCard";
 import ServerSettingsModal from "@/components/app/ServerSettingsModal";
+import GiftItemModal from "@/components/app/GiftItemModal";
 
 
 const ServerView = () => {
