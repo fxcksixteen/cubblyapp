@@ -154,6 +154,12 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
               <UserBadges userId={user?.id} size={16} withTooltip />
             </p>
             <p className="text-[13px] mt-0.5" style={{ color: "var(--app-text-secondary, #949ba4)" }}>{username}</p>
+            {customStatus && (customStatus.text || customStatus.emoji) && (
+              <p className="text-[12px] mt-1.5 truncate flex items-center gap-1" style={{ color: "var(--app-text-primary, #dbdee1)" }}>
+                {customStatus.emoji && <span>{customStatus.emoji}</span>}
+                {customStatus.text && <span className="truncate">{customStatus.text}</span>}
+              </p>
+            )}
           </div>
 
           <div className="mx-3 h-px" style={{ backgroundColor: "var(--app-border, #2b2d31)" }} />
