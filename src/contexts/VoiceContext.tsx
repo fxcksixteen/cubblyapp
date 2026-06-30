@@ -1124,7 +1124,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     });
   }, [user]);
 
-  const initializeOutgoingConnection = useCallback(async (channel: ReturnType<typeof supabase.channel>, conversationId: string) => {
+  const initializeOutgoingConnection = useCallback(async (channel: ReturnType<typeof supabase.channel>, conversationId: string, options?: { forceFreshOffer?: boolean }) => {
     if (!user) return;
     const outgoingCallMeta = outgoingCallMetaRef.current;
     if (!outgoingCallMeta || outgoingCallMeta.conversationId !== conversationId) {
@@ -1137,7 +1137,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     // of silently returning. This is what was making the second peer "never
     // get placed in the call" — their ready-for-offer was being dropped on
     // the caller side and no offer ever reached them.
-    if (existingPc && pendingOfferRef.current && pendingOfferRef.current.conversationId === conversationId && pendingOfferRef.current.callEventId === outgoingCallMeta.callEventId) {
+    if (!options?.forceFreshOffer && existingPc && pendingOfferRef.current && pendingOfferRef.current.conversationId === conversationId && pendingOfferRef.current.callEventId === outgoingCallMeta.callEventId) {
       console.log("[Voice] 🔁 PC already exists — re-broadcasting pending offer for late joiner");
       await sendSignalReliably(channel, {
         type: "offer",
@@ -1205,7 +1205,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         channel.send({
           type: "broadcast",
           event: "voice-signal",
-          payload: { type: "ice-candidate", candidate, senderId: user.id },
+      payload: { type: "ice-candidate", candidate, senderId: user.id, callEventId: outgoingCallMeta.callEventId },
         });
       } else {
         console.log("[Voice] 🧊 ICE gathering complete (null candidate)");
@@ -1295,7 +1295,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
                 callEventId: payload.callEventId,
               };
             }
-            await initializeOutgoingConnection(channel, conversationId);
+            await initializeOutgoingConnection(channel, conversationId, { forceFreshOffer: !!payload.forceFreshOffer });
           } catch (e) {
             console.error("[Voice] Failed to initialize outgoing connection (keeping call alive):", e);
             // v0.3.8: do NOT endCall on signaling errors — they're often
@@ -1354,7 +1354,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               sdp = setHighQualityOpus(sdp);
               answer.sdp = sdp;
               await pc.setLocalDescription(answer);
-              await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id }, "answer(re-offer)");
+              await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id, callEventId: payload.callEventId || currentCallEventIdRef.current }, "answer(re-offer)");
             } catch (e) {
               console.warn("[Voice] Mid-call re-offer handling failed:", e);
             }
@@ -1373,7 +1373,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               answer.sdp = sdp;
               await pc.setLocalDescription(answer);
 
-              await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id }, "answer(accepted-offer)");
+              await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id, callEventId: payload.callEventId || currentCallEventIdRef.current }, "answer(accepted-offer)");
               if (payload.callEventId) lastAnsweredOfferRef.current = payload.callEventId;
 
               setActiveCall(prev => prev && prev.conversationId === conversationId
