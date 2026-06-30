@@ -97,56 +97,53 @@ const GiftItemModal = ({ open, onClose, recipientId, recipientName, conversation
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent
-        className="max-w-lg rounded-2xl border-0 p-0 overflow-hidden"
-        style={{ backgroundColor: "var(--app-bg-secondary)" }}
+        className="max-w-lg rounded-lg border-0 p-0 overflow-hidden shadow-2xl"
+        style={{ backgroundColor: "#2b2d31" }}
       >
-        <div
-          className="px-6 pt-6 pb-4"
-          style={{
-            background: "linear-gradient(135deg, rgba(236,72,153,0.14), rgba(96,165,250,0.05))",
-            borderBottom: "1px solid var(--app-border)",
-          }}
-        >
+        {/* Solid Discord-style header */}
+        <div className="px-5 pt-5 pb-4 border-b" style={{ borderColor: "#1f2024", backgroundColor: "#2b2d31" }}>
           <DialogHeader>
-            <DialogTitle className="text-lg font-bold" style={{ color: "var(--app-text-primary)" }}>
+            <DialogTitle className="text-base font-bold text-white">
               Send a gift to {recipientName}
             </DialogTitle>
-            <DialogDescription style={{ color: "var(--app-text-secondary)" }}>
-              Pay with gems — they'll receive it instantly.
+            <DialogDescription className="text-[13px]" style={{ color: "#b5bac1" }}>
+              Pick something from the shop — paid with gems, delivered instantly.
             </DialogDescription>
           </DialogHeader>
-          <div className="mt-3 flex items-center gap-2 text-xs" style={{ color: "var(--app-text-secondary)" }}>
-            <img src={gemIcon} alt="" className="h-4 w-4" />
-            <span>Your balance: <span className="font-extrabold tabular-nums" style={{ color: "#60a5fa" }}>{balance.toLocaleString()}</span></span>
+          <div className="mt-3 flex items-center gap-2 rounded-md px-3 py-2" style={{ backgroundColor: "#1e1f22" }}>
+            <img src={gemIcon} alt="" className="h-7 w-7" />
+            <div className="flex flex-col leading-tight">
+              <span className="text-[10px] uppercase font-bold tracking-wide" style={{ color: "#949ba4" }}>Your balance</span>
+              <span className="text-[15px] font-extrabold tabular-nums text-white">{balance.toLocaleString()}</span>
+            </div>
           </div>
         </div>
 
-        <div className="px-5 pt-3">
+        <div className="px-5 pt-4" style={{ backgroundColor: "#313338" }}>
+          <label className="text-[10px] uppercase font-bold tracking-wide block mb-1.5" style={{ color: "#b5bac1" }}>
+            Add a note (optional)
+          </label>
           <input
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             maxLength={140}
-            placeholder="Add a note (optional)…"
-            className="w-full rounded-lg px-3 py-2 text-sm outline-none"
-            style={{
-              backgroundColor: "var(--app-bg-tertiary)",
-              border: "1px solid var(--app-border)",
-              color: "var(--app-text-primary)",
-            }}
+            placeholder="Say something nice…"
+            className="w-full rounded-md px-3 py-2 text-sm text-white outline-none focus:ring-2"
+            style={{ backgroundColor: "#1e1f22", border: "1px solid #1f2024" }}
           />
         </div>
 
-        <div className="px-5 py-4 max-h-[55vh] overflow-y-auto">
+        <div className="px-3 pb-3 pt-3 max-h-[55vh] overflow-y-auto" style={{ backgroundColor: "#313338" }}>
           {loading ? (
-            <div className="flex items-center justify-center py-10 text-sm" style={{ color: "var(--app-text-secondary)" }}>
+            <div className="flex items-center justify-center py-10 text-sm text-white/70">
               <Loader2 className="h-4 w-4 animate-spin mr-2" /> Loading…
             </div>
           ) : wishedFirst.length === 0 ? (
-            <div className="text-center text-sm py-8" style={{ color: "var(--app-text-secondary)" }}>
+            <div className="text-center text-sm py-8" style={{ color: "#b5bac1" }}>
               {recipientName} already owns every giftable item — generous of you!
             </div>
           ) : (
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-1">
               {wishedFirst.map((item) => {
                 const isWished = wishlist.has(item.id);
                 const canAfford = item.price_gems !== null && balance >= item.price_gems;
@@ -154,37 +151,35 @@ const GiftItemModal = ({ open, onClose, recipientId, recipientName, conversation
                 return (
                   <div
                     key={item.id}
-                    className="flex items-center gap-3 rounded-xl px-3 py-2.5"
-                    style={{
-                      backgroundColor: "var(--app-bg-tertiary)",
-                      border: `1px solid ${isWished ? "rgba(236,72,153,0.5)" : "var(--app-border)"}`,
-                    }}
+                    className="flex items-center gap-3 rounded-md px-3 py-2.5 transition-colors"
+                    style={{ backgroundColor: "transparent" }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#35373c")}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
                   >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <div className="text-sm font-bold truncate" style={{ color: "var(--app-text-primary)" }}>{item.name}</div>
+                        <div className="text-[14px] font-semibold text-white truncate">{item.name}</div>
                         {isWished && (
-                          <span className="flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wide rounded-full px-1.5 py-0.5"
-                                style={{ backgroundColor: "rgba(236,72,153,0.18)", color: "#f472b6" }}>
+                          <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide rounded px-1.5 py-0.5"
+                                style={{ backgroundColor: "rgba(236,72,153,0.16)", color: "#f472b6" }}>
                             <Heart className="h-2.5 w-2.5" fill="currentColor" /> Wished
                           </span>
                         )}
                       </div>
                       {item.description && (
-                        <div className="text-[11px] line-clamp-1" style={{ color: "var(--app-text-secondary)" }}>{item.description}</div>
+                        <div className="text-[12px] line-clamp-1 mt-0.5" style={{ color: "#b5bac1" }}>{item.description}</div>
                       )}
                     </div>
                     <button
                       onClick={() => sendGift(item)}
                       disabled={!canAfford || isBusy}
-                      className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-extrabold disabled:opacity-50 disabled:cursor-not-allowed"
-                      style={{
-                        backgroundColor: canAfford ? "#5865f2" : "var(--app-bg-secondary)",
-                        color: "white",
-                      }}
+                      className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[13px] font-bold text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      style={{ backgroundColor: canAfford ? "#5865f2" : "#4e5058" }}
+                      onMouseEnter={(e) => { if (canAfford && !isBusy) e.currentTarget.style.backgroundColor = "#4752c4"; }}
+                      onMouseLeave={(e) => { if (canAfford && !isBusy) e.currentTarget.style.backgroundColor = "#5865f2"; }}
                     >
-                      <img src={gemIcon} alt="" className="h-4 w-4" />
-                      <span>{item.price_gems?.toLocaleString()}</span>
+                      {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <img src={gemIcon} alt="" className="h-5 w-5" />}
+                      <span className="tabular-nums">{item.price_gems?.toLocaleString()}</span>
                     </button>
                   </div>
                 );
@@ -198,3 +193,4 @@ const GiftItemModal = ({ open, onClose, recipientId, recipientName, conversation
 };
 
 export default GiftItemModal;
+

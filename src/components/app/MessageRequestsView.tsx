@@ -90,16 +90,13 @@ const MessageRequestsView = ({ onOpenConversation }: MessageRequestsViewProps) =
 
   return (
     <div className="flex-1 min-h-0 flex flex-col" style={{ backgroundColor: "var(--app-bg-primary)" }}>
-      {/* Header */}
-      <div
-        className="h-14 flex items-center px-5 border-b shrink-0"
-        style={{ borderColor: "var(--app-border,#1f2024)" }}
-      >
-        <img src={inboxIcon} alt="" className="h-5 w-5 invert opacity-80 mr-2.5" />
-        <span className="font-bold text-[15px] text-white">Message Requests</span>
+      {/* Header — matches Active Now title style */}
+      <div className="px-6 pt-6 pb-4 flex items-center gap-3 shrink-0">
+        <img src={inboxIcon} alt="" className="h-6 w-6 invert opacity-90" />
+        <h2 className="text-xl font-bold text-white">Message Requests</h2>
         {rows.length > 0 && (
           <span
-            className="ml-2.5 text-[11px] font-bold px-2 py-0.5 rounded-full text-white"
+            className="text-[11px] font-bold px-2 py-0.5 rounded-full text-white"
             style={{ backgroundColor: "#ed4245" }}
           >
             {rows.length}
@@ -107,38 +104,38 @@ const MessageRequestsView = ({ onOpenConversation }: MessageRequestsViewProps) =
         )}
       </div>
 
-      {/* Body */}
-      <div className="flex-1 overflow-y-auto px-3 py-3">
+      {/* Body — bordered cards like Active Now rail */}
+      <div className="flex-1 overflow-y-auto px-6 pb-6">
         {loading ? (
           <div className="flex justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-[var(--app-text-secondary)]" />
+            <Loader2 className="h-6 w-6 animate-spin" style={{ color: "var(--app-text-secondary,#949ba4)" }} />
           </div>
         ) : rows.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 px-6 text-center">
             <div
               className="h-20 w-20 rounded-full flex items-center justify-center mb-4"
-              style={{ backgroundColor: "var(--app-bg-tertiary,#1e1f22)" }}
+              style={{ backgroundColor: "var(--app-bg-secondary,#2b2d31)" }}
             >
               <img src={inboxIcon} alt="" className="h-9 w-9 invert opacity-50" />
             </div>
-            <p className="text-white font-semibold text-[15px]">No message requests</p>
+            <p className="text-white font-semibold text-[15px]">It's quiet in here…</p>
             <p className="text-[13px] mt-1.5 max-w-xs" style={{ color: "var(--app-text-secondary,#949ba4)" }}>
-              When someone you don't know DMs you, it'll land here first so your inbox stays cozy.
+              When someone you don't know DMs you, their message will land here first so your inbox stays cozy.
             </p>
           </div>
         ) : (
-          <ul className="space-y-1.5">
+          <div className="flex flex-col gap-2 max-w-2xl">
             {rows.map((r) => {
               const p = r.sender_profile;
               const color = p ? getProfileColor(p.user_id) : defaultProfileColor;
               const initial = (p?.display_name || "?").charAt(0).toUpperCase();
               return (
-                <li
+                <div
                   key={r.id}
-                  className="group px-3 py-2.5 flex items-center gap-3 rounded-lg transition-colors cursor-default"
-                  style={{ backgroundColor: "transparent" }}
-                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--app-hover,#35373c)")}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                  className="flex items-start gap-3 rounded-xl border p-3 transition-colors"
+                  style={{ borderColor: "var(--app-border, #3f4147)", backgroundColor: "var(--app-bg-secondary, #2b2d31)" }}
+                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "var(--app-active, #404249)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "var(--app-bg-secondary, #2b2d31)"; }}
                 >
                   {p?.avatar_url ? (
                     <img src={p.avatar_url} alt="" className="h-11 w-11 rounded-full object-cover shrink-0" />
@@ -151,15 +148,19 @@ const MessageRequestsView = ({ onOpenConversation }: MessageRequestsViewProps) =
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
-                    <div className="text-[14px] font-semibold text-white truncate leading-tight">
+                    <p className="text-[14px] font-semibold text-white leading-tight truncate">
                       {p?.display_name || "Unknown user"}
-                    </div>
-                    <div
-                      className="text-[12.5px] truncate mt-0.5"
-                      style={{ color: "var(--app-text-secondary,#949ba4)" }}
-                    >
-                      {r.preview || (p ? `@${p.username}` : "Wants to send you a message")}
-                    </div>
+                    </p>
+                    {p?.username && (
+                      <p className="text-[11px] mt-0.5" style={{ color: "var(--app-text-secondary,#949ba4)" }}>
+                        @{p.username}
+                      </p>
+                    )}
+                    {r.preview && (
+                      <p className="text-[13px] mt-1.5 line-clamp-2" style={{ color: "var(--app-text-primary,#dbdee1)" }}>
+                        {r.preview}
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <button
@@ -185,10 +186,10 @@ const MessageRequestsView = ({ onOpenConversation }: MessageRequestsViewProps) =
                       )}
                     </button>
                   </div>
-                </li>
+                </div>
               );
             })}
-          </ul>
+          </div>
         )}
       </div>
     </div>
@@ -196,3 +197,4 @@ const MessageRequestsView = ({ onOpenConversation }: MessageRequestsViewProps) =
 };
 
 export default MessageRequestsView;
+
