@@ -23,6 +23,7 @@ import FriendsView from "@/components/app/FriendsView";
 import ChatView from "@/components/app/ChatView";
 import ShopView from "@/components/app/ShopView";
 import NotesView from "@/components/app/NotesView";
+import HoneyPage from "@/pages/HoneyPage";
 import ServerView from "@/components/app/ServerView";
 import VoiceCallOverlay from "@/components/app/VoiceCallOverlay";
 import TitleBar from "@/components/app/TitleBar";
@@ -102,6 +103,7 @@ const AppLayout = () => {
     ? `dm:${chatIdFromUrl}`
     : isServerRoute ? "server"
     : pathParts[1] === "shop" ? "shop"
+    : pathParts[1] === "honey" ? "honey"
     : pathParts[1] === "notes" ? "notes"
     : isYouRoute ? "you"
     : "friends";
@@ -134,6 +136,7 @@ const AppLayout = () => {
 
   const isDM = activeView.startsWith("dm:");
   const isShop = activeView === "shop";
+  const isHoney = activeView === "honey";
   const isNotes = activeView === "notes";
   const isYou = activeView === "you";
   const activeConvId = isDM ? activeView.replace("dm:", "") : null;
@@ -354,6 +357,9 @@ const AppLayout = () => {
     }
     if (isShop) {
       return <ShopView />;
+    }
+    if (isHoney) {
+      return <HoneyPage />;
     }
     if (isNotes) {
       return <NotesView />;
