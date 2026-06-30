@@ -476,6 +476,8 @@ const AppLayout = () => {
                 navigate("/@me/honey", { replace: true });
               } else if (view === "notes") {
                 navigate("/@me/notes", { replace: true });
+              } else if (view === "requests") {
+                navigate("/@me/requests", { replace: true });
               } else {
                 navigate(`/@me/${friendTab}`, { replace: true });
               }
