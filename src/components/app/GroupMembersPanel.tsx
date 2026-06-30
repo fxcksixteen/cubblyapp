@@ -368,6 +368,16 @@ const GroupMembersPanel = ({ conversation, onClose, onLeftGroup }: GroupMembersP
           startExpanded
         />
       )}
+
+      {giftTarget && (
+        <GiftItemModal
+          open
+          onClose={() => setGiftTarget(null)}
+          recipientId={giftTarget.userId}
+          recipientName={giftTarget.name}
+          conversationId={conversation.id}
+        />
+      )}
     </aside>
   );
 };
