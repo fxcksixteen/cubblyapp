@@ -68,7 +68,7 @@ const formatElapsed = (startedAt: string) => {
  * Discord-style activity card with icon + name + verb + elapsed time.
  * Used in the DM sidebar, profile popups, and the Active Now rail.
  */
-const ActivityCard = ({ name, processName, type, startedAt, variant = "default", trailing }: Props) => {
+const ActivityCard = ({ name, processName, type, startedAt, variant = "default", trailing, details }: Props) => {
   const [, setTick] = useState(0);
   // Re-render every 1s so the elapsed counter ticks live (Discord-style mm:ss).
   useEffect(() => {
@@ -78,6 +78,7 @@ const ActivityCard = ({ name, processName, type, startedAt, variant = "default",
 
 
   const verb = type === "software" || isSoftwareActivity({ name }) ? "Using" : "Playing";
+  const detailLines = renderDetailLines(details);
 
   // Sizes per variant
   const iconSize = variant === "sidebar" ? 40 : variant === "compact" ? 36 : 48;
@@ -110,6 +111,15 @@ const ActivityCard = ({ name, processName, type, startedAt, variant = "default",
         <ActivityIcon name={name} processName={processName} size={iconSize} />
         <div className="min-w-0 flex-1">
           <p className={`truncate font-semibold text-white leading-tight ${titleClass}`}>{name}</p>
+          {detailLines.map((line, i) => (
+            <p
+              key={i}
+              className="truncate text-[11px] leading-tight mt-0.5"
+              style={{ color: "var(--app-text-secondary, #b5bac1)" }}
+            >
+              {line}
+            </p>
+          ))}
           <p
             className="truncate text-[11px] leading-tight mt-0.5"
             style={{ color: "var(--app-text-secondary, #949ba4)" }}
