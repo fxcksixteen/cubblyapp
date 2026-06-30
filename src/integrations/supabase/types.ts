@@ -1427,6 +1427,11 @@ export type Database = {
         Args: { _request_id: string }
         Returns: undefined
       }
+      delete_server: { Args: { _server_id: string }; Returns: undefined }
+      delete_server_channel: {
+        Args: { _channel_id: string }
+        Returns: undefined
+      }
       end_call_event_if_stale: {
         Args: { _call_event_id: string; _stale_seconds?: number }
         Returns: boolean
@@ -1465,6 +1470,10 @@ export type Database = {
         Returns: boolean
       }
       join_server_by_code: { Args: { _code: string }; Returns: string }
+      kick_server_member: {
+        Args: { _server_id: string; _user_id: string }
+        Returns: undefined
+      }
       lookup_server_invite: { Args: { _code: string }; Returns: Json }
       mark_conversation_read: {
         Args: { _conversation_id: string }
@@ -1479,6 +1488,11 @@ export type Database = {
       presence_heartbeat: { Args: { _session_key?: string }; Returns: string }
       purchase_shop_item: { Args: { _item_id: string }; Returns: Json }
       purchase_shop_item_gems: { Args: { _item_id: string }; Returns: Json }
+      rename_server_channel: {
+        Args: { _channel_id: string; _name: string }
+        Returns: undefined
+      }
+      revoke_server_invite: { Args: { _invite_id: string }; Returns: undefined }
       send_test_bot_reply: {
         Args: { _conversation_id: string }
         Returns: {
@@ -1520,7 +1534,15 @@ export type Database = {
         Args: { _body: string; _note_id: string; _title: string }
         Returns: number
       }
+      transfer_server_ownership: {
+        Args: { _new_owner: string; _server_id: string }
+        Returns: undefined
+      }
       unequip_shop_item: { Args: { _item_id: string }; Returns: undefined }
+      update_server: {
+        Args: { _icon_url?: string; _name?: string; _server_id: string }
+        Returns: undefined
+      }
       user_subscription_tier: { Args: { _user_id: string }; Returns: string }
     }
     Enums: {
