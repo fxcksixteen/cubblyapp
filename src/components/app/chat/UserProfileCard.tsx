@@ -237,6 +237,11 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
                   </button>
                 ) : null}
                 {friendshipStatus !== "blocked" && (
+                  <button onClick={() => setShowGiftModal(true)} className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 hover:bg-pink-500/20 transition-colors" title="Send Gift">
+                    <img src={giftIcon} alt="Gift" className="h-4 w-4 invert opacity-70 hover:opacity-100" />
+                  </button>
+                )}
+                {friendshipStatus !== "blocked" && (
                   <button onClick={handleBlock} className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 hover:bg-[#ed4245]/20 transition-colors" title="Block">
                     <img src={blockUserIcon} alt="Block" className="h-4 w-4 invert opacity-70 hover:opacity-100" />
                   </button>
