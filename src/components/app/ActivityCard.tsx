@@ -18,13 +18,14 @@ interface Props {
 
 const formatElapsed = (startedAt: string) => {
   const ms = Math.max(0, Date.now() - new Date(startedAt).getTime());
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return "just started";
-  if (mins < 60) return `for ${mins}m`;
-  const hours = Math.floor(mins / 60);
-  const rem = mins % 60;
-  if (rem === 0) return `for ${hours}h`;
-  return `for ${hours}h ${rem}m`;
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")} elapsed`;
+  if (m > 0) return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")} elapsed`;
+  if (totalSec < 5) return "just started";
+  return `${s}s elapsed`;
 };
 
 /**
@@ -33,11 +34,12 @@ const formatElapsed = (startedAt: string) => {
  */
 const ActivityCard = ({ name, processName, type, startedAt, variant = "default", trailing }: Props) => {
   const [, setTick] = useState(0);
-  // Re-render every 30s to keep the elapsed time fresh
+  // Re-render every 1s so the elapsed counter ticks live (Discord-style mm:ss).
   useEffect(() => {
-    const i = setInterval(() => setTick((t) => t + 1), 30_000);
+    const i = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(i);
   }, []);
+
 
   const verb = type === "software" || isSoftwareActivity({ name }) ? "Using" : "Playing";
 
@@ -56,13 +58,18 @@ const ActivityCard = ({ name, processName, type, startedAt, variant = "default",
     >
       <div className="flex items-center justify-between mb-1.5">
         <span
-          className="text-[10px] font-bold uppercase tracking-wide"
+          className="text-[10px] font-bold uppercase tracking-wide flex items-center gap-1.5"
           style={{ color: "var(--app-text-secondary, #949ba4)" }}
         >
+          <span className="relative flex h-1.5 w-1.5">
+            <span className="absolute inline-flex h-full w-full rounded-full bg-[#3ba55c] opacity-75 animate-ping" />
+            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#3ba55c]" />
+          </span>
           {verb}
         </span>
         {trailing}
       </div>
+
       <div className="flex items-center gap-3">
         <ActivityIcon name={name} processName={processName} size={iconSize} />
         <div className="min-w-0 flex-1">

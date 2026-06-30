@@ -22,6 +22,8 @@ import { getProfileColor } from "@/lib/profileColors";
 import { Button } from "@/components/ui/button";
 import MemberRowMenu from "@/components/app/MemberRowMenu";
 import UserProfileCard from "@/components/app/chat/UserProfileCard";
+import ServerSettingsModal from "@/components/app/ServerSettingsModal";
+
 
 const ServerView = () => {
   const location = useLocation();
@@ -89,6 +91,8 @@ const ServerView = () => {
   const [createChanOpen, setCreateChanOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
   const [membersCollapsed, setMembersCollapsed] = useState(false);
   const [profileCard, setProfileCard] = useState<{ userId: string; name: string; x: number; y: number } | null>(null);
 
@@ -140,7 +144,7 @@ const ServerView = () => {
               >
                 <MenuItem icon={UserPlus} label="Invite people" onClick={() => { setInviteOpen(true); setHeaderMenuOpen(false); }} />
                 {isOwner && <MenuItem icon={Plus} label="Create channel" onClick={() => { setCreateChanOpen(true); setHeaderMenuOpen(false); }} />}
-                {isOwner && <MenuItem icon={Settings} label="Server settings" onClick={() => toast.info("Coming soon")} />}
+                {isOwner && <MenuItem icon={Settings} label="Server settings" onClick={() => { setSettingsOpen(true); setHeaderMenuOpen(false); }} />}
                 <MenuItem icon={LogOut} label={isOwner ? "Delete server" : "Leave server"} danger onClick={onLeave} />
               </div>
             </>
@@ -255,6 +259,14 @@ const ServerView = () => {
 
       {createChanOpen && <CreateChannelModal serverId={server.id} onClose={() => setCreateChanOpen(false)} />}
       {inviteOpen && <InviteModal serverId={server.id} onClose={() => setInviteOpen(false)} />}
+      {settingsOpen && server && (
+        <ServerSettingsModal
+          server={server}
+          onClose={() => setSettingsOpen(false)}
+          onDeleted={() => navigate("/@me")}
+        />
+      )}
+
       {profileCard && (
         <UserProfileCard
           userId={profileCard.userId}
