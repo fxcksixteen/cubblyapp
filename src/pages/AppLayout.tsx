@@ -56,6 +56,29 @@ const AppLayout = () => {
   const groupCall = useGroupCall();
   const isMobile = useIsMobile();
 
+  // Pending message-requests badge for the topbar inbox button.
+  const [messageRequestCount, setMessageRequestCount] = useState(0);
+  useEffect(() => {
+    if (!user) return;
+    let alive = true;
+    const fetchCount = async () => {
+      const { count } = await supabase
+        .from("message_requests")
+        .select("id", { count: "exact", head: true })
+        .eq("recipient_id", user.id)
+        .eq("status", "pending");
+      if (alive) setMessageRequestCount(count ?? 0);
+    };
+    fetchCount();
+    const ch = supabase
+      .channel(`topbar-msg-requests:${user.id}`)
+      .on("postgres_changes",
+        { event: "*", schema: "public", table: "message_requests", filter: `recipient_id=eq.${user.id}` },
+        () => fetchCount())
+      .subscribe();
+    return () => { alive = false; supabase.removeChannel(ch); };
+  }, [user]);
+
   const pathParts = location.pathname.split("/").filter(Boolean);
   const isChatRoute = pathParts[1] === "chat" && pathParts[2];
   const chatIdFromUrl = isChatRoute ? pathParts[2] : null;
