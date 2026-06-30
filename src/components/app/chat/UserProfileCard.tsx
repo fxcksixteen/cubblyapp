@@ -64,14 +64,16 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
   const userActivityDetails = getActivityDetails(userId);
   const userActivityLabel = activityLabel(userActivity, isUserOnline);
 
+  const [wishlist, setWishlist] = useState<WishlistEntry[] | null>(null);
+
   useEffect(() => {
     supabase
       .from("profiles")
-      .select("avatar_url, username, bio, status, banner_url")
+      .select("avatar_url, username, bio, status, banner_url, public_wishlist")
       .eq("user_id", userId)
       .maybeSingle()
       .then(({ data }) => {
-        if (data) setProfile({ ...data, banner_url: (data as any).banner_url || null });
+        if (data) setProfile({ ...(data as any), banner_url: (data as any).banner_url || null });
       });
 
     if (user && userId !== user.id) {
@@ -88,6 +90,37 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
         });
     }
   }, [userId, user]);
+
+  // Fetch wishlist only when profile is loaded and wishlist is public (or it's
+  // the viewer's own profile — they should always see their own list).
+  useEffect(() => {
+    if (!profile) return;
+    if (!isOwnProfile && profile.public_wishlist === false) {
+      setWishlist([]);
+      return;
+    }
+    let alive = true;
+    (async () => {
+      const { data: rows } = await supabase
+        .from("wishlist_items")
+        .select("item_id, shop_items(id, name, price, price_gems, category)")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(12);
+      if (!alive) return;
+      const items: WishlistEntry[] = ((rows as any[]) ?? [])
+        .map((r) => r.shop_items ? {
+          item_id: r.shop_items.id,
+          name: r.shop_items.name,
+          price: r.shop_items.price ?? null,
+          price_gems: r.shop_items.price_gems ?? null,
+          category: r.shop_items.category,
+        } : null)
+        .filter(Boolean) as WishlistEntry[];
+      setWishlist(items);
+    })();
+    return () => { alive = false; };
+  }, [profile, userId, isOwnProfile]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
