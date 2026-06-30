@@ -208,20 +208,22 @@ function ItemPreview({ item, displayName }: { item: ShopItem; displayName: strin
 const ShopView = () => {
   const { user } = useAuth();
   const { balance } = useCoins();
+  const { balance: gemBalance } = useGems();
   const { setTheme } = useTheme();
   const [items, setItems] = useState<ShopItem[]>([]);
   const [owned, setOwned] = useState<Set<string>>(new Set());
   const [equipped, setEquipped] = useState<Set<string>>(new Set());
-  const [activeTab, setActiveTab] = useState<Category | "all">(() => {
+  const [wishlist, setWishlist] = useState<Set<string>>(new Set());
+  const [activeTab, setActiveTab] = useState<Category | "all" | "wishlist">(() => {
     if (typeof window === "undefined") return "all";
-    const m = window.location.hash.match(/tab=(name_color|theme|badge|all)/);
+    const m = window.location.hash.match(/tab=(name_color|theme|badge|all|wishlist)/);
     return (m?.[1] as any) || "all";
   });
 
   // React to hash changes (deep-links from Settings)
   useEffect(() => {
     const onHash = () => {
-      const m = window.location.hash.match(/tab=(name_color|theme|badge|all)/);
+      const m = window.location.hash.match(/tab=(name_color|theme|badge|all|wishlist)/);
       if (m?.[1]) setActiveTab(m[1] as any);
     };
     window.addEventListener("hashchange", onHash);
