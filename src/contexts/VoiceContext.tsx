@@ -1315,7 +1315,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           // loop once we've already answered this exact callEventId. Without
           // this, a delayed retry re-triggers setRemoteDescription on the
           // stable PC and silently wipes the just-established ICE pair.
-          if (payload.callEventId && lastAnsweredOfferRef.current === payload.callEventId) {
+          const offerDedupeKey = payload.callEventId ? `${payload.callEventId}:${payload.sdp?.sdp || ""}` : null;
+          if (offerDedupeKey && lastAnsweredOfferRef.current === offerDedupeKey) {
             console.log("[Voice] 🛑 Ignoring duplicate offer retry for already-answered call", payload.callEventId);
             return;
           }
@@ -1374,7 +1375,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               await pc.setLocalDescription(answer);
 
               await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id, callEventId: payload.callEventId || currentCallEventIdRef.current }, "answer(accepted-offer)");
-              if (payload.callEventId) lastAnsweredOfferRef.current = payload.callEventId;
+              if (offerDedupeKey) lastAnsweredOfferRef.current = offerDedupeKey;
 
               setActiveCall(prev => prev && prev.conversationId === conversationId
                 ? {
@@ -1458,7 +1459,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               await newPc.setLocalDescription(answer);
 
               await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id, callEventId: payload.callEventId || currentCallEventIdRef.current }, "answer(rejoin)");
-              if (payload.callEventId) lastAnsweredOfferRef.current = payload.callEventId;
+              if (offerDedupeKey) lastAnsweredOfferRef.current = offerDedupeKey;
 
               setActiveCall(prev => prev ? {
                 ...prev,
