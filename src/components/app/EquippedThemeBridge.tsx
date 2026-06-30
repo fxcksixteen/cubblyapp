@@ -45,7 +45,12 @@ const EquippedThemeBridge = () => {
   const { setTheme } = useTheme();
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      // Signed-out: strip any equipped shop theme so the login/landing pages
+      // never inherit Space/Ocean/etc. from the previous session.
+      setTheme(readLocalTheme());
+      return;
+    }
     let alive = true;
 
     const apply = async () => {
