@@ -42,7 +42,7 @@ const ServerSettingsModal = ({ server, onClose, onDeleted }: Props) => {
   const [tab, setTab] = useState<Tab>("overview");
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 animate-fade-in">
+    <div className="app-themed fixed inset-0 z-[100] flex items-center justify-center bg-black/70 animate-fade-in">
       <div
         className="relative flex w-[min(960px,95vw)] h-[min(640px,85vh)] overflow-hidden rounded-2xl shadow-2xl"
         style={{ backgroundColor: "var(--app-bg-secondary, #2b2d31)" }}
