@@ -1372,6 +1372,7 @@ export type Database = {
         }
         Returns: number
       }
+      accept_message_request: { Args: { _request_id: string }; Returns: string }
       accrue_activity_coins: {
         Args: { _gaming_seconds?: number; _voice_seconds?: number }
         Returns: Json
@@ -1421,6 +1422,10 @@ export type Database = {
           _server_id: string
         }
         Returns: string
+      }
+      decline_message_request: {
+        Args: { _request_id: string }
+        Returns: undefined
       }
       end_call_event_if_stale: {
         Args: { _call_event_id: string; _stale_seconds?: number }
