@@ -214,6 +214,7 @@ const ShopView = () => {
   const { balance } = useCoins();
   const { balance: gemBalance } = useGems();
   const { setTheme } = useTheme();
+  const ent = useEntitlements();
   const [items, setItems] = useState<ShopItem[]>([]);
   const [owned, setOwned] = useState<Set<string>>(new Set());
   const [equipped, setEquipped] = useState<Set<string>>(new Set());
