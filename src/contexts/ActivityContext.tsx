@@ -384,7 +384,9 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
     <ActivityContext.Provider
       value={{
         activities,
+        activityDetails,
         getActivity: (userId: string) => activities.get(userId),
+        getActivityDetails: (userId: string) => activityDetails.get(userId),
         shareActivity,
         setShareActivity,
         myGames,
