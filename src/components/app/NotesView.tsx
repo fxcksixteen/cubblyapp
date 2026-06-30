@@ -1825,7 +1825,38 @@ const NoteEditor = ({ note, onBack, onRequestDelete, onShare }: { note: NoteRow;
           autoCapitalize="sentences"
           autoCorrect="on"
           spellCheck
-          onInput={(e) => { setBody((e.target as HTMLDivElement).innerHTML); dirty.current = true; }}
+          onInput={(e) => {
+            // Discord-style `:shortcode:` → emoji replacement on the text
+            // node immediately before the caret. Cheap, contained, never
+            // crosses element boundaries.
+            try {
+              const sel = window.getSelection?.();
+              const range = sel && sel.rangeCount > 0 ? sel.getRangeAt(0) : null;
+              const node = range?.startContainer;
+              if (node && node.nodeType === Node.TEXT_NODE && range!.collapsed) {
+                const text = (node as Text).data;
+                const offset = range!.startOffset;
+                const before = text.slice(0, offset);
+                const m = before.match(/(^|[\s\n])(:[a-z0-9_+\-]{2,32}:)$/i);
+                if (m) {
+                  const shortcode = m[2].slice(1, -1).toLowerCase();
+                  const emoji = EMOJI_BY_SLUG[shortcode];
+                  if (emoji) {
+                    const startIdx = offset - m[2].length;
+                    (node as Text).data = text.slice(0, startIdx) + emoji + text.slice(offset);
+                    const newRange = document.createRange();
+                    const newOffset = startIdx + emoji.length;
+                    newRange.setStart(node, newOffset);
+                    newRange.collapse(true);
+                    sel!.removeAllRanges();
+                    sel!.addRange(newRange);
+                  }
+                }
+              }
+            } catch { /* ignore */ }
+            setBody((e.target as HTMLDivElement).innerHTML);
+            dirty.current = true;
+          }}
           onDragOver={onEditorDragOver}
           onDragLeave={onEditorDragLeave}
           onDrop={onEditorDrop}
