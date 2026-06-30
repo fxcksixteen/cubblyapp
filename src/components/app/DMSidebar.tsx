@@ -202,7 +202,7 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
 
   const navItems: Array<{ id: string; label: string; icon?: string; lucide?: React.ComponentType<{ className?: string; style?: React.CSSProperties }>; isNew?: boolean }> = [
     { id: "friends", icon: friendsIcon, label: "Friends" },
-    { id: "requests", lucide: Inbox, label: "Message Requests" },
+    
     { id: "notes", icon: notesIcon, label: "Personal Notes" },
     { id: "honey", icon: honeyIcon, label: "Honey", isNew: true },
     { id: "shop", icon: shopIcon, label: "Shop" },
