@@ -28,6 +28,7 @@ import MessageRequestsView from "@/components/app/MessageRequestsView";
 import ServerView from "@/components/app/ServerView";
 import VoiceCallOverlay from "@/components/app/VoiceCallOverlay";
 import TitleBar from "@/components/app/TitleBar";
+import { supabase } from "@/integrations/supabase/client";
 import CreateGroupModal from "@/components/app/CreateGroupModal";
 import GroupAvatar from "@/components/app/GroupAvatar";
 import friendsIcon from "@/assets/icons/friends.svg";
@@ -55,6 +56,29 @@ const AppLayout = () => {
   const { activeCall, startCall, endCall, toggleVideo, incomingCall, acceptCall } = useVoice();
   const groupCall = useGroupCall();
   const isMobile = useIsMobile();
+
+  // Pending message-requests badge for the topbar inbox button.
+  const [messageRequestCount, setMessageRequestCount] = useState(0);
+  useEffect(() => {
+    if (!user) return;
+    let alive = true;
+    const fetchCount = async () => {
+      const { count } = await supabase
+        .from("message_requests")
+        .select("id", { count: "exact", head: true })
+        .eq("recipient_id", user.id)
+        .eq("status", "pending");
+      if (alive) setMessageRequestCount(count ?? 0);
+    };
+    fetchCount();
+    const ch = supabase
+      .channel(`topbar-msg-requests:${user.id}`)
+      .on("postgres_changes",
+        { event: "*", schema: "public", table: "message_requests", filter: `recipient_id=eq.${user.id}` },
+        () => fetchCount())
+      .subscribe();
+    return () => { alive = false; supabase.removeChannel(ch); };
+  }, [user]);
 
   const pathParts = location.pathname.split("/").filter(Boolean);
   const isChatRoute = pathParts[1] === "chat" && pathParts[2];
@@ -741,7 +765,18 @@ const AppLayout = () => {
                     </button>
                   )}
                   {!isServerRoute && (
-                    <img src={messagesInboxIcon} alt="Inbox" className="h-5 w-5 cursor-pointer invert opacity-60 hover:opacity-100 transition-opacity" />
+                    <button
+                      onClick={() => navigate("/@me/requests", { replace: true })}
+                      className="relative transition-opacity duration-200"
+                      title="Message Requests"
+                    >
+                      <img src={messagesInboxIcon} alt="Inbox" className="h-5 w-5 cursor-pointer invert opacity-60 hover:opacity-100 transition-opacity" />
+                      {messageRequestCount > 0 && (
+                        <span className="absolute -top-1.5 -right-1.5 flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-[#ed4245] px-1 text-[9px] font-bold text-white">
+                          {messageRequestCount > 9 ? "9+" : messageRequestCount}
+                        </span>
+                      )}
+                    </button>
                   )}
                   {isShop && <GemPill />}
                   {isShop && <CoinPill />}
