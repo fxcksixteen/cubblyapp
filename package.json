@@ -1,7 +1,7 @@
 {
   "name": "cubbly",
   "private": true,
-  "version": "0.3.22",
+  "version": "0.3.23",
   "type": "module",
   "main": "electron/main.cjs",
   "build": {
@@ -64,7 +64,9 @@
       "!dist/hero-bg-register.webm"
     ],
     "compression": "maximum",
-    "electronLanguages": ["en-US"],
+    "electronLanguages": [
+      "en-US"
+    ],
     "removePackageScripts": true,
     "removePackageKeywords": true,
     "extraMetadata": {

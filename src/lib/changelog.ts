@@ -23,9 +23,23 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.3.22";
+export const CURRENT_VERSION = "0.3.23";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.3.23",
+    title: "Direct-call join reliability fix",
+    date: "2026-04-25",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Fixed direct voice calls where the green pickup button could leave both users in separate fake call states until both sides manually used Join/Rejoin.",
+      "Accept, Join, and Rejoin now use the same call-event-scoped offer/answer handshake, with forced fresh offers when the joining side asks for one.",
+      "Stale peer connections are closed before rebuilding the offer path, so the staying caller reliably becomes the offerer and the joining peer reliably becomes the answerer.",
+      "Voice signaling now ignores stale offers, answers, and ICE candidates from old call events to prevent old broadcasts from hijacking the current call.",
+    ],
+  },
+
   {
     version: "0.3.22",
     title: "Icon visibility fix in low-power mode",

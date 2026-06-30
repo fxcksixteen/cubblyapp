@@ -1124,19 +1124,20 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     });
   }, [user]);
 
-  const initializeOutgoingConnection = useCallback(async (channel: ReturnType<typeof supabase.channel>, conversationId: string) => {
+  const initializeOutgoingConnection = useCallback(async (channel: ReturnType<typeof supabase.channel>, conversationId: string, options?: { forceFreshOffer?: boolean }) => {
     if (!user) return;
     const outgoingCallMeta = outgoingCallMetaRef.current;
     if (!outgoingCallMeta || outgoingCallMeta.conversationId !== conversationId) {
       console.log("[Voice] ⚠️ initializeOutgoingConnection skipped — no outgoing meta for", conversationId);
       return;
     }
+    const existingPc = pcRef.current;
     // v0.3.9: if we ALREADY have a PC + a pending offer (from a prior attempt
     // or a duplicate ready-for-offer), just re-broadcast that offer instead
     // of silently returning. This is what was making the second peer "never
     // get placed in the call" — their ready-for-offer was being dropped on
     // the caller side and no offer ever reached them.
-    if (pcRef.current && pendingOfferRef.current && pendingOfferRef.current.conversationId === conversationId) {
+    if (!options?.forceFreshOffer && existingPc && pendingOfferRef.current && pendingOfferRef.current.conversationId === conversationId && pendingOfferRef.current.callEventId === outgoingCallMeta.callEventId) {
       console.log("[Voice] 🔁 PC already exists — re-broadcasting pending offer for late joiner");
       await sendSignalReliably(channel, {
         type: "offer",
@@ -1148,12 +1149,28 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       }, "offer(re-broadcast)");
       return;
     }
-    if (pcRef.current) {
-      // PC exists but no pending offer (e.g. mid-renegotiation). Don't blow it
-      // away — just bail. The peer's next ready-for-offer retry will hit one
-      // of the paths above once we have something to send.
-      console.log("[Voice] ⚠️ initializeOutgoingConnection skipped — PC exists, no pending offer");
-      return;
+    if (existingPc) {
+      const alreadyConnected =
+        existingPc.connectionState === "connected" ||
+        existingPc.iceConnectionState === "connected" ||
+        existingPc.iceConnectionState === "completed";
+      if (!options?.forceFreshOffer && alreadyConnected && !activeCallRef.current?.peerLeftAt) {
+        console.log("[Voice] 🛑 Ignoring duplicate ready-for-offer — call already connected");
+        return;
+      }
+
+      // v0.3.23: the bad green-pickup / two-step Rejoin bug happens when the
+      // staying caller has a stale PC but no pending offer left. Older builds
+      // bailed here, so the joiner kept asking for an offer forever. Treat that
+      // state as stale, close it, and generate a fresh offer for this call_event.
+      console.log("[Voice] 🧹 Closing stale PC before fresh offer for joiner");
+      try { existingPc.close(); } catch {}
+      pcRef.current = null;
+      try { localStreamRef.current?.getTracks().forEach(t => t.stop()); } catch {}
+      localStreamRef.current = null;
+      originalMicTrackRef.current = null;
+      setLocalStream(null);
+      stopAudioLevelMonitor();
     }
     // Stale pending offer (left over from a previous call/peer-leave) must
     // not block a fresh negotiation. Clear it so rejoin handshake works.
@@ -1188,7 +1205,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         channel.send({
           type: "broadcast",
           event: "voice-signal",
-          payload: { type: "ice-candidate", candidate, senderId: user.id },
+      payload: { type: "ice-candidate", candidate, senderId: user.id, callEventId: outgoingCallMeta.callEventId },
         });
       } else {
         console.log("[Voice] 🧊 ICE gathering complete (null candidate)");
@@ -1223,7 +1240,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
 
     setActiveCall(prev => prev && prev.conversationId === conversationId ? { ...prev, state: "ringing" } : prev);
-  }, [user, getUserMedia, createPeerConnection, startAudioLevelMonitor]);
+  }, [user, getUserMedia, createPeerConnection, startAudioLevelMonitor, stopAudioLevelMonitor]);
 
   const setupSignaling = useCallback((conversationId: string): Promise<ReturnType<typeof supabase.channel>> => {
     return new Promise((resolve, reject) => {
@@ -1257,13 +1274,28 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
         if (payload.type === "ready-for-offer") {
           try {
+            if (payload.callEventId && callEventIdSnapshot && payload.callEventId !== callEventIdSnapshot) {
+              console.log(`[Voice] 🛑 Ignoring ready-for-offer for stale call ${payload.callEventId} (current=${callEventIdSnapshot})`);
+              return;
+            }
             if (!outgoingCallMetaRef.current && activeCallSnapshot?.conversationId === conversationId && callEventIdSnapshot) {
               outgoingCallMetaRef.current = {
                 conversationId,
                 callEventId: callEventIdSnapshot,
               };
             }
-            await initializeOutgoingConnection(channel, conversationId);
+            if (outgoingCallMetaRef.current && payload.callEventId && outgoingCallMetaRef.current.callEventId !== payload.callEventId) {
+              if (activeCallSnapshot?.conversationId !== conversationId) {
+                console.log(`[Voice] 🛑 Ignoring ready-for-offer for non-active call ${payload.callEventId}`);
+                return;
+              }
+              outgoingCallMetaRef.current = {
+                ...outgoingCallMetaRef.current,
+                conversationId,
+                callEventId: payload.callEventId,
+              };
+            }
+            await initializeOutgoingConnection(channel, conversationId, { forceFreshOffer: !!payload.forceFreshOffer });
           } catch (e) {
             console.error("[Voice] Failed to initialize outgoing connection (keeping call alive):", e);
             // v0.3.8: do NOT endCall on signaling errors — they're often
@@ -1273,13 +1305,18 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         }
 
         if (payload.type === "offer") {
+          if (payload.callEventId && callEventIdSnapshot && payload.callEventId !== callEventIdSnapshot) {
+            console.log(`[Voice] 🛑 Ignoring offer for stale call ${payload.callEventId} (current=${callEventIdSnapshot})`);
+            return;
+          }
           const acceptedCall = acceptedIncomingCallRef.current;
 
           // v0.3.12: ignore duplicate offer retries from the caller's retry
           // loop once we've already answered this exact callEventId. Without
           // this, a delayed retry re-triggers setRemoteDescription on the
           // stable PC and silently wipes the just-established ICE pair.
-          if (payload.callEventId && lastAnsweredOfferRef.current === payload.callEventId) {
+          const offerDedupeKey = payload.callEventId ? `${payload.callEventId}:${payload.sdp?.sdp || ""}` : null;
+          if (offerDedupeKey && lastAnsweredOfferRef.current === offerDedupeKey) {
             console.log("[Voice] 🛑 Ignoring duplicate offer retry for already-answered call", payload.callEventId);
             return;
           }
@@ -1318,7 +1355,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               sdp = setHighQualityOpus(sdp);
               answer.sdp = sdp;
               await pc.setLocalDescription(answer);
-              await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id }, "answer(re-offer)");
+              await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id, callEventId: payload.callEventId || currentCallEventIdRef.current }, "answer(re-offer)");
             } catch (e) {
               console.warn("[Voice] Mid-call re-offer handling failed:", e);
             }
@@ -1337,8 +1374,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               answer.sdp = sdp;
               await pc.setLocalDescription(answer);
 
-              await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id }, "answer(accepted-offer)");
-              if (payload.callEventId) lastAnsweredOfferRef.current = payload.callEventId;
+              await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id, callEventId: payload.callEventId || currentCallEventIdRef.current }, "answer(accepted-offer)");
+              if (offerDedupeKey) lastAnsweredOfferRef.current = offerDedupeKey;
 
               setActiveCall(prev => prev && prev.conversationId === conversationId
                 ? {
@@ -1406,7 +1443,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
                   channel.send({
                     type: "broadcast",
                     event: "voice-signal",
-                    payload: { type: "ice-candidate", candidate: event.candidate.toJSON(), senderId: user.id },
+                    payload: { type: "ice-candidate", candidate: event.candidate.toJSON(), senderId: user.id, callEventId: payload.callEventId || currentCallEventIdRef.current },
                   });
                 }
               };
@@ -1421,8 +1458,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               answer.sdp = sdp;
               await newPc.setLocalDescription(answer);
 
-              await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id }, "answer(rejoin)");
-              if (payload.callEventId) lastAnsweredOfferRef.current = payload.callEventId;
+              await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id, callEventId: payload.callEventId || currentCallEventIdRef.current }, "answer(rejoin)");
+              if (offerDedupeKey) lastAnsweredOfferRef.current = offerDedupeKey;
 
               setActiveCall(prev => prev ? {
                 ...prev,
@@ -1437,7 +1474,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               const evtId = payload.callEventId || currentCallEventIdRef.current;
               if (evtId) {
                 void (async () => {
-                  try { await (supabase as any).rpc("heartbeat_call_participant", { _call_event_id: evtId }); } catch {}
+            try { await (supabase as any).rpc("heartbeat_call_participant", { _call_event_id: evtId }); } catch {}
                 })();
               }
 
@@ -1462,6 +1499,14 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         }
 
         if (payload.type === "answer" && pc) {
+          if (payload.callEventId && callEventIdSnapshot && payload.callEventId !== callEventIdSnapshot) {
+            console.log(`[Voice] 🛑 Ignoring answer for stale call ${payload.callEventId} (current=${callEventIdSnapshot})`);
+            return;
+          }
+          if (pc.signalingState !== "have-local-offer") {
+            console.log(`[Voice] 🛑 Ignoring answer while signalingState=${pc.signalingState}`);
+            return;
+          }
           console.log("[Voice] 📥 Answer received, setting remote description...");
           stopLooping("outgoingRing"); // peer picked up — stop ringing
           await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
@@ -1473,6 +1518,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         }
 
         if (payload.type === "ice-candidate") {
+          if (payload.callEventId && callEventIdSnapshot && payload.callEventId !== callEventIdSnapshot) {
+            return;
+          }
           if (pc && remoteDescriptionSet.current) {
             try {
               await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
@@ -1978,6 +2026,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         } as any);
         await ensureOwnParticipantRow(callEventId!);
       }
+      currentCallEventIdRef.current = callEventId;
       setCurrentCallEventId(callEventId);
 
       if (isBotCall) {
@@ -2035,15 +2084,16 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
       if (isJoiningExisting) {
         console.log("[Voice] 📡 Rejoin requested — asking active peer for an offer (with retries)");
-        const sendReady = () => {
+        const sendReady = (forceFreshOffer = false) => {
           void sendSignalReliably(channel, {
             type: "ready-for-offer",
             senderId: user.id,
             senderName: user.user_metadata?.display_name || "User",
             callEventId,
+            forceFreshOffer,
           }, "ready-for-offer(rejoin)");
         };
-        sendReady();
+        sendReady(true);
         // Retry: broadcast is best-effort; if the staying peer's signaling
         // channel is mid-resubscribe (post tab-wake) the first ready-for-offer
         // gets dropped. Retry a few times, cancel as soon as we have a PC.
@@ -2052,7 +2102,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           setTimeout(() => {
             if (pcRef.current) return;
             console.log(`[Voice] 🔁 Re-sending ready-for-offer (no PC yet, +${ms}ms)`);
-            try { sendReady(); } catch {}
+            try { sendReady(false); } catch {}
           }, ms);
         });
         return;
@@ -2139,6 +2189,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         isVideoOn: false,
       };
       peerIdRef.current = acceptedCall.callerId;
+      currentCallEventIdRef.current = acceptedCall.callEventId;
       setCurrentCallEventId(acceptedCall.callEventId);
       isRemoteHangup.current = false;
 
@@ -2183,7 +2234,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               channel.send({
                 type: "broadcast",
                 event: "voice-signal",
-                payload: { type: "ice-candidate", candidate: event.candidate.toJSON(), senderId: user.id },
+                payload: { type: "ice-candidate", candidate: event.candidate.toJSON(), senderId: user.id, callEventId: acceptedCall.callEventId },
               });
             }
           };
@@ -2197,8 +2248,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           sdp = setHighQualityOpus(sdp);
           answer.sdp = sdp;
           await pc.setLocalDescription(answer);
-          await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id }, "answer(accept-direct)");
-          if (acceptedCall.callEventId) lastAnsweredOfferRef.current = acceptedCall.callEventId;
+          await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id, callEventId: acceptedCall.callEventId }, "answer(accept-direct)");
+          if (acceptedCall.callEventId) lastAnsweredOfferRef.current = `${acceptedCall.callEventId}:${acceptedCall.offer?.sdp || ""}`;
 
           setIncomingCall(null);
           acceptedIncomingCallRef.current = null;
@@ -2238,7 +2289,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               channel.send({
                 type: "broadcast",
                 event: "voice-signal",
-                payload: { type: "ice-candidate", candidate: event.candidate.toJSON(), senderId: user.id },
+                payload: { type: "ice-candidate", candidate: event.candidate.toJSON(), senderId: user.id, callEventId: acceptedCall.callEventId },
               });
             }
           };
@@ -2247,20 +2298,21 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         console.warn("[Voice] could not pre-build PC on accept:", e);
       }
 
-      const sendReady = () => {
+      const sendReady = (forceFreshOffer = false) => {
         void sendSignalReliably(channel, {
           type: "ready-for-offer",
           senderId: user.id,
           senderName: user.user_metadata?.display_name || "User",
           callEventId: acceptedCall.callEventId,
+          forceFreshOffer,
         }, "ready-for-offer(accept)");
       };
-      sendReady();
+      sendReady(true);
       [400, 1200, 2500, 4500].forEach(ms => {
         setTimeout(() => {
           if (remoteDescriptionSet.current) return;
           console.log(`[Voice] 🔁 Accept re-sending ready-for-offer (+${ms}ms)`);
-          try { sendReady(); } catch {}
+          try { sendReady(false); } catch {}
         }, ms);
       });
       setIncomingCall(null);
@@ -2735,6 +2787,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     setActiveCall(null);
     peerIdRef.current = null;
     setIncomingCall(null);
+    currentCallEventIdRef.current = null;
     setCurrentCallEventId(null);
     stopAudioLevelMonitor();
     cancelAnimationFrame(remoteAnimFrameRef.current);
@@ -3082,15 +3135,16 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           // the SDP into incomingCall via setIncomingCall on the no-pc/no-
           // acceptedCall branch — so by the time the user hits Accept, the
           // offer is already there.
-          const sendReady = () => {
+          const sendReady = (forceFreshOffer = false) => {
             void sendSignalReliably(channel, {
               type: "ready-for-offer",
               senderId: user.id,
               senderName: user.user_metadata?.display_name || "User",
               callEventId: payload.callEventId,
+              forceFreshOffer,
             }, "ready-for-offer(pre-accept)");
           };
-          sendReady();
+          sendReady(true);
           // Retry the pre-fetch a few times in case the caller's signaling
           // subscribe lost the first broadcast.
           [500, 1200, 2500, 4500].forEach((ms) => {
@@ -3101,7 +3155,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               if (!snap || snap.callEventId !== payload.callEventId) return;
               if (snap.offer) return;
               console.log(`[Voice] 🔁 Pre-accept re-sending ready-for-offer (+${ms}ms)`);
-              sendReady();
+              sendReady(false);
             }, ms);
           });
         } catch (e) {
