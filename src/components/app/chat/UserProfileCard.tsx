@@ -306,6 +306,7 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
               name={userActivity.name}
               type={userActivity.details === "software" || userActivity.activity_type === "using" ? "software" : "game"}
               startedAt={userActivity.started_at}
+              details={userActivityDetails?.payload}
               variant="compact"
             />
           </div>
