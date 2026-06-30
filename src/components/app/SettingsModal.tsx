@@ -493,7 +493,22 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
                 {themes.map((themeOption) => (
                   <button
                     key={themeOption.id}
-                    onClick={() => setTheme(themeOption.id)}
+                    onClick={async () => {
+                      setTheme(themeOption.id);
+                      // Unequip any shop theme so EquippedThemeBridge doesn't
+                      // immediately re-apply the previous Space/Ocean/etc.
+                      try {
+                        const { data: eq } = await supabase
+                          .from("user_equipped")
+                          .select("item_id")
+                          .eq("category", "theme")
+                          .maybeSingle();
+                        if (eq?.item_id) {
+                          await supabase.rpc("unequip_shop_item", { _item_id: eq.item_id });
+                          setTheme(themeOption.id);
+                        }
+                      } catch {}
+                    }}
                     className="group relative overflow-hidden rounded-[22px] border text-left transition-all duration-200 hover:-translate-y-0.5"
                     style={{
                       backgroundColor: "var(--app-bg-secondary)",
