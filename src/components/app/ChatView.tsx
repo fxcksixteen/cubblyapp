@@ -1249,6 +1249,18 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
             </span>
           )}
 
+          {recipientUserId && !conversation?.is_group && !isBotConversation && recipientUserId !== user?.id && (
+            <div className="relative flex items-center pb-1">
+              <button
+                onClick={() => setGiftModalOpen(true)}
+                className="flex items-center justify-center"
+                title={`Send ${recipientName} a gift`}
+              >
+                <img src={giftIcon} alt="Gift" className="h-5 w-5 invert opacity-60 hover:opacity-100 transition-opacity" />
+              </button>
+            </div>
+          )}
+
           <div className="relative flex items-center pb-1">
             <button
               onClick={() => setGifPickerOpen(!gifPickerOpen)}
@@ -1263,17 +1275,25 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
             />
           </div>
 
-          {recipientUserId && !conversation?.is_group && !isBotConversation && recipientUserId !== user?.id && (
-            <div className="relative flex items-center pb-1">
-              <button
-                onClick={() => setGiftModalOpen(true)}
-                className="flex items-center justify-center"
-                title={`Send ${recipientName} a gift`}
+          <div className="relative flex items-center pb-1">
+            <Popover>
+              <PopoverTrigger asChild>
+                <button className="flex items-center justify-center" title="Emoji">
+                  <img src={emojiPickerIcon} alt="Emoji" className="h-5 w-5 invert opacity-60 hover:opacity-100 transition-opacity" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent
+                side="top"
+                align="end"
+                className="p-0 border-0 w-auto"
+                style={{ backgroundColor: "transparent" }}
               >
-                <GiftIcon className="h-5 w-5 opacity-60 hover:opacity-100 transition-opacity" style={{ color: "var(--app-text-secondary,#b5bac1)" }} />
-              </button>
-            </div>
-          )}
+                <div className="rounded-xl overflow-hidden shadow-2xl" style={{ backgroundColor: "var(--app-bg-secondary,#2b2d31)", border: "1px solid var(--app-border,#1f2024)" }}>
+                  <FullEmojiPicker onPick={(e) => setInput((prev) => prev + e)} />
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
 
           <button
             onClick={handleSend}
@@ -1282,6 +1302,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
           >
             <img src={sendIcon} alt="Send" className="h-5 w-5 invert opacity-80" />
           </button>
+
         </div>
         <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleFileSelect} />
       </div>
