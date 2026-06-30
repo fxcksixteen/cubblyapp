@@ -28,6 +28,8 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
   const [copied, setCopied] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [bannerUrl, setBannerUrl] = useState<string | null>(null);
+  const [customStatusOpen, setCustomStatusOpen] = useState(false);
+  const [customStatus, setCustomStatus] = useState<{ text: string; emoji: string | null } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
   const displayName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "User";
