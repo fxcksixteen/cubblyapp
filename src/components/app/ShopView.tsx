@@ -389,6 +389,23 @@ const ShopView = () => {
 
   const toggleEquip = async (item: ShopItem) => {
     const isEq = equipped.has(item.id);
+    if (!isEq && item.category === "badge") {
+      const equippedBadgeCount = items.filter((i) => i.category === "badge" && equipped.has(i.id)).length;
+      if (equippedBadgeCount >= ent.maxEquippedBadges) {
+        const upsell = ent.isHoney
+          ? ""
+          : ent.isHoneyMember
+            ? " — upgrade to Honey for 3 slots"
+            : " — Honey members get up to 3";
+        toast.error(`You can equip up to ${ent.maxEquippedBadges} badge${ent.maxEquippedBadges === 1 ? "" : "s"}${upsell}`);
+        return;
+      }
+    }
+    if (!isEq && item.category === "theme" && !ent.canUseAnimatedThemes && /animated|motion|aurora|nebula/i.test(item.name)) {
+      // Animated themes are Honey-tier only. Static themes remain available to all.
+      toast.error("Animated themes are a Honey perk");
+      return;
+    }
     const { error } = await supabase.rpc(isEq ? "unequip_shop_item" : "equip_shop_item", { _item_id: item.id });
     if (error) { toast.error("Couldn't update equipped item"); return; }
     setEquipped((prev) => {
