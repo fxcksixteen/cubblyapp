@@ -741,7 +741,18 @@ const AppLayout = () => {
                     </button>
                   )}
                   {!isServerRoute && (
-                    <img src={messagesInboxIcon} alt="Inbox" className="h-5 w-5 cursor-pointer invert opacity-60 hover:opacity-100 transition-opacity" />
+                    <button
+                      onClick={() => navigate("/@me/requests", { replace: true })}
+                      className="relative transition-opacity duration-200"
+                      title="Message Requests"
+                    >
+                      <img src={messagesInboxIcon} alt="Inbox" className="h-5 w-5 cursor-pointer invert opacity-60 hover:opacity-100 transition-opacity" />
+                      {messageRequestCount > 0 && (
+                        <span className="absolute -top-1.5 -right-1.5 flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-[#ed4245] px-1 text-[9px] font-bold text-white">
+                          {messageRequestCount > 9 ? "9+" : messageRequestCount}
+                        </span>
+                      )}
+                    </button>
                   )}
                   {isShop && <GemPill />}
                   {isShop && <CoinPill />}
