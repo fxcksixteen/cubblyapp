@@ -107,6 +107,7 @@ const AppLayout = () => {
     : pathParts[1] === "shop" ? "shop"
     : pathParts[1] === "honey" ? "honey"
     : pathParts[1] === "notes" ? "notes"
+    : pathParts[1] === "requests" ? "requests"
     : isYouRoute ? "you"
     : "friends";
 
