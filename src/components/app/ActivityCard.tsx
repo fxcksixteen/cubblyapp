@@ -14,7 +14,43 @@ interface Props {
   variant?: "default" | "sidebar" | "compact";
   /** Optional right-side accessory (e.g. a close button). */
   trailing?: React.ReactNode;
+  /** v0.4.0 Phase 6: rich game-specific details (map, KDA, score, agent, etc.) */
+  details?: Record<string, any> | null;
 }
+
+/**
+ * Render the rich-presence payload as 1–2 Discord-style detail lines.
+ * Supports the keys produced by `electron/gameDetails.cjs` for LoL, Valorant,
+ * Marvel Rivals, and Fortnite — falls back gracefully if a field is missing.
+ */
+const renderDetailLines = (details: Record<string, any> | null | undefined): string[] => {
+  if (!details) return [];
+  const lines: string[] = [];
+  // League of Legends
+  if (details.champion || details.kda || details.gameMode) {
+    const top = [details.champion && `${details.champion}${details.level ? ` · Lv ${details.level}` : ""}`, details.gameMode].filter(Boolean).join(" — ");
+    if (top) lines.push(top);
+    if (details.kda) lines.push(`KDA ${details.kda}${details.cs != null ? ` · ${details.cs} CS` : ""}`);
+    return lines;
+  }
+  // Valorant
+  if (details.agent || details.map || details.score) {
+    const top = [details.agent, details.map].filter(Boolean).join(" on ");
+    if (top) lines.push(top);
+    if (details.score) lines.push(`${details.queue ? details.queue + " · " : ""}${details.score}`);
+    return lines;
+  }
+  // Marvel Rivals / Fortnite-ish (hero/mode/map/placement)
+  if (details.hero || details.map || details.mode || details.placement) {
+    const top = [details.hero, details.map].filter(Boolean).join(" on ");
+    if (top) lines.push(top);
+    const bottom = [details.mode, details.placement && `#${details.placement}`, details.kills != null && `${details.kills} kills`]
+      .filter(Boolean).join(" · ");
+    if (bottom) lines.push(bottom);
+    return lines;
+  }
+  return lines;
+};
 
 const formatElapsed = (startedAt: string) => {
   const ms = Math.max(0, Date.now() - new Date(startedAt).getTime());
