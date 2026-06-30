@@ -36,6 +36,7 @@ import UserBadges from "./UserBadges";
 import friendsIcon from "@/assets/icons/friends.svg";
 import shopIcon from "@/assets/icons/shop.svg";
 import notesIcon from "@/assets/icons/notes.svg";
+import honeyIcon from "@/assets/icons/honey.svg";
 import micIcon from "@/assets/icons/microphone.svg";
 import micMuteIcon from "@/assets/icons/microphone-mute.svg";
 import headphoneIcon from "@/assets/icons/headphone.svg";
@@ -175,11 +176,32 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
     toast.success("User blocked");
   };
 
-  const navItems: Array<{ id: string; label: string; icon?: string; lucide?: React.ComponentType<{ className?: string; style?: React.CSSProperties }> }> = [
+  const navItems: Array<{ id: string; label: string; icon?: string; lucide?: React.ComponentType<{ className?: string; style?: React.CSSProperties }>; isNew?: boolean }> = [
     { id: "friends", icon: friendsIcon, label: "Friends" },
     { id: "notes", icon: notesIcon, label: "Personal Notes" },
     { id: "shop", icon: shopIcon, label: "Shop" },
+    { id: "honey", icon: honeyIcon, label: "Honey", isNew: true },
   ];
+
+  // Per-user "NEW" pill: auto-hides 14 days after first view of the Honey tab.
+  const honeyNewKey = user ? `cubbly:honey-tab-seen-at:${user.id}` : "cubbly:honey-tab-seen-at";
+  const [showHoneyNew, setShowHoneyNew] = useState<boolean>(() => {
+    try {
+      const seen = localStorage.getItem(honeyNewKey);
+      if (!seen) return true;
+      const days = (Date.now() - Number(seen)) / 86400000;
+      return days < 14;
+    } catch { return true; }
+  });
+  useEffect(() => {
+    if (activeView === "honey" && showHoneyNew) {
+      try {
+        if (!localStorage.getItem(honeyNewKey)) {
+          localStorage.setItem(honeyNewKey, String(Date.now()));
+        }
+      } catch {}
+    }
+  }, [activeView, showHoneyNew, honeyNewKey]);
 
   return (
     <div className="flex w-60 flex-shrink-0 flex-col sidebar-primary" style={{ backgroundColor: 'var(--app-bg-secondary)' }}>
