@@ -33,6 +33,44 @@ const DataPrivacySettings = ({ cardStyle }: DataPrivacySettingsProps) => {
 
   const [whoCanDm, setWhoCanDm] = useState<WhoCanDM>("everyone");
   const [savingWho, setSavingWho] = useState<WhoCanDM | null>(null);
+  const [publicWishlist, setPublicWishlist] = useState(true);
+  const [savingWishlist, setSavingWishlist] = useState(false);
+
+  // Hydrate the user's profile-level privacy flags.
+  useEffect(() => {
+    if (!user) return;
+    let alive = true;
+    supabase
+      .from("profiles")
+      .select("public_wishlist")
+      .eq("user_id", user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!alive) return;
+        if (data && typeof (data as any).public_wishlist === "boolean") {
+          setPublicWishlist((data as any).public_wishlist);
+        }
+      });
+    return () => { alive = false; };
+  }, [user]);
+
+  const handleWishlistToggle = async (next: boolean) => {
+    if (!user || savingWishlist) return;
+    const prev = publicWishlist;
+    setPublicWishlist(next);
+    setSavingWishlist(true);
+    const { error } = await supabase
+      .from("profiles")
+      .update({ public_wishlist: next })
+      .eq("user_id", user.id);
+    setSavingWishlist(false);
+    if (error) {
+      setPublicWishlist(prev);
+      toast.error("Couldn't update wishlist privacy");
+    } else {
+      toast.success(next ? "Your wishlist is now public" : "Your wishlist is now hidden");
+    }
+  };
 
   // Hydrate the user's current who_can_dm preference from dm_preferences.
   useEffect(() => {
