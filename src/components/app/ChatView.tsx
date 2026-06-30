@@ -37,6 +37,7 @@ import UserDisplayName from "./UserDisplayName";
 import UserBadges from "./UserBadges";
 import { useMentionAutocomplete, MentionPopup, type MentionCandidate } from "./chat/MentionAutocomplete";
 import { useEmojiAutocomplete, EmojiPopup, type EmojiCandidate } from "./chat/EmojiAutocomplete";
+import { useEntitlements } from "@/hooks/useEntitlements";
 
 
 const BOT_USER_ID = "00000000-0000-0000-0000-000000000001";
