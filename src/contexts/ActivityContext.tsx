@@ -13,11 +13,22 @@ export interface UserActivity {
   privacy_visible: boolean;
 }
 
+/** Rich per-game presence payload (Phase 6). Lives in `activity_details`. */
+export interface ActivityDetails {
+  user_id: string;
+  game_key: string;
+  payload: Record<string, any>;
+  updated_at: string;
+}
+
 interface ActivityContextType {
   /** Map of user_id -> activity (only contains users with current visible activity) */
   activities: Map<string, UserActivity>;
+  /** Map of user_id -> rich details (only present when a parser ran successfully) */
+  activityDetails: Map<string, ActivityDetails>;
   /** Get activity for a specific user */
   getActivity: (userId: string) => UserActivity | undefined;
+  getActivityDetails: (userId: string) => ActivityDetails | undefined;
   /** My current activity sharing toggle (controls broadcasting + visibility to others) */
   shareActivity: boolean;
   setShareActivity: (enabled: boolean) => Promise<void>;
@@ -30,7 +41,9 @@ interface ActivityContextType {
 
 const ActivityContext = createContext<ActivityContextType>({
   activities: new Map(),
+  activityDetails: new Map(),
   getActivity: () => undefined,
+  getActivityDetails: () => undefined,
   shareActivity: true,
   setShareActivity: async () => {},
   myGames: [],
@@ -58,9 +71,11 @@ const isElectron = typeof window !== "undefined" && (window as any).electronAPI?
 export const ActivityProvider = ({ children }: { children: ReactNode }) => {
   const { user } = useAuth();
   const [activities, setActivities] = useState<Map<string, UserActivity>>(new Map());
+  const [activityDetails, setActivityDetails] = useState<Map<string, ActivityDetails>>(new Map());
   const [shareActivity, setShareActivityState] = useState(true);
   const [myGames, setMyGames] = useState<Array<{ id: string; process_name: string; display_name: string }>>([]);
   const lastSentRef = useRef<string | null>(null);
+  const lastDetailsKeyRef = useRef<string | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollIntervalMsRef = useRef<number>(0);
   // # of consecutive ticks where we saw NO matching game. Used to debounce
@@ -116,6 +131,44 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
     return () => {
       supabase.removeChannel(channel);
     };
+  }, [user?.id]);
+
+  // ---- Fetch + subscribe to rich activity_details rows ----
+  useEffect(() => {
+    if (!user) {
+      setActivityDetails(new Map());
+      return;
+    }
+    const fetchAllDetails = async () => {
+      const { data } = await supabase.from("activity_details").select("*");
+      if (!data) return;
+      const map = new Map<string, ActivityDetails>();
+      data.forEach((d: any) => map.set(d.user_id, d));
+      setActivityDetails(map);
+    };
+    fetchAllDetails();
+
+    const suffix = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const channel = supabase.channel(`activity-details-global:${user.id}:${suffix}`);
+    channel.on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "activity_details" },
+      (payload) => {
+        setActivityDetails((prev) => {
+          const next = new Map(prev);
+          const newRow: any = payload.new;
+          const oldRow: any = payload.old;
+          if (payload.eventType === "DELETE") {
+            if (oldRow?.user_id) next.delete(oldRow.user_id);
+          } else if (newRow?.user_id) {
+            next.set(newRow.user_id, newRow);
+          }
+          return next;
+        });
+      }
+    );
+    channel.subscribe();
+    return () => { supabase.removeChannel(channel); };
   }, [user?.id]);
 
   // ---- Load my own privacy preference + games on login ----
@@ -186,17 +239,40 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
           missStreakRef.current = 0;
           currentlyDetectedRef.current = true;
           broadcastActivity(detected);
+          // Best-effort: ask the main process for rich game-specific details.
+          // If no parser matches or it fails, we just leave activity_details alone.
+          try {
+            if (api.getGameDetails) {
+              const details = await api.getGameDetails(detected.processName)
+                ?? await api.getGameDetails(detected.displayName);
+              if (details?.gameKey && details?.payload) {
+                const key = `${details.gameKey}:${JSON.stringify(details.payload)}`;
+                if (lastDetailsKeyRef.current !== key) {
+                  lastDetailsKeyRef.current = key;
+                  await supabase.from("activity_details").upsert(
+                    {
+                      user_id: user.id,
+                      game_key: details.gameKey,
+                      payload: details.payload,
+                      updated_at: new Date().toISOString(),
+                    },
+                    { onConflict: "user_id" },
+                  );
+                }
+              }
+            }
+          } catch { /* swallow parser errors */ }
         } else {
-          // Debounce: require 2 consecutive misses before clearing so a
-          // single bad `tasklist` sample doesn't yank an active game.
-          // BUT once we hit the threshold, force the clear through even if
-          // the dedupe key already matches (prevents stuck "Playing X" rows
-          // when the previous broadcast errored out).
           missStreakRef.current += 1;
           if (missStreakRef.current >= 2) {
             if (currentlyDetectedRef.current) lastSentRef.current = null;
             currentlyDetectedRef.current = false;
             broadcastActivity(null);
+            // Also clear our rich details row.
+            if (lastDetailsKeyRef.current !== null) {
+              lastDetailsKeyRef.current = null;
+              supabase.from("activity_details").delete().eq("user_id", user.id);
+            }
           }
         }
       } catch {
@@ -308,7 +384,9 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
     <ActivityContext.Provider
       value={{
         activities,
+        activityDetails,
         getActivity: (userId: string) => activities.get(userId),
+        getActivityDetails: (userId: string) => activityDetails.get(userId),
         shareActivity,
         setShareActivity,
         myGames,

@@ -40,7 +40,7 @@ interface ProfileData {
 
 const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage, startExpanded = false }: UserProfileCardProps) => {
   const { user, onlineUserIds } = useAuth();
-  const { getActivity } = useActivity();
+  const { getActivity, getActivityDetails } = useActivity();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [friendshipStatus, setFriendshipStatus] = useState<string | null>(null);
   const [friendshipId, setFriendshipId] = useState<string | null>(null);
@@ -52,6 +52,7 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
   const effectiveStatus = getEffectivePresenceStatus(userId, profile?.status, onlineUserIds);
   const isUserOnline = isOwnProfile || userId === "00000000-0000-0000-0000-000000000001" || onlineUserIds.has(userId);
   const userActivity = getActivity(userId);
+  const userActivityDetails = getActivityDetails(userId);
   const userActivityLabel = activityLabel(userActivity, isUserOnline);
 
   useEffect(() => {
@@ -200,6 +201,7 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
                   name={userActivity.name}
                   type={userActivity.details === "software" || userActivity.activity_type === "using" ? "software" : "game"}
                   startedAt={userActivity.started_at}
+                  details={userActivityDetails?.payload}
                 />
               </div>
             )}
@@ -304,6 +306,7 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
               name={userActivity.name}
               type={userActivity.details === "software" || userActivity.activity_type === "using" ? "software" : "game"}
               startedAt={userActivity.started_at}
+              details={userActivityDetails?.payload}
               variant="compact"
             />
           </div>

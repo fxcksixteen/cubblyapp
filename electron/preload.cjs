@@ -25,6 +25,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   pickGameExe: () => ipcRenderer.invoke("pick-game-exe"),
   /** Returns a base64 data URL of the running process .exe / .app icon, or null. */
   getProcessIcon: (processName) => ipcRenderer.invoke("get-process-icon", processName),
+  /** v0.4.0: rich per-game details (map, score, KDA, etc.) or null. */
+  getGameDetails: (identifier) => ipcRenderer.invoke("get-game-details", identifier),
 
   // Native desktop notifications (Windows toast / macOS NC / Linux libnotify)
   showNotification: (opts) => ipcRenderer.invoke("show-notification", opts),
