@@ -369,6 +369,7 @@ const TrustToggle = ({ trust, setTrust }: { trust: boolean; setTrust: (b: boolea
 const NotesEditor = () => {
   const n = useNotes();
   const isMobile = useIsMobile();
+  const ent = useEntitlements();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [sharingNote, setSharingNote] = useState<NoteRow | null>(null);
@@ -382,6 +383,10 @@ const NotesEditor = () => {
   }, [n.notes, activeId, isMobile]);
 
   const create = async () => {
+    if (ent.maxNotes !== null && n.notes.length >= ent.maxNotes) {
+      toast.error(`You've hit the ${ent.maxNotes}-note limit on the free plan. Upgrade to Cubbly Honey for unlimited notes.`);
+      return;
+    }
     const note = await n.createNote({ title: "Untitled", body: "" });
     if (note) setActiveId(note.id);
   };
