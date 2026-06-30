@@ -2249,7 +2249,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           answer.sdp = sdp;
           await pc.setLocalDescription(answer);
           await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id, callEventId: acceptedCall.callEventId }, "answer(accept-direct)");
-          if (acceptedCall.callEventId) lastAnsweredOfferRef.current = acceptedCall.callEventId;
+          if (acceptedCall.callEventId) lastAnsweredOfferRef.current = `${acceptedCall.callEventId}:${acceptedCall.offer?.sdp || ""}`;
 
           setIncomingCall(null);
           acceptedIncomingCallRef.current = null;
