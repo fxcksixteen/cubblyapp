@@ -22,8 +22,12 @@ export function useServerChannels(serverId: string | null) {
 
   useEffect(() => {
     if (!serverId) return;
+    const uniqueSuffix =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : Math.random().toString(36).slice(2, 10);
     const ch = supabase
-      .channel(`server-chans:${serverId}`)
+      .channel(`server-chans:${serverId}:${uniqueSuffix}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "server_channels", filter: `server_id=eq.${serverId}` }, () => refresh())
       .subscribe();
     return () => { supabase.removeChannel(ch); };
@@ -69,8 +73,12 @@ export function useServerMembers(serverId: string | null) {
 
   useEffect(() => {
     if (!serverId) return;
+    const uniqueSuffix =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : Math.random().toString(36).slice(2, 10);
     const ch = supabase
-      .channel(`server-mem:${serverId}`)
+      .channel(`server-mem:${serverId}:${uniqueSuffix}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "server_members", filter: `server_id=eq.${serverId}` }, () => refresh())
       .subscribe();
     return () => { supabase.removeChannel(ch); };
