@@ -285,6 +285,20 @@ export function useConversations() {
     });
 
     if (error || !data) {
+      // The new server-side privacy gate raises this when the recipient
+      // restricted who can DM them. We've already filed a pending
+      // message_request server-side, so just surface that to the user.
+      const msg = String(error?.message || "");
+      if (msg.includes("MESSAGE_REQUEST_SENT")) {
+        const { toast } = await import("sonner");
+        toast.success("Message request sent — they'll see it in their inbox");
+        return null;
+      }
+      if (msg.includes("CANT_DM_SELF")) {
+        const { toast } = await import("sonner");
+        toast.error("You can't DM yourself");
+        return null;
+      }
       console.error("Failed to open or create conversation:", error);
       return null;
     }
