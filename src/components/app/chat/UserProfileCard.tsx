@@ -250,6 +250,12 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
             )}
           </div>
         </div>
+        <GiftItemModal
+          open={showGiftModal}
+          onClose={() => setShowGiftModal(false)}
+          recipientId={userId}
+          recipientName={displayName}
+        />
       </div>
     ), document.body);
   }
