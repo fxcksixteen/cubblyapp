@@ -70,29 +70,6 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
   const displayName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "User";
   const username = user?.user_metadata?.username || displayName.toLowerCase();
 
-  // Pending DM requests count for the badge on the "Requests" nav entry.
-  const [requestCount, setRequestCount] = useState(0);
-  useEffect(() => {
-    if (!user) return;
-    let alive = true;
-    const fetchCount = async () => {
-      const { count } = await supabase
-        .from("message_requests")
-        .select("id", { count: "exact", head: true })
-        .eq("recipient_id", user.id)
-        .eq("status", "pending");
-      if (alive) setRequestCount(count ?? 0);
-    };
-    fetchCount();
-    const ch = supabase
-      .channel(`msg-requests-count:${user.id}`)
-      .on("postgres_changes",
-        { event: "*", schema: "public", table: "message_requests", filter: `recipient_id=eq.${user.id}` },
-        () => fetchCount(),
-      )
-      .subscribe();
-    return () => { alive = false; supabase.removeChannel(ch); };
-  }, [user]);
 
   const MUTE_OPTIONS: Array<{ label: string; value: MuteDuration }> = [
     { label: "For 15 Minutes", value: { kind: "minutes", minutes: 15 } },
