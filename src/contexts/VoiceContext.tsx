@@ -1154,7 +1154,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         existingPc.connectionState === "connected" ||
         existingPc.iceConnectionState === "connected" ||
         existingPc.iceConnectionState === "completed";
-      if (alreadyConnected && !activeCallRef.current?.peerLeftAt) {
+      if (!options?.forceFreshOffer && alreadyConnected && !activeCallRef.current?.peerLeftAt) {
         console.log("[Voice] 🛑 Ignoring duplicate ready-for-offer — call already connected");
         return;
       }
