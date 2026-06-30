@@ -12,6 +12,7 @@ import UserDisplayName from "./UserDisplayName";
 import UserBadges from "./UserBadges";
 import MemberRowMenu from "./MemberRowMenu";
 import UserProfileCard from "./chat/UserProfileCard";
+import GiftItemModal from "./GiftItemModal";
 import { Crown, UserMinus, LogOut, Pencil, Image as ImageIcon, Check, X, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import {
