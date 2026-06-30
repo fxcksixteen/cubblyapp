@@ -2082,15 +2082,16 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
       if (isJoiningExisting) {
         console.log("[Voice] 📡 Rejoin requested — asking active peer for an offer (with retries)");
-        const sendReady = () => {
+        const sendReady = (forceFreshOffer = false) => {
           void sendSignalReliably(channel, {
             type: "ready-for-offer",
             senderId: user.id,
             senderName: user.user_metadata?.display_name || "User",
             callEventId,
+            forceFreshOffer,
           }, "ready-for-offer(rejoin)");
         };
-        sendReady();
+        sendReady(true);
         // Retry: broadcast is best-effort; if the staying peer's signaling
         // channel is mid-resubscribe (post tab-wake) the first ready-for-offer
         // gets dropped. Retry a few times, cancel as soon as we have a PC.
@@ -2099,7 +2100,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           setTimeout(() => {
             if (pcRef.current) return;
             console.log(`[Voice] 🔁 Re-sending ready-for-offer (no PC yet, +${ms}ms)`);
-            try { sendReady(); } catch {}
+            try { sendReady(false); } catch {}
           }, ms);
         });
         return;
@@ -2294,20 +2295,21 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         console.warn("[Voice] could not pre-build PC on accept:", e);
       }
 
-      const sendReady = () => {
+      const sendReady = (forceFreshOffer = false) => {
         void sendSignalReliably(channel, {
           type: "ready-for-offer",
           senderId: user.id,
           senderName: user.user_metadata?.display_name || "User",
           callEventId: acceptedCall.callEventId,
+          forceFreshOffer,
         }, "ready-for-offer(accept)");
       };
-      sendReady();
+      sendReady(true);
       [400, 1200, 2500, 4500].forEach(ms => {
         setTimeout(() => {
           if (remoteDescriptionSet.current) return;
           console.log(`[Voice] 🔁 Accept re-sending ready-for-offer (+${ms}ms)`);
-          try { sendReady(); } catch {}
+          try { sendReady(false); } catch {}
         }, ms);
       });
       setIncomingCall(null);
@@ -3129,15 +3131,16 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           // the SDP into incomingCall via setIncomingCall on the no-pc/no-
           // acceptedCall branch — so by the time the user hits Accept, the
           // offer is already there.
-          const sendReady = () => {
+          const sendReady = (forceFreshOffer = false) => {
             void sendSignalReliably(channel, {
               type: "ready-for-offer",
               senderId: user.id,
               senderName: user.user_metadata?.display_name || "User",
               callEventId: payload.callEventId,
+              forceFreshOffer,
             }, "ready-for-offer(pre-accept)");
           };
-          sendReady();
+          sendReady(true);
           // Retry the pre-fetch a few times in case the caller's signaling
           // subscribe lost the first broadcast.
           [500, 1200, 2500, 4500].forEach((ms) => {
@@ -3148,7 +3151,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               if (!snap || snap.callEventId !== payload.callEventId) return;
               if (snap.offer) return;
               console.log(`[Voice] 🔁 Pre-accept re-sending ready-for-offer (+${ms}ms)`);
-              sendReady();
+              sendReady(false);
             }, ms);
           });
         } catch (e) {
