@@ -8,6 +8,8 @@ import { Pin, PinOff, Trash2, Plus, Paperclip, ShieldCheck, Loader2, FileText, D
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import notesIcon from "@/assets/password-lock.svg";
+import { useEntitlements } from "@/hooks/useEntitlements";
+import emojiGroupsData from "@/data/emoji-by-group.json";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { isStandalonePWA } from "@/lib/pwa";
 import { useLocalSetting } from "@/hooks/useLocalSetting";
@@ -32,6 +34,20 @@ import {
 } from "@/components/ui/alert-dialog";
 
 const PIN_LENGTH = 4;
+
+// Flatten the vendored emoji set into a quick { shortcode -> emoji } map so
+// notes can support Discord-style `:smile:` auto-replace inline.
+const EMOJI_BY_SLUG: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  try {
+    for (const g of emojiGroupsData as Array<{ emojis: Array<{ emoji: string; slug: string }> }>) {
+      for (const e of g.emojis) {
+        if (!map[e.slug]) map[e.slug] = e.emoji;
+      }
+    }
+  } catch { /* ignore */ }
+  return map;
+})();
 
 // Infer a mime type from the filename extension when the stored mime is
 // missing or generic (e.g. "application/octet-stream"). Recovered legacy
@@ -353,6 +369,7 @@ const TrustToggle = ({ trust, setTrust }: { trust: boolean; setTrust: (b: boolea
 const NotesEditor = () => {
   const n = useNotes();
   const isMobile = useIsMobile();
+  const ent = useEntitlements();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [sharingNote, setSharingNote] = useState<NoteRow | null>(null);
@@ -366,6 +383,10 @@ const NotesEditor = () => {
   }, [n.notes, activeId, isMobile]);
 
   const create = async () => {
+    if (ent.maxNotes !== null && n.notes.length >= ent.maxNotes) {
+      toast.error(`You've hit the ${ent.maxNotes}-note limit on the free plan. Upgrade to Cubbly Honey for unlimited notes.`);
+      return;
+    }
     const note = await n.createNote({ title: "Untitled", body: "" });
     if (note) setActiveId(note.id);
   };
@@ -1804,7 +1825,38 @@ const NoteEditor = ({ note, onBack, onRequestDelete, onShare }: { note: NoteRow;
           autoCapitalize="sentences"
           autoCorrect="on"
           spellCheck
-          onInput={(e) => { setBody((e.target as HTMLDivElement).innerHTML); dirty.current = true; }}
+          onInput={(e) => {
+            // Discord-style `:shortcode:` → emoji replacement on the text
+            // node immediately before the caret. Cheap, contained, never
+            // crosses element boundaries.
+            try {
+              const sel = window.getSelection?.();
+              const range = sel && sel.rangeCount > 0 ? sel.getRangeAt(0) : null;
+              const node = range?.startContainer;
+              if (node && node.nodeType === Node.TEXT_NODE && range!.collapsed) {
+                const text = (node as Text).data;
+                const offset = range!.startOffset;
+                const before = text.slice(0, offset);
+                const m = before.match(/(^|[\s\n])(:[a-z0-9_+\-]{2,32}:)$/i);
+                if (m) {
+                  const shortcode = m[2].slice(1, -1).toLowerCase();
+                  const emoji = EMOJI_BY_SLUG[shortcode];
+                  if (emoji) {
+                    const startIdx = offset - m[2].length;
+                    (node as Text).data = text.slice(0, startIdx) + emoji + text.slice(offset);
+                    const newRange = document.createRange();
+                    const newOffset = startIdx + emoji.length;
+                    newRange.setStart(node, newOffset);
+                    newRange.collapse(true);
+                    sel!.removeAllRanges();
+                    sel!.addRange(newRange);
+                  }
+                }
+              }
+            } catch { /* ignore */ }
+            setBody((e.target as HTMLDivElement).innerHTML);
+            dirty.current = true;
+          }}
           onDragOver={onEditorDragOver}
           onDragLeave={onEditorDragLeave}
           onDrop={onEditorDrop}

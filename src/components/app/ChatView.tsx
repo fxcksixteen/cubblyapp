@@ -37,6 +37,7 @@ import UserDisplayName from "./UserDisplayName";
 import UserBadges from "./UserBadges";
 import { useMentionAutocomplete, MentionPopup, type MentionCandidate } from "./chat/MentionAutocomplete";
 import { useEmojiAutocomplete, EmojiPopup, type EmojiCandidate } from "./chat/EmojiAutocomplete";
+import { useEntitlements } from "@/hooks/useEntitlements";
 
 
 const BOT_USER_ID = "00000000-0000-0000-0000-000000000001";
@@ -88,6 +89,8 @@ const shouldShowTimeDivider = (prevDate: string, currDate: string): boolean => {
 
 const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUserId, conversation, showGroupMembers, onLeftGroup }: ChatViewProps) => {
   const { user } = useAuth();
+  const ent = useEntitlements();
+  const messageCap = ent.messageCapChars;
   const { activeCall, callEvents, startCall } = useVoice();
   const { messages, loading, sendMessage, loadOlder, hasMore, loadingOlder } = useMessages(conversationId);
   const [input, setInput] = useState("");
@@ -1120,10 +1123,9 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
             ref={messageInputRef}
             rows={1}
             value={input}
-            maxLength={1000}
+            maxLength={messageCap}
             onChange={(e) => {
-              // Hard truncate (defensive — maxLength already enforces it)
-              const v = e.target.value.slice(0, 1000);
+              const v = e.target.value.slice(0, messageCap);
               setInput(v);
               setCaretPos(e.target.selectionStart ?? v.length);
               if (v.trim()) broadcastTyping();
