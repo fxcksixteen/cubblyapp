@@ -1260,6 +1260,18 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
             />
           </div>
 
+          {recipientUserId && !conversation?.is_group && !isBotConversation && recipientUserId !== user?.id && (
+            <div className="relative flex items-center pb-1">
+              <button
+                onClick={() => setGiftModalOpen(true)}
+                className="flex items-center justify-center"
+                title={`Send ${recipientName} a gift`}
+              >
+                <GiftIcon className="h-5 w-5 opacity-60 hover:opacity-100 transition-opacity" style={{ color: "var(--app-text-secondary,#b5bac1)" }} />
+              </button>
+            </div>
+          )}
+
           <button
             onClick={handleSend}
             disabled={uploading || (!input.trim() && pendingFiles.length === 0)}
