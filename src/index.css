@@ -476,3 +476,9 @@ html.cubbly-low-power * {
   transition-duration: 0ms !important;
   animation-duration: 0ms !important;
 }
+
+/* Honey "NEW" pill */
+@keyframes honey-new-pulse {
+  0%, 100% { box-shadow: 0 0 10px rgba(245,165,36,0.5); transform: translateY(-50%) scale(1); }
+  50%      { box-shadow: 0 0 18px rgba(245,165,36,0.95); transform: translateY(-50%) scale(1.06); }
+}
