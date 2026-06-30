@@ -2230,7 +2230,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               channel.send({
                 type: "broadcast",
                 event: "voice-signal",
-                payload: { type: "ice-candidate", candidate: event.candidate.toJSON(), senderId: user.id },
+                payload: { type: "ice-candidate", candidate: event.candidate.toJSON(), senderId: user.id, callEventId: acceptedCall.callEventId },
               });
             }
           };
@@ -2244,7 +2244,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           sdp = setHighQualityOpus(sdp);
           answer.sdp = sdp;
           await pc.setLocalDescription(answer);
-          await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id }, "answer(accept-direct)");
+          await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id, callEventId: acceptedCall.callEventId }, "answer(accept-direct)");
           if (acceptedCall.callEventId) lastAnsweredOfferRef.current = acceptedCall.callEventId;
 
           setIncomingCall(null);
@@ -2285,7 +2285,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               channel.send({
                 type: "broadcast",
                 event: "voice-signal",
-                payload: { type: "ice-candidate", candidate: event.candidate.toJSON(), senderId: user.id },
+                payload: { type: "ice-candidate", candidate: event.candidate.toJSON(), senderId: user.id, callEventId: acceptedCall.callEventId },
               });
             }
           };
