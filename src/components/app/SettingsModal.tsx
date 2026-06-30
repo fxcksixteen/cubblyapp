@@ -99,6 +99,7 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
   const [activeCategory, setActiveCategory] = useState<SettingsCategory | null>(null);
   const { user, signOut } = useAuth();
   const { theme, setTheme } = useTheme();
+  const ent = useEntitlements();
   const [visible, setVisible] = useState(false);
   const [animating, setAnimating] = useState(false);
   const backdropRef = useRef<HTMLDivElement>(null);
