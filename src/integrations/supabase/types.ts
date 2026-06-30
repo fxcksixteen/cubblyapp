@@ -966,6 +966,42 @@ export type Database = {
           },
         ]
       }
+      server_member_roles: {
+        Row: {
+          assigned_at: string
+          role_id: string
+          server_id: string
+          user_id: string
+        }
+        Insert: {
+          assigned_at?: string
+          role_id: string
+          server_id: string
+          user_id: string
+        }
+        Update: {
+          assigned_at?: string
+          role_id?: string
+          server_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "server_member_roles_role_id_fkey"
+            columns: ["role_id"]
+            isOneToOne: false
+            referencedRelation: "server_roles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "server_member_roles_server_id_fkey"
+            columns: ["server_id"]
+            isOneToOne: false
+            referencedRelation: "servers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       server_members: {
         Row: {
           id: string
@@ -991,6 +1027,41 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "server_members_server_id_fkey"
+            columns: ["server_id"]
+            isOneToOne: false
+            referencedRelation: "servers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      server_roles: {
+        Row: {
+          color: string
+          created_at: string
+          id: string
+          name: string
+          position: number
+          server_id: string
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          id?: string
+          name: string
+          position?: number
+          server_id: string
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          id?: string
+          name?: string
+          position?: number
+          server_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "server_roles_server_id_fkey"
             columns: ["server_id"]
             isOneToOne: false
             referencedRelation: "servers"
@@ -1377,6 +1448,10 @@ export type Database = {
         Args: { _gaming_seconds?: number; _voice_seconds?: number }
         Returns: Json
       }
+      assign_server_role: {
+        Args: { _role_id: string; _user_id: string }
+        Returns: undefined
+      }
       award_coins: {
         Args: {
           _amount: number
@@ -1423,6 +1498,10 @@ export type Database = {
         }
         Returns: string
       }
+      create_server_role: {
+        Args: { _color?: string; _name: string; _server_id: string }
+        Returns: string
+      }
       decline_message_request: {
         Args: { _request_id: string }
         Returns: undefined
@@ -1432,6 +1511,7 @@ export type Database = {
         Args: { _channel_id: string }
         Returns: undefined
       }
+      delete_server_role: { Args: { _role_id: string }; Returns: undefined }
       end_call_event_if_stale: {
         Args: { _call_event_id: string; _stale_seconds?: number }
         Returns: boolean
@@ -1538,9 +1618,17 @@ export type Database = {
         Args: { _new_owner: string; _server_id: string }
         Returns: undefined
       }
+      unassign_server_role: {
+        Args: { _role_id: string; _user_id: string }
+        Returns: undefined
+      }
       unequip_shop_item: { Args: { _item_id: string }; Returns: undefined }
       update_server: {
         Args: { _icon_url?: string; _name?: string; _server_id: string }
+        Returns: undefined
+      }
+      update_server_role: {
+        Args: { _color?: string; _name?: string; _role_id: string }
         Returns: undefined
       }
       user_subscription_tier: { Args: { _user_id: string }; Returns: string }
