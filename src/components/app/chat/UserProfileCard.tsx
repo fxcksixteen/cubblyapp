@@ -13,6 +13,8 @@ import messagesIcon from "@/assets/icons/messages.svg";
 import addUserIcon from "@/assets/icons/add-user.svg";
 import removeUserIcon from "@/assets/icons/remove-user.svg";
 import blockUserIcon from "@/assets/icons/block-user.svg";
+import giftIcon from "@/assets/icons/gift.svg";
+import GiftItemModal from "@/components/app/GiftItemModal";
 import StatusIndicator from "@/components/app/StatusIndicator";
 import ActivityCard from "@/components/app/ActivityCard";
 import UserDisplayName from "@/components/app/UserDisplayName";
@@ -43,6 +45,7 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
   const [friendshipStatus, setFriendshipStatus] = useState<string | null>(null);
   const [friendshipId, setFriendshipId] = useState<string | null>(null);
   const [showFullProfile, setShowFullProfile] = useState(startExpanded);
+  const [showGiftModal, setShowGiftModal] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const color = getProfileColor(userId);
   const isOwnProfile = userId === user?.id;
