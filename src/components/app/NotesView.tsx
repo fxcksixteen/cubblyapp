@@ -8,6 +8,8 @@ import { Pin, PinOff, Trash2, Plus, Paperclip, ShieldCheck, Loader2, FileText, D
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import notesIcon from "@/assets/password-lock.svg";
+import { useEntitlements } from "@/hooks/useEntitlements";
+import emojiGroupsData from "@/data/emoji-by-group.json";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { isStandalonePWA } from "@/lib/pwa";
 import { useLocalSetting } from "@/hooks/useLocalSetting";
