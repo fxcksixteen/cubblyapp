@@ -1155,6 +1155,33 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                   return;
                 }
               }
+              // Emoji popup navigation (only if mention popup isn't showing)
+              if (showEmojiPopup) {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setEmojiActiveIndex((i) => (i + 1) % emojiFiltered.length);
+                  return;
+                }
+                if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setEmojiActiveIndex((i) => (i - 1 + emojiFiltered.length) % emojiFiltered.length);
+                  return;
+                }
+                if (e.key === "Enter" || e.key === "Tab") {
+                  const pick = emojiFiltered[Math.min(emojiActiveIndex, emojiFiltered.length - 1)];
+                  if (pick) {
+                    e.preventDefault();
+                    acceptEmoji(pick);
+                    return;
+                  }
+                }
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  setCaretPos((messageInputRef.current?.value.length) ?? input.length);
+                  return;
+                }
+              }
+
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 handleSend();
