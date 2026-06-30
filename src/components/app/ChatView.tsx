@@ -89,6 +89,8 @@ const shouldShowTimeDivider = (prevDate: string, currDate: string): boolean => {
 
 const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUserId, conversation, showGroupMembers, onLeftGroup }: ChatViewProps) => {
   const { user } = useAuth();
+  const ent = useEntitlements();
+  const messageCap = ent.messageCapChars;
   const { activeCall, callEvents, startCall } = useVoice();
   const { messages, loading, sendMessage, loadOlder, hasMore, loadingOlder } = useMessages(conversationId);
   const [input, setInput] = useState("");
