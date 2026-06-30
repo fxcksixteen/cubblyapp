@@ -22,11 +22,12 @@ import ContentSocialSettings from "./settings/ContentSocialSettings";
 import AccessibilitySettings from "./settings/AccessibilitySettings";
 import KeybindsSettings from "./settings/KeybindsSettings";
 import ShopItemsGrid from "./settings/ShopItemsGrid";
+import BillingSettings from "./settings/BillingSettings";
 import { CURRENT_VERSION } from "@/lib/changelog";
 
 const APP_VERSION = CURRENT_VERSION;
 
-type SettingsCategory = "my-account" | "content-social" | "data-privacy" | "notifications" | "appearance" | "accessibility" | "voice-video" | "devices" | "chat" | "keybinds" | "language-time" | "advanced" | "activity-privacy" | "gaming-mode" | "update-logs";
+type SettingsCategory = "my-account" | "content-social" | "data-privacy" | "notifications" | "appearance" | "accessibility" | "voice-video" | "devices" | "chat" | "keybinds" | "language-time" | "advanced" | "activity-privacy" | "gaming-mode" | "update-logs" | "billing";
 
 const settingsSections = [
   {
@@ -37,6 +38,12 @@ const settingsSections = [
       { id: "data-privacy" as SettingsCategory, label: "Data & Privacy" },
       { id: "notifications" as SettingsCategory, label: "Notifications" },
       { id: "devices" as SettingsCategory, label: "Devices" },
+    ],
+  },
+  {
+    label: "Billing Settings",
+    items: [
+      { id: "billing" as SettingsCategory, label: "Billing" },
     ],
   },
   {
@@ -564,6 +571,9 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
 
       case "advanced":
         return <AdvancedSettings cardStyle={cardStyle as any} />;
+
+      case "billing":
+        return <BillingSettings />;
 
       case "chat":
         return <ChatSettings cardStyle={cardStyle as any} />;
