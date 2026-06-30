@@ -143,8 +143,40 @@ const DataPrivacySettings = ({ cardStyle }: DataPrivacySettingsProps) => {
     <div className="space-y-5">
       <SettingsCard cardStyle={cardStyle}>
         <SettingsToggleRow icon={<Shield className="h-5 w-5" />} title="Allow friend requests" description="Let other users send you friend requests." checked={allowFriendRequests} onChange={setAllowFriendRequests} />
-        <SettingsToggleRow icon={<Lock className="h-5 w-5" />} title="Friends-only DMs" description="Only friends can start a direct message with you." checked={dmFromFriendsOnly} onChange={setDmFromFriendsOnly} />
         <SettingsToggleRow icon={<Shield className="h-5 w-5" />} title="Show my online status" description="When off, you appear offline to everyone." checked={showOnlineStatus} onChange={setShowOnlineStatus} />
+
+        <div className="pt-4 border-t" style={{ borderColor: "var(--app-border)" }}>
+          <div className="flex items-start gap-3 mb-3">
+            <Users className="h-5 w-5 mt-0.5 shrink-0" style={{ color: "var(--app-text-secondary)" }} />
+            <div className="flex-1">
+              <p className="text-sm font-semibold" style={{ color: "var(--app-text-primary)" }}>Who can send me direct messages</p>
+              <p className="mt-0.5 text-xs" style={{ color: "var(--app-text-secondary)" }}>
+                Anyone you block this way will land in your Message Requests instead. You'll never miss a message — you just decide who skips the filter.
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            {WHO_OPTIONS.map((opt) => {
+              const active = whoCanDm === opt.id;
+              const busy = savingWho === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  onClick={() => handleWhoChange(opt.id)}
+                  disabled={busy}
+                  className="text-left rounded-lg p-3 transition-all disabled:opacity-60"
+                  style={{
+                    backgroundColor: active ? "rgba(88,101,242,0.15)" : "var(--app-bg-tertiary)",
+                    border: `1px solid ${active ? "#5865f2" : "var(--app-border)"}`,
+                  }}
+                >
+                  <p className="text-sm font-bold" style={{ color: active ? "#5865f2" : "var(--app-text-primary)" }}>{opt.label}</p>
+                  <p className="mt-1 text-[11px] leading-snug" style={{ color: "var(--app-text-secondary)" }}>{opt.desc}</p>
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </SettingsCard>
 
       <SettingsCard cardStyle={cardStyle}>
