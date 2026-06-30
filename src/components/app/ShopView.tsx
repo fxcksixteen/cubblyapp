@@ -238,13 +238,16 @@ const ShopView = () => {
     let alive = true;
     (async () => {
       setLoading(true);
-      const [{ data: catalog }, { data: inv }, { data: eq }] = await Promise.all([
+      const [{ data: catalog }, { data: inv }, { data: eq }, { data: wish }] = await Promise.all([
         supabase.from("shop_items").select("*").order("price", { ascending: true }).order("sort_order", { ascending: true }),
         user
           ? supabase.from("user_inventory").select("item_id").eq("user_id", user.id)
           : Promise.resolve({ data: [] as { item_id: string }[] }),
         user
           ? supabase.from("user_equipped").select("item_id").eq("user_id", user.id)
+          : Promise.resolve({ data: [] as { item_id: string }[] }),
+        user
+          ? supabase.from("wishlist_items").select("item_id").eq("user_id", user.id)
           : Promise.resolve({ data: [] as { item_id: string }[] }),
       ]);
       if (!alive) return;
@@ -258,6 +261,7 @@ const ShopView = () => {
       setItems(remapped);
       setOwned(new Set((inv ?? []).map((r: any) => r.item_id)));
       setEquipped(new Set((eq ?? []).map((r: any) => r.item_id)));
+      setWishlist(new Set((wish ?? []).map((r: any) => r.item_id)));
       setLoading(false);
     })();
     return () => {
@@ -304,9 +308,14 @@ const ShopView = () => {
   }, [user]);
 
   const visible = useMemo(
-    () => (activeTab === "all" ? items : items.filter((i) => i.category === activeTab)),
-    [items, activeTab]
+    () => {
+      if (activeTab === "all") return items;
+      if (activeTab === "wishlist") return items.filter((i) => wishlist.has(i.id));
+      return items.filter((i) => i.category === activeTab);
+    },
+    [items, activeTab, wishlist]
   );
+
 
   const SUBCATEGORY_LABELS: Record<string, Record<string, { title: string; subtitle?: string }>> = {
     name_color: {
