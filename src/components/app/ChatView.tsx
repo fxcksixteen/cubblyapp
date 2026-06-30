@@ -93,6 +93,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
   const [uploading, setUploading] = useState(false);
   const [botTyping, setBotTyping] = useState(false);
   const [gifPickerOpen, setGifPickerOpen] = useState(false);
+  const [giftModalOpen, setGiftModalOpen] = useState(false);
   const [profileCard, setProfileCard] = useState<{ userId: string; name: string; x: number; y: number } | null>(null);
   const [peerTyping, setPeerTyping] = useState(false);
   const [replyTo, setReplyTo] = useState<{ id: string; sender_name: string; content: string } | null>(null);
