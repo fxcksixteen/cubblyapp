@@ -334,7 +334,7 @@ const ShopView = () => {
   };
 
   const grouped = useMemo(() => {
-    if (activeTab === "all") return null;
+    if (activeTab === "all" || activeTab === "wishlist") return null;
     const groups = new Map<string, ShopItem[]>();
     for (const it of visible) {
       const key = it.subcategory || "other";
