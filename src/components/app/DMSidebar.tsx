@@ -179,8 +179,8 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
   const navItems: Array<{ id: string; label: string; icon?: string; lucide?: React.ComponentType<{ className?: string; style?: React.CSSProperties }>; isNew?: boolean }> = [
     { id: "friends", icon: friendsIcon, label: "Friends" },
     { id: "notes", icon: notesIcon, label: "Personal Notes" },
-    { id: "shop", icon: shopIcon, label: "Shop" },
     { id: "honey", icon: honeyIcon, label: "Honey", isNew: true },
+    { id: "shop", icon: shopIcon, label: "Shop" },
   ];
 
   // Per-user "NEW" pill: auto-hides 14 days after first view of the Honey tab.
