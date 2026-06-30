@@ -35,6 +35,20 @@ import {
 
 const PIN_LENGTH = 4;
 
+// Flatten the vendored emoji set into a quick { shortcode -> emoji } map so
+// notes can support Discord-style `:smile:` auto-replace inline.
+const EMOJI_BY_SLUG: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  try {
+    for (const g of emojiGroupsData as Array<{ emojis: Array<{ emoji: string; slug: string }> }>) {
+      for (const e of g.emojis) {
+        if (!map[e.slug]) map[e.slug] = e.emoji;
+      }
+    }
+  } catch { /* ignore */ }
+  return map;
+})();
+
 // Infer a mime type from the filename extension when the stored mime is
 // missing or generic (e.g. "application/octet-stream"). Recovered legacy
 // attachments often have no mime, but their filename is preserved.
