@@ -494,20 +494,23 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
                   <button
                     key={themeOption.id}
                     onClick={async () => {
-                      setTheme(themeOption.id);
-                      // Unequip any shop theme so EquippedThemeBridge doesn't
-                      // immediately re-apply the previous Space/Ocean/etc.
+                      // 1. Unequip any shop theme FIRST so the realtime DELETE
+                      //    doesn't fire after our setTheme and revert it.
                       try {
-                        const { data: eq } = await supabase
-                          .from("user_equipped")
-                          .select("item_id")
-                          .eq("category", "theme")
-                          .maybeSingle();
-                        if (eq?.item_id) {
-                          await supabase.rpc("unequip_shop_item", { _item_id: eq.item_id });
-                          setTheme(themeOption.id);
+                        if (user) {
+                          const { data: eq } = await supabase
+                            .from("user_equipped")
+                            .select("item_id")
+                            .eq("user_id", user.id)
+                            .eq("category", "theme")
+                            .maybeSingle();
+                          if (eq?.item_id) {
+                            await supabase.rpc("unequip_shop_item", { _item_id: eq.item_id });
+                          }
                         }
                       } catch {}
+                      // 2. Now apply the chosen built-in theme (writes localStorage).
+                      setTheme(themeOption.id);
                     }}
                     className="group relative overflow-hidden rounded-[22px] border text-left transition-all duration-200 hover:-translate-y-0.5"
                     style={{
