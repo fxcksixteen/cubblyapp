@@ -228,6 +228,7 @@ const ServerView = () => {
                   userId={m.user_id}
                   displayName={m.display_name}
                   isYou={isYou}
+                  onGift={!isYou ? () => setGiftTarget({ userId: m.user_id, name: m.display_name }) : undefined}
                   onViewProfile={() => setProfileCard({ userId: m.user_id, name: m.display_name, x: window.innerWidth / 2, y: window.innerHeight / 2 })}
                 >
                   <div
