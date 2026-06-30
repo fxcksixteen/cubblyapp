@@ -2,12 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCoins } from "@/contexts/CoinsContext";
+import { useGems } from "@/contexts/GemsContext";
 import { useTheme, ThemeName } from "@/contexts/ThemeContext";
 import { toast } from "sonner";
 import { playSound } from "@/lib/sounds";
+import { Heart } from "lucide-react";
 import shopIcon from "@/assets/icons/shop.svg";
 import coinStack from "@/assets/coins/coin-stack.png";
 import coinNotEnough from "@/assets/coins/coin-not-enough.png";
+import gemIcon from "@/assets/gems/gem.png";
 import imgChatChampion from "@/assets/badges/chat_champion.svg";
 import imgEarlySupporter from "@/assets/badges/early_supporter.svg";
 import imgFriendly from "@/assets/badges/friendly.svg";
@@ -54,15 +57,17 @@ interface ShopItem {
   name: string;
   description: string | null;
   price: number;
+  price_gems: number | null;
   config: any;
   sort_order: number;
 }
 
-const TABS: { id: Category | "all"; label: string }[] = [
+const TABS: { id: Category | "all" | "wishlist"; label: string }[] = [
   { id: "all", label: "All" },
   { id: "name_color", label: "Name Colors" },
   { id: "theme", label: "Themes" },
   { id: "badge", label: "Badges" },
+  { id: "wishlist", label: "♥ Wishlist" },
 ];
 
 /** Renders a small visual preview matching the item type. */
@@ -203,20 +208,22 @@ function ItemPreview({ item, displayName }: { item: ShopItem; displayName: strin
 const ShopView = () => {
   const { user } = useAuth();
   const { balance } = useCoins();
+  const { balance: gemBalance } = useGems();
   const { setTheme } = useTheme();
   const [items, setItems] = useState<ShopItem[]>([]);
   const [owned, setOwned] = useState<Set<string>>(new Set());
   const [equipped, setEquipped] = useState<Set<string>>(new Set());
-  const [activeTab, setActiveTab] = useState<Category | "all">(() => {
+  const [wishlist, setWishlist] = useState<Set<string>>(new Set());
+  const [activeTab, setActiveTab] = useState<Category | "all" | "wishlist">(() => {
     if (typeof window === "undefined") return "all";
-    const m = window.location.hash.match(/tab=(name_color|theme|badge|all)/);
+    const m = window.location.hash.match(/tab=(name_color|theme|badge|all|wishlist)/);
     return (m?.[1] as any) || "all";
   });
 
   // React to hash changes (deep-links from Settings)
   useEffect(() => {
     const onHash = () => {
-      const m = window.location.hash.match(/tab=(name_color|theme|badge|all)/);
+      const m = window.location.hash.match(/tab=(name_color|theme|badge|all|wishlist)/);
       if (m?.[1]) setActiveTab(m[1] as any);
     };
     window.addEventListener("hashchange", onHash);
@@ -231,13 +238,16 @@ const ShopView = () => {
     let alive = true;
     (async () => {
       setLoading(true);
-      const [{ data: catalog }, { data: inv }, { data: eq }] = await Promise.all([
+      const [{ data: catalog }, { data: inv }, { data: eq }, { data: wish }] = await Promise.all([
         supabase.from("shop_items").select("*").order("price", { ascending: true }).order("sort_order", { ascending: true }),
         user
           ? supabase.from("user_inventory").select("item_id").eq("user_id", user.id)
           : Promise.resolve({ data: [] as { item_id: string }[] }),
         user
           ? supabase.from("user_equipped").select("item_id").eq("user_id", user.id)
+          : Promise.resolve({ data: [] as { item_id: string }[] }),
+        user
+          ? supabase.from("wishlist_items").select("item_id").eq("user_id", user.id)
           : Promise.resolve({ data: [] as { item_id: string }[] }),
       ]);
       if (!alive) return;
@@ -251,6 +261,7 @@ const ShopView = () => {
       setItems(remapped);
       setOwned(new Set((inv ?? []).map((r: any) => r.item_id)));
       setEquipped(new Set((eq ?? []).map((r: any) => r.item_id)));
+      setWishlist(new Set((wish ?? []).map((r: any) => r.item_id)));
       setLoading(false);
     })();
     return () => {
@@ -297,9 +308,14 @@ const ShopView = () => {
   }, [user]);
 
   const visible = useMemo(
-    () => (activeTab === "all" ? items : items.filter((i) => i.category === activeTab)),
-    [items, activeTab]
+    () => {
+      if (activeTab === "all") return items;
+      if (activeTab === "wishlist") return items.filter((i) => wishlist.has(i.id));
+      return items.filter((i) => i.category === activeTab);
+    },
+    [items, activeTab, wishlist]
   );
+
 
   const SUBCATEGORY_LABELS: Record<string, Record<string, { title: string; subtitle?: string }>> = {
     name_color: {
@@ -318,7 +334,7 @@ const ShopView = () => {
   };
 
   const grouped = useMemo(() => {
-    if (activeTab === "all") return null;
+    if (activeTab === "all" || activeTab === "wishlist") return null;
     const groups = new Map<string, ShopItem[]>();
     for (const it of visible) {
       const key = it.subcategory || "other";
@@ -383,6 +399,41 @@ const ShopView = () => {
     if (item.category === "theme") setTheme(isEq ? "default" : (THEME_ITEM_MAP[item.id] || "default"));
     toast.success(isEq ? `Unequipped ${item.name}` : `Equipped ${item.name}`);
   };
+
+  const toggleWishlist = async (item: ShopItem) => {
+    if (!user) return;
+    const isWished = wishlist.has(item.id);
+    setWishlist((prev) => {
+      const next = new Set(prev);
+      if (isWished) next.delete(item.id); else next.add(item.id);
+      return next;
+    });
+    if (isWished) {
+      const { error } = await supabase.from("wishlist_items").delete().eq("user_id", user.id).eq("item_id", item.id);
+      if (error) toast.error("Couldn't update wishlist");
+    } else {
+      const { error } = await supabase.from("wishlist_items").insert({ user_id: user.id, item_id: item.id });
+      if (error) toast.error("Couldn't update wishlist");
+    }
+  };
+
+  const buyWithGems = async (item: ShopItem) => {
+    if (purchasing || !item.price_gems) return;
+    if (owned.has(item.id)) { toast.info("You already own this"); return; }
+    if (gemBalance < item.price_gems) { toast.error(`Need ${item.price_gems - gemBalance} more gems`); return; }
+    setPurchasing(item.id);
+    const { error } = await supabase.rpc("purchase_shop_item_gems", { _item_id: item.id });
+    setPurchasing(null);
+    if (error) {
+      const msg = error.message || "";
+      if (msg.includes("INSUFFICIENT_GEMS")) toast.error("Not enough gems");
+      else if (msg.includes("ALREADY_OWNED")) toast.info("Already owned");
+      else toast.error("Purchase failed");
+      return;
+    }
+    toast.success(`Unlocked: ${item.name}`);
+  };
+
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto" style={{ backgroundColor: "var(--app-bg-primary)" }}>
@@ -504,17 +555,37 @@ const ShopView = () => {
           const renderCard = (item: ShopItem) => {
             const isOwned = owned.has(item.id);
             const isEq = equipped.has(item.id);
+            const isWished = wishlist.has(item.id);
             const canAfford = balance >= item.price;
             const isBusy = purchasing === item.id;
+            const canBuyGems = item.price_gems !== null && item.price_gems > 0;
             return (
               <div
                 key={item.id}
-                className="group rounded-2xl p-3 transition-all hover:-translate-y-0.5 hover:shadow-lg"
+                className="group relative rounded-2xl p-3 transition-all hover:-translate-y-0.5 hover:shadow-lg"
                 style={{
                   backgroundColor: "var(--app-bg-secondary, #2b2d31)",
                   border: `1px solid ${isEq ? "#5865f2" : "var(--app-border, #3f4147)"}`,
                 }}
               >
+                {!isOwned && (
+                  <button
+                    onClick={() => toggleWishlist(item)}
+                    className="absolute top-2 right-2 z-10 flex h-7 w-7 items-center justify-center rounded-full transition-all hover:scale-110"
+                    style={{
+                      backgroundColor: isWished ? "rgba(236,72,153,0.18)" : "rgba(0,0,0,0.35)",
+                      border: `1px solid ${isWished ? "rgba(236,72,153,0.5)" : "transparent"}`,
+                      backdropFilter: "blur(4px)",
+                    }}
+                    title={isWished ? "Remove from wishlist" : "Add to wishlist"}
+                  >
+                    <Heart
+                      className="h-3.5 w-3.5"
+                      fill={isWished ? "#f472b6" : "none"}
+                      style={{ color: isWished ? "#f472b6" : "#ffffff" }}
+                    />
+                  </button>
+                )}
                 <ItemPreview item={item} displayName={displayName} />
                 <div className="mt-3 flex items-start justify-between gap-2">
                   <div className="min-w-0">
@@ -540,18 +611,36 @@ const ShopView = () => {
                     {isEq ? "Equipped" : "Equip"}
                   </button>
                 ) : (
-                  <button
-                    onClick={() => buy(item)}
-                    disabled={isBusy}
-                    className="mt-3 w-full rounded-lg py-2 text-sm font-bold transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-                    style={{
-                      backgroundColor: canAfford ? "#5865f2" : "var(--app-bg-tertiary, #1e1f22)",
-                      color: "white",
-                    }}
-                  >
-                    <img src={canAfford ? coinStack : coinNotEnough} alt="" className="h-6 w-6 -my-1 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]" />
-                    <span>{item.price.toLocaleString()}</span>
-                  </button>
+                  <div className="mt-3 flex items-stretch gap-2">
+                    <button
+                      onClick={() => buy(item)}
+                      disabled={isBusy}
+                      className="flex-1 rounded-lg py-2 text-sm font-bold transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                      style={{
+                        backgroundColor: canAfford ? "#5865f2" : "var(--app-bg-tertiary, #1e1f22)",
+                        color: "white",
+                      }}
+                    >
+                      <img src={canAfford ? coinStack : coinNotEnough} alt="" className="h-6 w-6 -my-1 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]" />
+                      <span>{item.price.toLocaleString()}</span>
+                    </button>
+                    {canBuyGems && (
+                      <button
+                        onClick={() => buyWithGems(item)}
+                        disabled={isBusy}
+                        title="Buy with gems"
+                        className="rounded-lg px-3 py-2 text-sm font-bold transition-all flex items-center justify-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
+                        style={{
+                          backgroundColor: "var(--app-bg-tertiary, #1e1f22)",
+                          border: "1px solid rgba(96,165,250,0.4)",
+                          color: "#60a5fa",
+                        }}
+                      >
+                        <img src={gemIcon} alt="" className="h-5 w-5" />
+                        <span>{item.price_gems!.toLocaleString()}</span>
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             );

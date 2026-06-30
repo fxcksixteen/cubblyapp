@@ -13,6 +13,8 @@ import messagesIcon from "@/assets/icons/messages.svg";
 import addUserIcon from "@/assets/icons/add-user.svg";
 import removeUserIcon from "@/assets/icons/remove-user.svg";
 import blockUserIcon from "@/assets/icons/block-user.svg";
+import giftIcon from "@/assets/icons/gift.svg";
+import GiftItemModal from "@/components/app/GiftItemModal";
 import StatusIndicator from "@/components/app/StatusIndicator";
 import ActivityCard from "@/components/app/ActivityCard";
 import UserDisplayName from "@/components/app/UserDisplayName";
@@ -43,6 +45,7 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
   const [friendshipStatus, setFriendshipStatus] = useState<string | null>(null);
   const [friendshipId, setFriendshipId] = useState<string | null>(null);
   const [showFullProfile, setShowFullProfile] = useState(startExpanded);
+  const [showGiftModal, setShowGiftModal] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const color = getProfileColor(userId);
   const isOwnProfile = userId === user?.id;
@@ -234,6 +237,11 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
                   </button>
                 ) : null}
                 {friendshipStatus !== "blocked" && (
+                  <button onClick={() => setShowGiftModal(true)} className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 hover:bg-pink-500/20 transition-colors" title="Send Gift">
+                    <img src={giftIcon} alt="Gift" className="h-4 w-4 invert opacity-70 hover:opacity-100" />
+                  </button>
+                )}
+                {friendshipStatus !== "blocked" && (
                   <button onClick={handleBlock} className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 hover:bg-[#ed4245]/20 transition-colors" title="Block">
                     <img src={blockUserIcon} alt="Block" className="h-4 w-4 invert opacity-70 hover:opacity-100" />
                   </button>
@@ -242,6 +250,12 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
             )}
           </div>
         </div>
+        <GiftItemModal
+          open={showGiftModal}
+          onClose={() => setShowGiftModal(false)}
+          recipientId={userId}
+          recipientName={displayName}
+        />
       </div>
     ), document.body);
   }
@@ -322,8 +336,19 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
               <img src={addUserIcon} alt="Add" className="h-3.5 w-3.5 invert" />
             </button>
           ) : null}
+          {friendshipStatus !== "blocked" && (
+            <button onClick={() => setShowGiftModal(true)} className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 hover:bg-pink-500/20 transition-colors" title="Send Gift">
+              <img src={giftIcon} alt="Gift" className="h-3.5 w-3.5 invert opacity-70" />
+            </button>
+          )}
         </div>
       )}
+      <GiftItemModal
+        open={showGiftModal}
+        onClose={() => setShowGiftModal(false)}
+        recipientId={userId}
+        recipientName={displayName}
+      />
     </div>
   ), document.body);
 };

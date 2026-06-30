@@ -179,8 +179,8 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
   const navItems: Array<{ id: string; label: string; icon?: string; lucide?: React.ComponentType<{ className?: string; style?: React.CSSProperties }>; isNew?: boolean }> = [
     { id: "friends", icon: friendsIcon, label: "Friends" },
     { id: "notes", icon: notesIcon, label: "Personal Notes" },
-    { id: "shop", icon: shopIcon, label: "Shop" },
     { id: "honey", icon: honeyIcon, label: "Honey", isNew: true },
+    { id: "shop", icon: shopIcon, label: "Shop" },
   ];
 
   // Per-user "NEW" pill: auto-hides 14 days after first view of the Honey tab.
@@ -228,7 +228,7 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
               <img
                 src={item.icon}
                 alt=""
-                className={`h-5 w-5 shrink-0 ${item.id === "honey" ? "opacity-100 drop-shadow-[0_0_6px_rgba(245,165,36,0.55)]" : "invert opacity-80"}`}
+                className="h-5 w-5 shrink-0 invert opacity-80"
               />
             ) : item.lucide ? (
               <item.lucide className="h-5 w-5 shrink-0 opacity-80" />
@@ -236,10 +236,9 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
             <span className="flex-1 text-left">{item.label}</span>
             {item.id === "honey" && showHoneyNew && (
               <span
-                className="absolute -right-1.5 top-1/2 -translate-y-1/2 rounded-full px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-black shadow-[0_0_10px_rgba(245,165,36,0.7)]"
+                className="absolute right-0 top-1/2 -translate-y-1/2 rounded-l-full pl-2 pr-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-black"
                 style={{
                   background: "linear-gradient(135deg, #fcd34d 0%, #f59e0b 100%)",
-                  animation: "honey-new-pulse 2.4s ease-in-out infinite",
                 }}
               >
                 NEW

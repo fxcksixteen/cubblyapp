@@ -1362,6 +1362,16 @@ export type Database = {
         }
         Returns: number
       }
+      _internal_credit_gems: {
+        Args: {
+          _amount: number
+          _metadata?: Json
+          _reason: string
+          _source_ref?: string
+          _user_id: string
+        }
+        Returns: number
+      }
       accrue_activity_coins: {
         Args: { _gaming_seconds?: number; _voice_seconds?: number }
         Returns: Json
@@ -1378,6 +1388,7 @@ export type Database = {
       }
       burn_view_once_note: { Args: { _message_id: string }; Returns: undefined }
       can_access_message: { Args: { _message_id: string }; Returns: boolean }
+      claim_gift: { Args: { _gift_id: string }; Returns: Json }
       create_dm_conversation: {
         Args: { other_user_id: string }
         Returns: string
@@ -1417,6 +1428,15 @@ export type Database = {
       }
       equip_shop_item: { Args: { _item_id: string }; Returns: undefined }
       get_internal_secret: { Args: { _name: string }; Returns: string }
+      gift_shop_item: {
+        Args: {
+          _conversation_id?: string
+          _item_id: string
+          _message?: string
+          _recipient_id: string
+        }
+        Returns: Json
+      }
       heartbeat_call_participant: {
         Args: {
           _call_event_id: string
@@ -1453,6 +1473,7 @@ export type Database = {
       }
       presence_heartbeat: { Args: { _session_key?: string }; Returns: string }
       purchase_shop_item: { Args: { _item_id: string }; Returns: Json }
+      purchase_shop_item_gems: { Args: { _item_id: string }; Returns: Json }
       send_test_bot_reply: {
         Args: { _conversation_id: string }
         Returns: {
@@ -1473,6 +1494,15 @@ export type Database = {
         }
       }
       spend_coins: {
+        Args: {
+          _amount: number
+          _metadata?: Json
+          _reason: string
+          _source_ref?: string
+        }
+        Returns: number
+      }
+      spend_gems: {
         Args: {
           _amount: number
           _metadata?: Json
