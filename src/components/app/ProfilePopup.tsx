@@ -66,6 +66,23 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
     return () => { supabase.removeChannel(channel); };
   }, [user]);
 
+  // Load any active custom status so we can show it inline and let the user clear it.
+  useEffect(() => {
+    if (!user) { setCustomStatus(null); return; }
+    let alive = true;
+    supabase.from("custom_statuses")
+      .select("text, emoji, expires_at")
+      .eq("user_id", user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!alive) return;
+        if (!data?.text && !data?.emoji) { setCustomStatus(null); return; }
+        if (data.expires_at && new Date(data.expires_at).getTime() < Date.now()) { setCustomStatus(null); return; }
+        setCustomStatus({ text: data.text || "", emoji: (data as any).emoji ?? null });
+      });
+    return () => { alive = false; };
+  }, [user, customStatusOpen]);
+
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
