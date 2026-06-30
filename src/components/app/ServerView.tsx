@@ -279,6 +279,15 @@ const ServerView = () => {
           startExpanded
         />
       )}
+
+      {giftTarget && (
+        <GiftItemModal
+          open
+          onClose={() => setGiftTarget(null)}
+          recipientId={giftTarget.userId}
+          recipientName={giftTarget.name}
+        />
+      )}
     </div>
   );
 };
