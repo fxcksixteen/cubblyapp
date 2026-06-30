@@ -1131,12 +1131,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       console.log("[Voice] ⚠️ initializeOutgoingConnection skipped — no outgoing meta for", conversationId);
       return;
     }
+    const existingPc = pcRef.current;
     // v0.3.9: if we ALREADY have a PC + a pending offer (from a prior attempt
     // or a duplicate ready-for-offer), just re-broadcast that offer instead
     // of silently returning. This is what was making the second peer "never
     // get placed in the call" — their ready-for-offer was being dropped on
     // the caller side and no offer ever reached them.
-    if (pcRef.current && pendingOfferRef.current && pendingOfferRef.current.conversationId === conversationId) {
+    if (existingPc && pendingOfferRef.current && pendingOfferRef.current.conversationId === conversationId && pendingOfferRef.current.callEventId === outgoingCallMeta.callEventId) {
       console.log("[Voice] 🔁 PC already exists — re-broadcasting pending offer for late joiner");
       await sendSignalReliably(channel, {
         type: "offer",
@@ -1148,12 +1149,28 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       }, "offer(re-broadcast)");
       return;
     }
-    if (pcRef.current) {
-      // PC exists but no pending offer (e.g. mid-renegotiation). Don't blow it
-      // away — just bail. The peer's next ready-for-offer retry will hit one
-      // of the paths above once we have something to send.
-      console.log("[Voice] ⚠️ initializeOutgoingConnection skipped — PC exists, no pending offer");
-      return;
+    if (existingPc) {
+      const alreadyConnected =
+        existingPc.connectionState === "connected" ||
+        existingPc.iceConnectionState === "connected" ||
+        existingPc.iceConnectionState === "completed";
+      if (alreadyConnected && !activeCallRef.current?.peerLeftAt) {
+        console.log("[Voice] 🛑 Ignoring duplicate ready-for-offer — call already connected");
+        return;
+      }
+
+      // v0.3.23: the bad green-pickup / two-step Rejoin bug happens when the
+      // staying caller has a stale PC but no pending offer left. Older builds
+      // bailed here, so the joiner kept asking for an offer forever. Treat that
+      // state as stale, close it, and generate a fresh offer for this call_event.
+      console.log("[Voice] 🧹 Closing stale PC before fresh offer for joiner");
+      try { existingPc.close(); } catch {}
+      pcRef.current = null;
+      try { localStreamRef.current?.getTracks().forEach(t => t.stop()); } catch {}
+      localStreamRef.current = null;
+      originalMicTrackRef.current = null;
+      setLocalStream(null);
+      stopAudioLevelMonitor();
     }
     // Stale pending offer (left over from a previous call/peer-leave) must
     // not block a fresh negotiation. Clear it so rejoin handshake works.
@@ -1223,7 +1240,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
 
     setActiveCall(prev => prev && prev.conversationId === conversationId ? { ...prev, state: "ringing" } : prev);
-  }, [user, getUserMedia, createPeerConnection, startAudioLevelMonitor]);
+  }, [user, getUserMedia, createPeerConnection, startAudioLevelMonitor, stopAudioLevelMonitor]);
 
   const setupSignaling = useCallback((conversationId: string): Promise<ReturnType<typeof supabase.channel>> => {
     return new Promise((resolve, reject) => {
@@ -1257,10 +1274,25 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
         if (payload.type === "ready-for-offer") {
           try {
+            if (payload.callEventId && callEventIdSnapshot && payload.callEventId !== callEventIdSnapshot) {
+              console.log(`[Voice] 🛑 Ignoring ready-for-offer for stale call ${payload.callEventId} (current=${callEventIdSnapshot})`);
+              return;
+            }
             if (!outgoingCallMetaRef.current && activeCallSnapshot?.conversationId === conversationId && callEventIdSnapshot) {
               outgoingCallMetaRef.current = {
                 conversationId,
                 callEventId: callEventIdSnapshot,
+              };
+            }
+            if (outgoingCallMetaRef.current && payload.callEventId && outgoingCallMetaRef.current.callEventId !== payload.callEventId) {
+              if (activeCallSnapshot?.conversationId !== conversationId) {
+                console.log(`[Voice] 🛑 Ignoring ready-for-offer for non-active call ${payload.callEventId}`);
+                return;
+              }
+              outgoingCallMetaRef.current = {
+                ...outgoingCallMetaRef.current,
+                conversationId,
+                callEventId: payload.callEventId,
               };
             }
             await initializeOutgoingConnection(channel, conversationId);
@@ -1273,6 +1305,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         }
 
         if (payload.type === "offer") {
+          if (payload.callEventId && callEventIdSnapshot && payload.callEventId !== callEventIdSnapshot) {
+            console.log(`[Voice] 🛑 Ignoring offer for stale call ${payload.callEventId} (current=${callEventIdSnapshot})`);
+            return;
+          }
           const acceptedCall = acceptedIncomingCallRef.current;
 
           // v0.3.12: ignore duplicate offer retries from the caller's retry
@@ -1462,6 +1498,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         }
 
         if (payload.type === "answer" && pc) {
+          if (payload.callEventId && callEventIdSnapshot && payload.callEventId !== callEventIdSnapshot) {
+            console.log(`[Voice] 🛑 Ignoring answer for stale call ${payload.callEventId} (current=${callEventIdSnapshot})`);
+            return;
+          }
           console.log("[Voice] 📥 Answer received, setting remote description...");
           stopLooping("outgoingRing"); // peer picked up — stop ringing
           await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
@@ -1473,6 +1513,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         }
 
         if (payload.type === "ice-candidate") {
+          if (payload.callEventId && callEventIdSnapshot && payload.callEventId !== callEventIdSnapshot) {
+            return;
+          }
           if (pc && remoteDescriptionSet.current) {
             try {
               await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
