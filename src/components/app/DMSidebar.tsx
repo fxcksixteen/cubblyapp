@@ -228,7 +228,7 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
               <img
                 src={item.icon}
                 alt=""
-                className="h-5 w-5 shrink-0 invert opacity-80"
+                className={`shrink-0 invert opacity-80 ${item.id === "honey" ? "h-4 w-4 mx-0.5" : "h-5 w-5"}`}
               />
             ) : item.lucide ? (
               <item.lucide className="h-5 w-5 shrink-0 opacity-80" />
