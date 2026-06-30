@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Eye, FileText, Lock, X, Flame, Save, Radio, Check, Loader2 } from "lucide-react";
+import { Eye, FileText, Lock, X, Flame, Save, Radio, Check, Loader2, PencilLine } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useNotes } from "@/contexts/NotesContext";
 import { toast } from "sonner";
@@ -11,9 +11,11 @@ import { toast } from "sonner";
  *   [[cubbly:shared-note:v1]]{
  *     "title":"...","body":"...",
  *     "viewOnce":bool,"burnt"?:bool,
- *     "live"?:bool,        // sender's edits keep syncing (last-write-wins)
- *     "allowSave"?:bool,   // recipient may copy into their own vault
- *     "noteId"?:string     // original note id, used for live sync
+ *     "live"?:bool,                // sender's edits keep syncing
+ *     "allowSave"?:bool,           // recipient may copy into their own vault
+ *     "recipientCanEdit"?:bool,    // recipient can rewrite the shared copy
+ *     "recipientEditUsed"?:bool,   // view-once: edit already consumed
+ *     "noteId"?:string             // original note id (live sync key)
  *   }
  */
 
@@ -28,6 +30,8 @@ interface SharedNotePayload {
   burnt?: boolean;
   live?: boolean;
   allowSave?: boolean;
+  recipientCanEdit?: boolean;
+  recipientEditUsed?: boolean;
   noteId?: string;
 }
 
@@ -44,6 +48,8 @@ export const parseSharedNote = (raw: string): SharedNotePayload | null => {
       burnt: !!obj.burnt,
       live: !!obj.live,
       allowSave: !!obj.allowSave,
+      recipientCanEdit: !!obj.recipientCanEdit,
+      recipientEditUsed: !!obj.recipientEditUsed,
       noteId: typeof obj.noteId === "string" ? obj.noteId : undefined,
     };
   } catch {
@@ -71,29 +77,24 @@ interface Props {
 
 const SharedNoteMessage = ({ messageId, payload, isOwn }: Props) => {
   const [open, setOpen] = useState(false);
-  // Bump when the modal closes so we re-read the seen flag.
   const [, setTick] = useState(0);
   const locallySeen = useMemo(() => !!loadSeen()[messageId], [messageId, open]);
   const serverBurnt = !!payload.burnt;
 
-  // For the recipient the note becomes inert once it's been opened OR once the
-  // sender's server-side copy was burnt. The sender always sees an
-  // un-clickable preview chip so they can see what they sent.
   const burnt = serverBurnt || (payload.viewOnce && locallySeen && !open);
 
   const handleClose = async () => {
     setOpen(false);
     if (payload.viewOnce && !isOwn && !serverBurnt) {
-      // Best-effort: burn server-side. If it fails (offline, etc.) the
-      // localStorage flag still prevents re-opening on this device.
       try { await supabase.rpc("burn_view_once_note" as any, { _message_id: messageId }); } catch {}
     }
     setTick((t) => t + 1);
   };
 
   const openCard = () => {
-    if (burnt || isOwn) return;
-    if (payload.viewOnce) markSeen(messageId);
+    if (burnt) return;
+    // Author can still open their own card to see live recipient edits.
+    if (payload.viewOnce && !isOwn) markSeen(messageId);
     setOpen(true);
   };
 
@@ -108,7 +109,7 @@ const SharedNoteMessage = ({ messageId, payload, isOwn }: Props) => {
       <button
         type="button"
         onClick={openCard}
-        disabled={burnt || isOwn}
+        disabled={burnt}
         className="group block w-full text-left rounded-2xl overflow-hidden transition-all disabled:cursor-default"
         style={{
           maxWidth: 380,
@@ -117,10 +118,9 @@ const SharedNoteMessage = ({ messageId, payload, isOwn }: Props) => {
           opacity: burnt ? 0.55 : 1,
           boxShadow: burnt ? "none" : "0 1px 2px rgba(0,0,0,0.25)",
         }}
-        onMouseEnter={(e) => { if (!burnt && !isOwn) e.currentTarget.style.borderColor = accent; }}
+        onMouseEnter={(e) => { if (!burnt) e.currentTarget.style.borderColor = accent; }}
         onMouseLeave={(e) => { e.currentTarget.style.borderColor = burnt ? "#2b2d31" : "#313338"; }}
       >
-        {/* Accent header strip */}
         <div className="flex items-center gap-2 px-3.5 py-2" style={{ backgroundColor: accentBg }}>
           {burnt
             ? <Flame className="h-3.5 w-3.5" style={{ color: "var(--app-text-secondary)" }} />
@@ -138,6 +138,11 @@ const SharedNoteMessage = ({ messageId, payload, isOwn }: Props) => {
                 : "Shared note"}
           </span>
           <div className="ml-auto flex items-center gap-1.5">
+            {payload.recipientCanEdit && !burnt && (
+              <span className="flex items-center gap-1 text-[10px] font-semibold" style={{ color: "#43b581" }}>
+                <PencilLine className="h-3 w-3" /> EDITABLE
+              </span>
+            )}
             {payload.live && !burnt && (
               <span className="flex items-center gap-1 text-[10px] font-semibold" style={{ color: accent }}>
                 <Radio className="h-3 w-3" /> LIVE
@@ -151,7 +156,6 @@ const SharedNoteMessage = ({ messageId, payload, isOwn }: Props) => {
           </div>
         </div>
 
-        {/* Body */}
         <div className="px-3.5 py-3">
           <div className="text-[15px] font-semibold leading-snug truncate" style={{ color: "var(--app-text-primary)" }}>
             {payload.title || "Untitled"}
@@ -164,8 +168,6 @@ const SharedNoteMessage = ({ messageId, payload, isOwn }: Props) => {
               WebkitLineClamp: 2,
               WebkitBoxOrient: "vertical",
               overflow: "hidden",
-              // Blur the body for view-once notes so a quick scroll doesn't
-              // leak the contents before the recipient opens it.
               filter: payload.viewOnce && !burnt && !isOwn ? "blur(6px)" : undefined,
               userSelect: payload.viewOnce ? "none" : undefined,
             }}
@@ -176,44 +178,67 @@ const SharedNoteMessage = ({ messageId, payload, isOwn }: Props) => {
                 ? "•••••• •••• ••••• •••"
                 : previewBody}
           </div>
-          {!burnt && !isOwn && (
+          {!burnt && (
             <div
               className="mt-2.5 inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold"
               style={{ backgroundColor: accentBg, color: accent }}
             >
-              {payload.viewOnce ? "Tap to reveal once" : "Tap to open"}
+              {isOwn
+                ? "Tap to view"
+                : payload.viewOnce
+                  ? "Tap to reveal once"
+                  : payload.recipientCanEdit
+                    ? "Tap to open & edit"
+                    : "Tap to open"}
             </div>
           )}
         </div>
       </button>
 
       {open && (
-        <SharedNoteModal payload={payload} isOwn={isOwn} onClose={handleClose} />
+        <SharedNoteModal
+          messageId={messageId}
+          payload={payload}
+          isOwn={isOwn}
+          onClose={handleClose}
+        />
       )}
     </>
   );
 };
 
-const SharedNoteModal = ({ payload, isOwn, onClose }: { payload: SharedNotePayload; isOwn: boolean; onClose: () => void }) => {
-  // Block global copy keystrokes while a view-once note is on screen.
+const SharedNoteModal = ({
+  messageId, payload, isOwn, onClose,
+}: {
+  messageId: string;
+  payload: SharedNotePayload;
+  isOwn: boolean;
+  onClose: () => void;
+}) => {
+  const canEdit =
+    !isOwn &&
+    !!payload.recipientCanEdit &&
+    !payload.burnt &&
+    !(payload.viewOnce && payload.recipientEditUsed);
+  const [editing, setEditing] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(payload.title || "");
+  const [bodyDraft, setBodyDraft] = useState(payload.body || "");
+  const [saving, setSaving] = useState(false);
+
+  // Block global copy keystrokes for view-once notes.
   useEffect(() => {
     if (!payload.viewOnce) return;
     const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && (e.key === "c" || e.key === "C" || e.key === "x" || e.key === "X" || e.key === "a" || e.key === "A" || e.key === "p" || e.key === "P" || e.key === "s" || e.key === "S")) {
+      if ((e.ctrlKey || e.metaKey) && "cCxXaApPsS".includes(e.key)) {
         e.preventDefault();
         e.stopPropagation();
       }
-      if (e.key === "PrintScreen") {
-        e.preventDefault();
-      }
+      if (e.key === "PrintScreen") e.preventDefault();
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
   }, [payload.viewOnce]);
 
-  // v0.3.21: enable Electron native content-protection while a view-once note
-  // is on screen so external screenshot tools (Lightshot, Snipping Tool, OBS,
-  // Discord screenshare, etc.) capture only a black window. No-op on web.
   useEffect(() => {
     if (!payload.viewOnce) return;
     const api: any = (window as any).electronAPI;
@@ -222,7 +247,7 @@ const SharedNoteModal = ({ payload, isOwn, onClose }: { payload: SharedNotePaylo
     return () => { try { api.setContentProtection(false); } catch {} };
   }, [payload.viewOnce]);
 
-  const lockProps = payload.viewOnce
+  const lockProps = payload.viewOnce && !editing
     ? {
         onCopy: (e: React.ClipboardEvent) => { e.preventDefault(); },
         onCut: (e: React.ClipboardEvent) => { e.preventDefault(); },
@@ -239,6 +264,31 @@ const SharedNoteModal = ({ payload, isOwn, onClose }: { payload: SharedNotePaylo
 
   const accent = payload.viewOnce ? "#f0b132" : "hsl(var(--primary))";
   const accentBg = payload.viewOnce ? "rgba(240,177,50,0.12)" : "rgba(88,101,242,0.14)";
+
+  const handleSaveEdit = async () => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      const { error } = await supabase.rpc("apply_recipient_note_edit" as any, {
+        _message_id: messageId,
+        _title: titleDraft,
+        _body: bodyDraft,
+      });
+      if (error) throw error;
+      toast.success(payload.viewOnce ? "Edit saved — one-time use consumed" : "Edit saved");
+      setEditing(false);
+      // Close the card right after saving a view-once edit so it can burn.
+      if (payload.viewOnce) onClose();
+    } catch (e: any) {
+      const msg = e?.message || "Couldn't save edit";
+      if (msg.includes("EDIT_NOT_ALLOWED")) toast.error("Editing was disabled by the sender");
+      else if (msg.includes("EDIT_ALREADY_USED")) toast.error("View-once edit was already used");
+      else if (msg.includes("NOTE_BURNT")) toast.error("Note has already been burnt");
+      else toast.error(msg);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div
@@ -259,9 +309,19 @@ const SharedNoteModal = ({ payload, isOwn, onClose }: { payload: SharedNotePaylo
                 : <FileText className="h-4 w-4" style={{ color: accent }} />}
             </div>
             <div className="min-w-0 flex flex-col">
-              <span className="text-[15px] font-semibold truncate" style={{ color: "var(--app-text-primary)" }}>
-                {payload.title || "Untitled"}
-              </span>
+              {editing ? (
+                <input
+                  value={titleDraft}
+                  onChange={(e) => setTitleDraft(e.target.value)}
+                  placeholder="Untitled"
+                  className="bg-transparent text-[15px] font-semibold outline-none"
+                  style={{ color: "var(--app-text-primary)" }}
+                />
+              ) : (
+                <span className="text-[15px] font-semibold truncate" style={{ color: "var(--app-text-primary)" }}>
+                  {payload.title || "Untitled"}
+                </span>
+              )}
               <span className="text-[11px]" style={{ color: "var(--app-text-secondary)" }}>
                 {payload.viewOnce ? "View-once · closing will permanently burn this note" : "Shared note"}
               </span>
@@ -280,13 +340,23 @@ const SharedNoteModal = ({ payload, isOwn, onClose }: { payload: SharedNotePaylo
           </button>
         </div>
 
-        <div
-          {...lockProps}
-          className="flex-1 overflow-y-auto px-5 py-5 text-[15px] leading-relaxed whitespace-pre-wrap break-words"
-          style={{ ...((lockProps as any).style || {}), color: "var(--app-text-primary)" }}
-        >
-          {payload.body?.trim() || "(empty)"}
-        </div>
+        {editing ? (
+          <textarea
+            value={bodyDraft}
+            onChange={(e) => setBodyDraft(e.target.value)}
+            placeholder="Write the new note body…"
+            className="flex-1 resize-none px-5 py-5 text-[15px] leading-relaxed bg-transparent outline-none"
+            style={{ color: "var(--app-text-primary)", minHeight: 220 }}
+          />
+        ) : (
+          <div
+            {...lockProps}
+            className="flex-1 overflow-y-auto px-5 py-5 text-[15px] leading-relaxed whitespace-pre-wrap break-words"
+            style={{ ...((lockProps as any).style || {}), color: "var(--app-text-primary)" }}
+          >
+            {payload.body?.trim() || "(empty)"}
+          </div>
+        )}
 
         <div className="px-5 py-3 border-t flex items-center gap-3" style={{ borderColor: "#2b2d31" }}>
           <div className="text-[11px] flex items-center gap-2 flex-1 min-w-0" style={{ color: "var(--app-text-secondary)" }}>
@@ -296,16 +366,50 @@ const SharedNoteModal = ({ payload, isOwn, onClose }: { payload: SharedNotePaylo
                   <Flame className="h-3.5 w-3.5 shrink-0" style={{ color: accent }} />
                   <span className="leading-snug">
                     {isOwn
-                      ? "Recipient can open this once. On desktop, the app blocks screen-capture tools while it's open; on web, screenshots can't be prevented."
-                      : "Closing burns this for good. Copy, select & right-click are off. On the desktop app, screenshot tools see only a black window."}
+                      ? "Recipient can open this once. Desktop blocks screen capture while open; web can't prevent screenshots."
+                      : canEdit
+                        ? "You can rewrite this once. Closing or saving will burn it for good."
+                        : "Closing burns this for good. Copy & right-click are off."}
                   </span>
                 </>
               )
               : payload.live
                 ? (<><Radio className="h-3.5 w-3.5 shrink-0" style={{ color: accent }} /><span>Live · updates as the sender edits.</span></>)
-                : <span>Shared from a personal note.</span>}
+                : canEdit
+                  ? (<><PencilLine className="h-3.5 w-3.5 shrink-0" style={{ color: "#43b581" }} /><span>Editable · your edits sync live for the sender.</span></>)
+                  : <span>Shared from a personal note.</span>}
           </div>
-          {!isOwn && !payload.viewOnce && payload.allowSave && (
+
+          {canEdit && !editing && (
+            <button
+              onClick={() => setEditing(true)}
+              className="shrink-0 inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11.5px] font-semibold transition-colors"
+              style={{ backgroundColor: "#43b581", color: "white" }}
+            >
+              <PencilLine className="h-3 w-3" /> Edit
+            </button>
+          )}
+          {editing && (
+            <>
+              <button
+                onClick={() => { setEditing(false); setTitleDraft(payload.title || ""); setBodyDraft(payload.body || ""); }}
+                className="shrink-0 inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11.5px] font-semibold"
+                style={{ backgroundColor: "#2b2d31", color: "var(--app-text-primary)" }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveEdit}
+                disabled={saving}
+                className="shrink-0 inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11.5px] font-semibold disabled:opacity-60"
+                style={{ backgroundColor: "hsl(var(--primary))", color: "white" }}
+              >
+                {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                {saving ? "Saving…" : "Save edit"}
+              </button>
+            </>
+          )}
+          {!isOwn && !canEdit && !editing && !payload.viewOnce && payload.allowSave && (
             <SaveToNotesButton payload={payload} />
           )}
         </div>
@@ -314,11 +418,6 @@ const SharedNoteModal = ({ payload, isOwn, onClose }: { payload: SharedNotePaylo
   );
 };
 
-/**
- * "Save to my notes" — appears on the recipient side of any non-view-once
- * shared note where the sender enabled `allowSave`. We dedupe per device via
- * localStorage so the button can't be tapped twice to spam the vault.
- */
 const SaveToNotesButton = ({ payload }: { payload: SharedNotePayload }) => {
   const notes = useNotes();
   const savedKey = useMemo(() => {
