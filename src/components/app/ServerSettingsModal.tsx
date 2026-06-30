@@ -78,6 +78,7 @@ const ServerSettingsModal = ({ server, onClose, onDeleted }: Props) => {
 
           {tab === "overview" && <OverviewTab server={server} onDeleted={onDeleted} onClose={onClose} />}
           {tab === "channels" && <ChannelsTab serverId={server.id} />}
+          {tab === "roles" && <RolesTab />}
           {tab === "members" && <MembersTab server={server} onClose={onClose} />}
           {tab === "invites" && <InvitesTab serverId={server.id} />}
         </div>
