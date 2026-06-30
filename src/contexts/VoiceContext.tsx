@@ -2025,6 +2025,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         } as any);
         await ensureOwnParticipantRow(callEventId!);
       }
+      currentCallEventIdRef.current = callEventId;
       setCurrentCallEventId(callEventId);
 
       if (isBotCall) {
@@ -2187,6 +2188,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         isVideoOn: false,
       };
       peerIdRef.current = acceptedCall.callerId;
+      currentCallEventIdRef.current = acceptedCall.callEventId;
       setCurrentCallEventId(acceptedCall.callEventId);
       isRemoteHangup.current = false;
 
@@ -2784,6 +2786,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     setActiveCall(null);
     peerIdRef.current = null;
     setIncomingCall(null);
+    currentCallEventIdRef.current = null;
     setCurrentCallEventId(null);
     stopAudioLevelMonitor();
     cancelAnimationFrame(remoteAnimFrameRef.current);
