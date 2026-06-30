@@ -133,6 +133,44 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
     };
   }, [user?.id]);
 
+  // ---- Fetch + subscribe to rich activity_details rows ----
+  useEffect(() => {
+    if (!user) {
+      setActivityDetails(new Map());
+      return;
+    }
+    const fetchAllDetails = async () => {
+      const { data } = await supabase.from("activity_details").select("*");
+      if (!data) return;
+      const map = new Map<string, ActivityDetails>();
+      data.forEach((d: any) => map.set(d.user_id, d));
+      setActivityDetails(map);
+    };
+    fetchAllDetails();
+
+    const suffix = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const channel = supabase.channel(`activity-details-global:${user.id}:${suffix}`);
+    channel.on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "activity_details" },
+      (payload) => {
+        setActivityDetails((prev) => {
+          const next = new Map(prev);
+          const newRow: any = payload.new;
+          const oldRow: any = payload.old;
+          if (payload.eventType === "DELETE") {
+            if (oldRow?.user_id) next.delete(oldRow.user_id);
+          } else if (newRow?.user_id) {
+            next.set(newRow.user_id, newRow);
+          }
+          return next;
+        });
+      }
+    );
+    channel.subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [user?.id]);
+
   // ---- Load my own privacy preference + games on login ----
   useEffect(() => {
     if (!user) return;
