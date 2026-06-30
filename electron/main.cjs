@@ -544,6 +544,17 @@ ipcMain.handle("get-running-processes", async () => {
   catch (e) { log.warn("[activity] process list failed:", e?.message || e); return []; }
 });
 
+// v0.4.0 Phase 6 — rich game presence parsers (Valorant / Marvel Rivals /
+// Fortnite / League of Legends). Returns `{ gameKey, payload }` or null.
+let gameDetailsMod = null;
+try { gameDetailsMod = require("./gameDetails.cjs"); }
+catch (e) { log.warn("[activity] gameDetails module missing:", e?.message || e); }
+ipcMain.handle("get-game-details", async (_evt, identifier) => {
+  if (!gameDetailsMod) return null;
+  try { return await gameDetailsMod.getGameDetails(identifier); }
+  catch (e) { log.warn("[activity] get-game-details failed:", e?.message || e); return null; }
+});
+
 // ----- Open-windows scanner (for the "currently running" picker) -----
 // Returns [{ title, processName }] of visible top-level windows. We use this to
 // give users a friendly list of apps they can add as a custom game without
