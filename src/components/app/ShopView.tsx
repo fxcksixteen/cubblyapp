@@ -555,17 +555,37 @@ const ShopView = () => {
           const renderCard = (item: ShopItem) => {
             const isOwned = owned.has(item.id);
             const isEq = equipped.has(item.id);
+            const isWished = wishlist.has(item.id);
             const canAfford = balance >= item.price;
             const isBusy = purchasing === item.id;
+            const canBuyGems = item.price_gems !== null && item.price_gems > 0;
             return (
               <div
                 key={item.id}
-                className="group rounded-2xl p-3 transition-all hover:-translate-y-0.5 hover:shadow-lg"
+                className="group relative rounded-2xl p-3 transition-all hover:-translate-y-0.5 hover:shadow-lg"
                 style={{
                   backgroundColor: "var(--app-bg-secondary, #2b2d31)",
                   border: `1px solid ${isEq ? "#5865f2" : "var(--app-border, #3f4147)"}`,
                 }}
               >
+                {!isOwned && (
+                  <button
+                    onClick={() => toggleWishlist(item)}
+                    className="absolute top-2 right-2 z-10 flex h-7 w-7 items-center justify-center rounded-full transition-all hover:scale-110"
+                    style={{
+                      backgroundColor: isWished ? "rgba(236,72,153,0.18)" : "rgba(0,0,0,0.35)",
+                      border: `1px solid ${isWished ? "rgba(236,72,153,0.5)" : "transparent"}`,
+                      backdropFilter: "blur(4px)",
+                    }}
+                    title={isWished ? "Remove from wishlist" : "Add to wishlist"}
+                  >
+                    <Heart
+                      className="h-3.5 w-3.5"
+                      fill={isWished ? "#f472b6" : "none"}
+                      style={{ color: isWished ? "#f472b6" : "#ffffff" }}
+                    />
+                  </button>
+                )}
                 <ItemPreview item={item} displayName={displayName} />
                 <div className="mt-3 flex items-start justify-between gap-2">
                   <div className="min-w-0">
@@ -591,18 +611,36 @@ const ShopView = () => {
                     {isEq ? "Equipped" : "Equip"}
                   </button>
                 ) : (
-                  <button
-                    onClick={() => buy(item)}
-                    disabled={isBusy}
-                    className="mt-3 w-full rounded-lg py-2 text-sm font-bold transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-                    style={{
-                      backgroundColor: canAfford ? "#5865f2" : "var(--app-bg-tertiary, #1e1f22)",
-                      color: "white",
-                    }}
-                  >
-                    <img src={canAfford ? coinStack : coinNotEnough} alt="" className="h-6 w-6 -my-1 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]" />
-                    <span>{item.price.toLocaleString()}</span>
-                  </button>
+                  <div className="mt-3 flex items-stretch gap-2">
+                    <button
+                      onClick={() => buy(item)}
+                      disabled={isBusy}
+                      className="flex-1 rounded-lg py-2 text-sm font-bold transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                      style={{
+                        backgroundColor: canAfford ? "#5865f2" : "var(--app-bg-tertiary, #1e1f22)",
+                        color: "white",
+                      }}
+                    >
+                      <img src={canAfford ? coinStack : coinNotEnough} alt="" className="h-6 w-6 -my-1 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]" />
+                      <span>{item.price.toLocaleString()}</span>
+                    </button>
+                    {canBuyGems && (
+                      <button
+                        onClick={() => buyWithGems(item)}
+                        disabled={isBusy}
+                        title="Buy with gems"
+                        className="rounded-lg px-3 py-2 text-sm font-bold transition-all flex items-center justify-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
+                        style={{
+                          backgroundColor: "var(--app-bg-tertiary, #1e1f22)",
+                          border: "1px solid rgba(96,165,250,0.4)",
+                          color: "#60a5fa",
+                        }}
+                      >
+                        <img src={gemIcon} alt="" className="h-5 w-5" />
+                        <span>{item.price_gems!.toLocaleString()}</span>
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             );
