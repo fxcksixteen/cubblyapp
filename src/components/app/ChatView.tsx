@@ -3,6 +3,7 @@ import { useMessages, Message, MessageStatus } from "@/hooks/useMessages";
 import { useAuth } from "@/contexts/AuthContext";
 import { useVoice } from "@/contexts/VoiceContext";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 import { Phone, X, Reply as ReplyIcon } from "lucide-react";
 import { defaultProfileColor, getProfileColor } from "@/lib/profileColors";
 import { CallPanel, CallEventMessage } from "./VoiceCallOverlay";
@@ -663,8 +664,19 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
-    const newFiles = Array.from(files).map(f => ({ file: f, id: `file-${Date.now()}-${Math.random()}` }));
-    setPendingFiles(prev => [...prev, ...newFiles]);
+    const capMB = ent.attachmentCapMB;
+    const capBytes = capMB * 1024 * 1024;
+    const accepted: typeof pendingFiles = [];
+    let rejected = 0;
+    for (const f of Array.from(files)) {
+      if (f.size > capBytes) { rejected++; continue; }
+      accepted.push({ file: f, id: `file-${Date.now()}-${Math.random()}` });
+    }
+    if (rejected > 0) {
+      const verb = ent.isHoneyMember ? "" : " — upgrade to Honey for up to 250MB";
+      toast.error(`${rejected} file${rejected === 1 ? "" : "s"} exceeded your ${capMB}MB limit${verb}`);
+    }
+    if (accepted.length) setPendingFiles(prev => [...prev, ...accepted]);
     setAttachMenuOpen(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };

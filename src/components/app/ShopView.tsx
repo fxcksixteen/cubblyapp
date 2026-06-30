@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useCoins } from "@/contexts/CoinsContext";
 import { useGems } from "@/contexts/GemsContext";
 import { useTheme, ThemeName } from "@/contexts/ThemeContext";
+import { useEntitlements } from "@/hooks/useEntitlements";
 import { toast } from "sonner";
 import { playSound } from "@/lib/sounds";
 import heartIcon from "@/assets/icons/heart.svg";
@@ -213,6 +214,7 @@ const ShopView = () => {
   const { balance } = useCoins();
   const { balance: gemBalance } = useGems();
   const { setTheme } = useTheme();
+  const ent = useEntitlements();
   const [items, setItems] = useState<ShopItem[]>([]);
   const [owned, setOwned] = useState<Set<string>>(new Set());
   const [equipped, setEquipped] = useState<Set<string>>(new Set());
@@ -387,6 +389,23 @@ const ShopView = () => {
 
   const toggleEquip = async (item: ShopItem) => {
     const isEq = equipped.has(item.id);
+    if (!isEq && item.category === "badge") {
+      const equippedBadgeCount = items.filter((i) => i.category === "badge" && equipped.has(i.id)).length;
+      if (equippedBadgeCount >= ent.maxEquippedBadges) {
+        const upsell = ent.isHoney
+          ? ""
+          : ent.isHoneyMember
+            ? " — upgrade to Honey for 3 slots"
+            : " — Honey members get up to 3";
+        toast.error(`You can equip up to ${ent.maxEquippedBadges} badge${ent.maxEquippedBadges === 1 ? "" : "s"}${upsell}`);
+        return;
+      }
+    }
+    if (!isEq && item.category === "theme" && !ent.canUseAnimatedThemes && /animated|motion|aurora|nebula/i.test(item.name)) {
+      // Animated themes are Honey-tier only. Static themes remain available to all.
+      toast.error("Animated themes are a Honey perk");
+      return;
+    }
     const { error } = await supabase.rpc(isEq ? "unequip_shop_item" : "equip_shop_item", { _item_id: item.id });
     if (error) { toast.error("Couldn't update equipped item"); return; }
     setEquipped((prev) => {

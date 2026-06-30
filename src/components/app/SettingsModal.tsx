@@ -24,6 +24,7 @@ import KeybindsSettings from "./settings/KeybindsSettings";
 import ShopItemsGrid from "./settings/ShopItemsGrid";
 import BillingSettings from "./settings/BillingSettings";
 import { CURRENT_VERSION } from "@/lib/changelog";
+import { useEntitlements } from "@/hooks/useEntitlements";
 
 const APP_VERSION = CURRENT_VERSION;
 
@@ -98,6 +99,7 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
   const [activeCategory, setActiveCategory] = useState<SettingsCategory | null>(null);
   const { user, signOut } = useAuth();
   const { theme, setTheme } = useTheme();
+  const ent = useEntitlements();
   const [visible, setVisible] = useState(false);
   const [animating, setAnimating] = useState(false);
   const backdropRef = useRef<HTMLDivElement>(null);
@@ -234,9 +236,20 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
     setEditingField(null);
   };
 
+  const isAnimatedFile = (file: File) => {
+    const t = (file.type || "").toLowerCase();
+    const n = (file.name || "").toLowerCase();
+    return t === "image/gif" || t === "image/apng" || n.endsWith(".gif") || n.endsWith(".apng");
+  };
+
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
+    if (isAnimatedFile(file) && !ent.isHoneyMember) {
+      toast.error("Animated avatars are a Honey perk — upgrade to use a GIF profile picture");
+      if (e.target) e.target.value = "";
+      return;
+    }
     const path = `${user.id}/avatar-${Date.now()}`;
     const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
     if (error) { toast.error("Upload failed"); return; }
@@ -247,6 +260,16 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
   const handleBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
+    if (!ent.isHoneyMember) {
+      toast.error("Custom profile banners are a Honey perk");
+      if (e.target) e.target.value = "";
+      return;
+    }
+    if (isAnimatedFile(file) && !ent.isHoney) {
+      toast.error("Animated banners are a Honey-tier perk");
+      if (e.target) e.target.value = "";
+      return;
+    }
     const path = `${user.id}/banner-${Date.now()}`;
     const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
     if (error) { toast.error("Upload failed"); return; }
