@@ -349,6 +349,42 @@ const ChannelsTab = ({ serverId }: { serverId: string }) => {
   );
 };
 
+// =============== Roles ===============
+
+const RolesTab = () => (
+  <div className="max-w-xl">
+    <h2 className="text-xl font-bold mb-2" style={{ color: "var(--app-text-primary)" }}>
+      Roles
+    </h2>
+    <p className="text-sm mb-6" style={{ color: "var(--app-text-secondary)" }}>
+      Group members and grant them permissions. Use roles to separate moderators,
+      VIPs, and bots with their own colors and abilities.
+    </p>
+
+    <div
+      className="rounded-xl border-2 border-dashed p-8 flex flex-col items-center text-center gap-3"
+      style={{ borderColor: "var(--app-border)", backgroundColor: "var(--app-bg-primary)" }}
+    >
+      <div
+        className="flex h-14 w-14 items-center justify-center rounded-2xl"
+        style={{ background: "linear-gradient(135deg,#5865f2,#a78bfa)" }}
+      >
+        <Shield className="h-7 w-7 text-white" />
+      </div>
+      <div>
+        <p className="text-sm font-bold" style={{ color: "var(--app-text-primary)" }}>
+          Coming with Cubbly v0.4.1
+        </p>
+        <p className="mt-1 text-xs leading-relaxed max-w-sm" style={{ color: "var(--app-text-secondary)" }}>
+          Create custom roles with their own colors, hoist them in the member list,
+          and grant fine-grained permissions per channel. Owners get full control today —
+          custom roles unlock next patch.
+        </p>
+      </div>
+    </div>
+  </div>
+);
+
 // =============== Members ===============
 
 const MembersTab = ({ server, onClose }: { server: Server; onClose: () => void }) => {
