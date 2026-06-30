@@ -1,35 +1,43 @@
-## Root cause
+## Goal
+Make v0.3.23 fix the broken 1:1 call join system so:
+- Green pickup/accept reliably joins the caller’s exact call.
+- Orange Join/Rejoin reliably puts both users into the same call without both sides leaving/rejoining.
+- Stale/ghost call rows cannot trick either client into the wrong role.
 
-v0.3.21 added a Low-Power Mode style block in `src/index.css` that does:
+## Plan
+1. **Unify Accept + Join/Rejoin into one handshake path**
+   - Replace the fragile direct-answer green-button path with the proven join-existing flow.
+   - Accept will heartbeat into the existing call, join the same signaling channel, then request a fresh offer from the caller.
+   - Keep the UI immediate, but don’t mark the user “connected” until ICE actually connects.
 
-```css
-html.cubbly-low-power *, *::before, *::after {
-  filter: none !important;
-}
-```
+2. **Fix the caller-side role problem**
+   - When the caller receives `ready-for-offer`, ensure they become the offerer even after ring timeout or peer-leave cleanup.
+   - If a stale peer connection exists, close it and generate a fresh offer instead of bailing with “PC exists”.
+   - Scope all offer/answer/ICE handling to the current `callEventId` so old attempts cannot hijack the new one.
 
-The whole icon system (sidebar items, message composer +/GIF/send, voice/headphone/settings in the user panel, context-menu entries, status indicators) ships black-fill SVGs that are rendered as `<img>` and recolored with Tailwind's `invert` utility (which compiles to `filter: invert(...)`). The blanket `filter: none !important` wipes that out, so every icon renders as its raw black-on-dark source — exactly what the screenshots show.
+3. **Make joining an existing call deterministic**
+   - On Join/Rejoin, reuse the latest ongoing call event only when another participant has a fresh heartbeat.
+   - Immediately revive the user’s participant row and start heartbeat before signaling so the other side sees them live.
+   - Stop clearing/ending valid ongoing events during accept/join races.
 
-It's not just icons either: anything relying on a CSS `filter` for color (e.g. the red `remove-user` / `block-user` hue-rotate filter in DM menus, certain badge tints) collapses to black under low-power. This is silently active for any user with Hardware Acceleration disabled in v0.3.21.
+4. **Harden signaling retries**
+   - Send `ready-for-offer` with retries until either an offer arrives or a peer connection exists.
+   - Send the new offer reliably and re-broadcast it if another `ready-for-offer` arrives.
+   - Stop incoming/outgoing ringtone loops once a valid answer or join flow starts.
 
-## Fix for v0.3.22
+5. **Update v0.3.23 release metadata**
+   - Bump the desktop/web app version to `0.3.23`.
+   - Add a short changelog bullet about reliable green-pickup and Join/Rejoin call joining.
 
-Scope the low-power filter reset so it only strips decorative blurs/glows, never icon recoloring:
+## Files expected to change
+- `src/contexts/VoiceContext.tsx`
+- `src/lib/changelog.ts`
+- `package.json`
 
-1. In `src/index.css`, replace the universal `filter: none !important` rule with one that excludes `img` and `svg` elements (and anything explicitly opted in via a `cubbly-keep-filter` escape hatch, matching the existing `cubbly-keep-shadow` pattern).
-2. Keep `backdrop-filter: none !important` — that one is safe and is what actually buys the FPS.
-3. Leave `box-shadow`, transition, and animation rules unchanged.
-
-No component code changes needed; the icons themselves are fine.
-
-## Verification
-
-- With HA off (low-power class active): sidebar Friends/Notes/Shop icons, composer +/GIF/send, mic/headphone/settings, status dots, and red destructive menu icons all render in their normal colors.
-- With HA on: no visual change vs. v0.3.21.
-- Build typechecks; no other files touched.
-
-## Changelog (v0.3.22)
-
-- Fixed icons appearing black/invisible when Hardware Acceleration is off.
-
-No version bump or other behavior changes in this patch.
+## Validation
+- Typecheck/build through the normal harness.
+- Manually verify the code paths for:
+  - fresh call → callee clicks green pickup → both connect
+  - missed/ring-timeout call → callee clicks Join/Rejoin → both connect
+  - caller leaves/rejoins after callee joined → same call event reused
+  - stale previous call event ignored/closed safely
