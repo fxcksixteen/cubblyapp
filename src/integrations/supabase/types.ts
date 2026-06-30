@@ -385,6 +385,7 @@ export type Database = {
           pinned_at: string | null
           updated_at: string
           user_id: string
+          who_can_dm: string
         }
         Insert: {
           created_at?: string
@@ -397,6 +398,7 @@ export type Database = {
           pinned_at?: string | null
           updated_at?: string
           user_id: string
+          who_can_dm?: string
         }
         Update: {
           created_at?: string
@@ -409,6 +411,7 @@ export type Database = {
           pinned_at?: string | null
           updated_at?: string
           user_id?: string
+          who_can_dm?: string
         }
         Relationships: []
       }
@@ -1448,6 +1451,11 @@ export type Database = {
         Args: { _gaming_seconds?: number; _voice_seconds?: number }
         Returns: Json
       }
+      apply_recipient_note_edit: {
+        Args: { _body: string; _message_id: string; _title: string }
+        Returns: undefined
+      }
+      are_friends: { Args: { _a: string; _b: string }; Returns: boolean }
       assign_server_role: {
         Args: { _role_id: string; _user_id: string }
         Returns: undefined
@@ -1591,6 +1599,10 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      share_mutual_friend: {
+        Args: { _a: string; _b: string }
+        Returns: boolean
       }
       spend_coins: {
         Args: {
