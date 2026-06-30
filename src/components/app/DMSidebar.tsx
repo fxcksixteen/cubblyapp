@@ -277,6 +277,14 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                 {incomingPendingCount > 9 ? "9+" : incomingPendingCount}
               </span>
             )}
+            {item.id === "requests" && requestCount > 0 && (
+              <span
+                className="ml-auto flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#ed4245] px-1 text-[10px] font-bold text-white animate-fade-in"
+                title={`${requestCount} pending message request${requestCount === 1 ? "" : "s"}`}
+              >
+                {requestCount > 9 ? "9+" : requestCount}
+              </span>
+            )}
           </button>
         ))}
 
