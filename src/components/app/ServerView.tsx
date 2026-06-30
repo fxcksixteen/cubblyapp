@@ -22,6 +22,8 @@ import { getProfileColor } from "@/lib/profileColors";
 import { Button } from "@/components/ui/button";
 import MemberRowMenu from "@/components/app/MemberRowMenu";
 import UserProfileCard from "@/components/app/chat/UserProfileCard";
+import ServerSettingsModal from "@/components/app/ServerSettingsModal";
+
 
 const ServerView = () => {
   const location = useLocation();
