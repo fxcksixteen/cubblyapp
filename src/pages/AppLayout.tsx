@@ -462,6 +462,8 @@ const AppLayout = () => {
                 navigate(`/@me/chat/${convId}`, { replace: true });
               } else if (view === "shop") {
                 navigate("/@me/shop", { replace: true });
+              } else if (view === "honey") {
+                navigate("/@me/honey", { replace: true });
               } else if (view === "notes") {
                 navigate("/@me/notes", { replace: true });
               } else {
@@ -551,6 +553,8 @@ const AppLayout = () => {
                 navigate(`/@me/chat/${convId}`, { replace: true });
               } else if (view === "shop") {
                 navigate("/@me/shop", { replace: true });
+              } else if (view === "honey") {
+                navigate("/@me/honey", { replace: true });
               } else if (view === "notes") {
                 navigate("/@me/notes", { replace: true });
               } else {
