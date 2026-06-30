@@ -236,9 +236,20 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
     setEditingField(null);
   };
 
+  const isAnimatedFile = (file: File) => {
+    const t = (file.type || "").toLowerCase();
+    const n = (file.name || "").toLowerCase();
+    return t === "image/gif" || t === "image/apng" || n.endsWith(".gif") || n.endsWith(".apng");
+  };
+
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
+    if (isAnimatedFile(file) && !ent.isHoneyMember) {
+      toast.error("Animated avatars are a Honey perk — upgrade to use a GIF profile picture");
+      if (e.target) e.target.value = "";
+      return;
+    }
     const path = `${user.id}/avatar-${Date.now()}`;
     const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
     if (error) { toast.error("Upload failed"); return; }
@@ -249,6 +260,16 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
   const handleBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
+    if (!ent.isHoneyMember) {
+      toast.error("Custom profile banners are a Honey perk");
+      if (e.target) e.target.value = "";
+      return;
+    }
+    if (isAnimatedFile(file) && !ent.isHoney) {
+      toast.error("Animated banners are a Honey-tier perk");
+      if (e.target) e.target.value = "";
+      return;
+    }
     const path = `${user.id}/banner-${Date.now()}`;
     const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
     if (error) { toast.error("Upload failed"); return; }
