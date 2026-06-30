@@ -374,6 +374,9 @@ const AppLayout = () => {
     if (isNotes) {
       return <NotesView />;
     }
+    if (isRequests) {
+      return <MessageRequestsView onOpenConversation={(id) => navigate(`/@me/chat/${id}`, { replace: true })} />;
+    }
     if (isServerRoute) {
       return <ServerView />;
     }
