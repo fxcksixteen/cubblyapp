@@ -32,6 +32,27 @@ export type Database = {
         }
         Relationships: []
       }
+      activity_details: {
+        Row: {
+          game_key: string
+          payload: Json
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          game_key: string
+          payload?: Json
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          game_key?: string
+          payload?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       apns_subscriptions: {
         Row: {
           app_version: string | null
@@ -328,6 +349,30 @@ export type Database = {
           },
         ]
       }
+      custom_statuses: {
+        Row: {
+          emoji: string | null
+          expires_at: string | null
+          text: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          emoji?: string | null
+          expires_at?: string | null
+          text?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          emoji?: string | null
+          expires_at?: string | null
+          text?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       dm_preferences: {
         Row: {
           created_at: string
@@ -394,6 +439,63 @@ export type Database = {
         }
         Relationships: []
       }
+      gems_balances: {
+        Row: {
+          balance: number
+          lifetime_earned: number
+          lifetime_spent: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          balance?: number
+          lifetime_earned?: number
+          lifetime_spent?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          balance?: number
+          lifetime_earned?: number
+          lifetime_spent?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      gems_transactions: {
+        Row: {
+          amount: number
+          balance_after: number
+          created_at: string
+          id: string
+          metadata: Json
+          reason: string
+          source_ref: string | null
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          balance_after: number
+          created_at?: string
+          id?: string
+          metadata?: Json
+          reason: string
+          source_ref?: string | null
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          balance_after?: number
+          created_at?: string
+          id?: string
+          metadata?: Json
+          reason?: string
+          source_ref?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       gif_favorites: {
         Row: {
           created_at: string
@@ -423,6 +525,63 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      gift_transactions: {
+        Row: {
+          claimed_at: string | null
+          conversation_id: string | null
+          created_at: string
+          gift_type: string
+          id: string
+          message: string | null
+          message_id: string | null
+          payload: Json
+          recipient_id: string
+          sender_id: string
+          status: string
+        }
+        Insert: {
+          claimed_at?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          gift_type: string
+          id?: string
+          message?: string | null
+          message_id?: string | null
+          payload?: Json
+          recipient_id: string
+          sender_id: string
+          status?: string
+        }
+        Update: {
+          claimed_at?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          gift_type?: string
+          id?: string
+          message?: string | null
+          message_id?: string | null
+          payload?: Json
+          recipient_id?: string
+          sender_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gift_transactions_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gift_transactions_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       link_previews: {
         Row: {
@@ -482,6 +641,47 @@ export type Database = {
             columns: ["message_id"]
             isOneToOne: false
             referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      message_requests: {
+        Row: {
+          conversation_id: string | null
+          created_at: string
+          id: string
+          preview: string | null
+          recipient_id: string
+          sender_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          conversation_id?: string | null
+          created_at?: string
+          id?: string
+          preview?: string | null
+          recipient_id: string
+          sender_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          conversation_id?: string | null
+          created_at?: string
+          id?: string
+          preview?: string | null
+          recipient_id?: string
+          sender_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_requests_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
             referencedColumns: ["id"]
           },
         ]
@@ -612,10 +812,12 @@ export type Database = {
           display_name: string
           id: string
           last_seen_at: string
+          public_wishlist: boolean
           status: string
           updated_at: string
           user_id: string
           username: string
+          who_can_dm: string
         }
         Insert: {
           avatar_url?: string | null
@@ -625,10 +827,12 @@ export type Database = {
           display_name: string
           id?: string
           last_seen_at?: string
+          public_wishlist?: boolean
           status?: string
           updated_at?: string
           user_id: string
           username: string
+          who_can_dm?: string
         }
         Update: {
           avatar_url?: string | null
@@ -638,10 +842,12 @@ export type Database = {
           display_name?: string
           id?: string
           last_seen_at?: string
+          public_wishlist?: boolean
           status?: string
           updated_at?: string
           user_id?: string
           username?: string
+          who_can_dm?: string
         }
         Relationships: []
       }
@@ -829,6 +1035,8 @@ export type Database = {
           is_active: boolean
           name: string
           price: number
+          price_gems: number | null
+          requires_subscription: string | null
           sort_order: number
           subcategory: string | null
         }
@@ -841,6 +1049,8 @@ export type Database = {
           is_active?: boolean
           name: string
           price: number
+          price_gems?: number | null
+          requires_subscription?: string | null
           sort_order?: number
           subcategory?: string | null
         }
@@ -853,8 +1063,79 @@ export type Database = {
           is_active?: boolean
           name?: string
           price?: number
+          price_gems?: number | null
+          requires_subscription?: string | null
           sort_order?: number
           subcategory?: string | null
+        }
+        Relationships: []
+      }
+      subscription_events: {
+        Row: {
+          created_at: string
+          event_type: string
+          id: string
+          payload: Json
+          stripe_event_id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          event_type: string
+          id?: string
+          payload?: Json
+          stripe_event_id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          event_type?: string
+          id?: string
+          payload?: Json
+          stripe_event_id?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      subscriptions: {
+        Row: {
+          cancel_at_period_end: boolean
+          created_at: string
+          current_period_end: string | null
+          id: string
+          interval: string
+          status: string
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          tier: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          cancel_at_period_end?: boolean
+          created_at?: string
+          current_period_end?: string | null
+          id?: string
+          interval: string
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          tier: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          cancel_at_period_end?: boolean
+          created_at?: string
+          current_period_end?: string | null
+          id?: string
+          interval?: string
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          tier?: string
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -1045,6 +1326,27 @@ export type Database = {
         }
         Relationships: []
       }
+      wishlist_items: {
+        Row: {
+          created_at: string
+          id: string
+          item_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          item_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          item_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -1184,6 +1486,7 @@ export type Database = {
         Returns: number
       }
       unequip_shop_item: { Args: { _item_id: string }; Returns: undefined }
+      user_subscription_tier: { Args: { _user_id: string }; Returns: string }
     }
     Enums: {
       [_ in never]: never
