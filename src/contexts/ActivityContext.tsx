@@ -239,17 +239,40 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
           missStreakRef.current = 0;
           currentlyDetectedRef.current = true;
           broadcastActivity(detected);
+          // Best-effort: ask the main process for rich game-specific details.
+          // If no parser matches or it fails, we just leave activity_details alone.
+          try {
+            if (api.getGameDetails) {
+              const details = await api.getGameDetails(detected.processName)
+                ?? await api.getGameDetails(detected.displayName);
+              if (details?.gameKey && details?.payload) {
+                const key = `${details.gameKey}:${JSON.stringify(details.payload)}`;
+                if (lastDetailsKeyRef.current !== key) {
+                  lastDetailsKeyRef.current = key;
+                  await supabase.from("activity_details").upsert(
+                    {
+                      user_id: user.id,
+                      game_key: details.gameKey,
+                      payload: details.payload,
+                      updated_at: new Date().toISOString(),
+                    },
+                    { onConflict: "user_id" },
+                  );
+                }
+              }
+            }
+          } catch { /* swallow parser errors */ }
         } else {
-          // Debounce: require 2 consecutive misses before clearing so a
-          // single bad `tasklist` sample doesn't yank an active game.
-          // BUT once we hit the threshold, force the clear through even if
-          // the dedupe key already matches (prevents stuck "Playing X" rows
-          // when the previous broadcast errored out).
           missStreakRef.current += 1;
           if (missStreakRef.current >= 2) {
             if (currentlyDetectedRef.current) lastSentRef.current = null;
             currentlyDetectedRef.current = false;
             broadcastActivity(null);
+            // Also clear our rich details row.
+            if (lastDetailsKeyRef.current !== null) {
+              lastDetailsKeyRef.current = null;
+              supabase.from("activity_details").delete().eq("user_id", user.id);
+            }
           }
         }
       } catch {
