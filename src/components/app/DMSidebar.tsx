@@ -225,11 +225,26 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
             onMouseLeave={e => { if (activeView !== item.id) e.currentTarget.style.backgroundColor = ""; }}
           >
             {item.icon ? (
-              <img src={item.icon} alt="" className="h-5 w-5 shrink-0 invert opacity-80" />
+              <img
+                src={item.icon}
+                alt=""
+                className={`h-5 w-5 shrink-0 ${item.id === "honey" ? "opacity-100 drop-shadow-[0_0_6px_rgba(245,165,36,0.55)]" : "invert opacity-80"}`}
+              />
             ) : item.lucide ? (
               <item.lucide className="h-5 w-5 shrink-0 opacity-80" />
             ) : null}
-            {item.label}
+            <span className="flex-1 text-left">{item.label}</span>
+            {item.id === "honey" && showHoneyNew && (
+              <span
+                className="absolute -right-1.5 top-1/2 -translate-y-1/2 rounded-full px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-black shadow-[0_0_10px_rgba(245,165,36,0.7)]"
+                style={{
+                  background: "linear-gradient(135deg, #fcd34d 0%, #f59e0b 100%)",
+                  animation: "honey-new-pulse 2.4s ease-in-out infinite",
+                }}
+              >
+                NEW
+              </span>
+            )}
             {item.id === "friends" && incomingPendingCount > 0 && (
               <span
                 className="ml-auto flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#ed4245] px-1 text-[10px] font-bold text-white animate-fade-in"
