@@ -15,7 +15,7 @@ import {
   ArrowUpRightFromCircle,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { useServers, type ServerSummary } from "@/contexts/ServersContext";
+import { useServers, type Server } from "@/contexts/ServersContext";
 import { useServerChannels, useServerMembers } from "@/hooks/useServerChannels";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
@@ -24,7 +24,7 @@ import { getProfileColor } from "@/lib/profileColors";
 type Tab = "overview" | "channels" | "members" | "invites";
 
 interface Props {
-  server: ServerSummary;
+  server: Server;
   onClose: () => void;
   onDeleted?: () => void;
 }
@@ -106,7 +106,7 @@ const OverviewTab = ({
   onDeleted,
   onClose,
 }: {
-  server: ServerSummary;
+  server: Server;
   onDeleted?: () => void;
   onClose: () => void;
 }) => {
@@ -348,7 +348,7 @@ const ChannelsTab = ({ serverId }: { serverId: string }) => {
 
 // =============== Members ===============
 
-const MembersTab = ({ server, onClose }: { server: ServerSummary; onClose: () => void }) => {
+const MembersTab = ({ server, onClose }: { server: Server; onClose: () => void }) => {
   const { user } = useAuth();
   const { members, refresh } = useServerMembers(server.id);
   const { refresh: refreshServers } = useServers();
