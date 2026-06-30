@@ -36,6 +36,7 @@ import UserBadges from "./UserBadges";
 import friendsIcon from "@/assets/icons/friends.svg";
 import shopIcon from "@/assets/icons/shop.svg";
 import notesIcon from "@/assets/icons/notes.svg";
+import honeyIcon from "@/assets/icons/honey.svg";
 import micIcon from "@/assets/icons/microphone.svg";
 import micMuteIcon from "@/assets/icons/microphone-mute.svg";
 import headphoneIcon from "@/assets/icons/headphone.svg";
@@ -175,11 +176,32 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
     toast.success("User blocked");
   };
 
-  const navItems: Array<{ id: string; label: string; icon?: string; lucide?: React.ComponentType<{ className?: string; style?: React.CSSProperties }> }> = [
+  const navItems: Array<{ id: string; label: string; icon?: string; lucide?: React.ComponentType<{ className?: string; style?: React.CSSProperties }>; isNew?: boolean }> = [
     { id: "friends", icon: friendsIcon, label: "Friends" },
     { id: "notes", icon: notesIcon, label: "Personal Notes" },
     { id: "shop", icon: shopIcon, label: "Shop" },
+    { id: "honey", icon: honeyIcon, label: "Honey", isNew: true },
   ];
+
+  // Per-user "NEW" pill: auto-hides 14 days after first view of the Honey tab.
+  const honeyNewKey = user ? `cubbly:honey-tab-seen-at:${user.id}` : "cubbly:honey-tab-seen-at";
+  const [showHoneyNew, setShowHoneyNew] = useState<boolean>(() => {
+    try {
+      const seen = localStorage.getItem(honeyNewKey);
+      if (!seen) return true;
+      const days = (Date.now() - Number(seen)) / 86400000;
+      return days < 14;
+    } catch { return true; }
+  });
+  useEffect(() => {
+    if (activeView === "honey" && showHoneyNew) {
+      try {
+        if (!localStorage.getItem(honeyNewKey)) {
+          localStorage.setItem(honeyNewKey, String(Date.now()));
+        }
+      } catch {}
+    }
+  }, [activeView, showHoneyNew, honeyNewKey]);
 
   return (
     <div className="flex w-60 flex-shrink-0 flex-col sidebar-primary" style={{ backgroundColor: 'var(--app-bg-secondary)' }}>
@@ -203,11 +225,26 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
             onMouseLeave={e => { if (activeView !== item.id) e.currentTarget.style.backgroundColor = ""; }}
           >
             {item.icon ? (
-              <img src={item.icon} alt="" className="h-5 w-5 shrink-0 invert opacity-80" />
+              <img
+                src={item.icon}
+                alt=""
+                className={`h-5 w-5 shrink-0 ${item.id === "honey" ? "opacity-100 drop-shadow-[0_0_6px_rgba(245,165,36,0.55)]" : "invert opacity-80"}`}
+              />
             ) : item.lucide ? (
               <item.lucide className="h-5 w-5 shrink-0 opacity-80" />
             ) : null}
-            {item.label}
+            <span className="flex-1 text-left">{item.label}</span>
+            {item.id === "honey" && showHoneyNew && (
+              <span
+                className="absolute -right-1.5 top-1/2 -translate-y-1/2 rounded-full px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-black shadow-[0_0_10px_rgba(245,165,36,0.7)]"
+                style={{
+                  background: "linear-gradient(135deg, #fcd34d 0%, #f59e0b 100%)",
+                  animation: "honey-new-pulse 2.4s ease-in-out infinite",
+                }}
+              >
+                NEW
+              </span>
+            )}
             {item.id === "friends" && incomingPendingCount > 0 && (
               <span
                 className="ml-auto flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#ed4245] px-1 text-[10px] font-bold text-white animate-fade-in"
