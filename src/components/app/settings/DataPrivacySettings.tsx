@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useLocalSetting } from "@/hooks/useLocalSetting";
-import { Download, Trash2, Shield, BarChart, AlertTriangle, Users } from "lucide-react";
+import { Download, Trash2, Shield, BarChart, AlertTriangle, Users, Gift } from "lucide-react";
 import { toast } from "sonner";
 import { SettingsCard, SettingsToggleRow, SettingsPrimaryButton } from "./_shared";
 
@@ -33,6 +33,44 @@ const DataPrivacySettings = ({ cardStyle }: DataPrivacySettingsProps) => {
 
   const [whoCanDm, setWhoCanDm] = useState<WhoCanDM>("everyone");
   const [savingWho, setSavingWho] = useState<WhoCanDM | null>(null);
+  const [publicWishlist, setPublicWishlist] = useState(true);
+  const [savingWishlist, setSavingWishlist] = useState(false);
+
+  // Hydrate the user's profile-level privacy flags.
+  useEffect(() => {
+    if (!user) return;
+    let alive = true;
+    supabase
+      .from("profiles")
+      .select("public_wishlist")
+      .eq("user_id", user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!alive) return;
+        if (data && typeof (data as any).public_wishlist === "boolean") {
+          setPublicWishlist((data as any).public_wishlist);
+        }
+      });
+    return () => { alive = false; };
+  }, [user]);
+
+  const handleWishlistToggle = async (next: boolean) => {
+    if (!user || savingWishlist) return;
+    const prev = publicWishlist;
+    setPublicWishlist(next);
+    setSavingWishlist(true);
+    const { error } = await supabase
+      .from("profiles")
+      .update({ public_wishlist: next })
+      .eq("user_id", user.id);
+    setSavingWishlist(false);
+    if (error) {
+      setPublicWishlist(prev);
+      toast.error("Couldn't update wishlist privacy");
+    } else {
+      toast.success(next ? "Your wishlist is now public" : "Your wishlist is now hidden");
+    }
+  };
 
   // Hydrate the user's current who_can_dm preference from dm_preferences.
   useEffect(() => {
@@ -144,6 +182,13 @@ const DataPrivacySettings = ({ cardStyle }: DataPrivacySettingsProps) => {
       <SettingsCard cardStyle={cardStyle}>
         <SettingsToggleRow icon={<Shield className="h-5 w-5" />} title="Allow friend requests" description="Let other users send you friend requests." checked={allowFriendRequests} onChange={setAllowFriendRequests} />
         <SettingsToggleRow icon={<Shield className="h-5 w-5" />} title="Show my online status" description="When off, you appear offline to everyone." checked={showOnlineStatus} onChange={setShowOnlineStatus} />
+        <SettingsToggleRow
+          icon={<Gift className="h-5 w-5" />}
+          title="Public wishlist"
+          description="When on, anyone viewing your profile can see what you've added to your wishlist. When off, your wishlist stays private to you."
+          checked={publicWishlist}
+          onChange={handleWishlistToggle}
+        />
 
         <div className="pt-4 border-t" style={{ borderColor: "var(--app-border)" }}>
           <div className="flex items-start gap-3 mb-3">

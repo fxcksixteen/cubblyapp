@@ -36,6 +36,15 @@ interface ProfileData {
   username: string;
   bio: string | null;
   status: string;
+  public_wishlist?: boolean;
+}
+
+interface WishlistEntry {
+  item_id: string;
+  name: string;
+  price: number | null;
+  price_gems: number | null;
+  category: string;
 }
 
 const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage, startExpanded = false }: UserProfileCardProps) => {
@@ -55,14 +64,16 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
   const userActivityDetails = getActivityDetails(userId);
   const userActivityLabel = activityLabel(userActivity, isUserOnline);
 
+  const [wishlist, setWishlist] = useState<WishlistEntry[] | null>(null);
+
   useEffect(() => {
     supabase
       .from("profiles")
-      .select("avatar_url, username, bio, status, banner_url")
+      .select("avatar_url, username, bio, status, banner_url, public_wishlist")
       .eq("user_id", userId)
       .maybeSingle()
       .then(({ data }) => {
-        if (data) setProfile({ ...data, banner_url: (data as any).banner_url || null });
+        if (data) setProfile({ ...(data as any), banner_url: (data as any).banner_url || null });
       });
 
     if (user && userId !== user.id) {
@@ -79,6 +90,37 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
         });
     }
   }, [userId, user]);
+
+  // Fetch wishlist only when profile is loaded and wishlist is public (or it's
+  // the viewer's own profile — they should always see their own list).
+  useEffect(() => {
+    if (!profile) return;
+    if (!isOwnProfile && profile.public_wishlist === false) {
+      setWishlist([]);
+      return;
+    }
+    let alive = true;
+    (async () => {
+      const { data: rows } = await supabase
+        .from("wishlist_items")
+        .select("item_id, shop_items(id, name, price, price_gems, category)")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(12);
+      if (!alive) return;
+      const items: WishlistEntry[] = ((rows as any[]) ?? [])
+        .map((r) => r.shop_items ? {
+          item_id: r.shop_items.id,
+          name: r.shop_items.name,
+          price: r.shop_items.price ?? null,
+          price_gems: r.shop_items.price_gems ?? null,
+          category: r.shop_items.category,
+        } : null)
+        .filter(Boolean) as WishlistEntry[];
+      setWishlist(items);
+    })();
+    return () => { alive = false; };
+  }, [profile, userId, isOwnProfile]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -210,6 +252,27 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
               <div className="mt-3 rounded-lg bg-[#1e1f22] p-3">
                 <p className="text-xs font-semibold text-[#949ba4] uppercase tracking-wide mb-1">About Me</p>
                 <p className="text-sm text-[#dbdee1] leading-relaxed">{profile.bio}</p>
+              </div>
+            )}
+
+            {wishlist && wishlist.length > 0 && (isOwnProfile || profile?.public_wishlist !== false) && (
+              <div className="mt-3 rounded-lg bg-[#1e1f22] p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-semibold text-[#949ba4] uppercase tracking-wide">Wishlist</p>
+                  <span className="text-[10px] text-[#72767d]">{wishlist.length}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-1.5 max-h-40 overflow-y-auto pr-1">
+                  {wishlist.map((w) => (
+                    <div key={w.item_id} className="rounded-md bg-[#2b2d31] px-2 py-1.5">
+                      <p className="text-[12px] font-medium text-[#dbdee1] truncate">{w.name}</p>
+                      <p className="text-[10px] text-[#949ba4]">
+                        {w.price != null ? `${w.price.toLocaleString()} 🪙` : ""}
+                        {w.price != null && w.price_gems != null ? "  •  " : ""}
+                        {w.price_gems != null ? `${w.price_gems.toLocaleString()} 💎` : ""}
+                      </p>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
