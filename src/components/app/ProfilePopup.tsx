@@ -229,6 +229,11 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
           </div>
         </div>
       )}
+      <CustomStatusModal
+        open={customStatusOpen}
+        onClose={() => setCustomStatusOpen(false)}
+        onSaved={(s) => setCustomStatus(s ? { text: s.text, emoji: s.emoji } : null)}
+      />
     </div>
   );
 };
