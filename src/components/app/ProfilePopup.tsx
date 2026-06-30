@@ -78,7 +78,7 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
         if (!alive) return;
         if (!data?.text && !data?.emoji) { setCustomStatus(null); return; }
         if (data.expires_at && new Date(data.expires_at).getTime() < Date.now()) { setCustomStatus(null); return; }
-        setCustomStatus({ text: data.text || "", emoji: (data as any).emoji ?? null });
+        setCustomStatus({ text: data.text || "", emoji: (data as any).emoji ?? null, expires_at: (data as any).expires_at ?? null });
       });
     return () => { alive = false; };
   }, [user, customStatusOpen]);
