@@ -400,6 +400,41 @@ const ShopView = () => {
     toast.success(isEq ? `Unequipped ${item.name}` : `Equipped ${item.name}`);
   };
 
+  const toggleWishlist = async (item: ShopItem) => {
+    if (!user) return;
+    const isWished = wishlist.has(item.id);
+    setWishlist((prev) => {
+      const next = new Set(prev);
+      if (isWished) next.delete(item.id); else next.add(item.id);
+      return next;
+    });
+    if (isWished) {
+      const { error } = await supabase.from("wishlist_items").delete().eq("user_id", user.id).eq("item_id", item.id);
+      if (error) toast.error("Couldn't update wishlist");
+    } else {
+      const { error } = await supabase.from("wishlist_items").insert({ user_id: user.id, item_id: item.id });
+      if (error) toast.error("Couldn't update wishlist");
+    }
+  };
+
+  const buyWithGems = async (item: ShopItem) => {
+    if (purchasing || !item.price_gems) return;
+    if (owned.has(item.id)) { toast.info("You already own this"); return; }
+    if (gemBalance < item.price_gems) { toast.error(`Need ${item.price_gems - gemBalance} more gems`); return; }
+    setPurchasing(item.id);
+    const { error } = await supabase.rpc("purchase_shop_item_gems", { _item_id: item.id });
+    setPurchasing(null);
+    if (error) {
+      const msg = error.message || "";
+      if (msg.includes("INSUFFICIENT_GEMS")) toast.error("Not enough gems");
+      else if (msg.includes("ALREADY_OWNED")) toast.info("Already owned");
+      else toast.error("Purchase failed");
+      return;
+    }
+    toast.success(`Unlocked: ${item.name}`);
+  };
+
+
   return (
     <div className="flex-1 min-h-0 overflow-y-auto" style={{ backgroundColor: "var(--app-bg-primary)" }}>
       <style>{`
