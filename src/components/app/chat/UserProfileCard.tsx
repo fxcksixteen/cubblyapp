@@ -336,8 +336,19 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
               <img src={addUserIcon} alt="Add" className="h-3.5 w-3.5 invert" />
             </button>
           ) : null}
+          {friendshipStatus !== "blocked" && (
+            <button onClick={() => setShowGiftModal(true)} className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 hover:bg-pink-500/20 transition-colors" title="Send Gift">
+              <img src={giftIcon} alt="Gift" className="h-3.5 w-3.5 invert opacity-70" />
+            </button>
+          )}
         </div>
       )}
+      <GiftItemModal
+        open={showGiftModal}
+        onClose={() => setShowGiftModal(false)}
+        recipientId={userId}
+        recipientName={displayName}
+      />
     </div>
   ), document.body);
 };
