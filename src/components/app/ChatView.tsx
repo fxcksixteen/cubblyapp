@@ -1101,6 +1101,15 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                 onSelect={acceptMention}
               />
             )}
+            {showEmojiPopup && (
+              <EmojiPopup
+                filtered={emojiFiltered}
+                activeIndex={Math.min(emojiActiveIndex, emojiFiltered.length - 1)}
+                setActiveIndex={setEmojiActiveIndex}
+                onSelect={acceptEmoji}
+              />
+            )}
+
           <textarea
             ref={messageInputRef}
             rows={1}
