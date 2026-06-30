@@ -25,12 +25,14 @@ interface Props {
   onViewProfile: () => void;
   onMessage?: () => void;
   onMention?: () => void;
+  /** v0.4.0: opens the gem-shop gifting modal targeted at this user. */
+  onGift?: () => void;
   canKick?: boolean;
   onKick?: () => void;
   children: ReactNode;
 }
 
-const MemberRowMenu = ({ userId, displayName, isYou, onViewProfile, onMessage, onMention, canKick, onKick, children }: Props) => {
+const MemberRowMenu = ({ userId, displayName, isYou, onViewProfile, onMessage, onMention, onGift, canKick, onKick, children }: Props) => {
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
