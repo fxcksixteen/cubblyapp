@@ -22,7 +22,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { getProfileColor } from "@/lib/profileColors";
 
-type Tab = "overview" | "channels" | "members" | "invites";
+type Tab = "overview" | "channels" | "roles" | "members" | "invites";
 
 interface Props {
   server: Server;
