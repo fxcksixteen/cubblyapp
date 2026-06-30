@@ -24,6 +24,7 @@ import ChatView from "@/components/app/ChatView";
 import ShopView from "@/components/app/ShopView";
 import NotesView from "@/components/app/NotesView";
 import HoneyPage from "@/pages/HoneyPage";
+import MessageRequestsView from "@/components/app/MessageRequestsView";
 import ServerView from "@/components/app/ServerView";
 import VoiceCallOverlay from "@/components/app/VoiceCallOverlay";
 import TitleBar from "@/components/app/TitleBar";
