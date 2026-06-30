@@ -1,14 +1,22 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useLocalSetting } from "@/hooks/useLocalSetting";
-import { Download, Trash2, Shield, Lock, BarChart, AlertTriangle } from "lucide-react";
+import { Download, Trash2, Shield, Lock, BarChart, AlertTriangle, Users } from "lucide-react";
 import { toast } from "sonner";
 import { SettingsCard, SettingsToggleRow, SettingsPrimaryButton } from "./_shared";
 
 interface DataPrivacySettingsProps {
   cardStyle: React.CSSProperties;
 }
+
+type WhoCanDM = "everyone" | "friends_of_friends" | "friends_only";
+
+const WHO_OPTIONS: { id: WhoCanDM; label: string; desc: string }[] = [
+  { id: "everyone", label: "Everyone", desc: "Anyone on Cubbly can send you a DM." },
+  { id: "friends_of_friends", label: "Friends of friends", desc: "Only friends and people who share a mutual friend." },
+  { id: "friends_only", label: "Friends only", desc: "Strangers will land in your Message Requests." },
+];
 
 const DataPrivacySettings = ({ cardStyle }: DataPrivacySettingsProps) => {
   const { user, signOut } = useAuth();
@@ -20,9 +28,45 @@ const DataPrivacySettings = ({ cardStyle }: DataPrivacySettingsProps) => {
   const [usageAnalytics, setUsageAnalytics] = useLocalSetting("privacy.usageAnalytics", true);
   const [crashReports, setCrashReports] = useLocalSetting("privacy.crashReports", true);
   const [personalizedRec, setPersonalizedRec] = useLocalSetting("privacy.personalizedRec", true);
-  const [dmFromFriendsOnly, setDmFromFriendsOnly] = useLocalSetting("privacy.dmFromFriendsOnly", false);
   const [allowFriendRequests, setAllowFriendRequests] = useLocalSetting("privacy.allowFriendRequests", true);
   const [showOnlineStatus, setShowOnlineStatus] = useLocalSetting("privacy.showOnlineStatus", true);
+
+  const [whoCanDm, setWhoCanDm] = useState<WhoCanDM>("everyone");
+  const [savingWho, setSavingWho] = useState<WhoCanDM | null>(null);
+
+  // Hydrate the user's current who_can_dm preference from dm_preferences.
+  useEffect(() => {
+    if (!user) return;
+    let alive = true;
+    (supabase as any).from("dm_preferences")
+      .select("who_can_dm")
+      .eq("user_id", user.id)
+      .maybeSingle()
+      .then(({ data }: { data: { who_can_dm?: string } | null }) => {
+        if (!alive) return;
+        const v = (data?.who_can_dm as WhoCanDM) || "everyone";
+        if (["everyone", "friends_of_friends", "friends_only"].includes(v)) setWhoCanDm(v);
+      });
+    return () => { alive = false; };
+  }, [user]);
+
+  const handleWhoChange = async (next: WhoCanDM) => {
+    if (!user || next === whoCanDm) return;
+    setSavingWho(next);
+    const prev = whoCanDm;
+    setWhoCanDm(next);
+    const { error } = await (supabase as any).from("dm_preferences").upsert(
+      { user_id: user.id, who_can_dm: next, updated_at: new Date().toISOString() },
+      { onConflict: "user_id" },
+    );
+    setSavingWho(null);
+    if (error) {
+      setWhoCanDm(prev);
+      toast.error("Couldn't save DM preference");
+    } else {
+      toast.success("DM privacy updated");
+    }
+  };
 
   const handleExport = async () => {
     if (!user) return;
