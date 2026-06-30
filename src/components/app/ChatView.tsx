@@ -1123,10 +1123,9 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
             ref={messageInputRef}
             rows={1}
             value={input}
-            maxLength={1000}
+            maxLength={messageCap}
             onChange={(e) => {
-              // Hard truncate (defensive — maxLength already enforces it)
-              const v = e.target.value.slice(0, 1000);
+              const v = e.target.value.slice(0, messageCap);
               setInput(v);
               setCaretPos(e.target.selectionStart ?? v.length);
               if (v.trim()) broadcastTyping();
