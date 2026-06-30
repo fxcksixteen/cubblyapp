@@ -24,6 +24,7 @@ import KeybindsSettings from "./settings/KeybindsSettings";
 import ShopItemsGrid from "./settings/ShopItemsGrid";
 import BillingSettings from "./settings/BillingSettings";
 import { CURRENT_VERSION } from "@/lib/changelog";
+import { useEntitlements } from "@/hooks/useEntitlements";
 
 const APP_VERSION = CURRENT_VERSION;
 
