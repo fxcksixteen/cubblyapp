@@ -65,6 +65,15 @@ const MemberRowMenu = ({ userId, displayName, isYou, onViewProfile, onMessage, o
             Mention
           </ContextMenuItem>
         )}
+        {!isYou && onGift && (
+          <ContextMenuItem
+            onClick={onGift}
+            className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer"
+          >
+            <Gift className="h-4 w-4" />
+            Send a gift
+          </ContextMenuItem>
+        )}
         <ContextMenuSeparator className="my-1" style={{ backgroundColor: "var(--app-border, #2b2d31)" }} />
         <ContextMenuItem
           onClick={() => {
