@@ -187,6 +187,17 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
             <div className="my-1.5 h-px" style={{ backgroundColor: "var(--app-border, #2b2d31)" }} />
 
             <button
+              onClick={() => { setOpen(false); setCustomStatusOpen(true); }}
+              className="flex w-full items-center gap-2.5 rounded px-2 py-1.5 text-sm transition-colors"
+              style={{ color: "var(--app-text-primary, #dbdee1)" }}
+              onMouseEnter={e => { e.currentTarget.style.backgroundColor = "var(--app-hover, #35373c)"; }}
+              onMouseLeave={e => { e.currentTarget.style.backgroundColor = ""; }}
+            >
+              <Smile className="h-4 w-4" style={{ color: "var(--app-text-secondary, #949ba4)" }} />
+              {customStatus ? "Edit custom status" : "Set a custom status"}
+            </button>
+
+            <button
               onClick={() => { setOpen(false); onOpenSettings(); }}
               className="flex w-full items-center gap-2.5 rounded px-2 py-1.5 text-sm transition-colors"
               style={{ color: "var(--app-text-primary, #dbdee1)" }}
