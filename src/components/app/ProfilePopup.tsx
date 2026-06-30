@@ -83,6 +83,17 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
     return () => { alive = false; };
   }, [user, customStatusOpen]);
 
+  // Live-tick: when the active custom status passes its expires_at, clear it
+  // immediately without requiring a reload or popup reopen.
+  useEffect(() => {
+    if (!customStatus?.expires_at) return;
+    const expiresAt = new Date(customStatus.expires_at).getTime();
+    const msLeft = expiresAt - Date.now();
+    if (msLeft <= 0) { setCustomStatus(null); return; }
+    const t = setTimeout(() => setCustomStatus(null), msLeft + 250);
+    return () => clearTimeout(t);
+  }, [customStatus?.expires_at]);
+
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
