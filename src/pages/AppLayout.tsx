@@ -28,6 +28,7 @@ import MessageRequestsView from "@/components/app/MessageRequestsView";
 import ServerView from "@/components/app/ServerView";
 import VoiceCallOverlay from "@/components/app/VoiceCallOverlay";
 import TitleBar from "@/components/app/TitleBar";
+import { supabase } from "@/integrations/supabase/client";
 import CreateGroupModal from "@/components/app/CreateGroupModal";
 import GroupAvatar from "@/components/app/GroupAvatar";
 import friendsIcon from "@/assets/icons/friends.svg";
