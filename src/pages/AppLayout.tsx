@@ -285,6 +285,9 @@ const AppLayout = () => {
     if (isNotes) {
       return <span className="font-semibold" style={{ color: "var(--app-text-primary)" }}>Private Notes</span>;
     }
+    if (isHoney) {
+      return <span className="font-semibold" style={{ color: "var(--app-text-primary)" }}>Honey</span>;
+    }
     return (
       <>
         <div className="hidden sm:flex items-center gap-2">
