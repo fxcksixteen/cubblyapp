@@ -26,6 +26,8 @@ import sendIcon from "@/assets/icons/send.svg";
 import folderFileIcon from "@/assets/icons/folder-file.svg";
 import gifIcon from "@/assets/icons/gif.svg";
 import GifPicker from "./GifPicker";
+import GiftItemModal from "./GiftItemModal";
+import { Gift as GiftIcon } from "lucide-react";
 import { useMessageReactions } from "@/hooks/useMessageReactions";
 import MessageReactionsBar from "./chat/MessageReactionsBar";
 import UserDisplayName from "./UserDisplayName";
