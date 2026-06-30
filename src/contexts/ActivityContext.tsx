@@ -13,11 +13,22 @@ export interface UserActivity {
   privacy_visible: boolean;
 }
 
+/** Rich per-game presence payload (Phase 6). Lives in `activity_details`. */
+export interface ActivityDetails {
+  user_id: string;
+  game_key: string;
+  payload: Record<string, any>;
+  updated_at: string;
+}
+
 interface ActivityContextType {
   /** Map of user_id -> activity (only contains users with current visible activity) */
   activities: Map<string, UserActivity>;
+  /** Map of user_id -> rich details (only present when a parser ran successfully) */
+  activityDetails: Map<string, ActivityDetails>;
   /** Get activity for a specific user */
   getActivity: (userId: string) => UserActivity | undefined;
+  getActivityDetails: (userId: string) => ActivityDetails | undefined;
   /** My current activity sharing toggle (controls broadcasting + visibility to others) */
   shareActivity: boolean;
   setShareActivity: (enabled: boolean) => Promise<void>;
@@ -30,7 +41,9 @@ interface ActivityContextType {
 
 const ActivityContext = createContext<ActivityContextType>({
   activities: new Map(),
+  activityDetails: new Map(),
   getActivity: () => undefined,
+  getActivityDetails: () => undefined,
   shareActivity: true,
   setShareActivity: async () => {},
   myGames: [],
