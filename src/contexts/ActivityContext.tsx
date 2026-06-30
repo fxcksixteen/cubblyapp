@@ -71,9 +71,11 @@ const isElectron = typeof window !== "undefined" && (window as any).electronAPI?
 export const ActivityProvider = ({ children }: { children: ReactNode }) => {
   const { user } = useAuth();
   const [activities, setActivities] = useState<Map<string, UserActivity>>(new Map());
+  const [activityDetails, setActivityDetails] = useState<Map<string, ActivityDetails>>(new Map());
   const [shareActivity, setShareActivityState] = useState(true);
   const [myGames, setMyGames] = useState<Array<{ id: string; process_name: string; display_name: string }>>([]);
   const lastSentRef = useRef<string | null>(null);
+  const lastDetailsKeyRef = useRef<string | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollIntervalMsRef = useRef<number>(0);
   // # of consecutive ticks where we saw NO matching game. Used to debounce
