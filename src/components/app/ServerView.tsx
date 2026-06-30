@@ -96,6 +96,7 @@ const ServerView = () => {
 
   const [membersCollapsed, setMembersCollapsed] = useState(false);
   const [profileCard, setProfileCard] = useState<{ userId: string; name: string; x: number; y: number } | null>(null);
+  const [giftTarget, setGiftTarget] = useState<{ userId: string; name: string } | null>(null);
 
   const onLeave = async () => {
     if (!server || !user) return;
