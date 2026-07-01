@@ -35,11 +35,10 @@ const PERKS: Record<Exclude<SubscriptionTier, "free">, { title: string; items: s
   basic: {
     title: "What's New for You",
     items: [
-      "2× coin earning on every reward",
+      "Honey badge on your profile",
       "Attachments up to 100 MB",
-      "4,000-character messages",
+      "1,000-character messages",
       "Unlimited personal notes",
-      "Animated shop themes & motion name colors",
       "Advanced note sharing (live edits + save)",
       "Equip up to 2 badges at once",
     ],
@@ -50,7 +49,7 @@ const PERKS: Record<Exclude<SubscriptionTier, "free">, { title: string; items: s
       "500 Gems delivered every month",
       "2× coin earning on every reward",
       "Attachments up to 250 MB",
-      "8,000-character messages",
+      "4,000-character messages",
       "Unlimited personal notes",
       "Animated shop themes & motion name colors",
       "Advanced note sharing (live edits + save)",
