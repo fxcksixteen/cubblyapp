@@ -105,24 +105,34 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
     (async () => {
       const { data: rows } = await supabase
         .from("wishlist_items")
-        .select("item_id, shop_items(id, name, price, price_gems, category)")
+        .select("item_id, created_at")
         .eq("user_id", userId)
         .order("created_at", { ascending: false })
         .limit(12);
       if (!alive) return;
-      const items: WishlistEntry[] = ((rows as any[]) ?? [])
-        .map((r) => r.shop_items ? {
-          item_id: r.shop_items.id,
-          name: r.shop_items.name,
-          price: r.shop_items.price ?? null,
-          price_gems: r.shop_items.price_gems ?? null,
-          category: r.shop_items.category,
-        } : null)
-        .filter(Boolean) as WishlistEntry[];
-      setWishlist(items);
+      const ids = ((rows as any[]) ?? []).map((r) => r.item_id).filter(Boolean);
+      if (ids.length === 0) { setWishlist([]); return; }
+      const { data: items } = await supabase
+        .from("shop_items")
+        .select("id, name, price, price_gems, category")
+        .in("id", ids);
+      if (!alive) return;
+      const byId = new Map((items ?? []).map((it: any) => [it.id, it]));
+      const ordered: WishlistEntry[] = ids
+        .map((id) => byId.get(id))
+        .filter(Boolean)
+        .map((it: any) => ({
+          item_id: it.id,
+          name: it.name,
+          price: it.price ?? null,
+          price_gems: it.price_gems ?? null,
+          category: it.category,
+        }));
+      setWishlist(ordered);
     })();
     return () => { alive = false; };
   }, [profile, userId, isOwnProfile]);
+
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
