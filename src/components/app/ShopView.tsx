@@ -50,6 +50,12 @@ const THEME_ITEM_MAP: Record<string, ThemeName> = {
   theme_sky_dusk: "sky",
   theme_snowy_drift: "snowy",
   theme_moonlit_hills: "hills",
+  theme_cosmic_nebula: "nebula",
+  theme_cyber_grid: "cyber",
+  theme_volcanic: "volcanic",
+  theme_bioluminescent: "abyss",
+  theme_aurora_borealis: "aurora",
+  theme_sakura_storm: "sakura",
 };
 
 type Category = "name_color" | "theme" | "badge";
@@ -103,13 +109,27 @@ function ItemPreview({ item, displayName }: { item: ShopItem; displayName: strin
     }
     if (item.subcategory === "animated") {
       const stops = (item.config?.stops as string[]) ?? ["#22d3ee", "#a855f7", "#ec4899", "#22d3ee"];
+      const style = (item.config?.style as string) ?? "sweep";
+      const dur = (item.config?.duration as string) ?? "6s";
+      const bg = style === "conic"
+        ? `conic-gradient(from 0deg, ${stops.join(",")})`
+        : `linear-gradient(90deg, ${stops.join(",")})`;
+      const anim =
+        style === "conic"
+          ? `cb-animated-name-hue ${dur} linear infinite`
+          : style === "hueshift"
+          ? `cb-animated-name-hue ${dur} linear infinite, cb-animated-name ${dur} ease-in-out infinite`
+          : style === "pulse"
+          ? `cb-animated-name ${dur} ease-in-out infinite, cb-animated-name-pulse ${dur} ease-in-out infinite`
+          : `cb-animated-name ${dur} ease-in-out infinite`;
       return (
         <div className="flex h-20 w-full items-center justify-center rounded-lg bg-[#1e1f22] px-3">
           <span
-            className="text-lg font-extrabold bg-clip-text text-transparent shop-animated-name truncate"
+            className="text-lg font-extrabold bg-clip-text text-transparent truncate"
             style={{
-              backgroundImage: `linear-gradient(90deg, ${stops.join(",")})`,
-              backgroundSize: "300% 100%",
+              backgroundImage: bg,
+              backgroundSize: style === "conic" ? "100% 100%" : "300% 100%",
+              animation: anim,
             }}
           >
             {name}
@@ -153,6 +173,54 @@ function ItemPreview({ item, displayName }: { item: ShopItem; displayName: strin
           <div className="absolute left-0 right-0 bottom-0" style={{ height: "55%", background: "#1f2a4a", clipPath: "polygon(0 60%, 12% 45%, 25% 55%, 40% 30%, 55% 50%, 70% 35%, 85% 55%, 100% 45%, 100% 100%, 0 100%)", opacity: 0.9 }} />
           <div className="absolute left-0 right-0 bottom-0" style={{ height: "38%", background: "#141a36", clipPath: "polygon(0 70%, 15% 50%, 30% 65%, 48% 40%, 62% 60%, 78% 45%, 92% 65%, 100% 55%, 100% 100%, 0 100%)" }} />
           <div className="absolute left-0 right-0 bottom-0" style={{ height: "22%", background: "#08091a", clipPath: "polygon(0 80%, 20% 60%, 40% 75%, 60% 55%, 80% 70%, 100% 65%, 100% 100%, 0 100%)" }} />
+        </div>
+      );
+    }
+    if (item.id === "theme_cosmic_nebula") {
+      return (
+        <div className="relative h-20 w-full rounded-lg overflow-hidden" style={{ background: "radial-gradient(ellipse at 30% 20%, #4c1d95 0%, #1e0b3b 50%, #05030f 100%)" }}>
+          <div className="absolute inset-0" style={{ background: "radial-gradient(circle at 70% 70%, rgba(236,72,153,0.45), transparent 55%), radial-gradient(circle at 25% 40%, rgba(168,85,247,0.4), transparent 55%)", mixBlendMode: "screen", animation: "cb-nebula-pulse 6s ease-in-out infinite" }} />
+          <div className="absolute inset-0" style={{ backgroundImage: "radial-gradient(1px 1px at 15px 20px,#fff,transparent),radial-gradient(1px 1px at 60px 50px,#fff,transparent),radial-gradient(1px 1px at 120px 30px,#fbcfe8,transparent),radial-gradient(1px 1px at 180px 70px,#fff,transparent)", backgroundSize: "220px 120px", opacity: 0.85 }} />
+        </div>
+      );
+    }
+    if (item.id === "theme_cyber_grid") {
+      return (
+        <div className="relative h-20 w-full rounded-lg overflow-hidden" style={{ background: "linear-gradient(180deg,#050014 0%,#1a0745 55%,#ff2fbf 100%)" }}>
+          <div className="absolute" style={{ left: "50%", top: "25%", width: 60, height: 60, marginLeft: -30, borderRadius: "50%", background: "radial-gradient(circle at 50% 30%, #ffe066, #ff2fbf 55%, transparent 100%)", boxShadow: "0 0 30px rgba(255,47,191,0.7)" }} />
+          <div className="absolute" style={{ left: "-25%", right: "-25%", bottom: 0, height: "55%", background: "linear-gradient(rgba(0,255,255,0.8) 1px, transparent 1px) 0 0/100% 14px, linear-gradient(90deg, rgba(0,255,255,0.7) 1px, transparent 1px) 0 0/18px 100%", transform: "perspective(240px) rotateX(65deg)", transformOrigin: "50% 0", animation: "cb-cyber-scroll 2.4s linear infinite" }} />
+        </div>
+      );
+    }
+    if (item.id === "theme_volcanic") {
+      return (
+        <div className="relative h-20 w-full rounded-lg overflow-hidden" style={{ background: "radial-gradient(ellipse at 50% 110%, #ff5b1f 0%, #7a1502 35%, #1a0503 100%)" }}>
+          <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse at 50% 100%, rgba(255,140,40,0.6), transparent 65%)", mixBlendMode: "screen", animation: "cb-volcanic-heat 4s ease-in-out infinite" }} />
+          <div className="absolute inset-0" style={{ backgroundImage: "radial-gradient(2px 2px at 20% 80%,#ffb050,transparent),radial-gradient(1.5px 1.5px at 45% 65%,#ff8030,transparent),radial-gradient(2px 2px at 70% 75%,#ffc060,transparent)", filter: "drop-shadow(0 0 4px rgba(255,140,40,0.8))" }} />
+        </div>
+      );
+    }
+    if (item.id === "theme_bioluminescent") {
+      return (
+        <div className="relative h-20 w-full rounded-lg overflow-hidden" style={{ background: "radial-gradient(ellipse at 50% 15%, #063a75 0%, #021640 55%, #01081c 100%)" }}>
+          <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse at 30% 40%, rgba(56,189,248,0.4), transparent 55%), radial-gradient(ellipse at 75% 65%, rgba(94,234,212,0.35), transparent 55%)", mixBlendMode: "screen", animation: "cb-nebula-pulse 5s ease-in-out infinite" }} />
+          <div className="absolute inset-0" style={{ backgroundImage: "radial-gradient(1.5px 1.5px at 20% 30%,#7dd3fc,transparent),radial-gradient(1px 1px at 60% 50%,#a5f3fc,transparent),radial-gradient(1.5px 1.5px at 85% 25%,#6ee7b7,transparent)", filter: "drop-shadow(0 0 4px rgba(125,211,252,0.85))" }} />
+        </div>
+      );
+    }
+    if (item.id === "theme_aurora_borealis") {
+      return (
+        <div className="relative h-20 w-full rounded-lg overflow-hidden" style={{ background: "linear-gradient(180deg,#01102a 0%,#03215a 55%,#042038 100%)" }}>
+          <div className="absolute" style={{ inset: "0 -20% 30% -20%", background: "linear-gradient(180deg, transparent, rgba(52,211,153,0.75) 40%, rgba(59,130,246,0.6) 70%, transparent)", filter: "blur(14px)", mixBlendMode: "screen", animation: "cb-aurora-wave 8s ease-in-out infinite" }} />
+          <div className="absolute left-0 right-0 bottom-0" style={{ height: "40%", background: "#031225", clipPath: "polygon(0 55%, 20% 40%, 40% 55%, 60% 30%, 80% 55%, 100% 45%, 100% 100%, 0 100%)" }} />
+        </div>
+      );
+    }
+    if (item.id === "theme_sakura_storm") {
+      return (
+        <div className="relative h-20 w-full rounded-lg overflow-hidden" style={{ background: "linear-gradient(180deg,#2a0e30 0%,#5c1846 40%,#c86e94 80%,#f4c1a6 100%)" }}>
+          <div className="absolute" style={{ right: "18%", top: "18%", width: 22, height: 22, borderRadius: "50%", background: "radial-gradient(circle at 40% 40%, #fff0d5, #f8a488 60%, transparent)", boxShadow: "0 0 20px rgba(255,180,140,0.6)" }} />
+          <div className="absolute inset-0" style={{ backgroundImage: "radial-gradient(3px 4px at 15% 20%,#fbcfe8,transparent 70%),radial-gradient(2.5px 3.5px at 40% 55%,#f9a8d4,transparent 70%),radial-gradient(3px 4px at 70% 30%,#fbcfe8,transparent 70%),radial-gradient(2px 3px at 85% 65%,#f472b6,transparent 70%)", backgroundSize: "100% 180%", animation: "cb-sakura-fall 10s linear infinite" }} />
         </div>
       );
     }
@@ -579,6 +647,7 @@ const ShopView = () => {
             const isOwned = owned.has(item.id);
             const isEq = equipped.has(item.id);
             const isWished = wishlist.has(item.id);
+            const gemsOnly = !!(item.config as any)?.gems_only;
             const canAfford = balance >= item.price;
             const isBusy = purchasing === item.id;
             const canBuyGems = item.price_gems !== null && item.price_gems > 0;
@@ -642,28 +711,35 @@ const ShopView = () => {
                   </button>
                 ) : (
                   <div className="mt-3 flex items-stretch gap-2">
-                    <button
-                      onClick={() => buy(item)}
-                      disabled={isBusy}
-                      className="flex-1 rounded-lg py-2 text-sm font-bold transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-                      style={{
-                        backgroundColor: canAfford ? "#5865f2" : "var(--app-bg-tertiary, #1e1f22)",
-                        color: "white",
-                      }}
-                    >
-                      <img src={canAfford ? coinStack : coinNotEnough} alt="" className="h-6 w-6 -my-1 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]" />
-                      <span>{item.price.toLocaleString()}</span>
-                    </button>
+                    {!gemsOnly && (
+                      <button
+                        onClick={() => buy(item)}
+                        disabled={isBusy}
+                        className="flex-1 rounded-lg py-2 text-sm font-bold transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                        style={{
+                          backgroundColor: canAfford ? "#5865f2" : "var(--app-bg-tertiary, #1e1f22)",
+                          color: "white",
+                        }}
+                      >
+                        <img src={canAfford ? coinStack : coinNotEnough} alt="" className="h-6 w-6 -my-1 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]" />
+                        <span>{item.price.toLocaleString()}</span>
+                      </button>
+                    )}
                     {canBuyGems && (
                       <button
                         onClick={() => buyWithGems(item)}
                         disabled={isBusy}
-                        title="Buy with gems"
-                        className="rounded-lg px-3 py-2 text-sm font-bold transition-all flex items-center justify-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
+                        title={gemsOnly ? "Premium — gems only" : "Buy with gems"}
+                        className={`${gemsOnly ? "flex-1" : ""} rounded-lg px-3 py-2 text-sm font-bold transition-all flex items-center justify-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed`}
                         style={{
-                          backgroundColor: "var(--app-bg-tertiary, #1e1f22)",
-                          border: "1px solid rgba(96,165,250,0.4)",
-                          color: "#60a5fa",
+                          backgroundColor: gemsOnly
+                            ? "linear-gradient(135deg, rgba(96,165,250,0.15), rgba(139,92,246,0.18))" as any
+                            : "var(--app-bg-tertiary, #1e1f22)",
+                          background: gemsOnly
+                            ? "linear-gradient(135deg, rgba(96,165,250,0.18), rgba(139,92,246,0.22))"
+                            : undefined,
+                          border: `1px solid ${gemsOnly ? "rgba(139,92,246,0.55)" : "rgba(96,165,250,0.4)"}`,
+                          color: "#a5b8ff",
                         }}
                       >
                         <img src={gemIcon} alt="" className="h-5 w-5" />

@@ -29,7 +29,7 @@ import WhatsNewModal from "./components/app/WhatsNewModal";
 
 import { GroupIncomingCallOverlay } from "./components/app/GroupCallPanel";
 import SpaceBackground from "./components/app/SpaceBackground";
-import { SkyBackground, SnowyBackground, HillsBackground } from "./components/app/ThemeBackgrounds";
+import { SkyBackground, SnowyBackground, HillsBackground, NebulaBackground, CyberBackground, VolcanicBackground, AbyssBackground, AuroraBackground, SakuraBackground } from "./components/app/ThemeBackgrounds";
 
 const queryClient = new QueryClient();
 
@@ -61,6 +61,12 @@ const App = () => (
               <SkyBackground />
               <SnowyBackground />
               <HillsBackground />
+              <NebulaBackground />
+              <CyberBackground />
+              <VolcanicBackground />
+              <AbyssBackground />
+              <AuroraBackground />
+              <SakuraBackground />
               <Routes>
                 <Route path="/" element={<Index />} />
                 <Route path="/login" element={<Login />} />

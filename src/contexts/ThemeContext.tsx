@@ -14,7 +14,14 @@ export type ThemeName =
   | "forest"
   | "synthwave"
   | "lava"
-  | "borealis";
+  | "borealis"
+  // Premium (gem-only) themes
+  | "nebula"
+  | "cyber"
+  | "volcanic"
+  | "abyss"
+  | "aurora"
+  | "sakura";
 
 const VALID_THEMES: ThemeName[] = [
   "default",
@@ -31,6 +38,12 @@ const VALID_THEMES: ThemeName[] = [
   "synthwave",
   "lava",
   "borealis",
+  "nebula",
+  "cyber",
+  "volcanic",
+  "abyss",
+  "aurora",
+  "sakura",
 ];
 
 interface ThemeContextType {
@@ -60,10 +73,6 @@ function loadSavedTheme(): ThemeName {
 export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   const [theme, setThemeState] = useState<ThemeName>(loadSavedTheme);
 
-  // Apply data-theme synchronously alongside the React state update so the
-  // CSS variables flip in the SAME paint. The previous useEffect-only path
-  // raced with the EquippedThemeBridge re-asserting the saved theme, which
-  // is why some themes needed multiple clicks to "stick".
   const setTheme = (t: ThemeName) => {
     if (!VALID_THEMES.includes(t)) t = "default";
     try { document.documentElement.setAttribute("data-theme", t); } catch {}
