@@ -297,7 +297,7 @@ const SettingsModal = ({ isOpen, onClose, initialCategory = null }: SettingsModa
       // Update auth metadata if display_name or username changed
       const authUpdates: Record<string, string> = {};
       if (pendingChanges.display_name) authUpdates.display_name = pendingChanges.display_name;
-      if (pendingChanges.username) authUpdates.username = pendingChanges.username;
+      if (pendingChanges.username) authUpdates.username = pendingChanges.username.toLowerCase();
 
       if (Object.keys(authUpdates).length > 0) {
         const { error } = await supabase.auth.updateUser({ data: authUpdates });
@@ -314,7 +314,7 @@ const SettingsModal = ({ isOpen, onClose, initialCategory = null }: SettingsModa
       // Update profiles table
       const profileUpdates: { display_name?: string; username?: string; bio?: string; avatar_url?: string; banner_url?: string; public_wishlist?: boolean } = {};
       if (pendingChanges.display_name) profileUpdates.display_name = pendingChanges.display_name;
-      if (pendingChanges.username) profileUpdates.username = pendingChanges.username;
+      if (pendingChanges.username) profileUpdates.username = pendingChanges.username.toLowerCase();
       if (pendingChanges.bio !== undefined) profileUpdates.bio = pendingChanges.bio;
       if (pendingChanges.avatar_url) profileUpdates.avatar_url = pendingChanges.avatar_url;
       if (pendingChanges.banner_url) profileUpdates.banner_url = pendingChanges.banner_url;
