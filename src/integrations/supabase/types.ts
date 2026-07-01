@@ -1571,6 +1571,12 @@ export type Database = {
         }
         Returns: undefined
       }
+      honey_subscribers: {
+        Args: { _user_ids: string[] }
+        Returns: {
+          user_id: string
+        }[]
+      }
       is_conversation_participant: {
         Args: { _conversation_id: string; _user_id: string }
         Returns: boolean
