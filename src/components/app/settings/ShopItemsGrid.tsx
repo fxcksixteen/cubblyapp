@@ -74,7 +74,12 @@ function ItemPreview({ item, displayName }: { item: ShopItem; displayName: strin
     }
     if (item.subcategory === "animated") {
       const stops = (item.config?.stops as string[]) ?? ["#22d3ee", "#a855f7", "#ec4899", "#22d3ee"];
-      const iconUrl = typeof item.config?.icon_url === "string" ? item.config.icon_url : undefined;
+      const rawIconUrl = typeof item.config?.icon_url === "string" ? item.config.icon_url : undefined;
+      // v0.4.2: Electron file:// self-heal — rewrite "/assets/..." to "./assets/..."
+      const isElectron = typeof window !== "undefined" && !!(window as any).electronAPI;
+      const iconUrl = rawIconUrl && isElectron && rawIconUrl.startsWith("/")
+        ? `.${rawIconUrl}`
+        : rawIconUrl;
       const hasBow = !!item.config?.bow;
       const iconSrc = iconUrl || (hasBow ? imgPetite : null);
       const hasIcon = !!iconSrc;
