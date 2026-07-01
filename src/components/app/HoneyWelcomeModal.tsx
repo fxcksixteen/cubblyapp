@@ -6,6 +6,14 @@ import { useModalSlot } from "@/lib/modalQueue";
 import { CURRENT_VERSION } from "@/lib/changelog";
 import honeyBg from "@/assets/honey-welcome-bg.png.asset.json";
 
+// Electron loads pages via file:// so Lovable's relative /__l5e/ asset paths
+// can't resolve. Prepend the deployed origin when running in the desktop app.
+const isElectronRuntime =
+  typeof window !== "undefined" && !!(window as any).electronAPI;
+const honeyBgUrl = isElectronRuntime && honeyBg.url.startsWith("/")
+  ? `https://web.cubbly.app${honeyBg.url}`
+  : honeyBg.url;
+
 /**
  * HoneyWelcomeModal
  * ─────────────────
@@ -123,7 +131,7 @@ export default function HoneyWelcomeModal() {
           width: "min(92vw, 460px)",
           aspectRatio: "3 / 4",
           borderRadius: "32px",
-          backgroundImage: `url(${honeyBg.url})`,
+          backgroundImage: `url(${honeyBgUrl})`,
           backgroundSize: "cover",
           backgroundPosition: "center",
         }}
