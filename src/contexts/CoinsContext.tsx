@@ -1,7 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, ReactNode, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { removeChannelByTopic } from "@/lib/realtimeReconnect";
 import { toast } from "sonner";
 import { playSound } from "@/lib/sounds";
 import coinRewardedIcon from "@/assets/coins/coin-rewarded.png";
