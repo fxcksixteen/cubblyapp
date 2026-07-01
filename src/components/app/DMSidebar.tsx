@@ -67,6 +67,22 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
   const { getActivity } = useActivity();
   const { pending } = useFriends();
   const { isMuted, mutedUntil, setMute } = useConversationMutes();
+  const { isPinned, pinnedAt, pinnedCount, setPinned } = useConversationPins();
+
+  const handleTogglePin = async (convId: string, label: string) => {
+    const currentlyPinned = isPinned(convId);
+    if (!currentlyPinned && pinnedCount() >= MAX_PINNED_CONVERSATIONS) {
+      toast.error(`You can only pin up to ${MAX_PINNED_CONVERSATIONS} conversations`);
+      return;
+    }
+    const res = await setPinned(convId, !currentlyPinned);
+    if (!res.ok) {
+      if (res.reason === "limit") toast.error(`You can only pin up to ${MAX_PINNED_CONVERSATIONS} conversations`);
+      else toast.error("Couldn't update pin — try again");
+      return;
+    }
+    toast.success(currentlyPinned ? `Unpinned ${label}` : `Pinned ${label}`);
+  };
   const incomingPendingCount = pending.filter((p) => p.addressee_id === user?.id).length;
   const displayName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "User";
   const username = user?.user_metadata?.username || displayName.toLowerCase();
