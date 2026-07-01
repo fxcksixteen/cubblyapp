@@ -1332,13 +1332,12 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
         />
       )}
 
-      {giftModalOpen && recipientUserId && (
-        <GiftItemModal
+      {giftModalOpen && conversationId && (
+        <HoneyGiftModal
           open
           onClose={() => setGiftModalOpen(false)}
-          recipientId={recipientUserId}
-          recipientName={recipientName}
           conversationId={conversationId}
+          recipientName={recipientName}
         />
       )}
     </div>
