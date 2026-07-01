@@ -19,6 +19,7 @@ import StatusIndicator from "@/components/app/StatusIndicator";
 import ActivityCard from "@/components/app/ActivityCard";
 import UserDisplayName from "@/components/app/UserDisplayName";
 import UserBadges from "@/components/app/UserBadges";
+import { useNavigate } from "react-router-dom";
 
 interface UserProfileCardProps {
   userId: string;
@@ -50,6 +51,7 @@ interface WishlistEntry {
 const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage, startExpanded = false }: UserProfileCardProps) => {
   const { user, onlineUserIds } = useAuth();
   const { getActivity, getActivityDetails } = useActivity();
+  const navigate = useNavigate();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [friendshipStatus, setFriendshipStatus] = useState<string | null>(null);
   const [friendshipId, setFriendshipId] = useState<string | null>(null);
@@ -145,6 +147,7 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
             bio: next.bio,
             status: next.status,
             banner_url: next.banner_url || null,
+            public_wishlist: next.public_wishlist,
           });
         },
       )
@@ -204,7 +207,7 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
         <div
           ref={ref}
           onClick={(e) => e.stopPropagation()}
-          className="w-[520px] rounded-2xl overflow-hidden shadow-2xl border border-[#2b2d31] bg-[#111214] animate-in fade-in-0 zoom-in-95 duration-200"
+          className="w-[520px] max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl border border-[#2b2d31] bg-[#111214] animate-in fade-in-0 zoom-in-95 duration-200"
         >
           {/* Banner */}
            <div className="h-[130px] relative" style={{ background: profile?.banner_url ? `url(${profile.banner_url}) center/cover no-repeat` : color.banner }}>
@@ -255,24 +258,46 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
               </div>
             )}
 
-            {wishlist && wishlist.length > 0 && (isOwnProfile || profile?.public_wishlist !== false) && (
+            {wishlist && (isOwnProfile || profile?.public_wishlist !== false) && (
               <div className="mt-3 rounded-lg bg-[#1e1f22] p-3">
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-semibold text-[#949ba4] uppercase tracking-wide">Wishlist</p>
-                  <span className="text-[10px] text-[#72767d]">{wishlist.length}</span>
+                  <p className="text-xs font-semibold text-[#949ba4] uppercase tracking-wide">
+                    {isOwnProfile ? "Wishlist" : "Public Wishlist"}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-[#72767d]">{wishlist.length}</span>
+                    {isOwnProfile && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onClose();
+                          navigate("/@me/shop#tab=wishlist");
+                        }}
+                        className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-[#dbdee1] hover:bg-white/15"
+                      >
+                        Manage
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <div className="grid grid-cols-2 gap-1.5 max-h-40 overflow-y-auto pr-1">
-                  {wishlist.map((w) => (
-                    <div key={w.item_id} className="rounded-md bg-[#2b2d31] px-2 py-1.5">
-                      <p className="text-[12px] font-medium text-[#dbdee1] truncate">{w.name}</p>
-                      <p className="text-[10px] text-[#949ba4]">
-                        {w.price != null ? `${w.price.toLocaleString()} 🪙` : ""}
-                        {w.price != null && w.price_gems != null ? "  •  " : ""}
-                        {w.price_gems != null ? `${w.price_gems.toLocaleString()} 💎` : ""}
-                      </p>
-                    </div>
-                  ))}
-                </div>
+                {wishlist.length > 0 ? (
+                  <div className="grid grid-cols-2 gap-1.5 max-h-40 overflow-y-auto pr-1">
+                    {wishlist.map((w) => (
+                      <div key={w.item_id} className="rounded-md bg-[#2b2d31] px-2 py-1.5">
+                        <p className="text-[12px] font-medium text-[#dbdee1] truncate">{w.name}</p>
+                        <p className="text-[10px] text-[#949ba4]">
+                          {w.price != null ? `${w.price.toLocaleString()} 🪙` : ""}
+                          {w.price != null && w.price_gems != null ? "  •  " : ""}
+                          {w.price_gems != null ? `${w.price_gems.toLocaleString()} 💎` : ""}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="rounded-md bg-[#2b2d31] px-2 py-2 text-[12px] text-[#949ba4]">
+                    {isOwnProfile ? "Your wishlist is empty. Add items from the Shop." : "No wishlist items yet."}
+                  </p>
+                )}
               </div>
             )}
 

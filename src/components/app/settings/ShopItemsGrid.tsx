@@ -171,7 +171,7 @@ const ShopItemsGrid = ({ category, emptyLabel = "No items yet" }: Props) => {
 
   useEffect(() => {
     let alive = true;
-    (async () => {
+    const load = async () => {
       setLoading(true);
       const [{ data: catalog }, { data: inv }, { data: eq }, { data: prof }] = await Promise.all([
         supabase
@@ -202,8 +202,11 @@ const ShopItemsGrid = ({ category, emptyLabel = "No items yet" }: Props) => {
       setEquipped(new Set((eq ?? []).map((r: any) => r.item_id)));
       setDisplayName((prof as any)?.display_name || "");
       setLoading(false);
-    })();
-    return () => { alive = false; };
+    };
+    load();
+    const onEquippedChanged = () => load();
+    window.addEventListener("cubbly:shop-equipped-changed", onEquippedChanged);
+    return () => { alive = false; window.removeEventListener("cubbly:shop-equipped-changed", onEquippedChanged); };
   }, [user, category]);
 
   // Live-sync owned + equipped sets so equipping in Shop reflects here too.
@@ -254,6 +257,15 @@ const ShopItemsGrid = ({ category, emptyLabel = "No items yet" }: Props) => {
     }
     const { error } = await supabase.rpc(isEq ? "unequip_shop_item" : "equip_shop_item", { _item_id: item.id });
     if (error) { toast.error("Couldn't update equipped item"); return; }
+    if (item.category === "theme" || item.category === "name_color") {
+      setEquipped((prev) => {
+        const next = new Set(prev);
+        items.filter((i) => i.category === item.category).forEach((i) => next.delete(i.id));
+        if (!isEq) next.add(item.id);
+        return next;
+      });
+      window.dispatchEvent(new CustomEvent("cubbly:shop-equipped-changed", { detail: { category: item.category } }));
+    }
     toast.success(isEq ? `Unequipped ${item.name}` : `Equipped ${item.name}`);
   };
 

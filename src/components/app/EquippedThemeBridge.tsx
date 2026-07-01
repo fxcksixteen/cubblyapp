@@ -66,6 +66,8 @@ const EquippedThemeBridge = () => {
         .select("item_id")
         .eq("user_id", user.id)
         .eq("category", "theme")
+        .order("equipped_at", { ascending: false })
+        .limit(1)
         .maybeSingle();
       if (!alive) return;
       const id = data?.item_id;

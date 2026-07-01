@@ -79,7 +79,7 @@ const TABS: { id: Category | "all" | "wishlist"; label: string }[] = [
   { id: "name_color", label: "Name Colors" },
   { id: "theme", label: "Themes" },
   { id: "badge", label: "Badges" },
-  { id: "wishlist", label: "♥ Wishlist" },
+  { id: "wishlist", label: "Wishlist" },
 ];
 
 /** Renders a small visual preview matching the item type. */

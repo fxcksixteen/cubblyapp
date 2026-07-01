@@ -28,7 +28,7 @@ import { useEntitlements } from "@/hooks/useEntitlements";
 
 const APP_VERSION = CURRENT_VERSION;
 
-type SettingsCategory = "my-account" | "content-social" | "data-privacy" | "notifications" | "appearance" | "accessibility" | "voice-video" | "devices" | "chat" | "keybinds" | "language-time" | "advanced" | "activity-privacy" | "gaming-mode" | "update-logs" | "billing";
+export type SettingsCategory = "my-account" | "content-social" | "data-privacy" | "notifications" | "appearance" | "accessibility" | "voice-video" | "devices" | "chat" | "keybinds" | "language-time" | "advanced" | "activity-privacy" | "gaming-mode" | "update-logs" | "billing";
 
 const settingsSections = [
   {
@@ -82,6 +82,7 @@ const themes: { id: ThemeName; label: string; description: string; colors: { pri
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialCategory?: SettingsCategory | null;
 }
 
 interface PendingChanges {
@@ -91,9 +92,10 @@ interface PendingChanges {
   bio?: string;
   avatar_url?: string;
   banner_url?: string;
+  public_wishlist?: boolean;
 }
 
-const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
+const SettingsModal = ({ isOpen, onClose, initialCategory = null }: SettingsModalProps) => {
   const isMobile = useIsMobile();
   // null = category list view (mobile only). On desktop the sidebar is always visible.
   const [activeCategory, setActiveCategory] = useState<SettingsCategory | null>(null);
@@ -122,6 +124,7 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
     bio: "",
     avatar_url: null as string | null,
     banner_url: null as string | null,
+    public_wishlist: true,
   });
 
   // Pending changes (edits not yet applied)
@@ -145,6 +148,7 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
     bio: pendingChanges.bio ?? originalData.bio,
     avatar_url: pendingChanges.avatar_url ?? originalData.avatar_url,
     banner_url: pendingChanges.banner_url ?? originalData.banner_url,
+    public_wishlist: pendingChanges.public_wishlist ?? originalData.public_wishlist,
   };
 
   // Fetch profile data
@@ -154,7 +158,7 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
     const un = user.user_metadata?.username || dn.toLowerCase();
     supabase
       .from("profiles")
-      .select("bio, avatar_url, banner_url")
+      .select("bio, avatar_url, banner_url, public_wishlist")
       .eq("user_id", user.id)
       .maybeSingle()
       .then(({ data }) => {
@@ -165,6 +169,7 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
           bio: data?.bio || "",
           avatar_url: data?.avatar_url || null,
           banner_url: (data as any)?.banner_url || null,
+          public_wishlist: (data as any)?.public_wishlist !== false,
         });
       });
   }, [user]);
@@ -173,8 +178,9 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
     if (isOpen) {
       setVisible(true);
       setPendingChanges({});
-      // Mobile: start in the category-list view. Desktop: open My Account directly.
-      setActiveCategory(isMobile ? null : "my-account");
+      // Mobile normally starts in the category list, unless a specific settings
+      // row (ex: Appearance / Account) asked to jump straight into a pane.
+      setActiveCategory(initialCategory ?? (isMobile ? null : "my-account"));
       requestAnimationFrame(() => {
         requestAnimationFrame(() => setAnimating(true));
       });
@@ -183,7 +189,7 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
       const timer = setTimeout(() => setVisible(false), 250);
       return () => clearTimeout(timer);
     }
-  }, [isOpen, isMobile]);
+  }, [isOpen, isMobile, initialCategory]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -305,12 +311,13 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
       }
 
       // Update profiles table
-      const profileUpdates: { display_name?: string; username?: string; bio?: string; avatar_url?: string; banner_url?: string } = {};
+      const profileUpdates: { display_name?: string; username?: string; bio?: string; avatar_url?: string; banner_url?: string; public_wishlist?: boolean } = {};
       if (pendingChanges.display_name) profileUpdates.display_name = pendingChanges.display_name;
       if (pendingChanges.username) profileUpdates.username = pendingChanges.username;
       if (pendingChanges.bio !== undefined) profileUpdates.bio = pendingChanges.bio;
       if (pendingChanges.avatar_url) profileUpdates.avatar_url = pendingChanges.avatar_url;
       if (pendingChanges.banner_url) profileUpdates.banner_url = pendingChanges.banner_url;
+      if (pendingChanges.public_wishlist !== undefined) profileUpdates.public_wishlist = pendingChanges.public_wishlist;
 
       if (Object.keys(profileUpdates).length > 0) {
         const { error } = await supabase.from("profiles").update(profileUpdates).eq("user_id", user.id);
@@ -335,6 +342,17 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
     { label: "Username", value: currentData.username, field: "username" },
     { label: "Email", value: currentData.email, field: "email" },
   ];
+
+  const clearEquippedShopThemes = async () => {
+    if (!user) return;
+    const { error } = await supabase
+      .from("user_equipped")
+      .delete()
+      .eq("user_id", user.id)
+      .eq("category", "theme");
+    if (error) throw error;
+    window.dispatchEvent(new CustomEvent("cubbly:shop-equipped-changed", { detail: { category: "theme" } }));
+  };
 
   const renderContent = () => {
     switch (activeCategory) {
@@ -424,6 +442,40 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
                   ))}
                 </div>
 
+                {/* Wishlist Visibility */}
+                <div className="mt-5 rounded-[22px] border p-5" style={cardStyle}>
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: "var(--app-text-secondary)" }}>Wishlist</p>
+                      <p className="mt-1 text-sm font-semibold" style={{ color: "var(--app-text-primary)" }}>Show wishlist on my public profile</p>
+                      <p className="mt-1 text-xs leading-relaxed" style={{ color: "var(--app-text-secondary)" }}>
+                        When enabled, other users can see the shop items you want from your profile.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={currentData.public_wishlist}
+                      onClick={() => {
+                        const nextValue = !currentData.public_wishlist;
+                        setPendingChanges((prev) => {
+                          const next = { ...prev };
+                          if (nextValue === originalData.public_wishlist) delete next.public_wishlist;
+                          else next.public_wishlist = nextValue;
+                          return next;
+                        });
+                      }}
+                      className="relative h-7 w-12 shrink-0 rounded-full transition-colors"
+                      style={{ backgroundColor: currentData.public_wishlist ? "#5865f2" : "var(--app-hover)" }}
+                    >
+                      <span
+                        className="absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform"
+                        style={{ transform: currentData.public_wishlist ? "translateX(23px)" : "translateX(4px)" }}
+                      />
+                    </button>
+                  </div>
+                </div>
+
                 {/* Bio Section */}
                 <div className="mt-5 rounded-[22px] border p-5" style={cardStyle}>
                   <div className="flex items-center justify-between mb-3">
@@ -494,22 +546,16 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
                   <button
                     key={themeOption.id}
                     onClick={async () => {
-                      // 1. Unequip any shop theme FIRST so the realtime DELETE
-                      //    doesn't fire after our setTheme and revert it.
+                      // Built-in themes and shop themes are mutually exclusive.
+                      // Clear every equipped shop theme first, then write the
+                      // built-in theme locally so realtime can't leave Space/etc.
+                      // stuck as still equipped.
                       try {
-                        if (user) {
-                          const { data: eq } = await supabase
-                            .from("user_equipped")
-                            .select("item_id")
-                            .eq("user_id", user.id)
-                            .eq("category", "theme")
-                            .maybeSingle();
-                          if (eq?.item_id) {
-                            await supabase.rpc("unequip_shop_item", { _item_id: eq.item_id });
-                          }
-                        }
-                      } catch {}
-                      // 2. Now apply the chosen built-in theme (writes localStorage).
+                        await clearEquippedShopThemes();
+                      } catch {
+                        toast.error("Couldn't unequip the current shop theme");
+                        return;
+                      }
                       setTheme(themeOption.id);
                     }}
                     className="group relative overflow-hidden rounded-[22px] border text-left transition-all duration-200 hover:-translate-y-0.5"
