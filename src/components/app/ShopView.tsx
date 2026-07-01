@@ -357,6 +357,13 @@ const ShopView = () => {
     },
   };
 
+  // Explicit section order per tab so cheaper motion gradients don't jump above gradient colors, etc.
+  const SUBCATEGORY_ORDER: Record<string, string[]> = {
+    name_color: ["static", "gradient", "animated"],
+    theme: ["static", "animated", "premium"],
+    badge: ["profile"],
+  };
+
   const grouped = useMemo(() => {
     if (activeTab === "all" || activeTab === "wishlist") return null;
     const groups = new Map<string, ShopItem[]>();
@@ -365,8 +372,12 @@ const ShopView = () => {
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(it);
     }
-    // visible is already cheapest-first, so groups inherit that order.
-    return Array.from(groups.entries());
+    const order = SUBCATEGORY_ORDER[activeTab as string] || [];
+    const rank = (k: string) => {
+      const i = order.indexOf(k);
+      return i === -1 ? 999 : i;
+    };
+    return Array.from(groups.entries()).sort(([a], [b]) => rank(a) - rank(b));
   }, [visible, activeTab]);
 
   const buy = async (item: ShopItem) => {
