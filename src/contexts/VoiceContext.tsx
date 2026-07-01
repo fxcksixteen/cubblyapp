@@ -2280,7 +2280,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       isRemoteHangup.current = false;
 
       // Heartbeat now so caller's live-peer check flips us to "in call".
-      try { await ensureOwnParticipantRow(acceptedCall.callEventId); } catch {}
+      console.log("[acceptDiag] accept.start", { callEventId: acceptedCall.callEventId, hasOffer: !!acceptedCall.offer });
+      void heartbeatWithRetry(acceptedCall.callEventId, "accept-init");
 
       const channel = await setupSignaling(acceptedCall.conversationId);
 
@@ -2293,6 +2294,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           existingPcState: pcRef.current?.connectionState,
           existingSignalingState: pcRef.current?.signalingState,
         });
+        // v0.4.0: mark accept-in-flight so the offer handler buffers any
+        // late retry offer instead of orphaning the fresh PC we're about
+        // to build.
+        acceptInFlightRef.current = acceptedCall.callEventId;
+        pendingRetryOfferRef.current = null;
         try {
           // CRITICAL: tear down any stale PC from a previous (failed) accept
           // attempt or pre-build, otherwise createPeerConnection silently
@@ -2334,21 +2340,70 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           sdp = setHighQualityOpus(sdp);
           answer.sdp = sdp;
           await pc.setLocalDescription(answer);
-          await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id, callEventId: acceptedCall.callEventId }, "answer(accept-direct)");
+          console.log("[acceptDiag] accept.fastpath.answered", acceptedCall.callEventId);
+          await sendAnswerWithRetry(
+            channel,
+            { type: "answer", sdp: answer, senderId: user.id, callEventId: acceptedCall.callEventId },
+            () => pcRef.current,
+            "answer(accept-direct)",
+          );
           if (acceptedCall.callEventId) lastAnsweredOfferRef.current = `${acceptedCall.callEventId}:${acceptedCall.offer?.sdp || ""}`;
 
           setIncomingCall(null);
           acceptedIncomingCallRef.current = null;
           // Second heartbeat after answer so the caller's UI updates quickly.
-          void (async () => {
-            try { await (supabase as any).rpc("heartbeat_call_participant", { _call_event_id: acceptedCall.callEventId }); } catch {}
-          })();
+          void heartbeatWithRetry(acceptedCall.callEventId, "accept-post-answer");
+          // v0.4.0: extra heartbeat after ICE actually connects so the peer's
+          // reconciliation flips us the moment audio starts, not up to 10 s
+          // later on the periodic tick.
+          const onConnected = () => {
+            const st = pc.iceConnectionState;
+            if (st === "connected" || st === "completed") {
+              console.log("[acceptDiag] accept.iceConnected", acceptedCall.callEventId);
+              void heartbeatWithRetry(acceptedCall.callEventId, "accept-ice-connected");
+              pc.removeEventListener("iceconnectionstatechange", onConnected);
+            }
+          };
+          pc.addEventListener("iceconnectionstatechange", onConnected);
+
+          // v0.4.0: drain any offer retry that arrived while we were mid-
+          // accept. Same-sdp retries are ignored by the dedupe key; a new
+          // sdp means the caller renegotiated and we need to answer again.
+          acceptInFlightRef.current = null;
+          const buffered = pendingRetryOfferRef.current;
+          pendingRetryOfferRef.current = null;
+          if (buffered && buffered.callEventId === acceptedCall.callEventId) {
+            const bufferedKey = `${buffered.callEventId}:${buffered.sdp?.sdp || ""}`;
+            if (bufferedKey !== lastAnsweredOfferRef.current) {
+              console.log("[acceptDiag] draining buffered retry offer with new sdp");
+              try {
+                await pc.setRemoteDescription(new RTCSessionDescription(buffered.sdp));
+                const ans2 = await pc.createAnswer();
+                let sdp2 = ans2.sdp || "";
+                sdp2 = setHighQualityOpus(sdp2);
+                ans2.sdp = sdp2;
+                await pc.setLocalDescription(ans2);
+                await sendAnswerWithRetry(
+                  channel,
+                  { type: "answer", sdp: ans2, senderId: user.id, callEventId: acceptedCall.callEventId },
+                  () => pcRef.current,
+                  "answer(accept-direct-retry)",
+                );
+                lastAnsweredOfferRef.current = bufferedKey;
+              } catch (e) {
+                console.warn("[acceptDiag] buffered retry offer answer failed:", e);
+              }
+            }
+          }
           return;
         } catch (e) {
-          console.error("[Voice] Direct-answer accept failed, falling back to ready-for-offer:", e);
+          console.error("[acceptDiag] Direct-answer accept failed, falling back to ready-for-offer:", e);
+          acceptInFlightRef.current = null;
+          pendingRetryOfferRef.current = null;
           // fall through
         }
       }
+
 
       // SLOW PATH — no cached offer yet. Stash acceptedIncomingCallRef so the
       // standard offer handler picks it up, then ask the caller to (re)send.
