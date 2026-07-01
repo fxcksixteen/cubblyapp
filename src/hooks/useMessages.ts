@@ -346,6 +346,7 @@ export function useMessages(conversationId: string | null) {
     if (error || !insertedMessage) {
       console.error("Failed to send message:", error);
       setMessages((previous) => previous.filter((message) => message.id !== tempId));
+      toast.error("Couldn't send that message — try again");
       return false;
     }
 
