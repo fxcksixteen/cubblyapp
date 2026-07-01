@@ -207,7 +207,7 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
         <div
           ref={ref}
           onClick={(e) => e.stopPropagation()}
-          className="w-[520px] rounded-2xl overflow-hidden shadow-2xl border border-[#2b2d31] bg-[#111214] animate-in fade-in-0 zoom-in-95 duration-200"
+          className="w-[520px] max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl border border-[#2b2d31] bg-[#111214] animate-in fade-in-0 zoom-in-95 duration-200"
         >
           {/* Banner */}
            <div className="h-[130px] relative" style={{ background: profile?.banner_url ? `url(${profile.banner_url}) center/cover no-repeat` : color.banner }}>
@@ -261,7 +261,9 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
             {wishlist && (isOwnProfile || profile?.public_wishlist !== false) && (
               <div className="mt-3 rounded-lg bg-[#1e1f22] p-3">
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-semibold text-[#949ba4] uppercase tracking-wide">Wishlist</p>
+                  <p className="text-xs font-semibold text-[#949ba4] uppercase tracking-wide">
+                    {isOwnProfile ? "Wishlist" : "Public Wishlist"}
+                  </p>
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] text-[#72767d]">{wishlist.length}</span>
                     {isOwnProfile && (
