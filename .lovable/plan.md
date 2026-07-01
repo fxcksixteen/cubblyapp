@@ -1,105 +1,63 @@
+## 1. Fix the Cyber Grid theme
 
-# v0.4.0 Closeout Plan
+Rework `.cb-cyber-*` in `src/index.css`:
+- Deeper, more coherent synthwave sky: `linear-gradient(180deg, #05010f 0%, #0a0325 40%, #2a0a55 65%, #ff2fbf 88%, #ffb15c 100%)` (no ugly abrupt pink band).
+- Replace the current sun with a clean semicircle sitting on the horizon (mask off the bottom half) using pink→gold radial + crisp horizontal cut lines.
+- Rebuild the grid: two perspective grids (major + minor lines) with neon-cyan `rgba(0,240,255,…)` and a soft magenta bottom glow; smoother scroll (`6s`), stronger perspective (`800px`, `60deg`), fade mask so lines dissolve at the horizon.
+- Add a distant mountain silhouette layer under the grid.
+- Keep `.cb-cyber-scan` but tone the opacity down so it isn't noisy.
 
-Excludes (per your call): Honey tab interior redesign, lucide icon sweep, version bump, changelog.
+Also update the matching preview in `ItemPreview` for `theme_cyber_grid` (~line 187) and the shop banner (line 574 area — only if it's the cyber card; it's currently space, leave that alone) so the in-shop preview mirrors the new look.
 
----
+## 2. Keep motion name colors at the bottom of the Name Colors list
 
-## 1. Share Note modal — redesign + recipient-edit
+Root cause: the shop query orders by `price` ASC first (line 316). Premium animated items have `price = 0` (gems-only), so they get pulled above coin-priced static/gradient colors.
 
-### A. Two-page modal with swipe transition
+Fix in `ShopView.tsx` catalog load: order by `sort_order` ASC first, then `price` ASC as a tiebreaker. This keeps animated items (sort_order 2010+) below the existing static/gradient items across every tab without touching migrations.
 
-- Same modal shell, two pages stacked horizontally inside an `overflow-hidden` track that translates between `0` and `-100%`.
-- **Page 1 (default — "Send")**: recipient multi-select, optional message, big primary `Send Note` button, and a single `More settings →` row that slides to page 2. None of the toggles are visible here anymore.
-- **Page 2 ("More settings")**: header has a `← Back` chevron that slides back to page 1. Body holds the four toggles below. The Send button stays pinned at the bottom of both pages so the user never loses it.
-- Transition: 220ms `cubic-bezier(.22,.61,.36,1)` translate on the track + matching opacity fade on the leaving page. Keyboard focus is moved to the back chevron / more-settings row after each slide so it's accessible.
+## 3. Featured-card carousel with 3 more cards
 
-### B. Honey-gating the toggles
+Convert the three static banner cards at `ShopView.tsx` ~lines 568–614 into a horizontal carousel:
+- Container becomes a horizontally scrollable strip using `embla-carousel-react` (already installed via `src/components/ui/carousel.tsx`).
+- Show 3 cards per view on desktop (`basis-1/3`), 2 on tablet, 1 on mobile — same visual size as today.
+- Add left/right arrow buttons that advance by exactly one card (`api.scrollNext()` / `scrollPrev()` with `slidesToScroll: 1`, `align: "start"`).
+- Arrows are small circular buttons floating on the sides of the strip, hidden when there's nothing further to scroll.
+- Add 3 new cards to the right of the existing 3, so 6 total in this order:
+  1. Space Theme (existing)
+  2. Motion Name Colors (existing)
+  3. Earn Coins (existing)
+  4. **Cosmic Nebula** — swirling purple/pink nebula preview → `setActiveTab("theme")`
+  5. **Aurora Borealis** — animated green/teal curtain preview → `setActiveTab("theme")`
+  6. **Premium Motion Names** — pink→purple animated gradient preview showcasing the new Bow color → `setActiveTab("name_color")`
 
-All four toggles become Honey-only. For Free users each row renders disabled with a small honey-icon chip + "Honey" label and clicking it routes to `/honey`. (Enforced both in UI and in the underlying `sync_shared_note` / new `apply_recipient_note_edit` RPCs so a tampered client can't bypass.)
+Each new card mirrors the existing aspect-video, rounded-2xl, gradient-overlay style so nothing looks out of place.
 
-The four toggles on page 2, in order:
+## 4. New premium name color: "Bow"
 
-1. **View once** (existing) — burns on close.
-2. **Allow recipient to save** (existing) — adds a Save copy button on the recipient card.
-3. **Live edits from me** (existing — was "Live edits") — author's edits push to recipient.
-4. **Let recipient edit this note** (NEW — see C).
+New migration `INSERT` into `shop_items`:
+- `id`: `name_color_animated_bow`
+- `category`: `name_color`, `subcategory`: `animated`
+- `name`: `Bow`, `description`: `A soft pink-to-purple motion gradient with a tiny cute bow tucked in the corner.`
+- `price`: `0`, `price_gems`: `1500`
+- `config`: `{ gems_only: true, style: "sweep", duration: "5s", stops: ["#f9a8d4","#ec4899","#a855f7","#7c3aed","#ec4899","#f9a8d4"], bow: true }`
+- `sort_order`: `2100` (below all other animated names so it appears last, per rule #2).
 
-### C. New "Let recipient edit" feature
+## 5. Render the tiny bow on the "Bow" name color
 
-Behavior:
+Extend the animated-name rendering paths so that when `config.bow === true`, a very small `imgPetite` (the Cute 3D bow badge, already imported) is absolutely-positioned at the top-left of the name text, roughly `-6px` up / `-4px` left, `10–12px` tall, `pointer-events:none`, `z-10`, with a subtle drop-shadow.
 
-- **Not view-once + edit on**: recipient sees an edit affordance on the shared-note card. Saves call new RPC `apply_recipient_note_edit(_message_id, _title, _body)`. The RPC:
-  - Verifies the recipient is a participant of the conversation.
-  - Verifies the message's shared-note payload has `recipientCanEdit: true` and isn't burnt.
-  - Updates the author's underlying `notes` row (the one referenced by `messages.note_ref`) using SECURITY DEFINER.
-  - Calls existing `sync_shared_note` so every live-mirrored copy in any chat updates too.
-- **View-once + edit on**: same RPC, but the payload also tracks `recipientEditUsed: bool`. After the first successful edit the recipient card flips to read-only; closing still triggers the existing burn flow.
-- Author sees changes live in their own Notes view (already realtime-subscribed) and in the message card (already realtime).
-- Schema: extend the shared-note JSON payload with `recipientCanEdit: bool` and `recipientEditUsed: bool`. No new tables.
+Files to touch:
+- `src/components/app/ShopView.tsx` → `ItemPreview` animated branch (wrap the `<span>` in a `relative` container and conditionally render the bow img).
+- `src/components/app/settings/ShopItemsGrid.tsx` → same treatment in its `ItemPreview` animated branch so the Settings preview matches.
+- `src/components/app/UserDisplayName.tsx` → when an animated name color has `config.bow`, render the bow absolutely-positioned over the name in chat/profile/etc. Keep it purely decorative (aria-hidden).
 
----
+## 6. Purchase button copy
 
-## 2. Honey perk enforcement (entitlement gates)
-
-Wire `useEntitlements` to actually block/allow these:
-
-- **Animated avatars / animated server icons**: on upload in profile + server icon flows, reject `image/gif` (and animated webp/apng) unless `ent.animatedAvatars`. Show "Honey" upsell.
-- **Profile themes & banner**: gate the theme picker and banner upload in profile settings behind `ent.profileThemes`. Locked themes get a Honey badge overlay.
-- **Upload size cap**: enforce `ent.maxUploadMB` in `MessageInput`/attachment handler before upload starts; show toast with "Upgrade to Honey for larger files".
-- **Equipped badge slots**: read `ent.maxEquippedBadges` in the badge-equip UI; block the equip RPC call client-side when over cap (server already returns slot conflict, this just makes the UX explicit) and show the Honey upsell when a free user tries to equip a 4th.
-- **Honey tier badge on profiles**: add a small honey-icon chip next to the display name in `ProfilePopup` and `UserProfileCard` whenever `user_subscription_tier(user_id)` returns `basic` or `premium`. Tooltip shows the tier name.
-
----
-
-## 3. "Who can DM me" enforcement
-
-Currently the selector saves to `dm_preferences` but `create_dm_conversation` ignores it. Plan:
-
-- Modify `create_dm_conversation(other_user_id)`:
-  - Look up `other_user_id`'s `dm_preferences.dm_policy` (`everyone` | `friends_only` | `nobody`).
-  - **`everyone`**: behave as today.
-  - **`friends_only`**: if the caller is not in `friendships` (accepted) with `other_user_id`, **do not** create the conversation. Instead insert a row into `message_requests` (sender = caller, recipient = other_user_id) and raise a structured `MESSAGE_REQUEST_SENT` notice that the client maps to a friendly toast.
-  - **`nobody`**: same as friends_only but with a `DM_NOT_ALLOWED` notice and no message request created.
-- Client side: catch the two error codes in the existing DM-open path and show clean toasts / route the sender's compose intent into the request flow.
-- Recipient already has the Message Requests inbox built last phase, so accepting auto-creates the DM via existing `accept_message_request`.
-
----
-
-## 4. Wishlist-aware gifting
-
-When the Gift modal opens with a known recipient (from profile right-click, member row menu, or DM message bar):
-
-- Add a top tab row inside `GiftItemModal`: `[ Their wishlist ] [ Full shop ]`, defaulting to wishlist when it has any items, otherwise to shop.
-- Wishlist tab fetches `wishlist_items` for the recipient and joins to `shop_items` for price/name/preview.
-- Items the recipient already owns are shown disabled with an "Owned" pill.
-- Selecting an item flows through the existing `gift_shop_item` RPC; nothing changes on the server side.
-
----
+No change needed — `gems_only` items already render the "Gems Only" purple button via existing code, so the 1,500-gem price will display correctly with no coin fallback.
 
 ## Technical notes
 
-- **Migrations needed:**
-  - `apply_recipient_note_edit(_message_id, _title, _body)` RPC.
-  - `create_dm_conversation` rewritten to consult `dm_preferences` + auto-file a message request.
-- **No new tables.** All four work-streams reuse existing schema (`notes`, `messages`, `dm_preferences`, `message_requests`, `wishlist_items`, `subscriptions`).
-- **Files touched (frontend):**
-  - `src/components/notes/ShareNoteModal.tsx` — full two-page rewrite + new toggle + gating.
-  - `src/components/notes/SharedNoteMessage.tsx` — recipient edit affordance + view-once edit-once tracking.
-  - `src/hooks/useEntitlements.ts` — surface `animatedAvatars`, `profileThemes`, `maxUploadMB` if missing.
-  - Profile editor, server icon uploader, message attachment handler — animated/upload gates.
-  - `src/components/app/UserBadges.tsx` — `maxEquippedBadges` enforcement.
-  - `src/components/app/ProfilePopup.tsx` + `UserProfileCard.tsx` — Honey tier chip.
-  - `src/contexts/ConversationsContext` or wherever `create_dm_conversation` is invoked — handle new error codes.
-  - `src/components/app/GiftItemModal.tsx` — wishlist tab.
-
----
-
-## What this plan does NOT include (per your instructions)
-
-- Honey tab interior visual redesign (next pass).
-- `lucide-react` icon sweep.
-- Version bump to v0.4.0.
-- Changelog entry.
-
-Approve and I'll execute in this order: Share Note redesign → DM privacy enforcement → Honey gates → Wishlist gifting.
+- No app version bump, no changelog edit (per project rules).
+- Migration is data-only (INSERT … ON CONFLICT DO UPDATE); no schema changes.
+- Cyber CSS edits are scoped to `.cb-cyber-*` classes so no other theme is affected.
+- Carousel uses the existing `embla-carousel-react` dep — no new packages.
