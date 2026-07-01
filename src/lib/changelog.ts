@@ -23,9 +23,19 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.4.0";
+export const CURRENT_VERSION = "0.4.1";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.4.1",
+    title: "Honey welcome fix",
+    date: "2026-07-01",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Fixed the Honey welcome pop-up image not loading on the desktop app.",
+    ],
+  },
   {
     version: "0.4.0",
     title: "Cubbly Alpha — Honey, Gems, and a whole lot more",
