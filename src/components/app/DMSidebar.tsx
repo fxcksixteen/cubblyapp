@@ -443,6 +443,12 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                     <img src={friendsIcon} alt="" className="h-4 w-4 invert opacity-70" />
                     {conv.is_group ? "Open" : "View Profile"}
                   </ContextMenuItem>
+                  <ContextMenuItem
+                    onClick={() => handleTogglePin(conv.id, conv.is_group ? (conv.name || "group") : conv.participant.display_name)}
+                    className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer"
+                  >
+                    {isPinned(conv.id) ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
+                    {isPinned(conv.id) ? "Unpin" : `Pin${pinnedCount() >= MAX_PINNED_CONVERSATIONS && !isPinned(conv.id) ? ` (${MAX_PINNED_CONVERSATIONS} max)` : ""}`}
                   {!conv.is_group && (
                     <ContextMenuItem
                       onClick={() => handleRemoveFriend(conv.participant.user_id)}
