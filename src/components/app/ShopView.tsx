@@ -576,52 +576,9 @@ const ShopView = () => {
         @keyframes shopHillsTwinkle { 0%,100%{opacity:.55} 50%{opacity:.95} }
       `}</style>
 
-      {/* Banner ads */}
+      {/* Banner ads (carousel — shifts by one card) */}
       <div className="px-6 sm:px-10 pt-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <button
-            onClick={() => setActiveTab("theme")}
-            className="group relative aspect-video w-full rounded-2xl overflow-hidden text-left transition-transform hover:-translate-y-0.5 hover:shadow-2xl"
-            style={{ background: "radial-gradient(ellipse at 30% 0%, #0d1224, #07080c 60%, #04050a)", border: "1px solid #1a1e2a" }}
-          >
-            <div className="absolute inset-0 shop-space-preview-stars" />
-            <div className="absolute inset-0 shop-space-preview-shoot" />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-            <div className="absolute inset-0 p-4 flex flex-col justify-end">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-white/70">New · Premium</span>
-              <h3 className="text-lg font-extrabold text-white drop-shadow">Space Theme</h3>
-              <p className="text-[11px] text-white/80 line-clamp-2">A grok-styled charcoal sky with drifting stars and shooting stars.</p>
-            </div>
-          </button>
-
-          <button
-            onClick={() => setActiveTab("name_color")}
-            className="group relative aspect-video w-full rounded-2xl overflow-hidden text-left transition-transform hover:-translate-y-0.5 hover:shadow-2xl"
-            style={{ background: "linear-gradient(135deg,#1a0b2e,#3a0e5e,#7c1d8e,#3a0e5e,#1a0b2e)", backgroundSize: "300% 300%", border: "1px solid #2a1455" }}
-          >
-            <div className="absolute inset-0 shop-theme-aurora" style={{ backgroundImage: "linear-gradient(135deg,#22d3ee,#a855f7,#ec4899,#22d3ee)", backgroundSize: "300% 300%", opacity: 0.55, mixBlendMode: "screen" }} />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/15 to-transparent" />
-            <div className="absolute inset-0 p-4 flex flex-col justify-end">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-white/70">Featured</span>
-              <h3 className="text-lg font-extrabold text-white drop-shadow">Motion Name Colors</h3>
-              <p className="text-[11px] text-white/85 line-clamp-2">Living gradients that shimmer next to your name in chat.</p>
-            </div>
-          </button>
-
-          <div
-            className="relative aspect-video w-full rounded-2xl overflow-hidden"
-            style={{ background: "linear-gradient(135deg,#3b2a08,#7a5712,#facc15,#7a5712,#3b2a08)", backgroundSize: "300% 300%", border: "1px solid #6b4f10" }}
-          >
-            <div className="absolute inset-0 shop-theme-aurora" style={{ opacity: 0.7 }} />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-            <img src={coinStack} alt="" className="absolute -right-3 -bottom-3 h-28 w-28 opacity-90 drop-shadow-2xl rotate-[-8deg]" />
-            <div className="absolute inset-0 p-4 flex flex-col justify-end">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-white/80">Daily</span>
-              <h3 className="text-lg font-extrabold text-white drop-shadow">Earn Coins</h3>
-              <p className="text-[11px] text-white/85 line-clamp-2">Chat, call, and game with friends to stack up coins.</p>
-            </div>
-          </div>
-        </div>
+        <BannerCarousel onTab={setActiveTab} />
       </div>
 
       {/* Tabs */}
