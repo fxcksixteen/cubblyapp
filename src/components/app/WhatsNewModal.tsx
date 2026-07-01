@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { CHANGELOG, CURRENT_VERSION, getChangelogEntry } from "@/lib/changelog";
 import { useAuth } from "@/contexts/AuthContext";
+import { useModalSlot } from "@/lib/modalQueue";
 
 /**
  * "What's New" / changelog modal.
