@@ -530,7 +530,10 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
   useEffect(() => {
     if (!user || !conversationId) return;
     typingChannelReadyRef.current = false;
-    const channel = supabase.channel(`typing:${conversationId}`, {
+    // v0.4.0: unique suffix — under StrictMode / fast nav, a leftover channel
+    // with the same topic would kill typing broadcasts on the next mount.
+    const suffix = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const channel = supabase.channel(`typing:${conversationId}:${suffix}`, {
       config: { broadcast: { self: false } },
     });
     typingChannelRef.current = channel;
