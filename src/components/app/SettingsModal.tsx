@@ -325,6 +325,21 @@ const SettingsModal = ({ isOpen, onClose, initialCategory = null }: SettingsModa
         if (error) { toast.error("Failed to save changes"); setSaving(false); return; }
       }
 
+      // v0.4.2: force session refresh so user_metadata (display_name / username)
+      // propagates to every consumer of useAuth() without a page reload, and
+      // broadcast so components that fetched from the profiles table can patch
+      // their local state instead of showing stale values until refresh.
+      try {
+        if (Object.keys(authUpdates).length > 0) {
+          await supabase.auth.refreshSession();
+        }
+      } catch { /* non-fatal */ }
+      try {
+        window.dispatchEvent(new CustomEvent("cubbly:profile-updated", {
+          detail: { userId: user.id, ...pendingChanges },
+        }));
+      } catch { /* non-fatal */ }
+
       // Update originalData to reflect applied changes
       setOriginalData(prev => ({
         ...prev,
