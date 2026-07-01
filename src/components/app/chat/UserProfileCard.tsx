@@ -268,7 +268,7 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
               </div>
             )}
 
-            {wishlist && (isOwnProfile || profile?.public_wishlist !== false) && (
+            {wishlist && wishlist.length > 0 && (isOwnProfile || profile?.public_wishlist !== false) && (
               <div className="mt-3 rounded-lg bg-[#1e1f22] p-3">
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-xs font-semibold text-[#949ba4] uppercase tracking-wide">
@@ -290,26 +290,21 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
                     )}
                   </div>
                 </div>
-                {wishlist.length > 0 ? (
-                  <div className="grid grid-cols-2 gap-1.5 max-h-40 overflow-y-auto pr-1">
-                    {wishlist.map((w) => (
-                      <div key={w.item_id} className="rounded-md bg-[#2b2d31] px-2 py-1.5">
-                        <p className="text-[12px] font-medium text-[#dbdee1] truncate">{w.name}</p>
-                        <p className="text-[10px] text-[#949ba4]">
-                          {w.price != null ? `${w.price.toLocaleString()} 🪙` : ""}
-                          {w.price != null && w.price_gems != null ? "  •  " : ""}
-                          {w.price_gems != null ? `${w.price_gems.toLocaleString()} 💎` : ""}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="rounded-md bg-[#2b2d31] px-2 py-2 text-[12px] text-[#949ba4]">
-                    {isOwnProfile ? "Your wishlist is empty. Add items from the Shop." : "No wishlist items yet."}
-                  </p>
-                )}
+                <div className="grid grid-cols-2 gap-1.5 max-h-40 overflow-y-auto pr-1">
+                  {wishlist.map((w) => (
+                    <div key={w.item_id} className="rounded-md bg-[#2b2d31] px-2 py-1.5">
+                      <p className="text-[12px] font-medium text-[#dbdee1] truncate">{w.name}</p>
+                      <p className="text-[10px] text-[#949ba4]">
+                        {w.price != null ? `${w.price.toLocaleString()} 🪙` : ""}
+                        {w.price != null && w.price_gems != null ? "  •  " : ""}
+                        {w.price_gems != null ? `${w.price_gems.toLocaleString()} 💎` : ""}
+                      </p>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
+
 
             {/* Actions */}
             {!isOwnProfile && (
