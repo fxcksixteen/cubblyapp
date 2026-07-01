@@ -81,17 +81,32 @@ export const UserBadgesProvider = ({ children }: { children: ReactNode }) => {
   const pendingRef = useRef<Set<string>>(new Set());
   const timerRef = useRef<number | null>(null);
 
+  const [honey, setHoney] = useState<Set<string>>(new Set());
+
   const fetchPending = useCallback(async () => {
     const ids = Array.from(pendingRef.current);
     pendingRef.current.clear();
     if (ids.length === 0) return;
 
-    const { data } = await supabase
-      .from("user_equipped")
-      .select("user_id, item_id, slot, shop_items(category, config, name, description)")
-      .eq("category", "badge")
-      .in("user_id", ids)
-      .order("slot", { ascending: true });
+    const [{ data }, { data: honeyRows }] = await Promise.all([
+      supabase
+        .from("user_equipped")
+        .select("user_id, item_id, slot, shop_items(category, config, name, description)")
+        .eq("category", "badge")
+        .in("user_id", ids)
+        .order("slot", { ascending: true }),
+      supabase.rpc("honey_subscribers", { _user_ids: ids }),
+    ]);
+
+    setHoney((prev) => {
+      const next = new Set(prev);
+      // reset the newly-fetched ids
+      for (const id of ids) next.delete(id);
+      for (const row of (honeyRows ?? []) as any[]) {
+        if (row?.user_id) next.add(row.user_id);
+      }
+      return next;
+    });
 
     setBadges((prev) => {
       const next = new Map(prev);
@@ -117,8 +132,13 @@ export const UserBadgesProvider = ({ children }: { children: ReactNode }) => {
   );
 
   const get = useCallback(
-    (userId: string | null | undefined) => (userId ? badges.get(userId) ?? [] : []),
-    [badges]
+    (userId: string | null | undefined) => {
+      if (!userId) return [];
+      const list = badges.get(userId) ?? [];
+      // Honey badge is always first and never counted against the equip cap.
+      return honey.has(userId) ? [HONEY_BADGE, ...list] : list;
+    },
+    [badges, honey]
   );
 
   // Realtime: any badge equip/unequip drops & refetches that user
