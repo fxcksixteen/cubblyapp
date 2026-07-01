@@ -40,7 +40,7 @@ const PLANS: PlanDef[] = [
   {
     tier: "honey",
     name: "Honey",
-    tagline: "The full hive — for the cozy chronics.",
+    tagline: "The full hive.",
     monthly: 7.99,
     annual: 76.70,
     accent: "from-amber-400 via-rose-400 to-violet-500",
