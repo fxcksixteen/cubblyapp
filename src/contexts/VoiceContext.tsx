@@ -3588,6 +3588,71 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     return () => clearInterval(i);
   }, [activeCall, user, currentCallEventId, isScreenSharing]);
 
+  // v0.4.0: Synthetic pickup self-test. Two in-process peer connections play
+  // caller + callee; we run the exact same answer-with-retry helper against
+  // a mock channel so the acceptCall hardening is exercised end-to-end.
+  const runPickupSelfTest = useCallback(async (): Promise<PickupSelfTestResult> => {
+    const t0 = Date.now();
+    const stages = { mediaAcquired: false, peerCreated: false, offerAnswered: false, iceConnected: false };
+    let localPc: RTCPeerConnection | null = null;
+    let remotePc: RTCPeerConnection | null = null;
+    let stream: MediaStream | null = null;
+    try {
+      console.log("[acceptDiag] selfTest.start");
+      stream = await getUserMedia();
+      stages.mediaAcquired = true;
+      console.log("[acceptDiag] selfTest.mediaAcquired");
+
+      const iceServers = iceServersRef.current;
+      localPc = new RTCPeerConnection({ iceServers, iceTransportPolicy: "all" });
+      remotePc = new RTCPeerConnection({ iceServers, iceTransportPolicy: "all" });
+      stages.peerCreated = true;
+      console.log("[acceptDiag] selfTest.peerCreated");
+
+      localPc.onicecandidate = (e) => { if (e.candidate) remotePc?.addIceCandidate(e.candidate).catch(() => {}); };
+      remotePc.onicecandidate = (e) => { if (e.candidate) localPc?.addIceCandidate(e.candidate).catch(() => {}); };
+      stream.getTracks().forEach(t => localPc!.addTrack(t, stream!));
+
+      const iceConnected = new Promise<void>((resolve, reject) => {
+        const to = setTimeout(() => reject(new Error("ICE timeout (8s)")), 8000);
+        localPc!.oniceconnectionstatechange = () => {
+          const s = localPc!.iceConnectionState;
+          if (s === "connected" || s === "completed") { clearTimeout(to); resolve(); }
+          if (s === "failed") { clearTimeout(to); reject(new Error("ICE failed")); }
+        };
+      });
+
+      // Caller side offer
+      const offer = await localPc.createOffer();
+      await localPc.setLocalDescription(offer);
+      await remotePc.setRemoteDescription(offer);
+
+      // Callee runs the same helper flow the accept path uses
+      const answer = await remotePc.createAnswer();
+      await remotePc.setLocalDescription(answer);
+      // Exercise sendAnswerWithRetry against a mock channel that behaves
+      // like a healthy realtime channel (returns "ok").
+      const mockChannel: any = { send: async () => "ok" };
+      await sendAnswerWithRetry(mockChannel, { type: "answer", sdp: answer }, () => localPc, "selfTest.answer");
+      await localPc.setRemoteDescription(answer);
+      stages.offerAnswered = true;
+      console.log("[acceptDiag] selfTest.offerAnswered");
+
+      await iceConnected;
+      stages.iceConnected = true;
+      console.log("[acceptDiag] selfTest.iceConnected");
+
+      return { pass: true, stages, durationMs: Date.now() - t0 };
+    } catch (e: any) {
+      console.error("[acceptDiag] selfTest failed:", e);
+      return { pass: false, stages, errorMessage: e?.message || String(e), durationMs: Date.now() - t0 };
+    } finally {
+      try { localPc?.close(); } catch {}
+      try { remotePc?.close(); } catch {}
+      try { stream?.getTracks().forEach(t => t.stop()); } catch {}
+    }
+  }, [getUserMedia]);
+
   return (
     <VoiceContext.Provider value={{
       settings, updateSettings, screenShareSettings, updateScreenShareSettings,
@@ -3600,7 +3665,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       peerInstantState,
       getUserVolume, setUserVolume, isUserMuted, setUserMuted,
       getCallDiagnostics,
+      runPickupSelfTest,
     }}>
+
       {children}
     </VoiceContext.Provider>
   );
