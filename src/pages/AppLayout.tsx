@@ -81,7 +81,10 @@ const AppLayout = () => {
     return () => { alive = false; supabase.removeChannel(ch); };
   }, [user]);
 
-  const pathParts = location.pathname.split("/").filter(Boolean);
+  const rawParts = location.pathname.split("/").filter(Boolean);
+  // Normalize so top-level routes like /honey behave like /@me/honey without
+  // rewriting every downstream pathParts[1] check.
+  const pathParts = rawParts[0] === "@me" ? rawParts : ["@me", ...rawParts];
   const isChatRoute = pathParts[1] === "chat" && pathParts[2];
   const chatIdFromUrl = isChatRoute ? pathParts[2] : null;
   const isYouRoute = pathParts[1] === "you";
@@ -498,7 +501,7 @@ const AppLayout = () => {
               } else if (view === "shop") {
                 navigate("/@me/shop", { replace: true });
               } else if (view === "honey") {
-                navigate("/@me/honey", { replace: true });
+                navigate("/honey", { replace: true });
               } else if (view === "notes") {
                 navigate("/@me/notes", { replace: true });
               } else if (view === "requests") {
@@ -591,7 +594,7 @@ const AppLayout = () => {
               } else if (view === "shop") {
                 navigate("/@me/shop", { replace: true });
               } else if (view === "honey") {
-                navigate("/@me/honey", { replace: true });
+                navigate("/honey", { replace: true });
               } else if (view === "notes") {
                 navigate("/@me/notes", { replace: true });
               } else if (view === "requests") {
@@ -608,7 +611,7 @@ const AppLayout = () => {
 
 
         <div className="flex flex-1 flex-col">
-          <div className="flex h-14 items-center justify-between border-b px-5 shadow-sm" style={{ backgroundColor: "var(--app-bg-primary)", borderColor: "var(--app-border)" }}>
+          <div className="flex h-14 items-center justify-between px-5 shadow-sm relative z-20" style={{ backgroundColor: isHoney ? "transparent" : "var(--app-bg-primary)", borderBottom: isHoney ? "none" : "1px solid var(--app-border)", marginBottom: isHoney ? "-56px" : undefined }}>
             {isDM && activeConvId && activeConv ? (
               <>
                 {(() => {
