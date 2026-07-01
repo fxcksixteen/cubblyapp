@@ -32,17 +32,28 @@ const YouPage = () => {
 
   useEffect(() => {
     if (!user) return;
-    supabase
-      .from("profiles")
-      .select("*")
-      .eq("user_id", user.id)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (data) {
-          setProfile(data);
-          setStatus(data.status || "online");
-        }
-      });
+    const fetchProfile = () => {
+      supabase
+        .from("profiles")
+        .select("*")
+        .eq("user_id", user.id)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (data) {
+            setProfile(data);
+            setStatus(data.status || "online");
+          }
+        });
+    };
+    fetchProfile();
+    // v0.4.2: refetch profile immediately when Settings saves changes so
+    // the current-user display name / username update live.
+    const onProfileUpdated = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { userId?: string } | undefined;
+      if (!detail?.userId || detail.userId === user.id) fetchProfile();
+    };
+    window.addEventListener("cubbly:profile-updated", onProfileUpdated);
+    return () => window.removeEventListener("cubbly:profile-updated", onProfileUpdated);
   }, [user]);
 
   const updateStatus = async (next: string) => {
