@@ -64,7 +64,9 @@ function RewardToast({ amount, reason }: { amount: number; reason: string }) {
 
 export const CoinsProvider = ({ children }: { children: ReactNode }) => {
   const { user } = useAuth();
-  const [balance, setBalance] = useState(0);
+  const [balance, setBalanceState] = useState(0);
+  const balanceRef = useRef(0);
+  const setBalance = useCallback((n: number) => { balanceRef.current = n; setBalanceState(n); }, []);
   const [loading, setLoading] = useState(true);
 
   // Track whether we're currently active so the heartbeat knows to accrue.
