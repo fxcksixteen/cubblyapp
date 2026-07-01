@@ -126,13 +126,15 @@ function ItemPreview({ item, displayName }: { item: ShopItem; displayName: strin
           : `cb-animated-name ${dur} ease-in-out infinite`;
       const hasBow = !!(item.config as any)?.bow;
       return (
-        <div className="flex h-20 w-full items-center justify-center rounded-lg bg-[#1e1f22] px-3">
+        <div className="flex h-20 w-full items-center justify-center rounded-lg bg-[#1e1f22] px-3 overflow-hidden">
           <span
-            className="text-lg font-extrabold bg-clip-text text-transparent truncate relative inline-block"
+            className={`text-lg font-extrabold bg-clip-text text-transparent relative inline-block ${hasBow ? "" : "truncate"}`}
             style={{
               backgroundImage: bg,
               backgroundSize: style === "conic" ? "100% 100%" : "300% 100%",
               animation: anim,
+              overflow: "visible",
+              paddingTop: hasBow ? "0.55em" : undefined,
             }}
           >
             {name}
@@ -142,7 +144,7 @@ function ItemPreview({ item, displayName }: { item: ShopItem; displayName: strin
                 alt=""
                 aria-hidden="true"
                 draggable={false}
-                style={{ position: "absolute", top: "-0.55em", left: "-0.35em", height: "0.85em", width: "auto", pointerEvents: "none", filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.5))", transform: "rotate(-14deg)" }}
+                style={{ position: "absolute", top: "-0.05em", left: "-0.15em", height: "0.75em", width: "auto", pointerEvents: "none", filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.5))", transform: "rotate(-18deg)", transformOrigin: "bottom left" }}
               />
             )}
           </span>
