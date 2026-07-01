@@ -66,7 +66,7 @@ const YouPage = () => {
     { icon: <Headphones className="h-5 w-5" />, label: "Voice & Video", onClick: () => openSettings("voice-video") },
     { icon: <Activity className="h-5 w-5" />, label: "Activity Privacy", onClick: () => openSettings("activity-privacy") },
     { icon: <Palette className="h-5 w-5" />, label: "Appearance", onClick: () => openSettings("appearance") },
-    { icon: <Shield className="h-5 w-5" />, label: "Account", onClick: () => openSettings("account") },
+    { icon: <Shield className="h-5 w-5" />, label: "Account", onClick: () => openSettings("my-account") },
     { icon: <Settings className="h-5 w-5" />, label: "All Settings", onClick: () => openSettings() },
   ];
 
