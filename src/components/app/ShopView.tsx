@@ -241,6 +241,7 @@ const ShopView = () => {
   const [displayName, setDisplayName] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState<string | null>(null);
+  const wishlistBusyRef = useRef<Set<string>>(new Set());
 
   // Load catalog + inventory
   useEffect(() => {
