@@ -1546,7 +1546,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               answer.sdp = sdp;
               await newPc.setLocalDescription(answer);
 
-              await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id, callEventId: payload.callEventId || currentCallEventIdRef.current }, "answer(rejoin)");
+              await sendAnswerWithRetry(
+                channel,
+                { type: "answer", sdp: answer, senderId: user.id, callEventId: payload.callEventId || currentCallEventIdRef.current },
+                () => pcRef.current,
+                "answer(rejoin)",
+              );
               if (offerDedupeKey) lastAnsweredOfferRef.current = offerDedupeKey;
 
               setActiveCall(prev => prev ? {
@@ -1557,14 +1562,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
                 peerLeftAt: undefined,
               } : prev);
               peerIdRef.current = payload.senderId || peerIdRef.current;
-              // v0.3.12: immediate heartbeat so the staying peer sees us live
-              // in call_participants and stops showing "Not in call".
+              // v0.4.0: heartbeat with retry so a single DB blip doesn't
+              // leave the staying peer stuck on "Not in call".
               const evtId = payload.callEventId || currentCallEventIdRef.current;
-              if (evtId) {
-                void (async () => {
-            try { await (supabase as any).rpc("heartbeat_call_participant", { _call_event_id: evtId }); } catch {}
-                })();
-              }
+              if (evtId) void heartbeatWithRetry(evtId, "rejoin");
+
 
             } catch (e) {
               console.error("[Voice] Rejoin auto-accept failed (keeping call alive):", e);
