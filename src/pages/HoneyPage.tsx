@@ -144,7 +144,7 @@ export default function HoneyPage() {
             </div>
           )}
           <h1 className="mt-4 font-heading text-5xl md:text-6xl font-extrabold tracking-tight text-white drop-shadow-[0_4px_20px_rgba(0,0,0,0.4)] leading-[1.05]">
-            Unlock a world of<br />perks with <span className="bg-gradient-to-r from-amber-200 via-rose-200 to-violet-200 bg-clip-text text-transparent">Honey</span>
+            A little jar of<br /><span className="bg-gradient-to-r from-amber-200 via-rose-200 to-violet-200 bg-clip-text text-transparent">cozy magic</span>
           </h1>
 
           {/* Interval toggle with sliding thumb */}
