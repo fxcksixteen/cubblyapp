@@ -150,8 +150,12 @@ export function useMessages(conversationId: string | null) {
     fetchMessages();
 
     if (conversationId) {
+      // v0.4.0: unique suffix — under StrictMode/HMR/fast-nav a leftover
+      // channel with the same topic name would throw on the next .subscribe()
+      // and silently drop realtime message delivery.
+      const suffix = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
       channelRef.current = supabase
-        .channel(`messages:${conversationId}`)
+        .channel(`messages:${conversationId}:${suffix}`)
         .on(
           "postgres_changes",
           { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` },
