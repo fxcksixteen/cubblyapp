@@ -378,6 +378,9 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                             <UserBadges userId={conv.participant.user_id} size={12} />
                           </>
                         )}
+                        {isPinned(conv.id) && (
+                          <Pin className="h-3 w-3 shrink-0 opacity-90 rotate-45" style={{ filter: "none", color: "var(--app-accent, #5865f2)" }} />
+                        )}
                         {isMuted(conv.id) && (
                           <BellOff className="h-3 w-3 shrink-0 opacity-100" style={{ filter: "none" }} />
                         )}
