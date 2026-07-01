@@ -181,7 +181,7 @@ function BannerCarousel({ onTab }: { onTab: TabSetter }) {
             >
               <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/10 to-transparent" />
               <div className="absolute inset-0 p-4 flex flex-col justify-end">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-white/80">Ultra · 1,500 Gems</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-white/80">Ultra · 1,200 Gems</span>
                 <h3 className="text-lg font-extrabold text-white drop-shadow">Bow — Motion Name</h3>
                 <p className="text-[11px] text-white/85 line-clamp-2">Pink-to-purple shimmer with a tiny bow tucked beside your name.</p>
               </div>
@@ -408,7 +408,6 @@ const ShopView = () => {
 
   const toggleEquip = async (item: ShopItem) => {
     const isEq = equipped.has(item.id);
-    const isAnimatedCosmetic = (item.category === "theme" || item.category === "name_color") && item.subcategory === "animated";
     if (!isEq && item.category === "badge") {
       const equippedBadgeCount = items.filter((i) => i.category === "badge" && equipped.has(i.id)).length;
       if (equippedBadgeCount >= ent.maxEquippedBadges) {
@@ -421,15 +420,10 @@ const ShopView = () => {
         return;
       }
     }
-    if (!isEq && isAnimatedCosmetic && !ent.isHoney) {
-      toast.error(item.category === "name_color" ? "Motion name colors are a Standard Honey perk" : "Animated themes are a Standard Honey perk");
-      return;
-    }
     const { error } = await supabase.rpc(isEq ? "unequip_shop_item" : "equip_shop_item", { _item_id: item.id });
     if (error) {
       const msg = error.message || "";
       if (msg.includes("BADGE_LIMIT")) toast.error(`You can equip up to ${ent.maxEquippedBadges} badge${ent.maxEquippedBadges === 1 ? "" : "s"}`);
-      else if (msg.includes("HONEY_REQUIRED")) toast.error("That perk requires Standard Honey");
       else toast.error("Couldn't update equipped item");
       return;
     }
@@ -444,9 +438,6 @@ const ShopView = () => {
       }
       return next;
     });
-    if (!isEq && ent.isHoney && isAnimatedCosmetic) {
-      setOwned((prev) => new Set(prev).add(item.id));
-    }
     if (item.category === "theme") setTheme(isEq ? "default" : (THEME_ITEM_MAP[item.id] || "default"));
     toast.success(isEq ? `Unequipped ${item.name}` : `Equipped ${item.name}`);
   };
@@ -588,9 +579,7 @@ const ShopView = () => {
             const isOwned = owned.has(item.id);
             const isEq = equipped.has(item.id);
             const isWished = wishlist.has(item.id);
-            const isAnimatedCosmetic = (item.category === "theme" || item.category === "name_color") && item.subcategory === "animated";
-            const honeyIncluded = ent.isHoney && isAnimatedCosmetic;
-            const canEquip = isOwned || honeyIncluded;
+            const canEquip = isOwned;
             const gemsOnly = !!(item.config as any)?.gems_only;
             const canAfford = balance >= item.price;
             const isBusy = purchasing === item.id;
@@ -651,7 +640,7 @@ const ShopView = () => {
                       color: "white",
                     }}
                   >
-                    {isEq ? "Equipped" : honeyIncluded && !isOwned ? "Use with Honey" : "Equip"}
+                    {isEq ? "Equipped" : "Equip"}
                   </button>
                 ) : (
                   <div className="mt-3 flex items-stretch gap-2">

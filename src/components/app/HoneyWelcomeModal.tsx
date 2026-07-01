@@ -51,7 +51,6 @@ const PERKS: Record<Exclude<SubscriptionTier, "free">, { title: string; items: s
       "Attachments up to 250 MB",
       "4,000-character messages",
       "Unlimited personal notes",
-      "Animated shop themes & motion name colors",
       "Advanced note sharing (live edits + save)",
       "Equip up to 3 badges at once",
     ],

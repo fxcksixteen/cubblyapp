@@ -87,33 +87,36 @@ const UserDisplayName = ({
     if (userId) request(userId);
   }, [userId, request]);
   const color = get(userId);
+  const iconUrl = color?.kind === "animated" ? (color as any).iconUrl as string | undefined : undefined;
   const hasBow = color?.kind === "animated" && (color as any).bow;
+  const iconSrc = iconUrl || (hasBow ? bowImg : null);
+  const hasIcon = !!iconSrc;
   const Tag: any = as;
   const mergedStyle: CSSProperties = { ...nameColorStyle(color, fallbackColor), ...style };
-  if (hasBow) {
+  if (hasIcon) {
     mergedStyle.position = "relative";
     mergedStyle.display = "inline-block";
     mergedStyle.overflow = "visible";
-    mergedStyle.paddingTop = "0.35em";
+    mergedStyle.paddingTop = iconUrl ? "0.45em" : "0.35em";
   }
   return (
     <Tag className={className} style={mergedStyle} onClick={onClick}>
       {children ?? name}
-      {hasBow && (
+      {iconSrc && (
         <img
-          src={bowImg}
+          src={iconSrc}
           alt=""
           aria-hidden="true"
           draggable={false}
           style={{
             position: "absolute",
-            top: "0.2em",
-            left: "-0.15em",
-            height: "0.75em",
+            top: iconUrl ? "-0.1em" : "0.2em",
+            left: iconUrl ? "-0.55em" : "-0.15em",
+            height: iconUrl ? "1.05em" : "0.75em",
             width: "auto",
             pointerEvents: "none",
             filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.45))",
-            transform: "rotate(-18deg)",
+            transform: iconUrl ? "none" : "rotate(-18deg)",
             transformOrigin: "bottom left",
             zIndex: 2,
           }}

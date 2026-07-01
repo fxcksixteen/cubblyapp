@@ -17,7 +17,7 @@ export type AnimatedNameStyle = "sweep" | "hueshift" | "conic" | "pulse";
 export type NameColor =
   | { kind: "static"; color: string }
   | { kind: "gradient"; from: string; to: string }
-  | { kind: "animated"; stops: string[]; duration: string; style?: AnimatedNameStyle; bow?: boolean };
+  | { kind: "animated"; stops: string[]; duration: string; style?: AnimatedNameStyle; bow?: boolean; iconUrl?: string };
 
 interface Ctx {
   get: (userId: string | null | undefined) => NameColor | null;
@@ -41,6 +41,7 @@ function rowToColor(item: any): NameColor | null {
       duration: cfg.duration ?? "6s",
       style: (cfg.style as AnimatedNameStyle) ?? "sweep",
       bow: !!cfg.bow,
+      iconUrl: typeof cfg.icon_url === "string" ? cfg.icon_url : undefined,
     };
   return null;
 }
