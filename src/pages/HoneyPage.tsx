@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useEntitlements } from "@/hooks/useEntitlements";
 import honey3d from "@/assets/badges/honey.png";
 import { toast } from "sonner";
-import { Check, Sparkles } from "lucide-react";
+import { Check } from "lucide-react";
 
 type Interval = "monthly" | "annual";
 type Tier = "basic" | "honey";
@@ -140,7 +140,7 @@ export default function HoneyPage() {
         <div className="relative z-10 mx-auto max-w-5xl px-8 text-center">
           {ent.isHoneyMember && (
             <div className="inline-flex items-center gap-2 rounded-full bg-white/10 backdrop-blur-md px-4 py-1.5 text-xs font-bold uppercase tracking-wider text-white ring-1 ring-white/20">
-              <Sparkles className="h-3.5 w-3.5" /> {ent.tier === "honey" ? "Honey Active" : "Honey Basic Active"}
+              {ent.tier === "honey" ? "Honey Subscription Active" : "Honey Basic Subscription Active"}
             </div>
           )}
           <h1 className="mt-4 font-heading text-5xl md:text-6xl font-extrabold tracking-tight text-white drop-shadow-[0_4px_20px_rgba(0,0,0,0.4)] leading-[1.05]">
