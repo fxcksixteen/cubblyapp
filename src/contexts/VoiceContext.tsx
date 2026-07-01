@@ -231,6 +231,64 @@ async function sendSignalReliably(
   console.error(`[Voice] ❌ sendSignal(${label}) failed after all retries`);
 }
 
+/**
+ * v0.4.0: Robust answer send. The base `sendSignalReliably` completes when the
+ * broadcast is *acknowledged by the Realtime server*, not by the peer. If the
+ * peer's Realtime subscription is mid-resubscribe (post tab-wake, laptop lid,
+ * network flap) the broadcast is silently dropped and the caller stays stuck
+ * on "Not in call" while the callee thinks the handshake is done. We resend
+ * the answer up to 2 more times at widening intervals unless the peer
+ * connection reports itself connected (proof the answer landed).
+ */
+async function sendAnswerWithRetry(
+  channel: ReturnType<typeof supabase.channel> | null,
+  payload: Record<string, any>,
+  pcGetter: () => RTCPeerConnection | null,
+  label: string,
+): Promise<void> {
+  console.log(`[acceptDiag] answer.send start (${label})`);
+  await sendSignalReliably(channel, payload, label);
+  const schedule = [1200, 2800];
+  for (const ms of schedule) {
+    setTimeout(async () => {
+      const pc = pcGetter();
+      const state = pc?.iceConnectionState;
+      if (state === "connected" || state === "completed") {
+        console.log(`[acceptDiag] answer.acked (${label}) — skipping retry at +${ms}ms`);
+        return;
+      }
+      console.log(`[acceptDiag] answer.resend (${label}) at +${ms}ms (iceState=${state})`);
+      await sendSignalReliably(channel, payload, `${label}#retry+${ms}`);
+    }, ms);
+  }
+}
+
+/**
+ * v0.4.0: Heartbeat with retry. The very first heartbeat after accept is what
+ * flips the caller's participant reconciliation from "Not in call" to live.
+ * If it fails silently (transient DB error, offline blip), the peer can stay
+ * stuck for the full 10s heartbeat tick. Retry up to twice on failure and
+ * surface any final failure to the diagnostics log.
+ */
+async function heartbeatWithRetry(callEventId: string, tag: string): Promise<void> {
+  const attempts = [0, 500, 1500];
+  for (let i = 0; i < attempts.length; i++) {
+    if (attempts[i] > 0) await new Promise(r => setTimeout(r, attempts[i]));
+    try {
+      const res: any = await (supabase as any).rpc("heartbeat_call_participant", { _call_event_id: callEventId });
+      if (!res?.error) {
+        if (i > 0) console.log(`[acceptDiag] heartbeatOk (${tag}) on retry #${i}`);
+        else console.log(`[acceptDiag] heartbeatOk (${tag})`);
+        return;
+      }
+      console.warn(`[acceptDiag] heartbeat failed (${tag}) attempt ${i + 1}:`, res?.error);
+    } catch (e) {
+      console.warn(`[acceptDiag] heartbeat threw (${tag}) attempt ${i + 1}:`, e);
+    }
+  }
+  console.error(`[acceptDiag] heartbeat gave up (${tag}) — peer may see "Not in call"`);
+}
+
 interface VoiceContextType {
   settings: VoiceSettings;
   updateSettings: (partial: Partial<VoiceSettings>) => void;
