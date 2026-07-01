@@ -290,6 +290,155 @@ function ItemPreview({ item, displayName }: { item: ShopItem; displayName: strin
   );
 }
 
+type TabSetter = (t: Category | "all" | "wishlist") => void;
+
+/** Featured cards strip — shifts one card at a time with arrow buttons. */
+function BannerCarousel({ onTab }: { onTab: TabSetter }) {
+  const [emblaRef, embla] = useEmblaCarousel({ align: "start", slidesToScroll: 1, containScroll: "trimSnaps" });
+  const [canPrev, setCanPrev] = useState(false);
+  const [canNext, setCanNext] = useState(false);
+  const update = useCallback(() => {
+    if (!embla) return;
+    setCanPrev(embla.canScrollPrev());
+    setCanNext(embla.canScrollNext());
+  }, [embla]);
+  useEffect(() => {
+    if (!embla) return;
+    update();
+    embla.on("select", update);
+    embla.on("reInit", update);
+  }, [embla, update]);
+
+  const slide = "min-w-0 shrink-0 grow-0 basis-full sm:basis-1/2 lg:basis-1/3 pl-4";
+  return (
+    <div className="relative">
+      <div ref={emblaRef} className="overflow-hidden">
+        <div className="flex -ml-4">
+          {/* 1. Space */}
+          <div className={slide}>
+            <button
+              onClick={() => onTab("theme")}
+              className="group relative aspect-video w-full rounded-2xl overflow-hidden text-left transition-transform hover:-translate-y-0.5 hover:shadow-2xl"
+              style={{ background: "radial-gradient(ellipse at 30% 0%, #0d1224, #07080c 60%, #04050a)", border: "1px solid #1a1e2a" }}
+            >
+              <div className="absolute inset-0 shop-space-preview-stars" />
+              <div className="absolute inset-0 shop-space-preview-shoot" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+              <div className="absolute inset-0 p-4 flex flex-col justify-end">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-white/70">New · Premium</span>
+                <h3 className="text-lg font-extrabold text-white drop-shadow">Space Theme</h3>
+                <p className="text-[11px] text-white/80 line-clamp-2">A grok-styled charcoal sky with drifting stars and shooting stars.</p>
+              </div>
+            </button>
+          </div>
+          {/* 2. Motion Name Colors */}
+          <div className={slide}>
+            <button
+              onClick={() => onTab("name_color")}
+              className="group relative aspect-video w-full rounded-2xl overflow-hidden text-left transition-transform hover:-translate-y-0.5 hover:shadow-2xl"
+              style={{ background: "linear-gradient(135deg,#1a0b2e,#3a0e5e,#7c1d8e,#3a0e5e,#1a0b2e)", backgroundSize: "300% 300%", border: "1px solid #2a1455" }}
+            >
+              <div className="absolute inset-0 shop-theme-aurora" style={{ backgroundImage: "linear-gradient(135deg,#22d3ee,#a855f7,#ec4899,#22d3ee)", backgroundSize: "300% 300%", opacity: 0.55, mixBlendMode: "screen" }} />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/15 to-transparent" />
+              <div className="absolute inset-0 p-4 flex flex-col justify-end">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-white/70">Featured</span>
+                <h3 className="text-lg font-extrabold text-white drop-shadow">Motion Name Colors</h3>
+                <p className="text-[11px] text-white/85 line-clamp-2">Living gradients that shimmer next to your name in chat.</p>
+              </div>
+            </button>
+          </div>
+          {/* 3. Earn Coins */}
+          <div className={slide}>
+            <div
+              className="relative aspect-video w-full rounded-2xl overflow-hidden"
+              style={{ background: "linear-gradient(135deg,#3b2a08,#7a5712,#facc15,#7a5712,#3b2a08)", backgroundSize: "300% 300%", border: "1px solid #6b4f10" }}
+            >
+              <div className="absolute inset-0 shop-theme-aurora" style={{ opacity: 0.7 }} />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+              <img src={coinStack} alt="" className="absolute -right-3 -bottom-3 h-28 w-28 opacity-90 drop-shadow-2xl rotate-[-8deg]" />
+              <div className="absolute inset-0 p-4 flex flex-col justify-end">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-white/80">Daily</span>
+                <h3 className="text-lg font-extrabold text-white drop-shadow">Earn Coins</h3>
+                <p className="text-[11px] text-white/85 line-clamp-2">Chat, call, and game with friends to stack up coins.</p>
+              </div>
+            </div>
+          </div>
+          {/* 4. Cosmic Nebula */}
+          <div className={slide}>
+            <button
+              onClick={() => onTab("theme")}
+              className="group relative aspect-video w-full rounded-2xl overflow-hidden text-left transition-transform hover:-translate-y-0.5 hover:shadow-2xl"
+              style={{ background: "radial-gradient(ellipse at 30% 20%, #4c1d95 0%, #1e0b3b 55%, #05030f 100%)", border: "1px solid #2a1455" }}
+            >
+              <div className="absolute inset-0" style={{ background: "radial-gradient(circle at 70% 70%, rgba(236,72,153,0.45), transparent 55%), radial-gradient(circle at 25% 40%, rgba(168,85,247,0.4), transparent 55%)", mixBlendMode: "screen", animation: "cb-nebula-pulse 6s ease-in-out infinite" }} />
+              <div className="absolute inset-0" style={{ backgroundImage: "radial-gradient(1px 1px at 20px 24px,#fff,transparent),radial-gradient(1px 1px at 90px 60px,#fbcfe8,transparent),radial-gradient(1px 1px at 160px 30px,#fff,transparent),radial-gradient(1px 1px at 240px 80px,#fff,transparent)", backgroundSize: "300px 140px", opacity: .85 }} />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+              <div className="absolute inset-0 p-4 flex flex-col justify-end">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-white/70">Premium · Gems</span>
+                <h3 className="text-lg font-extrabold text-white drop-shadow">Cosmic Nebula</h3>
+                <p className="text-[11px] text-white/85 line-clamp-2">Swirling purple gas clouds with a starfield that never sleeps.</p>
+              </div>
+            </button>
+          </div>
+          {/* 5. Aurora Borealis */}
+          <div className={slide}>
+            <button
+              onClick={() => onTab("theme")}
+              className="group relative aspect-video w-full rounded-2xl overflow-hidden text-left transition-transform hover:-translate-y-0.5 hover:shadow-2xl"
+              style={{ background: "linear-gradient(180deg,#01102a 0%,#03215a 55%,#042038 100%)", border: "1px solid #08325b" }}
+            >
+              <div className="absolute" style={{ inset: "0 -20% 30% -20%", background: "linear-gradient(180deg, transparent, rgba(52,211,153,0.75) 40%, rgba(59,130,246,0.6) 70%, transparent)", filter: "blur(14px)", mixBlendMode: "screen", animation: "cb-aurora-wave 8s ease-in-out infinite" }} />
+              <div className="absolute left-0 right-0 bottom-0" style={{ height: "36%", background: "#031225", clipPath: "polygon(0 55%, 20% 40%, 40% 55%, 60% 30%, 80% 55%, 100% 45%, 100% 100%, 0 100%)" }} />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
+              <div className="absolute inset-0 p-4 flex flex-col justify-end">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-white/70">Premium · Gems</span>
+                <h3 className="text-lg font-extrabold text-white drop-shadow">Aurora Borealis</h3>
+                <p className="text-[11px] text-white/85 line-clamp-2">Dancing green and violet curtains over quiet mountains.</p>
+              </div>
+            </button>
+          </div>
+          {/* 6. Premium Motion Names (Bow) */}
+          <div className={slide}>
+            <button
+              onClick={() => onTab("name_color")}
+              className="group relative aspect-video w-full rounded-2xl overflow-hidden text-left transition-transform hover:-translate-y-0.5 hover:shadow-2xl"
+              style={{ background: "linear-gradient(135deg,#3a0e5e,#a855f7,#ec4899,#f9a8d4,#a855f7,#3a0e5e)", backgroundSize: "300% 300%", border: "1px solid #6b1a7a", animation: "cb-animated-name 6s ease-in-out infinite" }}
+            >
+              <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/10 to-transparent" />
+              <div className="absolute inset-0 p-4 flex flex-col justify-end">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-white/80">Ultra · 1,500 Gems</span>
+                <h3 className="text-lg font-extrabold text-white drop-shadow">Bow — Motion Name</h3>
+                <p className="text-[11px] text-white/85 line-clamp-2">Pink-to-purple shimmer with a tiny bow tucked beside your name.</p>
+              </div>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {canPrev && (
+        <button
+          onClick={() => embla?.scrollPrev()}
+          aria-label="Previous"
+          className="absolute left-1 top-1/2 -translate-y-1/2 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-md border border-white/10 hover:bg-black/80 transition"
+        >
+          <ChevronLeft className="h-5 w-5" />
+        </button>
+      )}
+      {canNext && (
+        <button
+          onClick={() => embla?.scrollNext()}
+          aria-label="Next"
+          className="absolute right-1 top-1/2 -translate-y-1/2 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-md border border-white/10 hover:bg-black/80 transition"
+        >
+          <ChevronRight className="h-5 w-5" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+
+
 const ShopView = () => {
   const { user } = useAuth();
   const { balance } = useCoins();
