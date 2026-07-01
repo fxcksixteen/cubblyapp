@@ -85,6 +85,39 @@ Deno.serve(async (req) => {
         } else if (kind === 'gems_purchase' && userId) {
           const gems = Number(s.metadata?.gems || 0)
           if (gems > 0) await creditGems(userId, gems, 'purchase', s.id)
+        } else if (kind === 'honey_gift' && userId) {
+          const conversationId = s.metadata?.conversation_id as string
+          const tier = (s.metadata?.tier as 'basic' | 'honey') || 'honey'
+          const interval = (s.metadata?.interval as 'month' | 'year') || 'month'
+          const giftMessage = (s.metadata?.gift_message as string) || null
+          const priceCents = Number(s.metadata?.price_cents || 0)
+          if (conversationId) {
+            const { data: gift } = await admin.from('honey_gifts').insert({
+              sender_id: userId,
+              conversation_id: conversationId,
+              tier,
+              billing_interval: interval,
+              payment_source: 'stripe',
+              price_amount: priceCents,
+              status: 'pending',
+              message: giftMessage,
+              stripe_session_id: s.id,
+            }).select('id').single()
+            if (gift?.id) {
+              const marker = '[[cubbly:honey-gift:v1]]'
+              const payload = {
+                giftId: gift.id,
+                tier,
+                interval,
+                message: giftMessage,
+              }
+              await admin.from('messages').insert({
+                conversation_id: conversationId,
+                sender_id: userId,
+                content: marker + JSON.stringify(payload),
+              })
+            }
+          }
         }
         await logEvent(userId, event.id, event.type, s)
         break
