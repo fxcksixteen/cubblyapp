@@ -585,6 +585,7 @@ const ShopView = () => {
             const isOwned = owned.has(item.id);
             const isEq = equipped.has(item.id);
             const isWished = wishlist.has(item.id);
+            const gemsOnly = !!(item.config as any)?.gems_only;
             const canAfford = balance >= item.price;
             const isBusy = purchasing === item.id;
             const canBuyGems = item.price_gems !== null && item.price_gems > 0;
@@ -648,28 +649,35 @@ const ShopView = () => {
                   </button>
                 ) : (
                   <div className="mt-3 flex items-stretch gap-2">
-                    <button
-                      onClick={() => buy(item)}
-                      disabled={isBusy}
-                      className="flex-1 rounded-lg py-2 text-sm font-bold transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-                      style={{
-                        backgroundColor: canAfford ? "#5865f2" : "var(--app-bg-tertiary, #1e1f22)",
-                        color: "white",
-                      }}
-                    >
-                      <img src={canAfford ? coinStack : coinNotEnough} alt="" className="h-6 w-6 -my-1 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]" />
-                      <span>{item.price.toLocaleString()}</span>
-                    </button>
+                    {!gemsOnly && (
+                      <button
+                        onClick={() => buy(item)}
+                        disabled={isBusy}
+                        className="flex-1 rounded-lg py-2 text-sm font-bold transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                        style={{
+                          backgroundColor: canAfford ? "#5865f2" : "var(--app-bg-tertiary, #1e1f22)",
+                          color: "white",
+                        }}
+                      >
+                        <img src={canAfford ? coinStack : coinNotEnough} alt="" className="h-6 w-6 -my-1 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]" />
+                        <span>{item.price.toLocaleString()}</span>
+                      </button>
+                    )}
                     {canBuyGems && (
                       <button
                         onClick={() => buyWithGems(item)}
                         disabled={isBusy}
-                        title="Buy with gems"
-                        className="rounded-lg px-3 py-2 text-sm font-bold transition-all flex items-center justify-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
+                        title={gemsOnly ? "Premium — gems only" : "Buy with gems"}
+                        className={`${gemsOnly ? "flex-1" : ""} rounded-lg px-3 py-2 text-sm font-bold transition-all flex items-center justify-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed`}
                         style={{
-                          backgroundColor: "var(--app-bg-tertiary, #1e1f22)",
-                          border: "1px solid rgba(96,165,250,0.4)",
-                          color: "#60a5fa",
+                          backgroundColor: gemsOnly
+                            ? "linear-gradient(135deg, rgba(96,165,250,0.15), rgba(139,92,246,0.18))" as any
+                            : "var(--app-bg-tertiary, #1e1f22)",
+                          background: gemsOnly
+                            ? "linear-gradient(135deg, rgba(96,165,250,0.18), rgba(139,92,246,0.22))"
+                            : undefined,
+                          border: `1px solid ${gemsOnly ? "rgba(139,92,246,0.55)" : "rgba(96,165,250,0.4)"}`,
+                          color: "#a5b8ff",
                         }}
                       >
                         <img src={gemIcon} alt="" className="h-5 w-5" />
