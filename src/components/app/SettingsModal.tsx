@@ -28,7 +28,7 @@ import { useEntitlements } from "@/hooks/useEntitlements";
 
 const APP_VERSION = CURRENT_VERSION;
 
-type SettingsCategory = "my-account" | "content-social" | "data-privacy" | "notifications" | "appearance" | "accessibility" | "voice-video" | "devices" | "chat" | "keybinds" | "language-time" | "advanced" | "activity-privacy" | "gaming-mode" | "update-logs" | "billing";
+export type SettingsCategory = "my-account" | "content-social" | "data-privacy" | "notifications" | "appearance" | "accessibility" | "voice-video" | "devices" | "chat" | "keybinds" | "language-time" | "advanced" | "activity-privacy" | "gaming-mode" | "update-logs" | "billing";
 
 const settingsSections = [
   {
@@ -82,6 +82,7 @@ const themes: { id: ThemeName; label: string; description: string; colors: { pri
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialCategory?: SettingsCategory | null;
 }
 
 interface PendingChanges {
@@ -94,7 +95,7 @@ interface PendingChanges {
   public_wishlist?: boolean;
 }
 
-const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
+const SettingsModal = ({ isOpen, onClose, initialCategory = null }: SettingsModalProps) => {
   const isMobile = useIsMobile();
   // null = category list view (mobile only). On desktop the sidebar is always visible.
   const [activeCategory, setActiveCategory] = useState<SettingsCategory | null>(null);
@@ -177,8 +178,9 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
     if (isOpen) {
       setVisible(true);
       setPendingChanges({});
-      // Mobile: start in the category-list view. Desktop: open My Account directly.
-      setActiveCategory(isMobile ? null : "my-account");
+      // Mobile normally starts in the category list, unless a specific settings
+      // row (ex: Appearance / Account) asked to jump straight into a pane.
+      setActiveCategory(initialCategory ?? (isMobile ? null : "my-account"));
       requestAnimationFrame(() => {
         requestAnimationFrame(() => setAnimating(true));
       });
@@ -187,7 +189,7 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
       const timer = setTimeout(() => setVisible(false), 250);
       return () => clearTimeout(timer);
     }
-  }, [isOpen, isMobile]);
+  }, [isOpen, isMobile, initialCategory]);
 
   useEffect(() => {
     if (!isOpen) return;
