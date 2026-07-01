@@ -4,21 +4,26 @@ import { createPortal } from "react-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useActivity } from "@/contexts/ActivityContext";
+import { useGems } from "@/contexts/GemsContext";
 import { getProfileColor } from "@/lib/profileColors";
 import { getEffectivePresenceStatus } from "@/lib/presence";
 import { activityLabel } from "@/lib/activityLabel";
 import { toast } from "sonner";
-import { X } from "lucide-react";
+import { X, Loader2 } from "lucide-react";
 import messagesIcon from "@/assets/icons/messages.svg";
 import addUserIcon from "@/assets/icons/add-user.svg";
 import removeUserIcon from "@/assets/icons/remove-user.svg";
 import blockUserIcon from "@/assets/icons/block-user.svg";
 import giftIcon from "@/assets/icons/gift.svg";
+import gemIcon from "@/assets/gems/gem.png";
+import coinStack from "@/assets/coins/coin-stack.png";
 import GiftItemModal from "@/components/app/GiftItemModal";
 import StatusIndicator from "@/components/app/StatusIndicator";
 import ActivityCard from "@/components/app/ActivityCard";
 import UserDisplayName from "@/components/app/UserDisplayName";
 import UserBadges from "@/components/app/UserBadges";
+import { ShopItemPreview } from "@/components/app/shop/ShopItemPreview";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { useNavigate } from "react-router-dom";
 
 interface UserProfileCardProps {
@@ -46,7 +51,10 @@ interface WishlistEntry {
   price: number | null;
   price_gems: number | null;
   category: string;
+  subcategory: string | null;
+  config: any;
 }
+
 
 const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage, startExpanded = false }: UserProfileCardProps) => {
   const { user, onlineUserIds } = useAuth();
