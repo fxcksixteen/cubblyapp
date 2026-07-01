@@ -176,22 +176,7 @@ function ItemPreview({ item, displayName }: { item: ShopItem; displayName: strin
         </div>
       );
     }
-    const cfg = item.config || {};
-    const bg: string = cfg.preview || "linear-gradient(135deg, #f59e0b, #ef4444, #ec4899)";
-    const animated: boolean = !!cfg.animated;
-    return (
-      <div
-        className={`h-20 w-full rounded-lg ${animated ? "shop-theme-aurora" : ""}`}
-        style={{
-          backgroundImage: bg,
-          backgroundSize: animated ? "300% 300%" : undefined,
-        }}
-      />
-    );
-  }
-
-  if (item.category === "badge") {
-    // Premium gem-only themes — live animated previews
+    }
     if (item.id === "theme_cosmic_nebula") {
       return (
         <div className="relative h-20 w-full rounded-lg overflow-hidden" style={{ background: "radial-gradient(ellipse at 30% 20%, #4c1d95 0%, #1e0b3b 50%, #05030f 100%)" }}>
@@ -240,6 +225,22 @@ function ItemPreview({ item, displayName }: { item: ShopItem; displayName: strin
         </div>
       );
     }
+    const cfg = item.config || {};
+    const bg: string = cfg.preview || "linear-gradient(135deg, #f59e0b, #ef4444, #ec4899)";
+    const animated: boolean = !!cfg.animated;
+    return (
+      <div
+        className={`h-20 w-full rounded-lg ${animated ? "shop-theme-aurora" : ""}`}
+        style={{
+          backgroundImage: bg,
+          backgroundSize: animated ? "300% 300%" : undefined,
+        }}
+      />
+    );
+  }
+
+  if (item.category === "badge") {
+    const cfg = item.config || {};
     const art = BADGE_ART[item.id];
     return (
       <div className="flex h-20 w-full items-center justify-center gap-3 rounded-lg bg-[#1e1f22] px-3">
