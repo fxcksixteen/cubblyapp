@@ -40,6 +40,7 @@ function rowToColor(item: any): NameColor | null {
       stops: cfg.stops,
       duration: cfg.duration ?? "6s",
       style: (cfg.style as AnimatedNameStyle) ?? "sweep",
+      bow: !!cfg.bow,
     };
   return null;
 }
