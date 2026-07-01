@@ -186,9 +186,10 @@ function ItemPreview({ item, displayName }: { item: ShopItem; displayName: strin
     }
     if (item.id === "theme_cyber_grid") {
       return (
-        <div className="relative h-20 w-full rounded-lg overflow-hidden" style={{ background: "linear-gradient(180deg,#050014 0%,#1a0745 55%,#ff2fbf 100%)" }}>
-          <div className="absolute" style={{ left: "50%", top: "25%", width: 60, height: 60, marginLeft: -30, borderRadius: "50%", background: "radial-gradient(circle at 50% 30%, #ffe066, #ff2fbf 55%, transparent 100%)", boxShadow: "0 0 30px rgba(255,47,191,0.7)" }} />
-          <div className="absolute" style={{ left: "-25%", right: "-25%", bottom: 0, height: "55%", background: "linear-gradient(rgba(0,255,255,0.8) 1px, transparent 1px) 0 0/100% 14px, linear-gradient(90deg, rgba(0,255,255,0.7) 1px, transparent 1px) 0 0/18px 100%", transform: "perspective(240px) rotateX(65deg)", transformOrigin: "50% 0", animation: "cb-cyber-scroll 2.4s linear infinite" }} />
+        <div className="relative h-20 w-full rounded-lg overflow-hidden" style={{ background: "linear-gradient(180deg,#05010f 0%,#200a55 55%,#ff2fbf 90%,#ffb15c 100%)" }}>
+          <div className="absolute" style={{ left: "50%", bottom: "48%", width: 80, height: 40, marginLeft: -40, background: "radial-gradient(ellipse at 50% 100%, #fde68a 0%, #ff2fbf 45%, #7c1d8e 80%, transparent 100%)", borderRadius: "80px 80px 0 0", boxShadow: "0 0 24px rgba(255,47,191,0.55)" }} />
+          <div className="absolute left-0 right-0" style={{ bottom: "48%", height: 1.5, background: "linear-gradient(90deg, transparent, #fff 50%, transparent)", boxShadow: "0 0 8px #ff2fbf" }} />
+          <div className="absolute" style={{ left: "-25%", right: "-25%", bottom: 0, height: "48%", background: "linear-gradient(rgba(0,240,255,0.85) 1px, transparent 1px) 0 0/100% 14px, linear-gradient(90deg, rgba(0,240,255,0.75) 1px, transparent 1px) 0 0/18px 100%", transform: "perspective(240px) rotateX(60deg)", transformOrigin: "50% 0", animation: "cb-cyber-scroll 4s linear infinite", maskImage: "linear-gradient(to bottom, transparent, #000 30%, #000)", WebkitMaskImage: "linear-gradient(to bottom, transparent, #000 30%, #000)" }} />
         </div>
       );
     }
