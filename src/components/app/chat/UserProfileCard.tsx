@@ -126,7 +126,7 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
       if (ids.length === 0) { setWishlist([]); return; }
       const { data: items } = await supabase
         .from("shop_items")
-        .select("id, name, price, price_gems, category")
+        .select("id, name, price, price_gems, category, subcategory, config")
         .in("id", ids);
       if (!alive) return;
       const byId = new Map((items ?? []).map((it: any) => [it.id, it]));
@@ -139,6 +139,8 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
           price: it.price ?? null,
           price_gems: it.price_gems ?? null,
           category: it.category,
+          subcategory: it.subcategory ?? null,
+          config: it.config ?? null,
         }));
       setWishlist(ordered);
     })();
