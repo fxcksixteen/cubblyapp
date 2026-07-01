@@ -1,19 +1,43 @@
-## Fixes
+## Wishlist redesign on profile cards
 
-### 1. Bioluminescent jellyfish look nothing like jellyfish
-In `src/components/app/ShopView.tsx` (theme_bioluminescent preview, ~L220-247), replace the current blurry blob divs with real jellyfish shapes rendered as inline SVGs:
-- Dome-shaped translucent bell (rounded top, wavy scalloped bottom edge) with a soft inner glow gradient
-- 4–5 wispy trailing tentacles below the bell, drawn as slightly curved thin lines with fading opacity
-- Bell gently pulses (subtle scaleY 1 → 0.9 → 1) via a new `@keyframes cb-jelly-pulse` in `src/index.css`
-- Tentacles sway (skewX ±3deg) via a second keyframe
-- Keep the existing rise animation and cyan/teal tint palette, but reduce blur so the shape reads clearly
+### 1. Extract the shop preview into a shared component
+The `ItemPreview` function inside `src/components/app/ShopView.tsx` (name-color swatches, animated theme scenes, badge art, etc.) is currently trapped in that file. Lift it into a new shared component:
 
-Add matching `@keyframes cb-jelly-pulse` and `cb-jelly-sway` in `src/index.css` near the existing `cb-jelly-rise-preview` block (~L572).
+- `src/components/app/shop/ShopItemPreview.tsx` — moves the existing `ItemPreview` verbatim, plus a `size` prop (`"lg"` for shop grid, `"sm"` for the wishlist strip so previews scale to ~64px tall instead of 80px).
+- `ShopView.tsx` re-imports it so shop rendering is byte-identical.
 
-### 2. Duplicate "Message Requests" title on /requests
-In `src/components/app/MessageRequestsView.tsx` (L93-105), remove the internal header block (the envelope icon + "Message Requests" H2 + red count badge). The topbar in `AppLayout.tsx` (L320) already renders "Message Requests" as the page title, so the in-view header is redundant. Keep the body/list untouched.
+### 2. Fetch full item data for the wishlist
+`UserProfileCard.tsx` currently selects only `id, name, price, price_gems, category` — not enough to render real previews. Update the wishlist fetch to also pull `subcategory, description, config` so `ShopItemPreview` has what it needs. `WishlistEntry` type expands accordingly.
 
-### 3. Message Requests inbox button visible while already on /requests
-In `src/pages/AppLayout.tsx` (L767-780), change the visibility guard on the inbox button from `!isServerRoute` to `!isServerRoute && !isRequests` so it's hidden when `activeView === "requests"`. `isRequests` is already computed on L168.
+### 3. New wishlist card UI
+Replace the current 2-column text list with a vertical stack of rich rows, styled to match the Discord-dark card system already used elsewhere on the profile card. Each row:
 
-No version bump, no changelog changes (per Core memory — user didn't ask).
+```
+┌────────────────────────────────────────────────┐
+│ ┌──────────┐  Item name                        │
+│ │ preview  │  category · short descriptor      │
+│ │ (64px)   │  💎 300   [🎁]                    │
+│ └──────────┘                                   │
+└────────────────────────────────────────────────┘
+```
+
+- Preview thumbnail on the left (real `ShopItemPreview` render — name color, theme scene, badge art).
+- Title, subtle category tag beneath.
+- Price with the proper currency image: `@/assets/gems/gem.png` for gems, the existing coin PNG for coins — no more emoji, no "weird coin icon".
+- Vertical scroll capped at ~3 rows visible (~260 px) with a subtle fade.
+
+### 4. Gift button for other users
+For non-own profiles only, render a small circular gift-icon button (`@/assets/icons/gift.svg`) on the right side of each row.
+
+- Enabled only when the item has `price_gems` set AND the viewer's gem balance covers it (uses existing `useGems()`).
+- Disabled state: greyed-out with tooltip "Not enough gems" (or "Not giftable" for coin-only items).
+- Click flow: opens a compact inline confirm popover ("Send *Bow* to Ella for 💎 1,500?" with Cancel / Confirm) to prevent accidents, then calls the existing `gift_shop_item` RPC directly — no full modal traversal. On success, toast "Sent *Bow* to Ella 💝" and remove the row optimistically if the recipient now owns it.
+- Skip filtering by ownership on load — the RPC already rejects duplicates with `RECIPIENT_ALREADY_OWNS`, which we surface as a friendly toast.
+
+### 5. Own-profile view
+No gift button (obviously). The "Manage" pill in the header stays as-is. Wishlist section still hidden entirely when empty (rule from previous turn is preserved).
+
+### Technical notes
+- No schema changes. All new UI is purely presentational plus one existing RPC call.
+- `ShopItemPreview` is a pure move-and-parameterize refactor; shop grid rendering must remain visually identical.
+- The confirm popover reuses shadcn `Popover` so it renders above the profile card via portal (avoids clipping inside the profile modal — same pattern the profile card itself uses).

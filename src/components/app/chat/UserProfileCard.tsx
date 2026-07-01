@@ -4,21 +4,26 @@ import { createPortal } from "react-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useActivity } from "@/contexts/ActivityContext";
+import { useGems } from "@/contexts/GemsContext";
 import { getProfileColor } from "@/lib/profileColors";
 import { getEffectivePresenceStatus } from "@/lib/presence";
 import { activityLabel } from "@/lib/activityLabel";
 import { toast } from "sonner";
-import { X } from "lucide-react";
+import { X, Loader2 } from "lucide-react";
 import messagesIcon from "@/assets/icons/messages.svg";
 import addUserIcon from "@/assets/icons/add-user.svg";
 import removeUserIcon from "@/assets/icons/remove-user.svg";
 import blockUserIcon from "@/assets/icons/block-user.svg";
 import giftIcon from "@/assets/icons/gift.svg";
+import gemIcon from "@/assets/gems/gem.png";
+import coinStack from "@/assets/coins/coin-stack.png";
 import GiftItemModal from "@/components/app/GiftItemModal";
 import StatusIndicator from "@/components/app/StatusIndicator";
 import ActivityCard from "@/components/app/ActivityCard";
 import UserDisplayName from "@/components/app/UserDisplayName";
 import UserBadges from "@/components/app/UserBadges";
+import { ShopItemPreview } from "@/components/app/shop/ShopItemPreview";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { useNavigate } from "react-router-dom";
 
 interface UserProfileCardProps {
@@ -46,7 +51,10 @@ interface WishlistEntry {
   price: number | null;
   price_gems: number | null;
   category: string;
+  subcategory: string | null;
+  config: any;
 }
+
 
 const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage, startExpanded = false }: UserProfileCardProps) => {
   const { user, onlineUserIds } = useAuth();
@@ -67,6 +75,10 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
   const userActivityLabel = activityLabel(userActivity, isUserOnline);
 
   const [wishlist, setWishlist] = useState<WishlistEntry[] | null>(null);
+  const { balance: gemBalance } = useGems();
+  const [giftingItemId, setGiftingItemId] = useState<string | null>(null);
+  const [confirmItemId, setConfirmItemId] = useState<string | null>(null);
+
 
   useEffect(() => {
     supabase
@@ -114,7 +126,7 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
       if (ids.length === 0) { setWishlist([]); return; }
       const { data: items } = await supabase
         .from("shop_items")
-        .select("id, name, price, price_gems, category")
+        .select("id, name, price, price_gems, category, subcategory, config")
         .in("id", ids);
       if (!alive) return;
       const byId = new Map((items ?? []).map((it: any) => [it.id, it]));
@@ -127,6 +139,8 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
           price: it.price ?? null,
           price_gems: it.price_gems ?? null,
           category: it.category,
+          subcategory: it.subcategory ?? null,
+          config: it.config ?? null,
         }));
       setWishlist(ordered);
     })();
@@ -202,6 +216,39 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
     setFriendshipStatus("blocked");
     toast.success("User blocked");
   };
+
+  const sendWishlistGift = async (item: WishlistEntry) => {
+
+    if (!item.price_gems) return;
+    if (gemBalance < item.price_gems) {
+      toast.error("Not enough gems");
+      return;
+    }
+    setGiftingItemId(item.item_id);
+    const { error } = await supabase.rpc("gift_shop_item", {
+      _recipient_id: userId,
+      _item_id: item.item_id,
+      _conversation_id: null,
+      _message: null,
+    });
+    setGiftingItemId(null);
+    setConfirmItemId(null);
+    if (error) {
+      const msg = error.message || "";
+      if (msg.includes("RECIPIENT_ALREADY_OWNS")) {
+        toast.info(`${displayName} already owns this`);
+        setWishlist((cur) => cur ? cur.filter((w) => w.item_id !== item.item_id) : cur);
+      } else if (msg.includes("INSUFFICIENT_GEMS")) {
+        toast.error("Not enough gems");
+      } else {
+        toast.error("Couldn't send gift");
+      }
+      return;
+    }
+    toast.success(`Sent ${item.name} to ${displayName} 💝`);
+    setWishlist((cur) => cur ? cur.filter((w) => w.item_id !== item.item_id) : cur);
+  };
+
 
   const style: React.CSSProperties = {
     position: "fixed",
@@ -290,18 +337,107 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
                     )}
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-1.5 max-h-40 overflow-y-auto pr-1">
-                  {wishlist.map((w) => (
-                    <div key={w.item_id} className="rounded-md bg-[#2b2d31] px-2 py-1.5">
-                      <p className="text-[12px] font-medium text-[#dbdee1] truncate">{w.name}</p>
-                      <p className="text-[10px] text-[#949ba4]">
-                        {w.price != null ? `${w.price.toLocaleString()} 🪙` : ""}
-                        {w.price != null && w.price_gems != null ? "  •  " : ""}
-                        {w.price_gems != null ? `${w.price_gems.toLocaleString()} 💎` : ""}
-                      </p>
-                    </div>
-                  ))}
+                <div className="flex flex-col gap-1.5 max-h-[260px] overflow-y-auto pr-1 -mr-1">
+                  {wishlist.map((w) => {
+                    const canGift = !isOwnProfile && w.price_gems != null && gemBalance >= w.price_gems;
+                    const notGiftable = w.price_gems == null;
+                    const isBusy = giftingItemId === w.item_id;
+                    const categoryLabel =
+                      w.category === "name_color" ? "Name Color" :
+                      w.category === "theme" ? "Theme" :
+                      w.category === "badge" ? "Badge" : w.category;
+                    return (
+                      <div
+                        key={w.item_id}
+                        className="flex items-center gap-2.5 rounded-lg bg-[#2b2d31] p-2 hover:bg-[#35373c] transition-colors"
+                      >
+                        {/* Thumbnail preview */}
+                        <div className="shrink-0 rounded-md overflow-hidden" style={{ width: 64, height: 48 }}>
+                          <ShopItemPreview
+                            item={{ id: w.item_id, name: w.name, category: w.category, subcategory: w.subcategory, config: w.config }}
+                            displayName={displayName}
+                            sizeClass="h-full w-full rounded-md"
+                            compact
+                          />
+                        </div>
+                        {/* Text */}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[13px] font-semibold text-[#dbdee1] truncate leading-tight">{w.name}</p>
+                          <p className="text-[10px] uppercase tracking-wide text-[#72767d] mt-0.5 font-bold">{categoryLabel}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            {w.price_gems != null && (
+                              <span className="flex items-center gap-1 text-[11px] font-bold text-white tabular-nums">
+                                <img src={gemIcon} alt="" className="h-3.5 w-3.5" />
+                                {w.price_gems.toLocaleString()}
+                              </span>
+                            )}
+                            {w.price != null && w.price_gems == null && (
+                              <span className="flex items-center gap-1 text-[11px] font-bold text-white tabular-nums">
+                                <img src={coinStack} alt="" className="h-3.5 w-3.5" />
+                                {w.price.toLocaleString()}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        {/* Gift button — only for other users */}
+                        {!isOwnProfile && (
+                          <Popover
+                            open={confirmItemId === w.item_id}
+                            onOpenChange={(o) => setConfirmItemId(o ? w.item_id : null)}
+                          >
+                            <PopoverTrigger asChild>
+                              <button
+                                type="button"
+                                disabled={!canGift || isBusy}
+                                title={notGiftable ? "Not giftable" : !canGift ? "Not enough gems" : `Gift ${w.name}`}
+                                className="shrink-0 flex h-8 w-8 items-center justify-center rounded-full bg-pink-500/15 hover:bg-pink-500/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                              >
+                                {isBusy ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin text-pink-300" />
+                                ) : (
+                                  <img src={giftIcon} alt="Gift" className="h-3.5 w-3.5 invert opacity-90" />
+                                )}
+                              </button>
+                            </PopoverTrigger>
+                            <PopoverContent
+                              side="left"
+                              align="center"
+                              className="w-56 p-3 rounded-lg border-0 shadow-2xl"
+                              style={{ backgroundColor: "#111214", zIndex: 100 }}
+                            >
+                              <p className="text-[13px] text-white leading-snug">
+                                Send <span className="font-bold">{w.name}</span> to {displayName}?
+                              </p>
+                              <div className="flex items-center gap-1 mt-1.5 text-[12px] font-bold text-white/90 tabular-nums">
+                                <img src={gemIcon} alt="" className="h-4 w-4" />
+                                {w.price_gems?.toLocaleString()}
+                                <span className="ml-auto text-[10px] font-medium text-[#949ba4]">
+                                  Balance: {gemBalance.toLocaleString()}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2 mt-3">
+                                <button
+                                  onClick={() => setConfirmItemId(null)}
+                                  className="flex-1 rounded-md py-1.5 text-[12px] font-semibold text-white/80 hover:text-white bg-white/5 hover:bg-white/10 transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  onClick={() => sendWishlistGift(w)}
+                                  disabled={isBusy}
+                                  className="flex-1 rounded-md py-1.5 text-[12px] font-bold text-white bg-pink-500 hover:bg-pink-600 disabled:opacity-60 transition-colors"
+                                >
+                                  {isBusy ? "Sending…" : "Confirm"}
+                                </button>
+                              </div>
+                            </PopoverContent>
+                          </Popover>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
+
               </div>
             )}
 
