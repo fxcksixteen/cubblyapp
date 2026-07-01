@@ -294,6 +294,11 @@ export function useConversations() {
         toast.success("Message request sent — they'll see it in their inbox");
         return null;
       }
+      if (msg.includes("NO_MUTUAL_SERVER")) {
+        const { toast } = await import("sonner");
+        toast.error("You need to be friends or share a server to message this user");
+        return null;
+      }
       if (msg.includes("CANT_DM_SELF")) {
         const { toast } = await import("sonner");
         toast.error("You can't DM yourself");

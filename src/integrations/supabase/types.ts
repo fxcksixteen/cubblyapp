@@ -1706,6 +1706,10 @@ export type Database = {
         Args: { _a: string; _b: string }
         Returns: boolean
       }
+      share_mutual_server: {
+        Args: { _a: string; _b: string }
+        Returns: boolean
+      }
       spend_coins: {
         Args: {
           _amount: number

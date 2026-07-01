@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { CHANGELOG, CURRENT_VERSION, getChangelogEntry } from "@/lib/changelog";
 import { useAuth } from "@/contexts/AuthContext";
+import { useModalSlot } from "@/lib/modalQueue";
 
 /**
  * "What's New" / changelog modal.
@@ -33,44 +34,53 @@ const WhatsNewModal = ({ forceVersion, onClose }: WhatsNewModalProps) => {
   // Only auto-show to authenticated users. Viewer mode (forceVersion) bypasses this.
   const { user, loading: authLoading } = useAuth();
 
-  // `mounted` controls render presence. `visible` controls the animation state.
+  // `wantsToShow` = we're eligible to appear (seen-flag not set or forced).
+  // `mounted` controls actual render; only flips true once the modal queue
+  // grants us the top slot. `visible` controls the enter/exit animation.
+  const [wantsToShow, setWantsToShow] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(false);
 
-  // Decide whether to open
+  // Decide eligibility
   useEffect(() => {
     if (forceVersion) {
-      setMounted(true);
-      // next frame → trigger entrance animation
-      requestAnimationFrame(() => requestAnimationFrame(() => setVisible(true)));
+      setWantsToShow(true);
       return;
     }
-    // Auto mode: require a logged-in user
     if (authLoading || !user) return;
     try {
-      // Per-user seen flag so each registered user sees it exactly once
       const key = `${storageKey(version)}:${user.id}`;
       if (!localStorage.getItem(key)) {
-        const t = setTimeout(() => {
-          setMounted(true);
-          requestAnimationFrame(() => requestAnimationFrame(() => setVisible(true)));
-        }, 800);
+        const t = setTimeout(() => setWantsToShow(true), 800);
         return () => clearTimeout(t);
       }
     } catch {}
   }, [forceVersion, version, user, authLoading]);
+
+  // Reserve the top slot in the global modal queue (priority 100)
+  const allowed = useModalSlot("whats-new", 100, wantsToShow);
+
+  // When the queue grants us the slot, run the entrance animation
+  useEffect(() => {
+    if (allowed && !mounted) {
+      setMounted(true);
+      requestAnimationFrame(() => requestAnimationFrame(() => setVisible(true)));
+    }
+  }, [allowed, mounted]);
 
   const handleClose = () => {
     if (!forceVersion && user) {
       try { localStorage.setItem(`${storageKey(version)}:${user.id}`, new Date().toISOString()); } catch {}
     }
     setVisible(false);
-    // Wait for exit animation, then unmount
+    // Wait for exit animation, then unmount and release the queue slot
     setTimeout(() => {
       setMounted(false);
+      setWantsToShow(false);
       onClose?.();
     }, 250);
   };
+
 
   if (!mounted) return null;
 

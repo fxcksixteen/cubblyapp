@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useEntitlements, type SubscriptionTier } from "@/hooks/useEntitlements";
+import { useModalSlot } from "@/lib/modalQueue";
 import honeyBg from "@/assets/honey-welcome-bg.png.asset.json";
 
 /**
@@ -60,25 +61,36 @@ const PERKS: Record<Exclude<SubscriptionTier, "free">, { title: string; items: s
 export default function HoneyWelcomeModal() {
   const { user } = useAuth();
   const ent = useEntitlements();
-  const [open, setOpen] = useState(false);
+  const [wantsToShow, setWantsToShow] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
 
   useEffect(() => {
     if (!user || !ent.loaded) return;
-    if (ent.tier === "free") return;
+    if (ent.tier === "free") {
+      setWantsToShow(false);
+      return;
+    }
     const shown = loadShown();
-    if (shown[user.id] === ent.tier) return;
-    setOpen(true);
+    if (shown[user.id] === ent.tier) {
+      setWantsToShow(false);
+      return;
+    }
+    setWantsToShow(true);
     setSheetOpen(false);
   }, [user, ent.loaded, ent.tier]);
+
+  // Reserve a slot in the global auto-popup queue (priority 90 — sits below
+  // the What's New / changelog modal so users see the changelog first).
+  const open = useModalSlot("honey-welcome", 90, wantsToShow);
 
   if (!open || !user || ent.tier === "free") return null;
 
   const close = () => {
     markShown(user.id, ent.tier);
-    setOpen(false);
+    setWantsToShow(false);
     setSheetOpen(false);
   };
+
 
   const perks = PERKS[ent.tier];
 
