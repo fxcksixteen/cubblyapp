@@ -218,18 +218,62 @@ function ItemPreview({ item, displayName }: { item: ShopItem; displayName: strin
       );
     }
     if (item.id === "theme_bioluminescent") {
+      // Miniature jellyfish that drift UP through cold blue water.
+      const jelly = (leftPct: number, delay: string, scale: number, tint: string, dur: string) => (
+        <div
+          className="absolute"
+          style={{
+            left: `${leftPct}%`,
+            bottom: "-40%",
+            width: 18,
+            height: 24,
+            transform: `scale(${scale})`,
+            borderRadius: "55% 55% 45% 45% / 60% 60% 40% 40%",
+            background: `radial-gradient(ellipse at 50% 35%, ${tint}, rgba(56,189,248,0.35) 55%, transparent 78%)`,
+            filter: `blur(0.5px) drop-shadow(0 0 6px ${tint})`,
+            animation: `cb-jelly-rise-preview ${dur} linear infinite`,
+            animationDelay: delay,
+          }}
+        />
+      );
       return (
         <div className="relative h-20 w-full rounded-lg overflow-hidden" style={{ background: "radial-gradient(ellipse at 50% 15%, #063a75 0%, #021640 55%, #01081c 100%)" }}>
-          <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse at 30% 40%, rgba(56,189,248,0.4), transparent 55%), radial-gradient(ellipse at 75% 65%, rgba(94,234,212,0.35), transparent 55%)", mixBlendMode: "screen", animation: "cb-nebula-pulse 5s ease-in-out infinite" }} />
-          <div className="absolute inset-0" style={{ backgroundImage: "radial-gradient(1.5px 1.5px at 20% 30%,#7dd3fc,transparent),radial-gradient(1px 1px at 60% 50%,#a5f3fc,transparent),radial-gradient(1.5px 1.5px at 85% 25%,#6ee7b7,transparent),radial-gradient(1px 1px at 45% 75%,#a5f3fc,transparent),radial-gradient(1.5px 1.5px at 15% 80%,#6ee7b7,transparent)", backgroundSize: "100% 200%", filter: "drop-shadow(0 0 4px rgba(125,211,252,0.85))", animation: "cb-volcanic-embers 8s linear infinite" }} />
+          <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse at 30% 40%, rgba(56,189,248,0.35), transparent 55%), radial-gradient(ellipse at 75% 65%, rgba(94,234,212,0.3), transparent 55%)", mixBlendMode: "screen", animation: "cb-nebula-pulse 5s ease-in-out infinite" }} />
+          <div className="absolute inset-0" style={{ backgroundImage: "radial-gradient(1px 1px at 12% 30%,#a5f3fc,transparent),radial-gradient(1px 1px at 78% 55%,#7dd3fc,transparent),radial-gradient(1px 1px at 45% 20%,#bae6fd,transparent)", opacity: 0.7 }} />
+          {jelly(18, "0s", 1, "rgba(125,211,252,0.9)", "5.5s")}
+          {jelly(45, "-2s", 0.75, "rgba(110,231,183,0.9)", "7s")}
+          {jelly(72, "-4s", 1.1, "rgba(165,243,252,0.9)", "6.2s")}
         </div>
       );
     }
     if (item.id === "theme_aurora_borealis") {
+      const curtain = (top: string, height: string, delay: string, dur: string, hueA: string, hueB: string, opacity: number) => (
+        <div
+          className="absolute left-[-20%] right-[-20%]"
+          style={{
+            top,
+            height,
+            opacity,
+            filter: "blur(10px) saturate(1.6)",
+            mixBlendMode: "screen",
+            background: `linear-gradient(90deg, transparent 0%, ${hueA} 25%, ${hueB} 55%, ${hueA} 80%, transparent 100%)`,
+            maskImage: "linear-gradient(180deg, rgba(0,0,0,0.05), rgba(0,0,0,0.95) 40%, rgba(0,0,0,0.3) 90%, transparent)",
+            WebkitMaskImage: "linear-gradient(180deg, rgba(0,0,0,0.05), rgba(0,0,0,0.95) 40%, rgba(0,0,0,0.3) 90%, transparent)",
+            animation: `cb-aurora-preview ${dur} ease-in-out infinite`,
+            animationDelay: delay,
+          }}
+        />
+      );
       return (
         <div className="relative h-20 w-full rounded-lg overflow-hidden" style={{ background: "linear-gradient(180deg,#01102a 0%,#03215a 55%,#042038 100%)" }}>
-          <div className="absolute" style={{ inset: "0 -20% 30% -20%", background: "linear-gradient(180deg, transparent, rgba(52,211,153,0.75) 40%, rgba(59,130,246,0.6) 70%, transparent)", filter: "blur(14px)", mixBlendMode: "screen", animation: "cb-aurora-wave 8s ease-in-out infinite" }} />
-          <div className="absolute" style={{ inset: "0 -30% 40% -30%", background: "linear-gradient(180deg, transparent, rgba(168,85,247,0.55) 45%, transparent)", filter: "blur(18px)", mixBlendMode: "screen", animation: "cb-aurora-wave 12s ease-in-out infinite reverse", animationDelay: "-3s" }} />
+          {/* Stars */}
+          <div className="absolute inset-0" style={{ backgroundImage: "radial-gradient(1px 1px at 12% 18%,#fff,transparent),radial-gradient(1px 1px at 44% 10%,#e0f2fe,transparent),radial-gradient(1px 1px at 78% 22%,#fff,transparent)", opacity: 0.9 }} />
+          {curtain("2%", "70%", "0s", "6s", "rgba(52,211,153,0.75)", "rgba(59,130,246,0.6)", 0.95)}
+          {curtain("6%", "60%", "-2s", "8s", "rgba(168,85,247,0.55)", "rgba(52,211,153,0.5)", 0.8)}
+          {curtain("0%", "78%", "-4s", "11s", "rgba(94,234,212,0.5)", "rgba(147,197,253,0.45)", 0.65)}
+          {/* Horizon glow */}
+          <div className="absolute left-0 right-0" style={{ bottom: "35%", height: "22%", background: "radial-gradient(ellipse at 50% 100%, rgba(52,211,153,0.55), transparent 70%)", filter: "blur(6px)", mixBlendMode: "screen" }} />
+          {/* Mountains */}
           <div className="absolute left-0 right-0 bottom-0" style={{ height: "40%", background: "#031225", clipPath: "polygon(0 55%, 20% 40%, 40% 55%, 60% 30%, 80% 55%, 100% 45%, 100% 100%, 0 100%)" }} />
         </div>
       );
