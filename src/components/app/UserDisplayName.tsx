@@ -94,7 +94,7 @@ const UserDisplayName = ({
     mergedStyle.position = "relative";
     mergedStyle.display = "inline-block";
     mergedStyle.overflow = "visible";
-    mergedStyle.paddingTop = "0.55em";
+    mergedStyle.paddingTop = "0.35em";
   }
   return (
     <Tag className={className} style={mergedStyle} onClick={onClick}>
@@ -107,7 +107,7 @@ const UserDisplayName = ({
           draggable={false}
           style={{
             position: "absolute",
-            top: "-0.05em",
+            top: "0.2em",
             left: "-0.15em",
             height: "0.75em",
             width: "auto",

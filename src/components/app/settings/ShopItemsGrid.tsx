@@ -82,7 +82,7 @@ function ItemPreview({ item, displayName }: { item: ShopItem; displayName: strin
               backgroundImage: `linear-gradient(90deg, ${stops.join(",")})`,
               backgroundSize: "300% 100%",
               overflow: "visible",
-              paddingTop: hasBow ? "0.55em" : undefined,
+              paddingTop: hasBow ? "0.35em" : undefined,
             }}
           >
             {name}
@@ -92,7 +92,7 @@ function ItemPreview({ item, displayName }: { item: ShopItem; displayName: strin
                 alt=""
                 aria-hidden="true"
                 draggable={false}
-                style={{ position: "absolute", top: "-0.05em", left: "-0.15em", height: "0.75em", width: "auto", pointerEvents: "none", filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.5))", transform: "rotate(-18deg)", transformOrigin: "bottom left" }}
+                style={{ position: "absolute", top: "0.2em", left: "-0.15em", height: "0.75em", width: "auto", pointerEvents: "none", filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.5))", transform: "rotate(-18deg)", transformOrigin: "bottom left" }}
               />
             )}
           </span>
