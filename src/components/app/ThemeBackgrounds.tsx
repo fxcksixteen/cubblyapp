@@ -65,6 +65,8 @@ export const CyberBackground = () => {
   return (
     <div className="cb-cyber-bg" aria-hidden="true">
       <div className="cb-cyber-sun" />
+      <div className="cb-cyber-mountains" />
+      <div className="cb-cyber-horizon-glow" />
       <div className="cb-cyber-grid" />
       <div className="cb-cyber-scan" />
     </div>
