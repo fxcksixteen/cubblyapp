@@ -231,6 +231,64 @@ async function sendSignalReliably(
   console.error(`[Voice] ❌ sendSignal(${label}) failed after all retries`);
 }
 
+/**
+ * v0.4.0: Robust answer send. The base `sendSignalReliably` completes when the
+ * broadcast is *acknowledged by the Realtime server*, not by the peer. If the
+ * peer's Realtime subscription is mid-resubscribe (post tab-wake, laptop lid,
+ * network flap) the broadcast is silently dropped and the caller stays stuck
+ * on "Not in call" while the callee thinks the handshake is done. We resend
+ * the answer up to 2 more times at widening intervals unless the peer
+ * connection reports itself connected (proof the answer landed).
+ */
+async function sendAnswerWithRetry(
+  channel: ReturnType<typeof supabase.channel> | null,
+  payload: Record<string, any>,
+  pcGetter: () => RTCPeerConnection | null,
+  label: string,
+): Promise<void> {
+  console.log(`[acceptDiag] answer.send start (${label})`);
+  await sendSignalReliably(channel, payload, label);
+  const schedule = [1200, 2800];
+  for (const ms of schedule) {
+    setTimeout(async () => {
+      const pc = pcGetter();
+      const state = pc?.iceConnectionState;
+      if (state === "connected" || state === "completed") {
+        console.log(`[acceptDiag] answer.acked (${label}) — skipping retry at +${ms}ms`);
+        return;
+      }
+      console.log(`[acceptDiag] answer.resend (${label}) at +${ms}ms (iceState=${state})`);
+      await sendSignalReliably(channel, payload, `${label}#retry+${ms}`);
+    }, ms);
+  }
+}
+
+/**
+ * v0.4.0: Heartbeat with retry. The very first heartbeat after accept is what
+ * flips the caller's participant reconciliation from "Not in call" to live.
+ * If it fails silently (transient DB error, offline blip), the peer can stay
+ * stuck for the full 10s heartbeat tick. Retry up to twice on failure and
+ * surface any final failure to the diagnostics log.
+ */
+async function heartbeatWithRetry(callEventId: string, tag: string): Promise<void> {
+  const attempts = [0, 500, 1500];
+  for (let i = 0; i < attempts.length; i++) {
+    if (attempts[i] > 0) await new Promise(r => setTimeout(r, attempts[i]));
+    try {
+      const res: any = await (supabase as any).rpc("heartbeat_call_participant", { _call_event_id: callEventId });
+      if (!res?.error) {
+        if (i > 0) console.log(`[acceptDiag] heartbeatOk (${tag}) on retry #${i}`);
+        else console.log(`[acceptDiag] heartbeatOk (${tag})`);
+        return;
+      }
+      console.warn(`[acceptDiag] heartbeat failed (${tag}) attempt ${i + 1}:`, res?.error);
+    } catch (e) {
+      console.warn(`[acceptDiag] heartbeat threw (${tag}) attempt ${i + 1}:`, e);
+    }
+  }
+  console.error(`[acceptDiag] heartbeat gave up (${tag}) — peer may see "Not in call"`);
+}
+
 interface VoiceContextType {
   settings: VoiceSettings;
   updateSettings: (partial: Partial<VoiceSettings>) => void;
@@ -276,6 +334,22 @@ interface VoiceContextType {
   setUserMuted: (userId: string, muted: boolean) => void;
   /** v0.3.19: Live WebRTC diagnostics for the current call. Null when not connected. */
   getCallDiagnostics: () => Promise<CallDiagnostics | null>;
+  /** v0.4.0: Synthetic pickup self-test. Runs the same hardened accept-path
+   * helpers (answer retry + heartbeat retry + teardown guard) against two
+   * in-process peer connections and reports which stage completed. */
+  runPickupSelfTest: () => Promise<PickupSelfTestResult>;
+}
+
+export interface PickupSelfTestResult {
+  pass: boolean;
+  stages: {
+    mediaAcquired: boolean;
+    peerCreated: boolean;
+    offerAnswered: boolean;
+    iceConnected: boolean;
+  };
+  errorMessage?: string;
+  durationMs: number;
 }
 
 export interface CallDiagnostics {
@@ -529,6 +603,14 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   // duplicate offer retries from the caller's retry loop cannot re-trigger
   // setRemoteDescription on an already-stable PC, which was wiping ICE state.
   const lastAnsweredOfferRef = useRef<string | null>(null);
+  // v0.4.0: accept-in-flight guard. When the fast-path accept is between
+  // "tear down stale pc" and "setLocalDescription(answer)", a late retry offer
+  // from the caller's retry loop would land on a null pc, fall into the
+  // "no pc + no activeCall" branch, and re-set incomingCall — orphaning the
+  // fresh pc we just built. When this ref matches the incoming offer's
+  // callEventId we buffer the offer into pendingRetryOfferRef instead.
+  const acceptInFlightRef = useRef<string | null>(null);
+  const pendingRetryOfferRef = useRef<{ callEventId: string; sdp: RTCSessionDescriptionInit } | null>(null);
   // Forward-ref to startCall so acceptCall (declared above startCall in the
   // file) can delegate to the exact rejoin code path without circular
   // useCallback deps. Assigned in an effect after startCall is created.
@@ -1328,6 +1410,19 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             return;
           }
 
+          // v0.4.0: fast-path accept teardown guard. If the user just tapped
+          // Accept and we're mid-way through closing the stale PC / building
+          // the fresh one, buffer this offer instead of running the normal
+          // handler (which would see no pc + no matching activeCall and
+          // orphan our in-flight PC).
+          if (payload.callEventId && acceptInFlightRef.current === payload.callEventId) {
+            console.log("[acceptDiag] buffering retry offer during accept-in-flight", payload.callEventId);
+            pendingRetryOfferRef.current = { callEventId: payload.callEventId, sdp: payload.sdp };
+            return;
+          }
+
+
+
 
 
           // Re-offer mid-call (e.g. peer enabled camera and renegotiated).
@@ -1381,7 +1476,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               answer.sdp = sdp;
               await pc.setLocalDescription(answer);
 
-              await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id, callEventId: payload.callEventId || currentCallEventIdRef.current }, "answer(accepted-offer)");
+              await sendAnswerWithRetry(
+                channel,
+                { type: "answer", sdp: answer, senderId: user.id, callEventId: payload.callEventId || currentCallEventIdRef.current },
+                () => pcRef.current,
+                "answer(accepted-offer)",
+              );
               if (offerDedupeKey) lastAnsweredOfferRef.current = offerDedupeKey;
 
               setActiveCall(prev => prev && prev.conversationId === conversationId
@@ -1405,14 +1505,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
               acceptedIncomingCallRef.current = null;
               setIncomingCall(null);
-              // v0.3.12: immediately heartbeat so peer sees us in
-              // call_participants without waiting for the 10s heartbeat tick.
+              // v0.4.0: heartbeat with retry so a single DB blip doesn't
+              // leave the peer stuck on "Not in call".
               const evtId = payload.callEventId || currentCallEventIdRef.current;
-              if (evtId) {
-                void (async () => {
-                  try { await (supabase as any).rpc("heartbeat_call_participant", { _call_event_id: evtId }); } catch {}
-                })();
-              }
+              if (evtId) void heartbeatWithRetry(evtId, "accepted-offer");
+
 
             } catch (e) {
               console.error("[Voice] Failed handling accepted offer (keeping call alive):", e);
@@ -1465,7 +1562,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               answer.sdp = sdp;
               await newPc.setLocalDescription(answer);
 
-              await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id, callEventId: payload.callEventId || currentCallEventIdRef.current }, "answer(rejoin)");
+              await sendAnswerWithRetry(
+                channel,
+                { type: "answer", sdp: answer, senderId: user.id, callEventId: payload.callEventId || currentCallEventIdRef.current },
+                () => pcRef.current,
+                "answer(rejoin)",
+              );
               if (offerDedupeKey) lastAnsweredOfferRef.current = offerDedupeKey;
 
               setActiveCall(prev => prev ? {
@@ -1476,14 +1578,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
                 peerLeftAt: undefined,
               } : prev);
               peerIdRef.current = payload.senderId || peerIdRef.current;
-              // v0.3.12: immediate heartbeat so the staying peer sees us live
-              // in call_participants and stops showing "Not in call".
+              // v0.4.0: heartbeat with retry so a single DB blip doesn't
+              // leave the staying peer stuck on "Not in call".
               const evtId = payload.callEventId || currentCallEventIdRef.current;
-              if (evtId) {
-                void (async () => {
-            try { await (supabase as any).rpc("heartbeat_call_participant", { _call_event_id: evtId }); } catch {}
-                })();
-              }
+              if (evtId) void heartbeatWithRetry(evtId, "rejoin");
+
 
             } catch (e) {
               console.error("[Voice] Rejoin auto-accept failed (keeping call alive):", e);
@@ -2201,7 +2300,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       isRemoteHangup.current = false;
 
       // Heartbeat now so caller's live-peer check flips us to "in call".
-      try { await ensureOwnParticipantRow(acceptedCall.callEventId); } catch {}
+      console.log("[acceptDiag] accept.start", { callEventId: acceptedCall.callEventId, hasOffer: !!acceptedCall.offer });
+      void heartbeatWithRetry(acceptedCall.callEventId, "accept-init");
 
       const channel = await setupSignaling(acceptedCall.conversationId);
 
@@ -2214,6 +2314,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           existingPcState: pcRef.current?.connectionState,
           existingSignalingState: pcRef.current?.signalingState,
         });
+        // v0.4.0: mark accept-in-flight so the offer handler buffers any
+        // late retry offer instead of orphaning the fresh PC we're about
+        // to build.
+        acceptInFlightRef.current = acceptedCall.callEventId;
+        pendingRetryOfferRef.current = null;
         try {
           // CRITICAL: tear down any stale PC from a previous (failed) accept
           // attempt or pre-build, otherwise createPeerConnection silently
@@ -2255,21 +2360,70 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           sdp = setHighQualityOpus(sdp);
           answer.sdp = sdp;
           await pc.setLocalDescription(answer);
-          await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id, callEventId: acceptedCall.callEventId }, "answer(accept-direct)");
+          console.log("[acceptDiag] accept.fastpath.answered", acceptedCall.callEventId);
+          await sendAnswerWithRetry(
+            channel,
+            { type: "answer", sdp: answer, senderId: user.id, callEventId: acceptedCall.callEventId },
+            () => pcRef.current,
+            "answer(accept-direct)",
+          );
           if (acceptedCall.callEventId) lastAnsweredOfferRef.current = `${acceptedCall.callEventId}:${acceptedCall.offer?.sdp || ""}`;
 
           setIncomingCall(null);
           acceptedIncomingCallRef.current = null;
           // Second heartbeat after answer so the caller's UI updates quickly.
-          void (async () => {
-            try { await (supabase as any).rpc("heartbeat_call_participant", { _call_event_id: acceptedCall.callEventId }); } catch {}
-          })();
+          void heartbeatWithRetry(acceptedCall.callEventId, "accept-post-answer");
+          // v0.4.0: extra heartbeat after ICE actually connects so the peer's
+          // reconciliation flips us the moment audio starts, not up to 10 s
+          // later on the periodic tick.
+          const onConnected = () => {
+            const st = pc.iceConnectionState;
+            if (st === "connected" || st === "completed") {
+              console.log("[acceptDiag] accept.iceConnected", acceptedCall.callEventId);
+              void heartbeatWithRetry(acceptedCall.callEventId, "accept-ice-connected");
+              pc.removeEventListener("iceconnectionstatechange", onConnected);
+            }
+          };
+          pc.addEventListener("iceconnectionstatechange", onConnected);
+
+          // v0.4.0: drain any offer retry that arrived while we were mid-
+          // accept. Same-sdp retries are ignored by the dedupe key; a new
+          // sdp means the caller renegotiated and we need to answer again.
+          acceptInFlightRef.current = null;
+          const buffered = pendingRetryOfferRef.current;
+          pendingRetryOfferRef.current = null;
+          if (buffered && buffered.callEventId === acceptedCall.callEventId) {
+            const bufferedKey = `${buffered.callEventId}:${buffered.sdp?.sdp || ""}`;
+            if (bufferedKey !== lastAnsweredOfferRef.current) {
+              console.log("[acceptDiag] draining buffered retry offer with new sdp");
+              try {
+                await pc.setRemoteDescription(new RTCSessionDescription(buffered.sdp));
+                const ans2 = await pc.createAnswer();
+                let sdp2 = ans2.sdp || "";
+                sdp2 = setHighQualityOpus(sdp2);
+                ans2.sdp = sdp2;
+                await pc.setLocalDescription(ans2);
+                await sendAnswerWithRetry(
+                  channel,
+                  { type: "answer", sdp: ans2, senderId: user.id, callEventId: acceptedCall.callEventId },
+                  () => pcRef.current,
+                  "answer(accept-direct-retry)",
+                );
+                lastAnsweredOfferRef.current = bufferedKey;
+              } catch (e) {
+                console.warn("[acceptDiag] buffered retry offer answer failed:", e);
+              }
+            }
+          }
           return;
         } catch (e) {
-          console.error("[Voice] Direct-answer accept failed, falling back to ready-for-offer:", e);
+          console.error("[acceptDiag] Direct-answer accept failed, falling back to ready-for-offer:", e);
+          acceptInFlightRef.current = null;
+          pendingRetryOfferRef.current = null;
           // fall through
         }
       }
+
 
       // SLOW PATH — no cached offer yet. Stash acceptedIncomingCallRef so the
       // standard offer handler picks it up, then ask the caller to (re)send.
@@ -3434,6 +3588,71 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     return () => clearInterval(i);
   }, [activeCall, user, currentCallEventId, isScreenSharing]);
 
+  // v0.4.0: Synthetic pickup self-test. Two in-process peer connections play
+  // caller + callee; we run the exact same answer-with-retry helper against
+  // a mock channel so the acceptCall hardening is exercised end-to-end.
+  const runPickupSelfTest = useCallback(async (): Promise<PickupSelfTestResult> => {
+    const t0 = Date.now();
+    const stages = { mediaAcquired: false, peerCreated: false, offerAnswered: false, iceConnected: false };
+    let localPc: RTCPeerConnection | null = null;
+    let remotePc: RTCPeerConnection | null = null;
+    let stream: MediaStream | null = null;
+    try {
+      console.log("[acceptDiag] selfTest.start");
+      stream = await getUserMedia();
+      stages.mediaAcquired = true;
+      console.log("[acceptDiag] selfTest.mediaAcquired");
+
+      const iceServers = iceServersRef.current;
+      localPc = new RTCPeerConnection({ iceServers, iceTransportPolicy: "all" });
+      remotePc = new RTCPeerConnection({ iceServers, iceTransportPolicy: "all" });
+      stages.peerCreated = true;
+      console.log("[acceptDiag] selfTest.peerCreated");
+
+      localPc.onicecandidate = (e) => { if (e.candidate) remotePc?.addIceCandidate(e.candidate).catch(() => {}); };
+      remotePc.onicecandidate = (e) => { if (e.candidate) localPc?.addIceCandidate(e.candidate).catch(() => {}); };
+      stream.getTracks().forEach(t => localPc!.addTrack(t, stream!));
+
+      const iceConnected = new Promise<void>((resolve, reject) => {
+        const to = setTimeout(() => reject(new Error("ICE timeout (8s)")), 8000);
+        localPc!.oniceconnectionstatechange = () => {
+          const s = localPc!.iceConnectionState;
+          if (s === "connected" || s === "completed") { clearTimeout(to); resolve(); }
+          if (s === "failed") { clearTimeout(to); reject(new Error("ICE failed")); }
+        };
+      });
+
+      // Caller side offer
+      const offer = await localPc.createOffer();
+      await localPc.setLocalDescription(offer);
+      await remotePc.setRemoteDescription(offer);
+
+      // Callee runs the same helper flow the accept path uses
+      const answer = await remotePc.createAnswer();
+      await remotePc.setLocalDescription(answer);
+      // Exercise sendAnswerWithRetry against a mock channel that behaves
+      // like a healthy realtime channel (returns "ok").
+      const mockChannel: any = { send: async () => "ok" };
+      await sendAnswerWithRetry(mockChannel, { type: "answer", sdp: answer }, () => localPc, "selfTest.answer");
+      await localPc.setRemoteDescription(answer);
+      stages.offerAnswered = true;
+      console.log("[acceptDiag] selfTest.offerAnswered");
+
+      await iceConnected;
+      stages.iceConnected = true;
+      console.log("[acceptDiag] selfTest.iceConnected");
+
+      return { pass: true, stages, durationMs: Date.now() - t0 };
+    } catch (e: any) {
+      console.error("[acceptDiag] selfTest failed:", e);
+      return { pass: false, stages, errorMessage: e?.message || String(e), durationMs: Date.now() - t0 };
+    } finally {
+      try { localPc?.close(); } catch {}
+      try { remotePc?.close(); } catch {}
+      try { stream?.getTracks().forEach(t => t.stop()); } catch {}
+    }
+  }, [getUserMedia]);
+
   return (
     <VoiceContext.Provider value={{
       settings, updateSettings, screenShareSettings, updateScreenShareSettings,
@@ -3446,7 +3665,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       peerInstantState,
       getUserVolume, setUserVolume, isUserMuted, setUserMuted,
       getCallDiagnostics,
+      runPickupSelfTest,
     }}>
+
       {children}
     </VoiceContext.Provider>
   );

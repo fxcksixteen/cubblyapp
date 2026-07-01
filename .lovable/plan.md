@@ -1,66 +1,60 @@
-# v0.4.0 Bug Squash Plan
+## What we're fixing
 
-Wide sweep turned up two critical bugs and a batch of high/medium issues that will bite real users on launch day. Below is what to fix, grouped by severity. No version bump — you'll ship this on your word.
+Symptom (kaszy ↔ geassbound): tap the green pickup button → the call UI opens → but the caller still shows "Not in call" for the callee and no audio flows either direction. The call is technically "accepted" but the WebRTC handshake or the participant-liveness signal never actually completes.
 
-## Critical (must fix)
+I won't rewrite the call system — that path went through 6 rounds of fixes already and the loopback works. This is targeted hardening + a self-test.
 
-1. **Coins balance never updates live** — `src/contexts/CoinsContext.tsx`
-   The security migration removed `user_coins` and `coin_transactions` from the realtime publication, so the current postgres_changes subscription is dead. Drop the dead listeners and instead: refresh balance after each `accrue_activity_coins` heartbeat (already in the same effect), expose a `refreshBalance()` that shop/gift/gem flows call after any RPC that spends or grants coins, and refresh on window focus.
+## Root causes still in the accept path
 
-2. **Voice-global channel collision** — `src/contexts/VoiceContext.tsx` and `src/contexts/GroupCallContext.tsx`
-   Both permanently subscribe to the identical topic `voice-global:{user.id}`. The second subscribe silently steals the first's slot, so depending on mount order either 1:1 incoming calls or group incoming calls get swallowed. Give each a unique suffix (same pattern already used everywhere else in the codebase).
+Reading `src/contexts/VoiceContext.tsx` I found three remaining race windows that all produce exactly the "UI opens but stuck on Not in call" symptom:
 
-## High
+1. **Fast path teardown race.** When Accept fires with a prefetched offer, we close `pcRef.current` and immediately build a new PC. If a *retry* offer from the caller arrives during the ~200 ms window between close and `setRemoteDescription`, the standard offer handler runs on a `null` pc, falls into the "no pc + no activeCall match" branch, and re-sets `incomingCall` — orphaning the fresh PC we just built.
+2. **Answer never reaches the caller.** `sendSignalReliably` fires the answer, but if the caller's supabase realtime channel is mid-resubscribe (post tab-wake, laptop lid) the broadcast is dropped and there's no retry on the answer itself — only on `ready-for-offer` and `offer`. Callee thinks they're connected, caller stays in "ringing" forever, and the callee's row never gets flipped to live from the caller's side.
+3. **Heartbeat lost.** The two `heartbeat_call_participant` RPCs fired after accept are wrapped in `try/catch` that swallows failures silently. If the very first heartbeat fails (network hiccup) the caller's participant reconciliation never sees a `last_seen_at` newer than the cutoff and keeps rendering "Not in call".
 
-3. **Realtime message delivery breaks on StrictMode / fast nav** — `src/hooks/useMessages.ts` (`messages:{conversationId}`) and `src/components/app/ChatView.tsx` (`typing:{conversationId}`)
-   Neither channel has a unique suffix. On remount the second `.subscribe()` on the same topic throws and the listener is silently dropped — new messages / typing indicators only reappear after refresh. Add the standard uniqueSuffix.
+## Fix plan
 
-4. **Group-call incoming broadcasts lost on every mute toggle** — `src/contexts/GroupCallContext.tsx`
-   The `voice-global` subscribe effect depends on `activeCall`, so it tears down and rebuilds on every state change (~200ms blind window). Move `activeCall` to a ref (same pattern VoiceContext already uses).
+### 1. `src/contexts/VoiceContext.tsx` — fast path teardown guard
+- Introduce `acceptInFlightRef` set before we close the stale PC and cleared after we've sent the answer.
+- In the `offer` handler, if `acceptInFlightRef.current === callEventId`, buffer the offer into `acceptedIncomingCallRef.pendingRetryOffer` instead of re-setting `incomingCall`. After Accept finishes, if a retry landed, we answer it against the fresh PC.
 
-5. **Silent send failures** — `src/hooks/useMessages.ts`
-   Failed insert removes the optimistic message with only a console log. Add a `toast.error("Failed to send message")` and keep the draft in the composer so the user can retry.
+### 2. `src/contexts/VoiceContext.tsx` — retry the answer
+- Wrap answer send in a new `sendAnswerReliably(channel, payload)` helper that resends up to 3 times (400 ms / 1200 ms / 2500 ms) unless we observe `pc.iceConnectionState === "connected"` OR receive a fresh ICE candidate from the peer for this callEventId (proof they got our answer).
+- Applies in all three answer paths: fast-accept, accepted-offer, rejoin.
 
-6. **Dismiss-broadcast channel leak** — `src/contexts/VoiceContext.tsx` (`broadcastIncomingCallDismiss`)
-   If SUBSCRIBED never fires (network blip), the ephemeral channel is never removed. Add an outer timeout that force-removes the channel after ~2s regardless of subscribe state.
+### 3. `src/contexts/VoiceContext.tsx` — heartbeat retry + failure surface
+- Replace the fire-and-forget heartbeat calls with `heartbeatWithRetry(callEventId)` that:
+  - runs `heartbeat_call_participant` immediately,
+  - retries at 500 ms and 1500 ms if the previous call rejects,
+  - logs `[acceptDiag] heartbeat failed` so it shows up in Call Diagnostics.
+- Also emit an extra heartbeat *right after* `iceConnectionState` first becomes `connected`, so the caller's reconciliation flips us the moment audio actually starts.
 
-## Medium
+### 4. Caller-side stale-PC safety net
+- In `initializeOutgoingConnection`, when we detect an existing PC in `iceConnectionState === "disconnected" | "failed"`, force a full close + fresh offer (already partially there; tighten so it also runs when `connectionState === "new"` but `signalingState === "have-local-offer"` for > 8 s — the "PC exists but never gathered" limbo).
 
-7. **Remote-hangup listener rebuilds on every call-state change** — `src/hooks/useActiveCallElsewhere.ts`
-   `useRemoteHangupListener` and the tracker effect depend on live objects, causing constant tear-down/rebuild and a tiny window where remote-hangup broadcasts can be missed. Move `endCall` / `activeCall` reads behind refs.
+### 5. Diagnostics telemetry
+- Extend the existing `[acceptDiag]` log tag with structured entries: `accept.start`, `accept.fastpath.answered`, `accept.slowpath.readySent`, `accept.answerAcked`, `accept.heartbeatOk`, `accept.iceConnected`, plus their failure counterparts. `CallDiagnosticsModal` already renders the console log tail — no UI change needed to see them.
 
-8. **Ephemeral `voice-control` sender can collide with its own listener** — `src/hooks/useActiveCallElsewhere.ts` (`requestRemoteHangup`)
-   Add a unique suffix on the sender channel.
+### 6. `src/components/app/CallDiagnosticsModal.tsx` — "Test pickup" self-test
+- New button **"Test pickup with CubblyBot"** that:
+  1. If not already in a call, calls `startCall(CUBBLY_BOT_CONVERSATION_ID)`.
+  2. Waits ~1 s for the local loopback echo path to prime.
+  3. Programmatically fires `acceptCall()` (loopback pretends CubblyBot answered).
+  4. Watches `[acceptDiag]` markers for 6 s, then reports PASS/FAIL with the specific stage that failed (`fastpath.answered` missing → SDP; `answerAcked` missing → broadcast; `heartbeatOk` missing → DB; `iceConnected` missing → NAT/TURN).
+- Result is shown in the modal AND copyable so we can paste it in chat if it fails on a real device.
 
-9. **`ScreenSharePicker` can throw on web** — `src/components/app/ScreenSharePicker.tsx`
-   Guard the `electronAPI.getDesktopSources()` call with optional chaining.
+### 7. Changelog + version bump
+- No version bump (per the "never bump unless asked" rule) — v0.4.0 stays intact.
+- Add a bullet under the existing v0.4.0 changelog entry: `Voice: hardened accept-call handshake (answer retry, heartbeat retry, teardown guard) so pickup no longer leaves the peer stuck on "Not in call".`
 
-10. **Wishlist toggle has no busy guard** — `src/components/app/ShopView.tsx`
-    Rapid taps fire concurrent RPCs. Add a per-item pending flag with optimistic UI.
+## Files touched
 
-11. **Honey gift RPC errors are swallowed** — `src/components/app/HoneyGiftModal.tsx`
-    Add a `toast.error(...)` on the RPC error path (currently only the "not enough gems" client-side case is surfaced).
-
-12. **Push notifications fire to users actively reading** — `src/hooks/useUnreadCounts.ts` + `ChatView` mount points
-    Audit every place that mounts `ChatView` to ensure `setActiveConversation(conversationId)` is called on mount and cleared on unmount, so the 30s-suppression window actually kicks in.
-
-13. **HoneyGiftMessage subscribes before initial fetch resolves** — `src/components/app/chat/HoneyGiftMessage.tsx`
-    Move the `supabase.channel(...)` subscribe to run after the initial fetch resolves; add a unique suffix.
-
-14. **`activity_details` DELETE handler may silently ignore rows** — `src/contexts/ActivityContext.tsx`
-    Without `REPLICA IDENTITY FULL`, OLD row may not carry `user_id`. Fall back to a full refetch on DELETE when `oldRow.user_id` is missing.
-
-## Low (batch with the above)
-
-- Use `crypto.randomUUID()` for optimistic message temp IDs.
-- Modal queue: no prod-visible bug; leave as-is.
-
-## Out of scope
-
-- No design changes. No new features. No version bump. Purely correctness fixes.
-- iOS app is untouched.
+- `src/contexts/VoiceContext.tsx` — items 1–5.
+- `src/components/app/CallDiagnosticsModal.tsx` — item 6.
+- `src/lib/changelog.ts` — item 7.
 
 ## Verification
 
-- Typecheck after each cluster.
-- Manually verify: send a message (toast on failure), incoming 1:1 + group call ring, gem purchase updates balance without refresh, wishlist double-tap doesn't double-charge, screen share picker still opens on desktop.
+- Build passes.
+- Manual: open Call Diagnostics → **Test pickup with CubblyBot** → expect PASS with all 4 stages green.
+- Then ask you to try a live call with geassbound and share the diagnostics output if it still fails so we get an exact stage rather than another round of guessing.

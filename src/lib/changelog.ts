@@ -55,6 +55,8 @@ export const CHANGELOG: ChangelogEntry[] = [
     ],
     bugFixes: [
       "Massive voice call reliability overhaul — the green pickup button works consistently again and stale peer connections no longer break rejoin.",
+      "Hardened the pickup handshake so accepting a call no longer leaves the other person stuck on 'Not in call'.",
+      "Added a one-click pickup self-test in Call Diagnostics.",
       "Fixed DMs disappearing after leaving a shared server — old 1:1 conversations always reopen.",
       "Screensharing no longer muffles or mutes audio, and viewers get shared system audio.",
       "Server voice channels correctly show who's actually in the call.",
