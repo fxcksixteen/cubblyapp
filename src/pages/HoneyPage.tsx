@@ -2,7 +2,7 @@ import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useEntitlements } from "@/hooks/useEntitlements";
-import honey3d from "@/assets/honey-3d.png";
+import honey3d from "@/assets/badges/honey.png";
 import { toast } from "sonner";
 import { Check, Sparkles } from "lucide-react";
 
