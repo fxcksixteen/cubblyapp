@@ -18,6 +18,7 @@ import ChatSettings from "./settings/ChatSettings";
 import LanguageTimeSettings from "./settings/LanguageTimeSettings";
 import DataPrivacySettings from "./settings/DataPrivacySettings";
 import DevicesSettings from "./settings/DevicesSettings";
+import { Switch } from "@/components/ui/switch";
 import ContentSocialSettings from "./settings/ContentSocialSettings";
 import AccessibilitySettings from "./settings/AccessibilitySettings";
 import KeybindsSettings from "./settings/KeybindsSettings";
