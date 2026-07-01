@@ -13,7 +13,7 @@ import { defaultProfileColor } from "@/lib/profileColors";
 interface GiftSendModalProps {
   open: boolean;
   onClose: () => void;
-  item: { id: string; name: string; description: string | null; category: string; price: number; price_gems: number | null } | null;
+  item: { id: string; name: string; description: string | null; category: string; price: number; price_gems: number | null; config?: any } | null;
   onSent?: (item: { id: string; name: string }) => void;
 }
 
@@ -35,7 +35,7 @@ const GiftSendModal = ({ open, onClose, item, onSent }: GiftSendModalProps) => {
 
   const giftPriceGems = useMemo(() => {
     if (!item) return 0;
-    if (item.price_gems != null && item.price_gems > 0) return item.price_gems;
+    if (item.config?.gems_only && item.price_gems != null && item.price_gems > 0) return item.price_gems;
     return Math.max(20, Math.ceil(item.price / 10));
   }, [item]);
 
