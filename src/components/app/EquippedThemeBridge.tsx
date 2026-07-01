@@ -18,6 +18,13 @@ const THEME_MAP: Record<string, ThemeName> = {
   theme_sky_dusk: "sky",
   theme_snowy_drift: "snowy",
   theme_moonlit_hills: "hills",
+  // Premium gem-only themes
+  theme_cosmic_nebula: "nebula",
+  theme_cyber_grid: "cyber",
+  theme_volcanic: "volcanic",
+  theme_bioluminescent: "abyss",
+  theme_aurora_borealis: "aurora",
+  theme_sakura_storm: "sakura",
 };
 
 const VALID_LOCAL_THEMES: ThemeName[] = ["default", "onyx", "white", "cubbly"];

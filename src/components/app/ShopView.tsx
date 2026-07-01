@@ -50,6 +50,12 @@ const THEME_ITEM_MAP: Record<string, ThemeName> = {
   theme_sky_dusk: "sky",
   theme_snowy_drift: "snowy",
   theme_moonlit_hills: "hills",
+  theme_cosmic_nebula: "nebula",
+  theme_cyber_grid: "cyber",
+  theme_volcanic: "volcanic",
+  theme_bioluminescent: "abyss",
+  theme_aurora_borealis: "aurora",
+  theme_sakura_storm: "sakura",
 };
 
 type Category = "name_color" | "theme" | "badge";
