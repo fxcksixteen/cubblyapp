@@ -1,5 +1,6 @@
 import { useEffect, CSSProperties, ReactNode } from "react";
 import { useNameColors, NameColor } from "@/contexts/NameColorsContext";
+import bowImg from "@/assets/badges/petite.svg";
 
 interface Props {
   userId: string | null | undefined;
@@ -86,10 +87,35 @@ const UserDisplayName = ({
     if (userId) request(userId);
   }, [userId, request]);
   const color = get(userId);
+  const hasBow = color?.kind === "animated" && (color as any).bow;
   const Tag: any = as;
+  const mergedStyle: CSSProperties = { ...nameColorStyle(color, fallbackColor), ...style };
+  if (hasBow) {
+    mergedStyle.position = "relative";
+    mergedStyle.display = "inline-block";
+  }
   return (
-    <Tag className={className} style={{ ...nameColorStyle(color, fallbackColor), ...style }} onClick={onClick}>
+    <Tag className={className} style={mergedStyle} onClick={onClick}>
       {children ?? name}
+      {hasBow && (
+        <img
+          src={bowImg}
+          alt=""
+          aria-hidden="true"
+          draggable={false}
+          style={{
+            position: "absolute",
+            top: "-0.55em",
+            left: "-0.35em",
+            height: "0.85em",
+            width: "auto",
+            pointerEvents: "none",
+            filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.45))",
+            transform: "rotate(-14deg)",
+            zIndex: 2,
+          }}
+        />
+      )}
     </Tag>
   );
 };

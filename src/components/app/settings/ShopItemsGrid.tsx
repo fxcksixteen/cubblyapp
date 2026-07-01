@@ -73,16 +73,26 @@ function ItemPreview({ item, displayName }: { item: ShopItem; displayName: strin
     }
     if (item.subcategory === "animated") {
       const stops = (item.config?.stops as string[]) ?? ["#22d3ee", "#a855f7", "#ec4899", "#22d3ee"];
+      const hasBow = !!item.config?.bow;
       return (
         <div className="flex h-16 w-full items-center justify-center rounded-lg bg-[#1e1f22] px-3">
           <span
-            className="text-base font-extrabold bg-clip-text text-transparent shop-animated-name truncate"
+            className="text-base font-extrabold bg-clip-text text-transparent shop-animated-name truncate relative inline-block"
             style={{
               backgroundImage: `linear-gradient(90deg, ${stops.join(",")})`,
               backgroundSize: "300% 100%",
             }}
           >
             {name}
+            {hasBow && (
+              <img
+                src={imgPetite}
+                alt=""
+                aria-hidden="true"
+                draggable={false}
+                style={{ position: "absolute", top: "-0.55em", left: "-0.35em", height: "0.85em", width: "auto", pointerEvents: "none", filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.5))", transform: "rotate(-14deg)" }}
+              />
+            )}
           </span>
         </div>
       );

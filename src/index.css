@@ -390,26 +390,47 @@
 
 /* ── Cyber Grid ─────────────────────────────────────────── */
 .cb-cyber-bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
-  background: linear-gradient(180deg, #050014 0%, #0a0320 45%, #0e0530 60%, #1a0745 75%, #ff2fbf 100%); }
-.cb-cyber-sun { position:absolute; left:50%; bottom:22%; width:340px; height:340px; margin-left:-170px; border-radius:50%;
-  background: radial-gradient(circle at 50% 30%, #ffe066 0%, #ff2fbf 45%, #7c1d8e 75%, transparent 100%);
-  filter: blur(2px); box-shadow: 0 0 80px rgba(255,47,191,.6), 0 0 160px rgba(255,47,191,.3); }
-.cb-cyber-sun::after { content:""; position:absolute; left:0; right:0; top:60%; bottom:0;
-  background: repeating-linear-gradient(to bottom, transparent 0 8px, rgba(0,0,0,.55) 8px 12px);
-  border-radius: 0 0 50% 50% / 0 0 100% 100%; }
-.cb-cyber-grid { position:absolute; left:-25%; right:-25%; bottom:0; height:55%;
+  background: linear-gradient(180deg, #05010f 0%, #0a0325 38%, #200a55 62%, #6b1a7a 82%, #ff2fbf 96%, #ffb15c 100%); }
+.cb-cyber-bg::before { content:""; position:absolute; left:0; right:0; top:0; height:55%;
   background:
-    linear-gradient(rgba(0,255,255,.85) 1px, transparent 1px) 0 0 / 100% 40px,
-    linear-gradient(90deg, rgba(0,255,255,.75) 1px, transparent 1px) 0 0 / 40px 100%;
-  transform: perspective(500px) rotateX(70deg);
+    radial-gradient(1px 1px at 40px 30px,#fff,transparent),
+    radial-gradient(1px 1px at 180px 80px,#fff,transparent),
+    radial-gradient(1px 1px at 320px 20px,#fff,transparent),
+    radial-gradient(1px 1px at 500px 120px,#fbcfe8,transparent),
+    radial-gradient(1px 1px at 700px 60px,#fff,transparent),
+    radial-gradient(0.8px 0.8px at 900px 110px,#fff,transparent);
+  background-size: 1000px 200px; opacity:.7; }
+.cb-cyber-sun { position:absolute; left:50%; bottom:44%; width:360px; height:180px; margin-left:-180px;
+  background: radial-gradient(ellipse at 50% 100%, #fde68a 0%, #ff2fbf 45%, #7c1d8e 78%, transparent 100%);
+  border-radius: 360px 360px 0 0;
+  filter: blur(0.5px); box-shadow: 0 0 90px rgba(255,47,191,.55), 0 0 200px rgba(255,47,191,.35); }
+.cb-cyber-sun::after { content:""; position:absolute; left:8%; right:8%; top:38%; height:60%;
+  background: repeating-linear-gradient(to bottom, transparent 0 8px, rgba(10,3,37,.85) 8px 13px);
+  border-radius: 0; pointer-events:none; }
+.cb-cyber-bg .cb-cyber-mountains { position:absolute; left:-2%; right:-2%; bottom:44%; height:12%;
+  background: #1a0530; opacity:.85; z-index:1;
+  clip-path: polygon(0 100%, 8% 40%, 14% 70%, 22% 30%, 30% 65%, 40% 20%, 48% 55%, 56% 35%, 66% 70%, 74% 30%, 82% 60%, 90% 25%, 100% 55%, 100% 100%); }
+.cb-cyber-grid { position:absolute; left:-30%; right:-30%; bottom:0; height:52%;
+  background:
+    linear-gradient(rgba(0,240,255,.9) 1.5px, transparent 1.5px) 0 0 / 100% 44px,
+    linear-gradient(90deg, rgba(0,240,255,.75) 1.5px, transparent 1.5px) 0 0 / 44px 100%;
+  transform: perspective(800px) rotateX(60deg);
   transform-origin: 50% 0;
-  animation: cb-cyber-scroll 3s linear infinite;
-  mask-image: linear-gradient(to bottom, transparent 0%, #000 30%, #000 100%);
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 30%, #000 100%); }
+  animation: cb-cyber-scroll 6s linear infinite;
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 22%, #000 92%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 22%, #000 92%, transparent 100%);
+  filter: drop-shadow(0 -6px 14px rgba(0,240,255,.35)); }
+.cb-cyber-grid::after { content:""; position:absolute; inset:0;
+  background:
+    linear-gradient(rgba(0,240,255,.35) 1px, transparent 1px) 0 0 / 100% 11px,
+    linear-gradient(90deg, rgba(0,240,255,.28) 1px, transparent 1px) 0 0 / 11px 100%; }
+.cb-cyber-bg .cb-cyber-horizon-glow { position:absolute; left:0; right:0; bottom:44%; height:2px;
+  background: linear-gradient(90deg, transparent, #ff2fbf 20%, #fff 50%, #ff2fbf 80%, transparent);
+  box-shadow: 0 0 24px rgba(255,47,191,.9), 0 0 60px rgba(255,47,191,.55); z-index:2; }
 .cb-cyber-scan { position:absolute; inset:0; pointer-events:none;
-  background: repeating-linear-gradient(to bottom, transparent 0 3px, rgba(255,255,255,.03) 3px 4px);
-  mix-blend-mode: overlay; }
-@keyframes cb-cyber-scroll { from { background-position: 0 0, 0 0; } to { background-position: 0 40px, 0 0; } }
+  background: repeating-linear-gradient(to bottom, transparent 0 3px, rgba(255,255,255,.02) 3px 4px);
+  mix-blend-mode: overlay; opacity:.6; }
+@keyframes cb-cyber-scroll { from { background-position: 0 0, 0 0; } to { background-position: 0 44px, 0 0; } }
 
 /* ── Volcanic ───────────────────────────────────────────── */
 .cb-volcanic-bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
