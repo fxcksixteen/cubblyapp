@@ -16,6 +16,7 @@ import imgNightOwl from "@/assets/badges/night_owl.svg";
 import imgOg from "@/assets/badges/og.png";
 import imgPetite from "@/assets/badges/petite.svg";
 import imgVoiceVeteran from "@/assets/badges/voice_veteran.svg";
+import imgHoney from "@/assets/badges/honey.png";
 
 const BADGE_ART: Record<string, string> = {
   badge_chat_champ: imgChatChampion,
@@ -27,6 +28,7 @@ const BADGE_ART: Record<string, string> = {
   badge_og: imgOg,
   badge_petite: imgPetite,
   badge_voice_veteran: imgVoiceVeteran,
+  honey_subscriber: imgHoney,
 };
 
 const ICONS: Record<string, any> = {

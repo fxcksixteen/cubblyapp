@@ -481,40 +481,88 @@
   animation: cb-abyss-motes 22s linear infinite, cb-nebula-twinkle 4.5s ease-in-out infinite; }
 .cb-abyss-jelly { position:absolute; width:110px; height:150px; border-radius:55% 55% 45% 45% / 60% 60% 40% 40%;
   background: radial-gradient(ellipse at 50% 35%, rgba(240,190,255,.75), rgba(180,120,255,.35) 55%, transparent 75%);
-  filter: blur(1px) drop-shadow(0 0 24px rgba(200,120,255,.75)); opacity:.85; }
-.cb-abyss-jelly.j1 { left: 12%; top: -20%; animation: cb-jelly-float-1 30s ease-in-out infinite; }
-.cb-abyss-jelly.j2 { left: 62%; top: -30%; transform: scale(.7); animation: cb-jelly-float-2 42s ease-in-out infinite; background: radial-gradient(ellipse at 50% 35%, rgba(140,220,255,.75), rgba(80,140,255,.35) 55%, transparent 75%); filter: blur(1px) drop-shadow(0 0 24px rgba(80,160,255,.75)); }
-.cb-abyss-jelly.j3 { left: 38%; top: -25%; transform: scale(1.2); animation: cb-jelly-float-3 38s ease-in-out infinite; background: radial-gradient(ellipse at 50% 35%, rgba(180,255,220,.65), rgba(80,220,180,.3) 55%, transparent 75%); filter: blur(1px) drop-shadow(0 0 24px rgba(80,220,180,.7)); }
-@keyframes cb-jelly-float-1 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(20vw, 120vh) scale(1.05); } }
-@keyframes cb-jelly-float-2 { 0%,100% { transform: translate(0,0) scale(.7); } 50% { transform: translate(-15vw, 130vh) scale(.75); } }
-@keyframes cb-jelly-float-3 { 0%,100% { transform: translate(0,0) scale(1.2); } 50% { transform: translate(10vw, 125vh) scale(1.25); } }
+  filter: blur(1px) drop-shadow(0 0 24px rgba(200,120,255,.75)); opacity:.85; will-change: transform; }
+.cb-abyss-jelly.j1 { left: 12%; bottom: -25%; animation: cb-jelly-rise-1 30s linear infinite; }
+.cb-abyss-jelly.j2 { left: 62%; bottom: -35%; transform: scale(.7); animation: cb-jelly-rise-2 42s linear infinite; animation-delay:-8s; background: radial-gradient(ellipse at 50% 35%, rgba(140,220,255,.75), rgba(80,140,255,.35) 55%, transparent 75%); filter: blur(1px) drop-shadow(0 0 24px rgba(80,160,255,.75)); }
+.cb-abyss-jelly.j3 { left: 38%; bottom: -30%; transform: scale(1.2); animation: cb-jelly-rise-3 38s linear infinite; animation-delay:-18s; background: radial-gradient(ellipse at 50% 35%, rgba(180,255,220,.65), rgba(80,220,180,.3) 55%, transparent 75%); filter: blur(1px) drop-shadow(0 0 24px rgba(80,220,180,.7)); }
+@keyframes cb-jelly-rise-1 { 0% { transform: translate(0, 0) scale(1); } 50% { transform: translate(8vw, -70vh) scale(1.05); } 100% { transform: translate(-4vw, -140vh) scale(1); } }
+@keyframes cb-jelly-rise-2 { 0% { transform: translate(0, 0) scale(.7); } 50% { transform: translate(-10vw, -80vh) scale(.75); } 100% { transform: translate(6vw, -150vh) scale(.7); } }
+@keyframes cb-jelly-rise-3 { 0% { transform: translate(0, 0) scale(1.2); } 50% { transform: translate(6vw, -75vh) scale(1.25); } 100% { transform: translate(-8vw, -145vh) scale(1.2); } }
 @keyframes cb-abyss-motes { from { transform: translateY(0); } to { transform: translateY(-30vh); } }
 
-/* ── Aurora Borealis ────────────────────────────────────── */
+/* ── Northern Lights ────────────────────────────────────── */
 .cb-aurora-bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
-  background: linear-gradient(180deg, #01081c 0%, #021a44 35%, #032a5a 70%, #042038 100%); }
+  background: linear-gradient(180deg, #01061a 0%, #041a3d 45%, #062a55 75%, #042038 100%); }
 .cb-aurora-stars { position:absolute; inset:0;
   background-image:
     radial-gradient(1px 1px at 30px 40px,#fff,transparent),
     radial-gradient(1.5px 1.5px at 160px 90px,#fff,transparent),
     radial-gradient(1px 1px at 280px 30px,#e0e7ff,transparent),
-    radial-gradient(0.8px 0.8px at 90px 160px,#fff,transparent);
-  background-size: 340px 200px; opacity: 0.7; animation: cb-nebula-twinkle 6s ease-in-out infinite; }
-.cb-aurora-curtain { position:absolute; left:-20%; right:-20%; top:0; height:70%;
-  background: linear-gradient(180deg, transparent 0%, rgba(110,231,183,.55) 15%, rgba(52,211,153,.85) 30%, rgba(59,130,246,.7) 55%, rgba(139,92,246,.5) 75%, transparent 100%);
-  filter: blur(28px) saturate(1.5); mix-blend-mode: screen; opacity:.85;
-  animation: cb-aurora-wave 12s ease-in-out infinite; }
-.cb-aurora-curtain.c2 { top: 8%; height:62%; opacity: .6; filter: blur(40px) saturate(1.4);
-  background: linear-gradient(180deg, transparent 0%, rgba(110,231,183,.4) 20%, rgba(59,130,246,.7) 55%, rgba(236,72,153,.4) 90%, transparent 100%);
-  animation: cb-aurora-wave 18s ease-in-out infinite reverse; animation-delay:-4s; }
-.cb-aurora-curtain.c3 { top: 4%; height:66%; opacity:.45; filter: blur(50px) saturate(1.3);
-  background: linear-gradient(180deg, transparent 0%, rgba(34,211,238,.5) 25%, rgba(139,92,246,.55) 60%, transparent 100%);
-  animation: cb-aurora-wave 22s ease-in-out infinite; animation-delay:-9s; }
+    radial-gradient(0.8px 0.8px at 90px 160px,#fff,transparent),
+    radial-gradient(1px 1px at 210px 180px,#c7d2fe,transparent),
+    radial-gradient(1.2px 1.2px at 340px 140px,#fff,transparent);
+  background-size: 380px 220px; opacity: 0.75; animation: cb-nebula-twinkle 6s ease-in-out infinite; }
+/* A wide, silky ribbon that sweeps across the sky.
+   `background` is a diagonal multi-stop gradient; the `filter: blur()` + screen
+   blending gives it that gauzy glowing aurora quality. Each ribbon has its
+   own drift & shimmer keyframes so they never sync up. */
+.cb-aurora-curtain {
+  position:absolute; left:-30%; right:-30%; top:2%; height:62%;
+  background: linear-gradient(115deg,
+    transparent 0%,
+    rgba(110,231,183,0) 15%,
+    rgba(52,211,153,.55) 28%,
+    rgba(94,234,212,.85) 42%,
+    rgba(59,130,246,.55) 58%,
+    rgba(167,139,250,.35) 72%,
+    rgba(236,72,153,.0) 88%,
+    transparent 100%);
+  filter: blur(38px) saturate(1.6); mix-blend-mode: screen; opacity:.9;
+  transform-origin: 50% 100%; will-change: transform, filter;
+  animation: cb-aurora-drift-a 14s ease-in-out infinite, cb-aurora-shimmer 3.2s ease-in-out infinite;
+}
+.cb-aurora-curtain.c2 { top: 6%; height:56%; opacity: .8; filter: blur(48px) saturate(1.5);
+  background: linear-gradient(95deg,
+    transparent 0%, rgba(56,189,248,.4) 20%, rgba(52,211,153,.75) 40%,
+    rgba(139,92,246,.55) 65%, rgba(236,72,153,.35) 85%, transparent 100%);
+  animation: cb-aurora-drift-b 22s ease-in-out infinite, cb-aurora-shimmer 4.5s ease-in-out infinite;
+  animation-delay: -3s, -1s;
+}
+.cb-aurora-curtain.c3 { top: 0%; height:68%; opacity:.55; filter: blur(60px) saturate(1.3);
+  background: linear-gradient(130deg,
+    transparent 0%, rgba(34,211,238,.5) 25%, rgba(74,222,128,.6) 45%,
+    rgba(139,92,246,.55) 70%, transparent 100%);
+  animation: cb-aurora-drift-c 30s ease-in-out infinite, cb-aurora-shimmer 5.8s ease-in-out infinite;
+  animation-delay: -11s, -2s;
+}
+/* A soft green horizon glow so the aurora "sits" on the sky above the peaks */
+.cb-aurora-bg::after {
+  content:""; position:absolute; left:-10%; right:-10%; top:40%; height:35%;
+  background: radial-gradient(ellipse at 50% 100%, rgba(52,211,153,.28), rgba(59,130,246,.12) 55%, transparent 75%);
+  filter: blur(30px); mix-blend-mode: screen; pointer-events:none;
+}
 .cb-aurora-hills { position:absolute; left:0; right:0; bottom:0; }
 .cb-aurora-hills.h1 { height:32%; background:#031225;
   clip-path: polygon(0 55%, 12% 45%, 24% 55%, 36% 35%, 50% 50%, 62% 35%, 76% 55%, 88% 45%, 100% 55%, 100% 100%, 0 100%); }
 .cb-aurora-hills.h2 { height:20%; background:#010a18;
   clip-path: polygon(0 75%, 15% 55%, 30% 70%, 50% 45%, 70% 70%, 85% 55%, 100% 65%, 100% 100%, 0 100%); }
+@keyframes cb-aurora-drift-a {
+  0%,100% { transform: translateX(0%) skewX(-6deg) scaleY(1); }
+  50%     { transform: translateX(6%)  skewX(4deg)  scaleY(1.1); }
+}
+@keyframes cb-aurora-drift-b {
+  0%,100% { transform: translateX(0%)  skewX(4deg)  scaleY(1); }
+  50%     { transform: translateX(-8%) skewX(-6deg) scaleY(.92); }
+}
+@keyframes cb-aurora-drift-c {
+  0%,100% { transform: translateX(0%)   skewX(-3deg) scaleY(1); }
+  50%     { transform: translateX(-4%)  skewX(6deg)  scaleY(1.05); }
+}
+@keyframes cb-aurora-shimmer {
+  0%,100% { opacity: var(--_o, .85); filter: blur(38px) saturate(1.6) brightness(1); }
+  50%     { opacity: 1; filter: blur(34px) saturate(1.9) brightness(1.25); }
+}
+/* Preserve original wave for shop preview compatibility */
 @keyframes cb-aurora-wave {
   0%,100% { transform: translateX(0) skewX(0deg) scaleY(1); }
   25%     { transform: translateX(3%)  skewX(-3deg) scaleY(1.05); }
