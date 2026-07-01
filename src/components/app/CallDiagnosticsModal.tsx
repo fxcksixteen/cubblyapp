@@ -76,7 +76,37 @@ const CallDiagnosticsModal = ({ open, onClose }: Props) => {
   const { getCallDiagnostics, activeCall, ping, runPickupSelfTest } = useVoice();
   const [diag, setDiag] = useState<CallDiagnostics | null>(null);
   const [rttHistory, setRttHistory] = useState<number[]>([]);
+  const [selfTestRunning, setSelfTestRunning] = useState(false);
+  const [selfTestResult, setSelfTestResult] = useState<PickupSelfTestResult | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleRunSelfTest = async () => {
+    setSelfTestRunning(true);
+    setSelfTestResult(null);
+    try {
+      const res = await runPickupSelfTest();
+      setSelfTestResult(res);
+    } catch (e: any) {
+      setSelfTestResult({
+        pass: false,
+        stages: { mediaAcquired: false, peerCreated: false, offerAnswered: false, iceConnected: false },
+        errorMessage: e?.message || String(e),
+        durationMs: 0,
+      });
+    } finally {
+      setSelfTestRunning(false);
+    }
+  };
+
+  const copySelfTestResult = () => {
+    if (!selfTestResult) return;
+    const text = `Cubbly pickup self-test — ${selfTestResult.pass ? "PASS" : "FAIL"} (${selfTestResult.durationMs}ms)
+- media acquired: ${selfTestResult.stages.mediaAcquired ? "yes" : "no"}
+- peer created:   ${selfTestResult.stages.peerCreated ? "yes" : "no"}
+- offer answered: ${selfTestResult.stages.offerAnswered ? "yes" : "no"}
+- ICE connected:  ${selfTestResult.stages.iceConnected ? "yes" : "no"}${selfTestResult.errorMessage ? `\n- error: ${selfTestResult.errorMessage}` : ""}`;
+    try { navigator.clipboard.writeText(text); } catch {}
+  };
 
   useEffect(() => {
     if (!open) {
