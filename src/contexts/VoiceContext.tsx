@@ -1460,7 +1460,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               answer.sdp = sdp;
               await pc.setLocalDescription(answer);
 
-              await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id, callEventId: payload.callEventId || currentCallEventIdRef.current }, "answer(accepted-offer)");
+              await sendAnswerWithRetry(
+                channel,
+                { type: "answer", sdp: answer, senderId: user.id, callEventId: payload.callEventId || currentCallEventIdRef.current },
+                () => pcRef.current,
+                "answer(accepted-offer)",
+              );
               if (offerDedupeKey) lastAnsweredOfferRef.current = offerDedupeKey;
 
               setActiveCall(prev => prev && prev.conversationId === conversationId
@@ -1484,14 +1489,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
               acceptedIncomingCallRef.current = null;
               setIncomingCall(null);
-              // v0.3.12: immediately heartbeat so peer sees us in
-              // call_participants without waiting for the 10s heartbeat tick.
+              // v0.4.0: heartbeat with retry so a single DB blip doesn't
+              // leave the peer stuck on "Not in call".
               const evtId = payload.callEventId || currentCallEventIdRef.current;
-              if (evtId) {
-                void (async () => {
-                  try { await (supabase as any).rpc("heartbeat_call_participant", { _call_event_id: evtId }); } catch {}
-                })();
-              }
+              if (evtId) void heartbeatWithRetry(evtId, "accepted-offer");
+
 
             } catch (e) {
               console.error("[Voice] Failed handling accepted offer (keeping call alive):", e);
