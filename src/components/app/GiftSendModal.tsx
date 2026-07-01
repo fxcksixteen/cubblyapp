@@ -19,8 +19,9 @@ interface GiftSendModalProps {
 
 /**
  * GiftSendModal — given a preselected shop item, pick a friend to send it to.
- * Gifts are always paid for with gems, regardless of the item's coin price.
- * For coin-only items we compute the gem cost as ~1 gem per 10 coins (min 20).
+  * Gifts are always paid for with gems.
+  * Direct shop prices stay single-currency; coin-only items get a gift-only
+  * gem price that matches the backend's server-side conversion.
  */
 const GiftSendModal = ({ open, onClose, item, onSent }: GiftSendModalProps) => {
   const { user } = useAuth();
@@ -34,7 +35,7 @@ const GiftSendModal = ({ open, onClose, item, onSent }: GiftSendModalProps) => {
 
   const giftPriceGems = useMemo(() => {
     if (!item) return 0;
-    if (item.price_gems && item.price_gems > 0) return item.price_gems;
+    if (item.price_gems != null && item.price_gems > 0) return item.price_gems;
     return Math.max(20, Math.ceil(item.price / 10));
   }, [item]);
 

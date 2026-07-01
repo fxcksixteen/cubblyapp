@@ -594,7 +594,7 @@ const ShopView = () => {
             const gemsOnly = !!(item.config as any)?.gems_only;
             const canAfford = balance >= item.price;
             const isBusy = purchasing === item.id;
-            const canBuyGems = item.price_gems !== null && item.price_gems > 0;
+            const canBuyGems = gemsOnly && item.price_gems !== null && item.price_gems > 0;
             return (
               <div
                 key={item.id}

@@ -19,8 +19,16 @@ interface ShopItem {
   name: string;
   description: string | null;
   category: string;
+  price: number;
   price_gems: number | null;
+  config: any;
 }
+
+const giftPriceGemsFor = (item: ShopItem) => {
+  const gemsOnly = !!item.config?.gems_only;
+  if (gemsOnly) return item.price_gems ?? 0;
+  return Math.max(20, Math.ceil((item.price || 0) / 10));
+};
 
 /**
  * GiftItemModal — pick a gem-priced shop item to send to another user.
@@ -44,10 +52,10 @@ const GiftItemModal = ({ open, onClose, recipientId, recipientName, conversation
       const [{ data: catalog }, { data: wish }, { data: inv }] = await Promise.all([
         supabase
           .from("shop_items")
-          .select("id, name, description, category, price_gems")
+          .select("id, name, description, category, price, price_gems, config")
           .eq("is_active", true)
-          .not("price_gems", "is", null)
-          .order("price_gems", { ascending: true }),
+          .order("category", { ascending: true })
+          .order("sort_order", { ascending: true }),
         supabase.from("wishlist_items").select("item_id").eq("user_id", recipientId),
         supabase.from("user_inventory").select("item_id").eq("user_id", recipientId),
       ]);
@@ -65,12 +73,14 @@ const GiftItemModal = ({ open, onClose, recipientId, recipientName, conversation
     const w: ShopItem[] = [];
     const rest: ShopItem[] = [];
     for (const it of giftable) (wishlist.has(it.id) ? w : rest).push(it);
-    return [...w, ...rest];
+    const byGiftPrice = (a: ShopItem, b: ShopItem) => giftPriceGemsFor(a) - giftPriceGemsFor(b);
+    return [...w.sort(byGiftPrice), ...rest.sort(byGiftPrice)];
   }, [giftable, wishlist]);
 
   const sendGift = async (item: ShopItem) => {
-    if (!item.price_gems) return;
-    if (balance < item.price_gems) {
+    const giftPriceGems = giftPriceGemsFor(item);
+    if (!giftPriceGems) return;
+    if (balance < giftPriceGems) {
       toast.error("Not enough gems — top up first");
       return;
     }
@@ -146,7 +156,8 @@ const GiftItemModal = ({ open, onClose, recipientId, recipientName, conversation
             <div className="flex flex-col gap-1">
               {wishedFirst.map((item) => {
                 const isWished = wishlist.has(item.id);
-                const canAfford = item.price_gems !== null && balance >= item.price_gems;
+                const giftPriceGems = giftPriceGemsFor(item);
+                const canAfford = balance >= giftPriceGems;
                 const isBusy = sending === item.id;
                 return (
                   <div
@@ -179,7 +190,7 @@ const GiftItemModal = ({ open, onClose, recipientId, recipientName, conversation
                       onMouseLeave={(e) => { if (canAfford && !isBusy) e.currentTarget.style.backgroundColor = "#5865f2"; }}
                     >
                       {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <img src={gemIcon} alt="" className="h-5 w-5" />}
-                      <span className="tabular-nums">{item.price_gems?.toLocaleString()}</span>
+                      <span className="tabular-nums">{giftPriceGems.toLocaleString()}</span>
                     </button>
                   </div>
                 );
