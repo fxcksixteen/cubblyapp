@@ -218,34 +218,77 @@ function ItemPreview({ item, displayName }: { item: ShopItem; displayName: strin
       );
     }
     if (item.id === "theme_bioluminescent") {
-      // Miniature jellyfish that drift UP through cold blue water.
+      // Real jellyfish: translucent bell with scalloped bottom and wispy tentacles.
       const jelly = (leftPct: number, delay: string, scale: number, tint: string, dur: string) => (
         <div
           className="absolute"
           style={{
             left: `${leftPct}%`,
-            bottom: "-40%",
-            width: 18,
-            height: 24,
-            transform: `scale(${scale})`,
-            borderRadius: "55% 55% 45% 45% / 60% 60% 40% 40%",
-            background: `radial-gradient(ellipse at 50% 35%, ${tint}, rgba(56,189,248,0.35) 55%, transparent 78%)`,
-            filter: `blur(0.5px) drop-shadow(0 0 6px ${tint})`,
+            bottom: "-30%",
+            width: 22 * scale,
+            height: 34 * scale,
             animation: `cb-jelly-rise-preview ${dur} linear infinite`,
             animationDelay: delay,
+            filter: `drop-shadow(0 0 4px ${tint})`,
           }}
-        />
+        >
+          {/* Bell */}
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              height: "55%",
+              borderRadius: "50% 50% 42% 42% / 78% 78% 22% 22%",
+              background: `radial-gradient(ellipse at 50% 30%, rgba(255,255,255,0.9), ${tint} 45%, rgba(56,189,248,0.35) 80%, transparent)`,
+              transformOrigin: "50% 100%",
+              animation: `cb-jelly-pulse 2.2s ease-in-out infinite`,
+              animationDelay: delay,
+            }}
+          />
+          {/* Tentacles */}
+          <div
+            style={{
+              position: "absolute",
+              top: "50%",
+              left: 0,
+              right: 0,
+              bottom: 0,
+              transformOrigin: "50% 0%",
+              animation: `cb-jelly-sway 2.6s ease-in-out infinite`,
+              animationDelay: delay,
+            }}
+          >
+            {[15, 32, 50, 68, 85].map((lp, i) => (
+              <div
+                key={i}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: `${lp}%`,
+                  width: 1,
+                  height: `${70 + (i % 2) * 20}%`,
+                  background: `linear-gradient(180deg, ${tint} 0%, transparent 100%)`,
+                  opacity: 0.75,
+                  borderRadius: 1,
+                }}
+              />
+            ))}
+          </div>
+        </div>
       );
       return (
         <div className="relative h-20 w-full rounded-lg overflow-hidden" style={{ background: "radial-gradient(ellipse at 50% 15%, #063a75 0%, #021640 55%, #01081c 100%)" }}>
           <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse at 30% 40%, rgba(56,189,248,0.35), transparent 55%), radial-gradient(ellipse at 75% 65%, rgba(94,234,212,0.3), transparent 55%)", mixBlendMode: "screen", animation: "cb-nebula-pulse 5s ease-in-out infinite" }} />
           <div className="absolute inset-0" style={{ backgroundImage: "radial-gradient(1px 1px at 12% 30%,#a5f3fc,transparent),radial-gradient(1px 1px at 78% 55%,#7dd3fc,transparent),radial-gradient(1px 1px at 45% 20%,#bae6fd,transparent)", opacity: 0.7 }} />
-          {jelly(18, "0s", 1, "rgba(125,211,252,0.9)", "5.5s")}
+          {jelly(15, "0s", 1, "rgba(125,211,252,0.9)", "5.5s")}
           {jelly(45, "-2s", 0.75, "rgba(110,231,183,0.9)", "7s")}
           {jelly(72, "-4s", 1.1, "rgba(165,243,252,0.9)", "6.2s")}
         </div>
       );
     }
+
     if (item.id === "theme_aurora_borealis") {
       const curtain = (top: string, height: string, delay: string, dur: string, hueA: string, hueB: string, opacity: number) => (
         <div
