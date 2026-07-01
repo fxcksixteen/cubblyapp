@@ -17,27 +17,7 @@ import shopIcon from "@/assets/icons/shop.svg";
 import coinStack from "@/assets/coins/coin-stack.png";
 import coinNotEnough from "@/assets/coins/coin-not-enough.png";
 import gemIcon from "@/assets/gems/gem.png";
-import imgChatChampion from "@/assets/badges/chat_champion.svg";
-import imgEarlySupporter from "@/assets/badges/early_supporter.svg";
-import imgFriendly from "@/assets/badges/friendly.svg";
-import imgGamer from "@/assets/badges/gamer.png";
-import imgLegend from "@/assets/badges/legend.svg";
-import imgNightOwl from "@/assets/badges/night_owl.svg";
-import imgOg from "@/assets/badges/og.png";
-import imgPetite from "@/assets/badges/petite.svg";
-import imgVoiceVeteran from "@/assets/badges/voice_veteran.svg";
-
-const BADGE_ART: Record<string, string> = {
-  badge_chat_champ: imgChatChampion,
-  badge_early_supporter: imgEarlySupporter,
-  badge_friendly: imgFriendly,
-  badge_gamer: imgGamer,
-  badge_legend: imgLegend,
-  badge_night_owl: imgNightOwl,
-  badge_og: imgOg,
-  badge_petite: imgPetite,
-  badge_voice_veteran: imgVoiceVeteran,
-};
+import { ShopItemPreview as ItemPreview } from "@/components/app/shop/ShopItemPreview";
 
 const THEME_ITEM_MAP: Record<string, ThemeName> = {
   theme_midnight_aurora: "onyx",
