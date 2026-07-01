@@ -2,6 +2,8 @@ import { createContext, useContext, useEffect, useState, ReactNode, useCallback 
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { removeChannelByTopic } from "@/lib/realtimeReconnect";
+import { useEntitlements } from "@/hooks/useEntitlements";
+import { toast } from "sonner";
 
 /**
  * GemsContext — single source of truth for the user's gem balance.
@@ -26,6 +28,7 @@ export const useGems = () => useContext(GemsContext);
 
 export const GemsProvider = ({ children }: { children: ReactNode }) => {
   const { user } = useAuth();
+  const ent = useEntitlements();
   const [balance, setBalance] = useState(0);
   const [loading, setLoading] = useState(true);
 
@@ -47,6 +50,25 @@ export const GemsProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     refreshBalance();
   }, [refreshBalance]);
+
+  // Standard Honey gets 500 gems/month. The RPC is idempotent for the current
+  // calendar month, so it is safe to call after every app update/login.
+  useEffect(() => {
+    if (!user || !ent.loaded || !ent.isHoney) return;
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase.rpc("claim_honey_monthly_gems");
+      if (cancelled || error) return;
+      const payload = data as any;
+      if (payload?.granted) {
+        setBalance(Number(payload.balance ?? 0));
+        toast.success("Honey added 500 gems to your balance");
+      } else {
+        await refreshBalance();
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user, ent.loaded, ent.isHoney, refreshBalance]);
 
   useEffect(() => {
     if (!user) return;

@@ -1560,6 +1560,7 @@ export type Database = {
       can_access_message: { Args: { _message_id: string }; Returns: boolean }
       claim_gift: { Args: { _gift_id: string }; Returns: Json }
       claim_honey_gift: { Args: { _gift_id: string }; Returns: Json }
+      claim_honey_monthly_gems: { Args: never; Returns: Json }
       create_dm_conversation: {
         Args: { other_user_id: string }
         Returns: string
@@ -1631,6 +1632,22 @@ export type Database = {
           _is_video_on?: boolean
         }
         Returns: undefined
+      }
+      honey_badge_limit: { Args: { _user_id: string }; Returns: number }
+      honey_coin_multiplier: { Args: { _user_id: string }; Returns: number }
+      honey_entitlements: {
+        Args: { _user_id: string }
+        Returns: {
+          attachment_cap_mb: number
+          can_share_note_advanced: boolean
+          can_use_animated_themes: boolean
+          can_use_motion_name_colors: boolean
+          coin_multiplier: number
+          max_equipped_badges: number
+          message_cap_chars: number
+          monthly_gems: number
+          tier: string
+        }[]
       }
       honey_subscribers: {
         Args: { _user_ids: string[] }
@@ -1736,6 +1753,8 @@ export type Database = {
         Args: { _new_owner: string; _server_id: string }
         Returns: undefined
       }
+      trim_equipped_badges: { Args: { _user_id: string }; Returns: undefined }
+      trim_honey_cosmetics: { Args: { _user_id: string }; Returns: undefined }
       unassign_server_role: {
         Args: { _role_id: string; _user_id: string }
         Returns: undefined

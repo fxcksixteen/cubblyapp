@@ -171,6 +171,41 @@ export const UserBadgesProvider = ({ children }: { children: ReactNode }) => {
     };
   }, [fetchPending]);
 
+  // Realtime: Honey badge is subscription-derived, so refresh cached badge rows
+  // whenever a user upgrades/downgrades/expires. This prevents the Honey badge
+  // from staying missing (or stuck on) until a full app reload.
+  useEffect(() => {
+    const existing = supabase.getChannels().find((c: any) => c.topic === "realtime:badges-subscriptions");
+    if (existing) supabase.removeChannel(existing);
+    const ch = supabase
+      .channel("badges-subscriptions")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "subscriptions" },
+        (payload) => {
+          const row = (payload.new || payload.old) as any;
+          if (!row?.user_id) return;
+          setBadges((prev) => {
+            const next = new Map(prev);
+            next.delete(row.user_id);
+            return next;
+          });
+          setHoney((prev) => {
+            const next = new Set(prev);
+            next.delete(row.user_id);
+            return next;
+          });
+          pendingRef.current.add(row.user_id);
+          if (timerRef.current) window.clearTimeout(timerRef.current);
+          timerRef.current = window.setTimeout(fetchPending, 80);
+        }
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(ch);
+    };
+  }, [fetchPending]);
+
   return (
     <UserBadgesContext.Provider value={{ get, request }}>{children}</UserBadgesContext.Provider>
   );

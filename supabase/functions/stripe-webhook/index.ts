@@ -42,6 +42,15 @@ async function upsertSubFromStripe(sub: Stripe.Subscription) {
 }
 
 async function creditGems(userId: string, amount: number, reason: string, sourceRef: string) {
+  const { data: alreadyCredited } = await admin
+    .from('gems_transactions')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('reason', reason)
+    .eq('source_ref', sourceRef)
+    .maybeSingle()
+  if (alreadyCredited) return
+
   // Insert/upsert balance
   const { data: existing } = await admin.from('gems_balances').select('balance, lifetime_earned').eq('user_id', userId).maybeSingle()
   const newBalance = (existing?.balance ?? 0) + amount
@@ -146,7 +155,9 @@ Deno.serve(async (req) => {
           const tier = sub.metadata?.tier as string
           const userId = sub.metadata?.user_id as string
           if (tier === 'honey' && userId) {
-            await creditGems(userId, 500, 'honey_monthly_stipend', inv.id)
+            const periodStart = typeof inv.period_start === 'number' ? inv.period_start : Math.floor(Date.now() / 1000)
+            const monthKey = new Date(periodStart * 1000).toISOString().slice(0, 7)
+            await creditGems(userId, 500, 'subscription_grant', `honey_monthly:${monthKey}`)
           }
         }
         await logEvent(null, event.id, event.type, inv)
