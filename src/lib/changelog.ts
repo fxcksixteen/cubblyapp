@@ -23,9 +23,54 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.3.23";
+export const CURRENT_VERSION = "0.4.0";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.4.0",
+    title: "Cubbly Alpha — Honey, Gems, and a whole lot more",
+    date: "2026-05-01",
+    hero: bearImage,
+    newFeatures: [
+      "Cubbly Honey subscriptions — Basic ($2.99/mo) and Standard ($7.99/mo), with annual plans and a save-20% discount on Standard.",
+      "New /honey page with a cozy hero, monthly/annual toggle, and gifting.",
+      "Gems: a new premium currency you can earn, spend in the shop, and gift.",
+      "Wishlist system — add shop items to your wishlist and let friends gift them from your profile.",
+      "Send Honey as a gift straight from any DM.",
+      "Message Requests — DMs from non-friends land in a separate inbox you can accept or ignore.",
+      "Custom Statuses — set an emoji + short text status that shows on your profile.",
+      "Server settings, roles, invites, and channel creation for server owners.",
+      "Rich gaming activity cards on profiles.",
+      "@ mention autocomplete and emoji autocomplete in the composer.",
+      "6 new animated premium themes and motion-gradient name colors for Honey members.",
+      "Featured shop banners and a bigger, cleaner item preview.",
+      "Bigger, portal-based profile modals that no longer clip inside chat panes.",
+      "GIF right-click menu with save + favorite options.",
+      "'Member since' line added to profile cards.",
+      "Live shared-note editing — recipients you invite can edit the note in real time.",
+      "View-once notes with burn-on-close and screenshot protection on desktop.",
+      "Low-Power Mode toggle for desktop when Hardware Acceleration is off.",
+      "Full call diagnostics modal with mic/camera checks.",
+      "Muted DMs are now visually blurred in the sidebar so they don't grab your eye.",
+    ],
+    bugFixes: [
+      "Massive voice call reliability overhaul — the green pickup button works consistently again and stale peer connections no longer break rejoin.",
+      "Fixed DMs disappearing after leaving a shared server — old 1:1 conversations always reopen.",
+      "Screensharing no longer muffles or mutes audio, and viewers get shared system audio.",
+      "Server voice channels correctly show who's actually in the call.",
+      "Incoming group calls are no longer swallowed when the app remounts or you toggle mute.",
+      "Realtime messages and typing indicators survive fast navigation without dropping.",
+      "Failed message sends now surface a toast instead of silently disappearing.",
+      "Usernames are always lowercased at signup and in the database.",
+      "Coin balance updates live after every earning event, with a reward toast.",
+      "Wishlist toggle no longer double-fires on rapid clicks.",
+      "Screenshare picker no longer crashes on web when Electron isn't present.",
+      "Icons stay visible when Hardware Acceleration is disabled.",
+      "Fixed multiple security issues around coin minting, activity privacy, and realtime data leakage.",
+    ],
+  },
+
+
   {
     version: "0.3.23",
     title: "Direct-call join reliability fix",

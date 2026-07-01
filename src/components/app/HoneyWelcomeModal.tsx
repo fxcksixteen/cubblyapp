@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useEntitlements, type SubscriptionTier } from "@/hooks/useEntitlements";
 import { useModalSlot } from "@/lib/modalQueue";
+import { CURRENT_VERSION } from "@/lib/changelog";
 import honeyBg from "@/assets/honey-welcome-bg.png.asset.json";
 
 /**
@@ -34,11 +35,10 @@ const PERKS: Record<Exclude<SubscriptionTier, "free">, { title: string; items: s
   basic: {
     title: "What's New for You",
     items: [
-      "2× coin earning on every reward",
+      "Honey badge on your profile",
       "Attachments up to 100 MB",
-      "4,000-character messages",
+      "1,000-character messages",
       "Unlimited personal notes",
-      "Animated shop themes & motion name colors",
       "Advanced note sharing (live edits + save)",
       "Equip up to 2 badges at once",
     ],
@@ -49,7 +49,7 @@ const PERKS: Record<Exclude<SubscriptionTier, "free">, { title: string; items: s
       "500 Gems delivered every month",
       "2× coin earning on every reward",
       "Attachments up to 250 MB",
-      "8,000-character messages",
+      "4,000-character messages",
       "Unlimited personal notes",
       "Animated shop themes & motion name colors",
       "Advanced note sharing (live edits + save)",
@@ -72,6 +72,16 @@ export default function HoneyWelcomeModal() {
     }
     const shown = loadShown();
     if (shown[user.id] === ent.tier) {
+      setWantsToShow(false);
+      return;
+    }
+    // Only fire after the user has seen (dismissed) the current release's
+    // What's New modal. This keeps the Honey pop-up from ambushing users who
+    // are online when we grant them Honey server-side — they'll see it only
+    // once they've updated to the current app version and closed the
+    // changelog.
+    const seenWhatsNew = localStorage.getItem(`cubbly-whats-new-seen:${CURRENT_VERSION}`);
+    if (!seenWhatsNew) {
       setWantsToShow(false);
       return;
     }
