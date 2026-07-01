@@ -587,6 +587,14 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   // duplicate offer retries from the caller's retry loop cannot re-trigger
   // setRemoteDescription on an already-stable PC, which was wiping ICE state.
   const lastAnsweredOfferRef = useRef<string | null>(null);
+  // v0.4.0: accept-in-flight guard. When the fast-path accept is between
+  // "tear down stale pc" and "setLocalDescription(answer)", a late retry offer
+  // from the caller's retry loop would land on a null pc, fall into the
+  // "no pc + no activeCall" branch, and re-set incomingCall — orphaning the
+  // fresh pc we just built. When this ref matches the incoming offer's
+  // callEventId we buffer the offer into pendingRetryOfferRef instead.
+  const acceptInFlightRef = useRef<string | null>(null);
+  const pendingRetryOfferRef = useRef<{ callEventId: string; sdp: RTCSessionDescriptionInit } | null>(null);
   // Forward-ref to startCall so acceptCall (declared above startCall in the
   // file) can delegate to the exact rejoin code path without circular
   // useCallback deps. Assigned in an effect after startCall is created.
