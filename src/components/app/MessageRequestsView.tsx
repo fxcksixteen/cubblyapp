@@ -90,19 +90,8 @@ const MessageRequestsView = ({ onOpenConversation }: MessageRequestsViewProps) =
 
   return (
     <div className="flex-1 min-h-0 flex flex-col" style={{ backgroundColor: "var(--app-bg-primary)" }}>
-      {/* Header — matches Active Now title style */}
-      <div className="px-6 pt-6 pb-4 flex items-center gap-3 shrink-0">
-        <img src={inboxIcon} alt="" className="h-6 w-6 invert opacity-90" />
-        <h2 className="text-xl font-bold text-white">Message Requests</h2>
-        {rows.length > 0 && (
-          <span
-            className="text-[11px] font-bold px-2 py-0.5 rounded-full text-white"
-            style={{ backgroundColor: "#ed4245" }}
-          >
-            {rows.length}
-          </span>
-        )}
-      </div>
+      {/* Header removed — AppLayout topbar already shows "Message Requests" */}
+
 
       {/* Body — bordered cards like Active Now rail */}
       <div className="flex-1 overflow-y-auto px-6 pb-6">
