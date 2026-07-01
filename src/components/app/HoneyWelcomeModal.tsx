@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useEntitlements, type SubscriptionTier } from "@/hooks/useEntitlements";
+import { useModalSlot } from "@/lib/modalQueue";
 import honeyBg from "@/assets/honey-welcome-bg.png.asset.json";
 
 /**
