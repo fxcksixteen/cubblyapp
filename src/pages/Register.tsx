@@ -54,7 +54,7 @@ const Register = () => {
       options: {
         data: {
           display_name: displayName,
-          username,
+          username: username.toLowerCase(),
           date_of_birth: dob,
         },
       },
@@ -133,7 +133,7 @@ const Register = () => {
               <input
                 type="text"
                 value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                onChange={(e) => setUsername(e.target.value.toLowerCase())}
                 required
                 className="w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary font-body"
                 placeholder="cozybear"
