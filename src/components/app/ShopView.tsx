@@ -429,18 +429,25 @@ const ShopView = () => {
 
   const toggleWishlist = async (item: ShopItem) => {
     if (!user) return;
+    // v0.4.0: per-item busy guard so rapid taps can't fire concurrent RPCs.
+    if (wishlistBusyRef.current.has(item.id)) return;
+    wishlistBusyRef.current.add(item.id);
     const isWished = wishlist.has(item.id);
     setWishlist((prev) => {
       const next = new Set(prev);
       if (isWished) next.delete(item.id); else next.add(item.id);
       return next;
     });
-    if (isWished) {
-      const { error } = await supabase.from("wishlist_items").delete().eq("user_id", user.id).eq("item_id", item.id);
-      if (error) toast.error("Couldn't update wishlist");
-    } else {
-      const { error } = await supabase.from("wishlist_items").insert({ user_id: user.id, item_id: item.id });
-      if (error) toast.error("Couldn't update wishlist");
+    try {
+      if (isWished) {
+        const { error } = await supabase.from("wishlist_items").delete().eq("user_id", user.id).eq("item_id", item.id);
+        if (error) toast.error("Couldn't update wishlist");
+      } else {
+        const { error } = await supabase.from("wishlist_items").insert({ user_id: user.id, item_id: item.id });
+        if (error) toast.error("Couldn't update wishlist");
+      }
+    } finally {
+      wishlistBusyRef.current.delete(item.id);
     }
   };
 
