@@ -731,6 +731,17 @@ const ShopView = () => {
             radial-gradient(0.8px 0.8px at 200px 14px,#fff,transparent);
           background-size: 240px 60px; opacity: 0.85; animation: shopHillsTwinkle 4s ease-in-out infinite; }
         @keyframes shopHillsTwinkle { 0%,100%{opacity:.55} 50%{opacity:.95} }
+
+        /* Twinkling starfield for cosmic/bio previews */
+        .shop-preview-stars { background-image:
+            radial-gradient(1px 1px at 15px 12px,#fff,transparent),
+            radial-gradient(1px 1px at 60px 30px,#fff,transparent),
+            radial-gradient(0.8px 0.8px at 100px 50px,#fbcfe8,transparent),
+            radial-gradient(1px 1px at 140px 18px,#fff,transparent),
+            radial-gradient(0.8px 0.8px at 180px 60px,#fff,transparent),
+            radial-gradient(1px 1px at 40px 70px,#fff,transparent),
+            radial-gradient(0.6px 0.6px at 200px 30px,#e9d5ff,transparent);
+          background-size: 220px 90px; animation: shopSpaceDrift 20s linear infinite, shopHillsTwinkle 3s ease-in-out infinite; }
       `}</style>
 
       {/* Banner ads (carousel — shifts by one card) */}
