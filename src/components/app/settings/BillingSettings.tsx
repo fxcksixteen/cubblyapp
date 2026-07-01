@@ -152,7 +152,7 @@ const BillingSettings = () => {
                 <p className="mt-1 text-sm" style={{ color: "var(--app-text-secondary)" }}>
                   {sub
                     ? `Billed ${sub.interval === "year" ? "annually" : "monthly"}${sub.current_period_end ? ` • Renews ${new Date(sub.current_period_end).toLocaleDateString()}` : ""}`
-                    : "You're on the free plan. Upgrade for animated themes, more badges, bigger uploads, and 500 monthly gems."}
+                    : "You're on the free plan. Upgrade for more badges, bigger uploads, and 500 monthly gems."}
                 </p>
               </div>
             </div>

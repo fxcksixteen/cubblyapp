@@ -33,6 +33,7 @@ interface ShopItem {
   name: string;
   description: string | null;
   price: number;
+  price_gems: number | null;
   config: any;
   sort_order: number;
 }
@@ -73,26 +74,29 @@ function ItemPreview({ item, displayName }: { item: ShopItem; displayName: strin
     }
     if (item.subcategory === "animated") {
       const stops = (item.config?.stops as string[]) ?? ["#22d3ee", "#a855f7", "#ec4899", "#22d3ee"];
+      const iconUrl = typeof item.config?.icon_url === "string" ? item.config.icon_url : undefined;
       const hasBow = !!item.config?.bow;
+      const iconSrc = iconUrl || (hasBow ? imgPetite : null);
+      const hasIcon = !!iconSrc;
       return (
         <div className="flex h-16 w-full items-center justify-center rounded-lg bg-[#1e1f22] px-3 overflow-hidden">
           <span
-            className={`text-base font-extrabold bg-clip-text text-transparent shop-animated-name relative inline-block ${hasBow ? "" : "truncate"}`}
+            className={`text-base font-extrabold bg-clip-text text-transparent shop-animated-name relative inline-block ${hasIcon ? "" : "truncate"}`}
             style={{
               backgroundImage: `linear-gradient(90deg, ${stops.join(",")})`,
               backgroundSize: "300% 100%",
               overflow: "visible",
-              paddingTop: hasBow ? "0.35em" : undefined,
+              paddingTop: hasIcon ? (iconUrl ? "0.45em" : "0.35em") : undefined,
             }}
           >
             {name}
-            {hasBow && (
+            {iconSrc && (
               <img
-                src={imgPetite}
+                src={iconSrc}
                 alt=""
                 aria-hidden="true"
                 draggable={false}
-                style={{ position: "absolute", top: "0.32em", left: "-0.25em", height: "0.75em", width: "auto", pointerEvents: "none", filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.5))", transform: "rotate(-18deg)", transformOrigin: "bottom left" }}
+                style={{ position: "absolute", top: iconUrl ? "-0.06em" : "0.32em", left: iconUrl ? "-0.58em" : "-0.25em", height: iconUrl ? "1.08em" : "0.75em", width: "auto", pointerEvents: "none", filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.5))", transform: iconUrl ? "none" : "rotate(-18deg)", transformOrigin: "bottom left" }}
               />
             )}
           </span>
@@ -319,7 +323,7 @@ const ShopItemsGrid = ({ category, emptyLabel = "No items yet" }: Props) => {
                   </div>
                   {!isOwned && (
                     <p className="mt-0.5 text-[11px]" style={{ color: "var(--app-text-secondary)" }}>
-                      {item.price.toLocaleString()} coins · Tap to unlock
+                      {item.config?.gems_only && item.price_gems ? `${item.price_gems.toLocaleString()} gems` : `${item.price.toLocaleString()} coins`} · Tap to unlock
                     </p>
                   )}
                   {!isOwned && (

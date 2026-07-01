@@ -54,14 +54,12 @@ const PLANS: PlanDef[] = [
     perks: [
       "Everything in Honey Basic",
       "2× coin rewards on everything",
-      "Motion-gradient name colors",
-      "All animated themes",
       "Equip 3 profile badges",
       "Exclusive Honey profile badge",
       "250 MB attachments",
       "4,000 character messages",
       "500 gems every month",
-      "Early access to new themes & effects",
+      "Early access to new features",
     ],
   },
 ];

@@ -79,27 +79,30 @@ export function ShopItemPreview({ item, displayName, sizeClass = "h-20 w-full ro
           : style === "pulse"
           ? `cb-animated-name ${dur} ease-in-out infinite, cb-animated-name-pulse ${dur} ease-in-out infinite`
           : `cb-animated-name ${dur} ease-in-out infinite`;
+      const iconUrl = typeof (item.config as any)?.icon_url === "string" ? (item.config as any).icon_url : undefined;
       const hasBow = !!(item.config as any)?.bow;
+      const iconSrc = iconUrl || (hasBow ? imgPetite : null);
+      const hasIcon = !!iconSrc;
       return (
         <div className={`flex items-center justify-center bg-[#1e1f22] px-3 overflow-hidden ${sizeClass}`}>
           <span
-            className={`${compact ? "text-sm" : "text-lg"} font-extrabold bg-clip-text text-transparent relative inline-block ${hasBow ? "" : "truncate"}`}
+            className={`${compact ? "text-sm" : "text-lg"} font-extrabold bg-clip-text text-transparent relative inline-block ${hasIcon ? "" : "truncate"}`}
             style={{
               backgroundImage: bg,
               backgroundSize: style === "conic" ? "100% 100%" : "300% 100%",
               animation: anim,
               overflow: "visible",
-              paddingTop: hasBow ? "0.35em" : undefined,
+              paddingTop: hasIcon ? (iconUrl ? "0.45em" : "0.35em") : undefined,
             }}
           >
             {name}
-            {hasBow && (
+            {iconSrc && (
               <img
-                src={imgPetite}
+                src={iconSrc}
                 alt=""
                 aria-hidden="true"
                 draggable={false}
-                style={{ position: "absolute", top: "0.32em", left: "-0.25em", height: "0.75em", width: "auto", pointerEvents: "none", filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.5))", transform: "rotate(-18deg)", transformOrigin: "bottom left" }}
+                style={{ position: "absolute", top: iconUrl ? "-0.06em" : "0.32em", left: iconUrl ? "-0.58em" : "-0.25em", height: iconUrl ? "1.08em" : "0.75em", width: "auto", pointerEvents: "none", filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.5))", transform: iconUrl ? "none" : "rotate(-18deg)", transformOrigin: "bottom left" }}
               />
             )}
           </span>

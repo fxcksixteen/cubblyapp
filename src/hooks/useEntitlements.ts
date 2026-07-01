@@ -42,7 +42,7 @@ function fromTier(tier: SubscriptionTier): Entitlements {
       tier, isHoney: true, isHoneyMember: true,
       coinMultiplier: 2, maxEquippedBadges: 3, maxNotes: null,
       attachmentCapMB: 250, messageCapChars: 4000,
-      canUseMotionNameColors: true, canUseAnimatedThemes: true,
+      canUseMotionNameColors: false, canUseAnimatedThemes: false,
       canShareNoteAdvanced: true, monthlyGems: 500, loaded: true,
     };
   }
