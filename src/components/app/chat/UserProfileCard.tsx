@@ -215,7 +215,38 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
     }
     setFriendshipStatus("blocked");
     toast.success("User blocked");
+
+  const sendWishlistGift = async (item: WishlistEntry) => {
+    if (!item.price_gems) return;
+    if (gemBalance < item.price_gems) {
+      toast.error("Not enough gems");
+      return;
+    }
+    setGiftingItemId(item.item_id);
+    const { error } = await supabase.rpc("gift_shop_item", {
+      _recipient_id: userId,
+      _item_id: item.item_id,
+      _conversation_id: null,
+      _message: null,
+    });
+    setGiftingItemId(null);
+    setConfirmItemId(null);
+    if (error) {
+      const msg = error.message || "";
+      if (msg.includes("RECIPIENT_ALREADY_OWNS")) {
+        toast.info(`${displayName} already owns this`);
+        setWishlist((cur) => cur ? cur.filter((w) => w.item_id !== item.item_id) : cur);
+      } else if (msg.includes("INSUFFICIENT_GEMS")) {
+        toast.error("Not enough gems");
+      } else {
+        toast.error("Couldn't send gift");
+      }
+      return;
+    }
+    toast.success(`Sent ${item.name} to ${displayName} 💝`);
+    setWishlist((cur) => cur ? cur.filter((w) => w.item_id !== item.item_id) : cur);
   };
+
 
   const style: React.CSSProperties = {
     position: "fixed",
