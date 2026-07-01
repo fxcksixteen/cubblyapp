@@ -56,7 +56,7 @@ const MemberTile = ({
   return (
     <div
       onContextMenu={onContextMenu}
-      className="group relative overflow-hidden rounded-lg flex flex-col items-center justify-center transition-shadow"
+      className="cubbly-keep-shadow group relative overflow-hidden rounded-lg flex flex-col items-center justify-center transition-shadow"
       style={{
         backgroundColor: "var(--app-bg-tertiary, #1e1f22)",
         aspectRatio: "16 / 10",
@@ -78,12 +78,12 @@ const MemberTile = ({
             <img
               src={avatarUrl}
               alt=""
-              className="h-20 w-20 rounded-full object-cover"
+              className="cubbly-keep-shadow h-20 w-20 rounded-full object-cover"
               style={{ boxShadow: speaking ? "0 0 0 3px #3ba55c" : "none" }}
             />
           ) : (
             <div
-              className="h-20 w-20 rounded-full flex items-center justify-center text-2xl font-bold text-white"
+              className="cubbly-keep-shadow h-20 w-20 rounded-full flex items-center justify-center text-2xl font-bold text-white"
               style={{
                 backgroundColor: color.bg,
                 boxShadow: speaking ? "0 0 0 3px #3ba55c" : "none",
