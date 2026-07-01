@@ -93,6 +93,8 @@ const UserDisplayName = ({
   if (hasBow) {
     mergedStyle.position = "relative";
     mergedStyle.display = "inline-block";
+    mergedStyle.overflow = "visible";
+    mergedStyle.paddingTop = "0.55em";
   }
   return (
     <Tag className={className} style={mergedStyle} onClick={onClick}>
@@ -105,13 +107,14 @@ const UserDisplayName = ({
           draggable={false}
           style={{
             position: "absolute",
-            top: "-0.55em",
-            left: "-0.35em",
-            height: "0.85em",
+            top: "-0.05em",
+            left: "-0.15em",
+            height: "0.75em",
             width: "auto",
             pointerEvents: "none",
             filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.45))",
-            transform: "rotate(-14deg)",
+            transform: "rotate(-18deg)",
+            transformOrigin: "bottom left",
             zIndex: 2,
           }}
         />
