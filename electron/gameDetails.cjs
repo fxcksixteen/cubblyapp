@@ -233,6 +233,46 @@ function parseFortnite() {
   };
 }
 
+// ---------- ROBLOX ----------------------------------------------------------
+// Roblox writes per-session logs at %LOCALAPPDATA%\Roblox\logs\*.log. Newest
+// file wins. Common lines include the target place name / placeId / universe
+// as it joins servers. Everything is best-effort — bail to null on failure.
+function parseRoblox() {
+  const platformDirs = process.platform === "win32"
+    ? [path.join(process.env.LOCALAPPDATA || "", "Roblox", "logs")]
+    : process.platform === "darwin"
+      ? [path.join(os.homedir(), "Library", "Logs", "Roblox")]
+      : [];
+  let logPath = null;
+  for (const dir of platformDirs) {
+    logPath = newestFileIn(dir, (n) => n.endsWith(".log"));
+    if (logPath) break;
+  }
+  if (!logPath) return null;
+  const tail = tailFile(logPath, 128 * 1024);
+  if (!tail) return null;
+
+  // Try several common patterns Roblox emits for the joined experience.
+  const placeNameMatch =
+    [...tail.matchAll(/placeName[\s"':=]+"?([^"\r\n,}]+)"?/gi)].pop() ||
+    [...tail.matchAll(/GameName[\s"':=]+"?([^"\r\n,}]+)"?/gi)].pop();
+  const placeIdMatch =
+    [...tail.matchAll(/placeId[\s"':=]+(\d{5,})/gi)].pop() ||
+    [...tail.matchAll(/Joining game [^\d]*(\d{5,})/gi)].pop();
+  const universeMatch = [...tail.matchAll(/universeId[\s"':=]+(\d{5,})/gi)].pop();
+  const serverTypeMatch = [...tail.matchAll(/serverType[\s"':=]+"?([A-Za-z_]+)/gi)].pop();
+  const studio = /RobloxStudio/i.test(logPath);
+
+  if (!placeNameMatch && !placeIdMatch && !universeMatch && !studio) return null;
+  return {
+    experience: placeNameMatch?.[1]?.trim() || null,
+    placeId: placeIdMatch?.[1] ? Number(placeIdMatch[1]) : null,
+    universeId: universeMatch?.[1] ? Number(universeMatch[1]) : null,
+    serverType: serverTypeMatch?.[1] || null,
+    studio: studio || null,
+  };
+}
+
 // ---------- Dispatcher -------------------------------------------------------
 const PARSERS = {
   "league of legends": { key: "lol", run: parseLeagueOfLegends },
@@ -245,6 +285,10 @@ const PARSERS = {
   "marvel-win64-shipping": { key: "marvel-rivals", run: async () => parseMarvelRivals() },
   "fortnite": { key: "fortnite", run: async () => parseFortnite() },
   "fortniteclient-win64-shipping": { key: "fortnite", run: async () => parseFortnite() },
+  "roblox": { key: "roblox", run: async () => parseRoblox() },
+  "robloxplayer": { key: "roblox", run: async () => parseRoblox() },
+  "robloxplayerbeta": { key: "roblox", run: async () => parseRoblox() },
+  "robloxstudiobeta": { key: "roblox", run: async () => parseRoblox() },
 };
 
 async function getGameDetails(identifier) {

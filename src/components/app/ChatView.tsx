@@ -31,6 +31,8 @@ import emojiPickerIcon from "@/assets/icons/emoji-picker.svg";
 import GifPicker from "./GifPicker";
 import HoneyGiftModal from "./HoneyGiftModal";
 import HoneyGiftMessage, { parseHoneyGift } from "./chat/HoneyGiftMessage";
+import GiftItemModal from "./GiftItemModal";
+import ShopGiftMessage, { parseShopGift } from "./chat/ShopGiftMessage";
 import FullEmojiPicker from "./chat/FullEmojiPicker";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useMessageReactions } from "@/hooks/useMessageReactions";
@@ -102,6 +104,8 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
   const [botTyping, setBotTyping] = useState(false);
   const [gifPickerOpen, setGifPickerOpen] = useState(false);
   const [giftModalOpen, setGiftModalOpen] = useState(false);
+  const [giftItemModalOpen, setGiftItemModalOpen] = useState(false);
+  const [giftMenuOpen, setGiftMenuOpen] = useState(false);
   const [profileCard, setProfileCard] = useState<{ userId: string; name: string; x: number; y: number } | null>(null);
   const [peerTyping, setPeerTyping] = useState(false);
   const [replyTo, setReplyTo] = useState<{ id: string; sender_name: string; content: string } | null>(null);
@@ -1004,6 +1008,15 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                                   />
                                 );
                               }
+                              const shopGift = parseShopGift(text);
+                              if (shopGift) {
+                                return (
+                                  <ShopGiftMessage
+                                    payload={shopGift}
+                                    isOwn={msg.sender_id === user?.id}
+                                  />
+                                );
+                              }
                               const shared = parseSharedNote(text);
                               if (shared) {
                                 return (
@@ -1278,13 +1291,45 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
 
           {!isBotConversation && conversationId && (
             <div className="relative flex items-center pb-1">
-              <button
-                onClick={() => setGiftModalOpen(true)}
-                className="flex items-center justify-center"
-                title="Gift Honey to this chat"
-              >
-                <img src={giftIcon} alt="Gift" className="h-5 w-5 invert opacity-60 hover:opacity-100 transition-opacity" />
-              </button>
+              <Popover open={giftMenuOpen} onOpenChange={setGiftMenuOpen}>
+                <PopoverTrigger asChild>
+                  <button
+                    className="flex items-center justify-center"
+                    title="Send a gift"
+                  >
+                    <img src={giftIcon} alt="Gift" className="h-5 w-5 invert opacity-60 hover:opacity-100 transition-opacity" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent
+                  side="top"
+                  align="end"
+                  className="p-1.5 border-0 w-56 rounded-xl shadow-2xl"
+                  style={{ backgroundColor: "var(--app-bg-secondary,#2b2d31)", border: "1px solid var(--app-border,#1f2024)" }}
+                >
+                  <button
+                    onClick={() => { setGiftMenuOpen(false); setGiftModalOpen(true); }}
+                    className="w-full text-left px-3 py-2 rounded-md hover:bg-white/5 flex items-start gap-2"
+                  >
+                    <span className="text-lg leading-none">🍯</span>
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-bold text-white leading-tight">Gift Honey</div>
+                      <div className="text-[11px] text-white/60 leading-tight mt-0.5">A month or year of Cubbly Honey</div>
+                    </div>
+                  </button>
+                  {recipientUserId && (
+                    <button
+                      onClick={() => { setGiftMenuOpen(false); setGiftItemModalOpen(true); }}
+                      className="w-full text-left px-3 py-2 rounded-md hover:bg-white/5 flex items-start gap-2 mt-0.5"
+                    >
+                      <span className="text-lg leading-none">🎁</span>
+                      <div className="min-w-0">
+                        <div className="text-[13px] font-bold text-white leading-tight">Gift a shop item</div>
+                        <div className="text-[11px] text-white/60 leading-tight mt-0.5">Pick something from the shop</div>
+                      </div>
+                    </button>
+                  )}
+                </PopoverContent>
+              </Popover>
             </div>
           )}
 
@@ -1350,6 +1395,16 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
           onClose={() => setGiftModalOpen(false)}
           conversationId={conversationId}
           recipientName={recipientName}
+        />
+      )}
+
+      {giftItemModalOpen && recipientUserId && (
+        <GiftItemModal
+          open
+          onClose={() => setGiftItemModalOpen(false)}
+          recipientId={recipientUserId}
+          recipientName={recipientName}
+          conversationId={conversationId ?? null}
         />
       )}
     </div>

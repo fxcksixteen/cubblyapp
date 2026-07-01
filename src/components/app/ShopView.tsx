@@ -317,11 +317,23 @@ const ShopView = () => {
       .then(({ data }) => setDisplayName(data?.display_name || ""));
   }, [user]);
 
+  // Effective price for sorting — gems items win on price_gems, coin items on price.
+  const effPrice = (it: ShopItem) => (it.price_gems != null ? it.price_gems : it.price);
+
   const visible = useMemo(
     () => {
-      if (activeTab === "all") return items;
-      if (activeTab === "wishlist") return items.filter((i) => wishlist.has(i.id));
-      return items.filter((i) => i.category === activeTab);
+      const base = activeTab === "all"
+        ? items
+        : activeTab === "wishlist"
+          ? items.filter((i) => wishlist.has(i.id))
+          : items.filter((i) => i.category === activeTab);
+      // Cheapest first within each subcategory (stable via sort_order fallback)
+      return [...base].sort((a, b) => {
+        const ap = effPrice(a);
+        const bp = effPrice(b);
+        if (ap !== bp) return ap - bp;
+        return (a.sort_order ?? 0) - (b.sort_order ?? 0);
+      });
     },
     [items, activeTab, wishlist]
   );
@@ -351,6 +363,7 @@ const ShopView = () => {
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(it);
     }
+    // visible is already cheapest-first, so groups inherit that order.
     return Array.from(groups.entries());
   }, [visible, activeTab]);
 

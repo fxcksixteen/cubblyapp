@@ -40,6 +40,20 @@ const renderDetailLines = (details: Record<string, any> | null | undefined): str
     if (details.score) lines.push(`${details.queue ? details.queue + " · " : ""}${details.score}`);
     return lines;
   }
+  // Roblox (experience/place/universe/studio)
+  if (details.experience || details.placeId || details.universeId || details.studio) {
+    if (details.studio) {
+      lines.push("In Roblox Studio");
+      if (details.experience) lines.push(`Editing ${details.experience}`);
+      return lines;
+    }
+    const top = details.experience || (details.placeId ? `Place #${details.placeId}` : null);
+    if (top) lines.push(top);
+    const bottom = [details.serverType, details.universeId && `Universe ${details.universeId}`]
+      .filter(Boolean).join(" · ");
+    if (bottom) lines.push(bottom);
+    return lines;
+  }
   // Marvel Rivals / Fortnite-ish (hero/mode/map/placement)
   if (details.hero || details.map || details.mode || details.placement) {
     const top = [details.hero, details.map].filter(Boolean).join(" on ");
