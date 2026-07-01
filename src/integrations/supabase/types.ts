@@ -612,6 +612,62 @@ export type Database = {
           },
         ]
       }
+      honey_gifts: {
+        Row: {
+          billing_interval: string
+          claimed_at: string | null
+          claimed_by: string | null
+          conversation_id: string
+          created_at: string
+          id: string
+          message: string | null
+          payment_source: string
+          price_amount: number
+          sender_id: string
+          status: string
+          stripe_session_id: string | null
+          tier: string
+        }
+        Insert: {
+          billing_interval: string
+          claimed_at?: string | null
+          claimed_by?: string | null
+          conversation_id: string
+          created_at?: string
+          id?: string
+          message?: string | null
+          payment_source: string
+          price_amount: number
+          sender_id: string
+          status?: string
+          stripe_session_id?: string | null
+          tier: string
+        }
+        Update: {
+          billing_interval?: string
+          claimed_at?: string | null
+          claimed_by?: string | null
+          conversation_id?: string
+          created_at?: string
+          id?: string
+          message?: string | null
+          payment_source?: string
+          price_amount?: number
+          sender_id?: string
+          status?: string
+          stripe_session_id?: string | null
+          tier?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "honey_gifts_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       link_previews: {
         Row: {
           description: string | null
@@ -1452,6 +1508,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      _honey_gift_gems_price: {
+        Args: { _interval: string; _tier: string }
+        Returns: number
+      }
       _internal_award_coins: {
         Args: {
           _amount: number
@@ -1499,6 +1559,7 @@ export type Database = {
       burn_view_once_note: { Args: { _message_id: string }; Returns: undefined }
       can_access_message: { Args: { _message_id: string }; Returns: boolean }
       claim_gift: { Args: { _gift_id: string }; Returns: Json }
+      claim_honey_gift: { Args: { _gift_id: string }; Returns: Json }
       create_dm_conversation: {
         Args: { other_user_id: string }
         Returns: string
@@ -1613,6 +1674,15 @@ export type Database = {
         Returns: undefined
       }
       revoke_server_invite: { Args: { _invite_id: string }; Returns: undefined }
+      send_honey_gift_gems: {
+        Args: {
+          _conversation_id: string
+          _interval: string
+          _message?: string
+          _tier: string
+        }
+        Returns: Json
+      }
       send_test_bot_reply: {
         Args: { _conversation_id: string }
         Returns: {
