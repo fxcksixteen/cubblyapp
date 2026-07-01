@@ -293,7 +293,7 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
             {/* When my camera is on, show the live video tile in place of the avatar circle */}
             {activeCall.isVideoOn && localVideoStream ? (
               <div
-                className={`group relative overflow-hidden rounded-2xl bg-black ${
+                className={`cubbly-keep-shadow group relative overflow-hidden rounded-2xl bg-black ${
                   hasScreenShare ? "h-20 w-28" : "h-[140px] w-[200px]"
                 }`}
                 style={{
@@ -325,7 +325,7 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
               </div>
             ) : (
               <div
-                className={`flex items-center justify-center rounded-full font-bold text-white ${hasScreenShare ? "h-12 w-12 text-lg" : "h-[72px] w-[72px] text-2xl"}`}
+                className={`cubbly-keep-shadow flex items-center justify-center rounded-full font-bold text-white ${hasScreenShare ? "h-12 w-12 text-lg" : "h-[72px] w-[72px] text-2xl"}`}
                 style={{
                   backgroundColor: callerColor.bg,
                   transition: "box-shadow 60ms linear",
@@ -370,7 +370,7 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
           <div className="relative">
             {!isWaiting && remoteVideoStream && peerState?.is_video_on ? (
               <div
-                className={`group relative overflow-hidden rounded-2xl bg-black ${
+                className={`cubbly-keep-shadow group relative overflow-hidden rounded-2xl bg-black ${
                   hasScreenShare ? "h-20 w-28" : "h-[140px] w-[200px]"
                 }`}
                 style={{
@@ -395,7 +395,7 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
               </div>
             ) : (
               <div
-                className={`flex items-center justify-center rounded-full font-bold text-white ${hasScreenShare ? "h-12 w-12 text-lg" : "h-[72px] w-[72px] text-2xl"} ${isWaiting ? "opacity-40" : ""}`}
+                className={`cubbly-keep-shadow flex items-center justify-center rounded-full font-bold text-white ${hasScreenShare ? "h-12 w-12 text-lg" : "h-[72px] w-[72px] text-2xl"} ${isWaiting ? "opacity-40" : ""}`}
                 style={{
                   backgroundColor: recipientColor.bg,
                   filter: isWaiting ? "grayscale(0.3)" : "none",
