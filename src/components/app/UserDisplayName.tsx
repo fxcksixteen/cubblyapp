@@ -28,14 +28,45 @@ export function nameColorStyle(c: NameColor | null, fallback?: string): CSSPrope
     };
   }
   // animated
-  return {
-    backgroundImage: `linear-gradient(90deg, ${c.stops.join(",")})`,
-    backgroundSize: "300% 100%",
+  const stops = c.stops.join(",");
+  const dur = c.duration;
+  const style = c.style ?? "sweep";
+  const base: CSSProperties = {
     backgroundClip: "text",
     WebkitBackgroundClip: "text",
     color: "transparent",
     WebkitTextFillColor: "transparent",
-    animation: `cb-animated-name ${c.duration} ease-in-out infinite`,
+  };
+  if (style === "conic") {
+    return {
+      ...base,
+      backgroundImage: `conic-gradient(from 0deg, ${stops})`,
+      backgroundSize: "100% 100%",
+      animation: `cb-animated-name-hue ${dur} linear infinite`,
+    };
+  }
+  if (style === "hueshift") {
+    return {
+      ...base,
+      backgroundImage: `linear-gradient(90deg, ${stops})`,
+      backgroundSize: "200% 100%",
+      animation: `cb-animated-name-hue ${dur} linear infinite, cb-animated-name ${dur} ease-in-out infinite`,
+    };
+  }
+  if (style === "pulse") {
+    return {
+      ...base,
+      backgroundImage: `linear-gradient(90deg, ${stops})`,
+      backgroundSize: "300% 100%",
+      animation: `cb-animated-name ${dur} ease-in-out infinite, cb-animated-name-pulse ${dur} ease-in-out infinite`,
+    };
+  }
+  // sweep (default) — wide gradient sliding across
+  return {
+    ...base,
+    backgroundImage: `linear-gradient(90deg, ${stops})`,
+    backgroundSize: "300% 100%",
+    animation: `cb-animated-name ${dur} ease-in-out infinite`,
   };
 }
 
@@ -65,11 +96,21 @@ const UserDisplayName = ({
 
 /** Inject the animation keyframes once at app root. */
 export const NameColorsStyles = () => (
-  <style>{`@keyframes cb-animated-name {
-    0%   { background-position: 0% 50%; }
-    50%  { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
-  }`}</style>
+  <style>{`
+    @keyframes cb-animated-name {
+      0%   { background-position: 0% 50%; }
+      50%  { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    @keyframes cb-animated-name-hue {
+      from { filter: hue-rotate(0deg); }
+      to   { filter: hue-rotate(360deg); }
+    }
+    @keyframes cb-animated-name-pulse {
+      0%, 100% { filter: brightness(1) contrast(1); }
+      50%      { filter: brightness(1.35) contrast(1.15); }
+    }
+  `}</style>
 );
 
 export default UserDisplayName;

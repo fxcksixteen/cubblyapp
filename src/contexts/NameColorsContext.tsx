@@ -12,10 +12,12 @@ import { supabase } from "@/integrations/supabase/client";
  *   { kind: "animated", stops: string[], duration: string }
  */
 
+export type AnimatedNameStyle = "sweep" | "hueshift" | "conic" | "pulse";
+
 export type NameColor =
   | { kind: "static"; color: string }
   | { kind: "gradient"; from: string; to: string }
-  | { kind: "animated"; stops: string[]; duration: string };
+  | { kind: "animated"; stops: string[]; duration: string; style?: AnimatedNameStyle };
 
 interface Ctx {
   get: (userId: string | null | undefined) => NameColor | null;
@@ -33,7 +35,12 @@ function rowToColor(item: any): NameColor | null {
   if (sub === "gradient" && cfg.from && cfg.to)
     return { kind: "gradient", from: cfg.from, to: cfg.to };
   if (sub === "animated" && Array.isArray(cfg.stops))
-    return { kind: "animated", stops: cfg.stops, duration: cfg.duration ?? "6s" };
+    return {
+      kind: "animated",
+      stops: cfg.stops,
+      duration: cfg.duration ?? "6s",
+      style: (cfg.style as AnimatedNameStyle) ?? "sweep",
+    };
   return null;
 }
 
