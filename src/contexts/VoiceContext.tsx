@@ -1394,6 +1394,19 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             return;
           }
 
+          // v0.4.0: fast-path accept teardown guard. If the user just tapped
+          // Accept and we're mid-way through closing the stale PC / building
+          // the fresh one, buffer this offer instead of running the normal
+          // handler (which would see no pc + no matching activeCall and
+          // orphan our in-flight PC).
+          if (payload.callEventId && acceptInFlightRef.current === payload.callEventId) {
+            console.log("[acceptDiag] buffering retry offer during accept-in-flight", payload.callEventId);
+            pendingRetryOfferRef.current = { callEventId: payload.callEventId, sdp: payload.sdp };
+            return;
+          }
+
+
+
 
 
           // Re-offer mid-call (e.g. peer enabled camera and renegotiated).
