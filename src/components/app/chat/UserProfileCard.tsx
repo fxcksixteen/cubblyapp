@@ -75,6 +75,10 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
   const userActivityLabel = activityLabel(userActivity, isUserOnline);
 
   const [wishlist, setWishlist] = useState<WishlistEntry[] | null>(null);
+  const { balance: gemBalance } = useGems();
+  const [giftingItemId, setGiftingItemId] = useState<string | null>(null);
+  const [confirmItemId, setConfirmItemId] = useState<string | null>(null);
+
 
   useEffect(() => {
     supabase
