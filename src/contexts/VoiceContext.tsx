@@ -334,6 +334,22 @@ interface VoiceContextType {
   setUserMuted: (userId: string, muted: boolean) => void;
   /** v0.3.19: Live WebRTC diagnostics for the current call. Null when not connected. */
   getCallDiagnostics: () => Promise<CallDiagnostics | null>;
+  /** v0.4.0: Synthetic pickup self-test. Runs the same hardened accept-path
+   * helpers (answer retry + heartbeat retry + teardown guard) against two
+   * in-process peer connections and reports which stage completed. */
+  runPickupSelfTest: () => Promise<PickupSelfTestResult>;
+}
+
+export interface PickupSelfTestResult {
+  pass: boolean;
+  stages: {
+    mediaAcquired: boolean;
+    peerCreated: boolean;
+    offerAnswered: boolean;
+    iceConnected: boolean;
+  };
+  errorMessage?: string;
+  durationMs: number;
 }
 
 export interface CallDiagnostics {
