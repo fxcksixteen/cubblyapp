@@ -1,43 +1,66 @@
-## Wishlist redesign on profile cards
+# v0.4.0 Bug Squash Plan
 
-### 1. Extract the shop preview into a shared component
-The `ItemPreview` function inside `src/components/app/ShopView.tsx` (name-color swatches, animated theme scenes, badge art, etc.) is currently trapped in that file. Lift it into a new shared component:
+Wide sweep turned up two critical bugs and a batch of high/medium issues that will bite real users on launch day. Below is what to fix, grouped by severity. No version bump — you'll ship this on your word.
 
-- `src/components/app/shop/ShopItemPreview.tsx` — moves the existing `ItemPreview` verbatim, plus a `size` prop (`"lg"` for shop grid, `"sm"` for the wishlist strip so previews scale to ~64px tall instead of 80px).
-- `ShopView.tsx` re-imports it so shop rendering is byte-identical.
+## Critical (must fix)
 
-### 2. Fetch full item data for the wishlist
-`UserProfileCard.tsx` currently selects only `id, name, price, price_gems, category` — not enough to render real previews. Update the wishlist fetch to also pull `subcategory, description, config` so `ShopItemPreview` has what it needs. `WishlistEntry` type expands accordingly.
+1. **Coins balance never updates live** — `src/contexts/CoinsContext.tsx`
+   The security migration removed `user_coins` and `coin_transactions` from the realtime publication, so the current postgres_changes subscription is dead. Drop the dead listeners and instead: refresh balance after each `accrue_activity_coins` heartbeat (already in the same effect), expose a `refreshBalance()` that shop/gift/gem flows call after any RPC that spends or grants coins, and refresh on window focus.
 
-### 3. New wishlist card UI
-Replace the current 2-column text list with a vertical stack of rich rows, styled to match the Discord-dark card system already used elsewhere on the profile card. Each row:
+2. **Voice-global channel collision** — `src/contexts/VoiceContext.tsx` and `src/contexts/GroupCallContext.tsx`
+   Both permanently subscribe to the identical topic `voice-global:{user.id}`. The second subscribe silently steals the first's slot, so depending on mount order either 1:1 incoming calls or group incoming calls get swallowed. Give each a unique suffix (same pattern already used everywhere else in the codebase).
 
-```
-┌────────────────────────────────────────────────┐
-│ ┌──────────┐  Item name                        │
-│ │ preview  │  category · short descriptor      │
-│ │ (64px)   │  💎 300   [🎁]                    │
-│ └──────────┘                                   │
-└────────────────────────────────────────────────┘
-```
+## High
 
-- Preview thumbnail on the left (real `ShopItemPreview` render — name color, theme scene, badge art).
-- Title, subtle category tag beneath.
-- Price with the proper currency image: `@/assets/gems/gem.png` for gems, the existing coin PNG for coins — no more emoji, no "weird coin icon".
-- Vertical scroll capped at ~3 rows visible (~260 px) with a subtle fade.
+3. **Realtime message delivery breaks on StrictMode / fast nav** — `src/hooks/useMessages.ts` (`messages:{conversationId}`) and `src/components/app/ChatView.tsx` (`typing:{conversationId}`)
+   Neither channel has a unique suffix. On remount the second `.subscribe()` on the same topic throws and the listener is silently dropped — new messages / typing indicators only reappear after refresh. Add the standard uniqueSuffix.
 
-### 4. Gift button for other users
-For non-own profiles only, render a small circular gift-icon button (`@/assets/icons/gift.svg`) on the right side of each row.
+4. **Group-call incoming broadcasts lost on every mute toggle** — `src/contexts/GroupCallContext.tsx`
+   The `voice-global` subscribe effect depends on `activeCall`, so it tears down and rebuilds on every state change (~200ms blind window). Move `activeCall` to a ref (same pattern VoiceContext already uses).
 
-- Enabled only when the item has `price_gems` set AND the viewer's gem balance covers it (uses existing `useGems()`).
-- Disabled state: greyed-out with tooltip "Not enough gems" (or "Not giftable" for coin-only items).
-- Click flow: opens a compact inline confirm popover ("Send *Bow* to Ella for 💎 1,500?" with Cancel / Confirm) to prevent accidents, then calls the existing `gift_shop_item` RPC directly — no full modal traversal. On success, toast "Sent *Bow* to Ella 💝" and remove the row optimistically if the recipient now owns it.
-- Skip filtering by ownership on load — the RPC already rejects duplicates with `RECIPIENT_ALREADY_OWNS`, which we surface as a friendly toast.
+5. **Silent send failures** — `src/hooks/useMessages.ts`
+   Failed insert removes the optimistic message with only a console log. Add a `toast.error("Failed to send message")` and keep the draft in the composer so the user can retry.
 
-### 5. Own-profile view
-No gift button (obviously). The "Manage" pill in the header stays as-is. Wishlist section still hidden entirely when empty (rule from previous turn is preserved).
+6. **Dismiss-broadcast channel leak** — `src/contexts/VoiceContext.tsx` (`broadcastIncomingCallDismiss`)
+   If SUBSCRIBED never fires (network blip), the ephemeral channel is never removed. Add an outer timeout that force-removes the channel after ~2s regardless of subscribe state.
 
-### Technical notes
-- No schema changes. All new UI is purely presentational plus one existing RPC call.
-- `ShopItemPreview` is a pure move-and-parameterize refactor; shop grid rendering must remain visually identical.
-- The confirm popover reuses shadcn `Popover` so it renders above the profile card via portal (avoids clipping inside the profile modal — same pattern the profile card itself uses).
+## Medium
+
+7. **Remote-hangup listener rebuilds on every call-state change** — `src/hooks/useActiveCallElsewhere.ts`
+   `useRemoteHangupListener` and the tracker effect depend on live objects, causing constant tear-down/rebuild and a tiny window where remote-hangup broadcasts can be missed. Move `endCall` / `activeCall` reads behind refs.
+
+8. **Ephemeral `voice-control` sender can collide with its own listener** — `src/hooks/useActiveCallElsewhere.ts` (`requestRemoteHangup`)
+   Add a unique suffix on the sender channel.
+
+9. **`ScreenSharePicker` can throw on web** — `src/components/app/ScreenSharePicker.tsx`
+   Guard the `electronAPI.getDesktopSources()` call with optional chaining.
+
+10. **Wishlist toggle has no busy guard** — `src/components/app/ShopView.tsx`
+    Rapid taps fire concurrent RPCs. Add a per-item pending flag with optimistic UI.
+
+11. **Honey gift RPC errors are swallowed** — `src/components/app/HoneyGiftModal.tsx`
+    Add a `toast.error(...)` on the RPC error path (currently only the "not enough gems" client-side case is surfaced).
+
+12. **Push notifications fire to users actively reading** — `src/hooks/useUnreadCounts.ts` + `ChatView` mount points
+    Audit every place that mounts `ChatView` to ensure `setActiveConversation(conversationId)` is called on mount and cleared on unmount, so the 30s-suppression window actually kicks in.
+
+13. **HoneyGiftMessage subscribes before initial fetch resolves** — `src/components/app/chat/HoneyGiftMessage.tsx`
+    Move the `supabase.channel(...)` subscribe to run after the initial fetch resolves; add a unique suffix.
+
+14. **`activity_details` DELETE handler may silently ignore rows** — `src/contexts/ActivityContext.tsx`
+    Without `REPLICA IDENTITY FULL`, OLD row may not carry `user_id`. Fall back to a full refetch on DELETE when `oldRow.user_id` is missing.
+
+## Low (batch with the above)
+
+- Use `crypto.randomUUID()` for optimistic message temp IDs.
+- Modal queue: no prod-visible bug; leave as-is.
+
+## Out of scope
+
+- No design changes. No new features. No version bump. Purely correctness fixes.
+- iOS app is untouched.
+
+## Verification
+
+- Typecheck after each cluster.
+- Manually verify: send a message (toast on failure), incoming 1:1 + group call ring, gem purchase updates balance without refresh, wishlist double-tap doesn't double-charge, screen share picker still opens on desktop.

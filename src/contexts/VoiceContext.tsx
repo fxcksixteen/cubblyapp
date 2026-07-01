@@ -1107,6 +1107,16 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     if (!user) return;
     const channel = supabase.channel(`voice-global:${user.id}`);
     await new Promise<void>((resolve) => {
+      let settled = false;
+      const cleanup = () => {
+        if (settled) return;
+        settled = true;
+        try { supabase.removeChannel(channel); } catch {}
+        resolve();
+      };
+      // v0.4.0: hard timeout — if SUBSCRIBED never fires (network blip) the
+      // channel would leak forever. Force cleanup after 2s no matter what.
+      const hardTimer = setTimeout(cleanup, 2000);
       channel.subscribe((status) => {
         if (status === "SUBSCRIBED") {
           channel.send({
@@ -1114,10 +1124,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             event: "incoming-call-dismiss",
             payload: { conversationId, callEventId, userId: user.id },
           }).finally(() => {
-            setTimeout(() => {
-              supabase.removeChannel(channel);
-              resolve();
-            }, 250);
+            setTimeout(() => { clearTimeout(hardTimer); cleanup(); }, 250);
           });
         }
       });

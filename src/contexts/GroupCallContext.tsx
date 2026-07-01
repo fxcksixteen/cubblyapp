@@ -1185,13 +1185,18 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [activeCall, user]);
 
-  // Listen for global incoming group calls
+  // Listen for global incoming group calls.
+  // v0.4.0: read activeCall via ref so we don't tear down and rebuild this
+  // subscription on every mute/state change — the resulting ~200ms window was
+  // swallowing incoming-call broadcasts.
+  const activeCallRef = useRef(activeCall);
+  useEffect(() => { activeCallRef.current = activeCall; }, [activeCall]);
   useEffect(() => {
     if (!user) return;
     const ch = supabase.channel(`voice-global:${user.id}`);
     ch.on("broadcast", { event: "group-incoming-call" }, ({ payload }) => {
       if (payload.targetId !== user.id) return;
-      if (activeCall) return; // already in a call
+      if (activeCallRef.current) return; // already in a call
       setIncomingCall({
         conversationId: payload.conversationId,
         conversationName: payload.conversationName || "Group Call",
@@ -1204,7 +1209,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     });
     ch.subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [user, activeCall]);
+  }, [user]);
 
   // Auto-stop incoming ringtone after 45s
   useEffect(() => {

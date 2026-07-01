@@ -107,8 +107,20 @@ export function useActiveCallElsewhere() {
     if (!user) return;
     const target = conversationId || elsewhere?.conversationId;
     if (!target) return;
-    const signal = supabase.channel(`voice-control:${user.id}`);
+    // v0.4.0: unique suffix so the ephemeral sender doesn't collide with the
+    // persistent listener on the same topic.
+    const suffix = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const signal = supabase.channel(`voice-control:${user.id}:${suffix}`);
     return new Promise<void>((resolve) => {
+      let settled = false;
+      const cleanup = () => {
+        if (settled) return;
+        settled = true;
+        try { supabase.removeChannel(signal); } catch {}
+        resolve();
+      };
+      // Hard timeout in case SUBSCRIBED never fires (network blip).
+      const hardTimer = setTimeout(cleanup, 2500);
       signal.subscribe((status) => {
         if (status === "SUBSCRIBED") {
           signal.send({
@@ -116,10 +128,7 @@ export function useActiveCallElsewhere() {
             event: "hangup",
             payload: { exceptDeviceId: DEVICE_ID, conversationId: target },
           }).finally(() => {
-            setTimeout(() => {
-              supabase.removeChannel(signal);
-              resolve();
-            }, 300);
+            setTimeout(() => { clearTimeout(hardTimer); cleanup(); }, 300);
           });
         }
       });
@@ -138,25 +147,35 @@ export function useRemoteHangupListener() {
   const { activeCall, endCall } = useVoice();
   const groupCall = useGroupCall();
 
+  // v0.4.0: read live call state via refs so every mute/state change doesn't
+  // tear down & rebuild the voice-control listener (which was creating a
+  // window where remote-hangup broadcasts could be dropped).
+  const activeCallRef = useRef(activeCall);
+  const groupActiveRef = useRef(groupCall.activeCall);
+  const endCallRef = useRef(endCall);
+  const leaveCallRef = useRef(groupCall.leaveCall);
+  useEffect(() => { activeCallRef.current = activeCall; }, [activeCall]);
+  useEffect(() => { groupActiveRef.current = groupCall.activeCall; }, [groupCall.activeCall]);
+  useEffect(() => { endCallRef.current = endCall; }, [endCall]);
+  useEffect(() => { leaveCallRef.current = groupCall.leaveCall; }, [groupCall.leaveCall]);
+
   useEffect(() => {
     if (!user) return;
     const ch = supabase.channel(`voice-control:${user.id}`);
     ch.on("broadcast", { event: "hangup" }, ({ payload }) => {
       if (payload?.exceptDeviceId === DEVICE_ID) return;
-      // Only honor a remote hangup if it explicitly targets the call we're in.
-      // A blind broadcast must NOT be allowed to drop an active call — that
-      // was killing live calls whenever any other tab/device chattered.
       const targetConv = payload?.conversationId as string | undefined;
-      if (activeCall) {
-        if (targetConv && targetConv === activeCall.conversationId) endCall();
+      const localActive = activeCallRef.current;
+      const localGroup = groupActiveRef.current;
+      if (localActive) {
+        if (targetConv && targetConv === localActive.conversationId) endCallRef.current?.();
         return;
       }
-      if (groupCall.activeCall) {
-        if (targetConv && targetConv === groupCall.activeCall.conversationId) groupCall.leaveCall();
+      if (localGroup) {
+        if (targetConv && targetConv === localGroup.conversationId) leaveCallRef.current?.();
         return;
       }
-      // No active call here — nothing to hang up.
     }).subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [user?.id, activeCall, groupCall.activeCall, endCall]);
+  }, [user?.id]);
 }

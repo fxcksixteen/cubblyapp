@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "sonner";
 
 const BOT_USER_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -150,8 +151,12 @@ export function useMessages(conversationId: string | null) {
     fetchMessages();
 
     if (conversationId) {
+      // v0.4.0: unique suffix — under StrictMode/HMR/fast-nav a leftover
+      // channel with the same topic name would throw on the next .subscribe()
+      // and silently drop realtime message delivery.
+      const suffix = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
       channelRef.current = supabase
-        .channel(`messages:${conversationId}`)
+        .channel(`messages:${conversationId}:${suffix}`)
         .on(
           "postgres_changes",
           { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` },
@@ -301,7 +306,7 @@ export function useMessages(conversationId: string | null) {
     if (!user || !conversationId || !content.trim()) return false;
 
     const trimmedContent = content.trim();
-    const tempId = `temp-${Date.now()}`;
+    const tempId = `temp-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
     const replyPreview: ReplyPreview | null = replyToId
       ? (() => {
           const m = messages.find((mm) => mm.id === replyToId);
@@ -341,6 +346,7 @@ export function useMessages(conversationId: string | null) {
     if (error || !insertedMessage) {
       console.error("Failed to send message:", error);
       setMessages((previous) => previous.filter((message) => message.id !== tempId));
+      toast.error("Couldn't send that message — try again");
       return false;
     }
 
