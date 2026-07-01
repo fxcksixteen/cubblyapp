@@ -71,6 +71,7 @@ const WhatsNewModal = ({ forceVersion, onClose }: WhatsNewModalProps) => {
   const handleClose = () => {
     if (!forceVersion && user) {
       try { localStorage.setItem(`${storageKey(version)}:${user.id}`, new Date().toISOString()); } catch {}
+      try { window.dispatchEvent(new CustomEvent("cubbly:whats-new-dismissed", { detail: { version } })); } catch {}
     }
     setVisible(false);
     // Wait for exit animation, then unmount and release the queue slot
