@@ -242,6 +242,59 @@ const CallDiagnosticsModal = ({ open, onClose }: Props) => {
               You're not in a call right now.
             </div>
           )}
+
+          {/* v0.4.0: Pickup self-test */}
+          <section>
+            <h3 className="text-[11px] uppercase tracking-wide font-bold mb-1.5 flex items-center gap-1.5"
+                style={{ color: "var(--app-text-secondary, #949ba4)" }}>
+              <Phone className="h-3 w-3" /> Pickup self-test
+            </h3>
+            <div className="rounded-md p-3 space-y-2" style={{ backgroundColor: "var(--app-bg-tertiary, #1e1f22)" }}>
+              <p className="text-[11px] leading-relaxed" style={{ color: "var(--app-text-secondary, #949ba4)" }}>
+                Runs a local pickup handshake using the same hardened accept-path helpers. Verifies mic access, peer connection, answer retry, and ICE connectivity.
+              </p>
+              <button
+                onClick={handleRunSelfTest}
+                disabled={selfTestRunning}
+                className="w-full h-8 rounded text-[12px] font-semibold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-60"
+                style={{ backgroundColor: "#3ba55c", color: "white" }}
+              >
+                {selfTestRunning ? (<><Loader2 className="h-3.5 w-3.5 animate-spin" /> Running…</>) : (<><Phone className="h-3.5 w-3.5" /> Run pickup test</>)}
+              </button>
+              {selfTestResult && (
+                <div className="pt-1 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold" style={{ color: selfTestResult.pass ? "#3ba55c" : "#ed4245" }}>
+                      {selfTestResult.pass ? "PASS" : "FAIL"} · {selfTestResult.durationMs} ms
+                    </span>
+                    <button
+                      onClick={copySelfTestResult}
+                      className="text-[10px] uppercase tracking-wide font-bold px-2 py-0.5 rounded hover:bg-white/10"
+                      style={{ color: "var(--app-text-secondary, #949ba4)" }}
+                    >
+                      Copy
+                    </button>
+                  </div>
+                  {(["mediaAcquired","peerCreated","offerAnswered","iceConnected"] as const).map((k) => {
+                    const ok = selfTestResult.stages[k];
+                    const label = { mediaAcquired: "Mic acquired", peerCreated: "Peer created", offerAnswered: "Offer answered", iceConnected: "ICE connected" }[k];
+                    return (
+                      <div key={k} className="flex items-center gap-1.5 text-[11px]">
+                        {ok ? <Check className="h-3 w-3" style={{ color: "#3ba55c" }} /> : <X className="h-3 w-3" style={{ color: "#ed4245" }} />}
+                        <span className="text-white">{label}</span>
+                      </div>
+                    );
+                  })}
+                  {selfTestResult.errorMessage && (
+                    <div className="text-[11px] pt-1 font-mono" style={{ color: "#ed4245" }}>
+                      {selfTestResult.errorMessage}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </section>
+
         </div>
       </DialogContent>
     </Dialog>
