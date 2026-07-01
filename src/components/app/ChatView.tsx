@@ -992,6 +992,15 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                               );
                             })()}
                             {text && (() => {
+                              const honey = parseHoneyGift(text);
+                              if (honey) {
+                                return (
+                                  <HoneyGiftMessage
+                                    payload={honey}
+                                    isOwn={msg.sender_id === user?.id}
+                                  />
+                                );
+                              }
                               const shared = parseSharedNote(text);
                               if (shared) {
                                 return (
