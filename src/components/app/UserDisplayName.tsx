@@ -1,5 +1,6 @@
 import { useEffect, CSSProperties, ReactNode } from "react";
 import { useNameColors, NameColor } from "@/contexts/NameColorsContext";
+import bowImg from "@/assets/badges/petite.svg";
 
 interface Props {
   userId: string | null | undefined;
