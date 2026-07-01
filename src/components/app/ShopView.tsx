@@ -176,7 +176,6 @@ function ItemPreview({ item, displayName }: { item: ShopItem; displayName: strin
         </div>
       );
     }
-    }
     if (item.id === "theme_cosmic_nebula") {
       return (
         <div className="relative h-20 w-full rounded-lg overflow-hidden" style={{ background: "radial-gradient(ellipse at 30% 20%, #4c1d95 0%, #1e0b3b 50%, #05030f 100%)" }}>
