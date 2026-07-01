@@ -1,6 +1,17 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
+// Always-on Honey Subscriber badge — granted while the user's subscription is
+// active, cannot be unequipped, and does not count against the 1/2/3 badge cap.
+const HONEY_BADGE: BadgeData = {
+  id: "honey_subscriber",
+  icon: "sparkles",
+  bg: "#f59e0b",
+  fg: "#ffffff",
+  label: "Honey Subscriber",
+  description: "Supports Cubbly with a Honey membership.",
+};
+
 /**
  * UserBadgesContext — fetches each user's currently-equipped badges (joined to
  * the shop_items.config) and caches them across the app. Components call
