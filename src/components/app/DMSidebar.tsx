@@ -24,6 +24,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { useConversationMutes, type MuteDuration } from "@/hooks/useConversationMutes";
+import { useConversationPins, MAX_PINNED_CONVERSATIONS } from "@/hooks/useConversationPins";
 import ProfilePopup from "./ProfilePopup";
 import SettingsModal from "./SettingsModal";
 import SearchBar from "./SearchBar";
