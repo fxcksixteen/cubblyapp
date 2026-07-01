@@ -116,7 +116,7 @@ const UserDisplayName = ({
             width: "auto",
             pointerEvents: "none",
             filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.45))",
-            transform: iconUrl ? "none" : "rotate(-18deg)",
+            transform: "rotate(-18deg)",
             transformOrigin: "bottom left",
             zIndex: 2,
           }}
