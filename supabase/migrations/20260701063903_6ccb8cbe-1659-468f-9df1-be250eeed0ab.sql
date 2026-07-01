@@ -1,0 +1,1 @@
+UPDATE public.shop_items SET name = 'Northern Lights' WHERE id = 'theme_aurora_borealis';
