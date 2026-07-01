@@ -43,6 +43,7 @@ interface ProfileData {
   bio: string | null;
   status: string;
   public_wishlist?: boolean;
+  created_at?: string | null;
 }
 
 interface WishlistEntry {
@@ -83,7 +84,7 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
   useEffect(() => {
     supabase
       .from("profiles")
-      .select("avatar_url, username, bio, status, banner_url, public_wishlist")
+      .select("avatar_url, username, bio, status, banner_url, public_wishlist, created_at")
       .eq("user_id", userId)
       .maybeSingle()
       .then(({ data }) => {
@@ -313,6 +314,12 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
                 <p className="text-xs font-semibold text-[#949ba4] uppercase tracking-wide mb-1">About Me</p>
                 <p className="text-sm text-[#dbdee1] leading-relaxed">{profile.bio}</p>
               </div>
+            )}
+
+            {profile?.created_at && (
+              <p className="mt-3 text-[11px] font-medium uppercase tracking-wider text-white/35">
+                Member since {new Date(profile.created_at).toLocaleDateString(undefined, { month: "long", year: "numeric" })}
+              </p>
             )}
 
             {wishlist && wishlist.length > 0 && (isOwnProfile || profile?.public_wishlist !== false) && (
