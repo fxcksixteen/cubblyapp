@@ -23,9 +23,20 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.4.1";
+export const CURRENT_VERSION = "0.4.2";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.4.2",
+    title: "Shop previews + live profile edits",
+    date: "2026-07-01",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Fixed shop item preview icons not loading on the desktop app.",
+      "Display name and username changes now update everywhere immediately without needing a refresh or restart.",
+    ],
+  },
   {
     version: "0.4.1",
     title: "Honey welcome fix",
