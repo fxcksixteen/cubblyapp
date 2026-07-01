@@ -102,7 +102,7 @@ export function ShopItemPreview({ item, displayName, sizeClass = "h-20 w-full ro
                 alt=""
                 aria-hidden="true"
                 draggable={false}
-                style={{ position: "absolute", top: iconUrl ? "-0.06em" : "0.32em", left: iconUrl ? "-0.58em" : "-0.25em", height: iconUrl ? "1.08em" : "0.75em", width: "auto", pointerEvents: "none", filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.5))", transform: iconUrl ? "none" : "rotate(-18deg)", transformOrigin: "bottom left" }}
+                style={{ position: "absolute", top: iconUrl ? "-0.06em" : "0.32em", left: iconUrl ? "-0.58em" : "-0.25em", height: iconUrl ? "1.08em" : "0.75em", width: "auto", pointerEvents: "none", filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.5))", transform: "rotate(-18deg)", transformOrigin: "bottom left" }}
               />
             )}
           </span>
