@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { useVoice, CallDiagnostics } from "@/contexts/VoiceContext";
-import { Activity, Globe, Shield, Wifi, ArrowDownToLine, ArrowUpToLine } from "lucide-react";
+import { useVoice, CallDiagnostics, PickupSelfTestResult } from "@/contexts/VoiceContext";
+import { Activity, Globe, Shield, Wifi, ArrowDownToLine, ArrowUpToLine, Phone, Check, X, Loader2 } from "lucide-react";
 
 /**
  * v0.3.19: Live network diagnostics for the call the user is currently in.
