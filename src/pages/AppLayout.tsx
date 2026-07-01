@@ -815,6 +815,8 @@ const AppLayout = () => {
           onClose={() => setHeaderProfileCard(null)}
         />
       )}
+      <HoneyWelcomeModal />
+
     </div>
   );
 };
