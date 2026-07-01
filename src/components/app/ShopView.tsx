@@ -393,6 +393,7 @@ const ShopView = () => {
 
   const toggleEquip = async (item: ShopItem) => {
     const isEq = equipped.has(item.id);
+    const isAnimatedCosmetic = (item.category === "theme" || item.category === "name_color") && item.subcategory === "animated";
     if (!isEq && item.category === "badge") {
       const equippedBadgeCount = items.filter((i) => i.category === "badge" && equipped.has(i.id)).length;
       if (equippedBadgeCount >= ent.maxEquippedBadges) {
@@ -405,13 +406,18 @@ const ShopView = () => {
         return;
       }
     }
-    if (!isEq && item.category === "theme" && !ent.canUseAnimatedThemes && /animated|motion|aurora|nebula/i.test(item.name)) {
-      // Animated themes are Honey-tier only. Static themes remain available to all.
-      toast.error("Animated themes are a Honey perk");
+    if (!isEq && isAnimatedCosmetic && !ent.isHoney) {
+      toast.error(item.category === "name_color" ? "Motion name colors are a Standard Honey perk" : "Animated themes are a Standard Honey perk");
       return;
     }
     const { error } = await supabase.rpc(isEq ? "unequip_shop_item" : "equip_shop_item", { _item_id: item.id });
-    if (error) { toast.error("Couldn't update equipped item"); return; }
+    if (error) {
+      const msg = error.message || "";
+      if (msg.includes("BADGE_LIMIT")) toast.error(`You can equip up to ${ent.maxEquippedBadges} badge${ent.maxEquippedBadges === 1 ? "" : "s"}`);
+      else if (msg.includes("HONEY_REQUIRED")) toast.error("That perk requires Standard Honey");
+      else toast.error("Couldn't update equipped item");
+      return;
+    }
     setEquipped((prev) => {
       const next = new Set(prev);
       if (isEq) next.delete(item.id);
@@ -423,6 +429,9 @@ const ShopView = () => {
       }
       return next;
     });
+    if (!isEq && ent.isHoney && isAnimatedCosmetic) {
+      setOwned((prev) => new Set(prev).add(item.id));
+    }
     if (item.category === "theme") setTheme(isEq ? "default" : (THEME_ITEM_MAP[item.id] || "default"));
     toast.success(isEq ? `Unequipped ${item.name}` : `Equipped ${item.name}`);
   };
@@ -558,6 +567,9 @@ const ShopView = () => {
             const isOwned = owned.has(item.id);
             const isEq = equipped.has(item.id);
             const isWished = wishlist.has(item.id);
+            const isAnimatedCosmetic = (item.category === "theme" || item.category === "name_color") && item.subcategory === "animated";
+            const honeyIncluded = ent.isHoney && isAnimatedCosmetic;
+            const canEquip = isOwned || honeyIncluded;
             const gemsOnly = !!(item.config as any)?.gems_only;
             const canAfford = balance >= item.price;
             const isBusy = purchasing === item.id;
@@ -571,7 +583,7 @@ const ShopView = () => {
                   border: `1px solid ${isEq ? "#5865f2" : "var(--app-border, #3f4147)"}`,
                 }}
               >
-                {!isOwned && (
+                {!canEquip && (
                   <button
                     onClick={() => toggleWishlist(item)}
                     className={`absolute top-2 right-2 z-10 flex h-7 w-7 items-center justify-center rounded-full transition-all hover:scale-110 ${
@@ -609,7 +621,7 @@ const ShopView = () => {
                     )}
                   </div>
                 </div>
-                {isOwned ? (
+                {canEquip ? (
                   <button
                     onClick={() => toggleEquip(item)}
                     className="mt-3 w-full rounded-lg py-2 text-sm font-bold transition-all"
@@ -618,7 +630,7 @@ const ShopView = () => {
                       color: "white",
                     }}
                   >
-                    {isEq ? "Equipped" : "Equip"}
+                    {isEq ? "Equipped" : honeyIncluded && !isOwned ? "Use with Honey" : "Equip"}
                   </button>
                 ) : (
                   <div className="mt-3 flex items-stretch gap-2">
