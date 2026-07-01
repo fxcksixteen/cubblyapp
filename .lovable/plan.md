@@ -1,60 +1,39 @@
-## What we're fixing
+I’ll fix this cleanly with one source of truth in the backend and make the UI stop showing dual-currency items.
 
-Symptom (kaszy ↔ geassbound): tap the green pickup button → the call UI opens → but the caller still shows "Not in call" for the callee and no audio flows either direction. The call is technically "accepted" but the WebRTC handshake or the participant-liveness signal never actually completes.
+## Plan
 
-I won't rewrite the call system — that path went through 6 rounds of fixes already and the loopback works. This is targeted hardening + a self-test.
+1. **Normalize every shop item to exactly one purchase currency**
+   - Coin-only items: keep `price`, clear `price_gems`, ensure `gems_only` is false/missing.
+   - Gem-only items: set `price = 0`, set `price_gems`, ensure `gems_only = true`.
+   - No item will be directly buyable with both coins and gems.
 
-## Root causes still in the accept path
+2. **Reprice the whole catalog into sane tiers**
+   - **Coins-only:** static name colors, regular gradients, regular badges, classic/static themes, non-premium animated themes.
+   - **Gems-only:** premium themes and motion gradient name colors.
+   - Premium animated themes will no longer sit at cheap/flat accidental prices.
+   - Motion name colors will be priced relative to Bow being a premium 1,500-gem item, with higher-quality effects above that where appropriate.
 
-Reading `src/contexts/VoiceContext.tsx` I found three remaining race windows that all produce exactly the "UI opens but stuck on Not in call" symptom:
+3. **Add the two new motion gradient name colors**
+   - **Cotton Candy:** light baby pink + light baby blue + white animated sweep.
+   - **Hello Kitty:** cute premium pink/white/red motion gradient treatment.
+   - Both will be **gems-only**, because they’re motion gradient cosmetics and higher-value than normal gradients.
 
-1. **Fast path teardown race.** When Accept fires with a prefetched offer, we close `pcRef.current` and immediately build a new PC. If a *retry* offer from the caller arrives during the ~200 ms window between close and `setRemoteDescription`, the standard offer handler runs on a `null` pc, falls into the "no pc + no activeCall match" branch, and re-sets `incomingCall` — orphaning the fresh PC we just built.
-2. **Answer never reaches the caller.** `sendSignalReliably` fires the answer, but if the caller's supabase realtime channel is mid-resubscribe (post tab-wake, laptop lid) the broadcast is dropped and there's no retry on the answer itself — only on `ready-for-offer` and `offer`. Callee thinks they're connected, caller stays in "ringing" forever, and the callee's row never gets flipped to live from the caller's side.
-3. **Heartbeat lost.** The two `heartbeat_call_participant` RPCs fired after accept are wrapped in `try/catch` that swallows failures silently. If the very first heartbeat fails (network hiccup) the caller's participant reconciliation never sees a `last_seen_at` newer than the cutoff and keeps rendering "Not in call".
+4. **Fix gift-only gem pricing for coin-only items**
+   - Direct purchase stays coin-only.
+   - When gifting a coin-only item, the backend will calculate a gem gift price from the coin price server-side.
+   - The client will only display that gem gift price inside gift flows, not as a normal shop purchase option.
 
-## Fix plan
+5. **Fix shop UI purchase buttons**
+   - Coin-only cards show only a coin buy button plus gift button.
+   - Gem-only cards show only a gem buy button plus gift button.
+   - No normal item card will show both coin and gem purchase buttons.
 
-### 1. `src/contexts/VoiceContext.tsx` — fast path teardown guard
-- Introduce `acceptInFlightRef` set before we close the stale PC and cleared after we've sent the answer.
-- In the `offer` handler, if `acceptInFlightRef.current === callEventId`, buffer the offer into `acceptedIncomingCallRef.pendingRetryOffer` instead of re-setting `incomingCall`. After Accept finishes, if a retry landed, we answer it against the fresh PC.
+6. **Fix gift item pickers**
+   - Chat gift picker will include both gem-only items and coin-only items.
+   - Coin-only items will show their calculated gift gem price only in the gift modal.
+   - Gift cards in chat will keep displaying the actual gems paid.
 
-### 2. `src/contexts/VoiceContext.tsx` — retry the answer
-- Wrap answer send in a new `sendAnswerReliably(channel, payload)` helper that resends up to 3 times (400 ms / 1200 ms / 2500 ms) unless we observe `pc.iceConnectionState === "connected"` OR receive a fresh ICE candidate from the peer for this callEventId (proof they got our answer).
-- Applies in all three answer paths: fast-accept, accepted-offer, rejoin.
-
-### 3. `src/contexts/VoiceContext.tsx` — heartbeat retry + failure surface
-- Replace the fire-and-forget heartbeat calls with `heartbeatWithRetry(callEventId)` that:
-  - runs `heartbeat_call_participant` immediately,
-  - retries at 500 ms and 1500 ms if the previous call rejects,
-  - logs `[acceptDiag] heartbeat failed` so it shows up in Call Diagnostics.
-- Also emit an extra heartbeat *right after* `iceConnectionState` first becomes `connected`, so the caller's reconciliation flips us the moment audio actually starts.
-
-### 4. Caller-side stale-PC safety net
-- In `initializeOutgoingConnection`, when we detect an existing PC in `iceConnectionState === "disconnected" | "failed"`, force a full close + fresh offer (already partially there; tighten so it also runs when `connectionState === "new"` but `signalingState === "have-local-offer"` for > 8 s — the "PC exists but never gathered" limbo).
-
-### 5. Diagnostics telemetry
-- Extend the existing `[acceptDiag]` log tag with structured entries: `accept.start`, `accept.fastpath.answered`, `accept.slowpath.readySent`, `accept.answerAcked`, `accept.heartbeatOk`, `accept.iceConnected`, plus their failure counterparts. `CallDiagnosticsModal` already renders the console log tail — no UI change needed to see them.
-
-### 6. `src/components/app/CallDiagnosticsModal.tsx` — "Test pickup" self-test
-- New button **"Test pickup with CubblyBot"** that:
-  1. If not already in a call, calls `startCall(CUBBLY_BOT_CONVERSATION_ID)`.
-  2. Waits ~1 s for the local loopback echo path to prime.
-  3. Programmatically fires `acceptCall()` (loopback pretends CubblyBot answered).
-  4. Watches `[acceptDiag]` markers for 6 s, then reports PASS/FAIL with the specific stage that failed (`fastpath.answered` missing → SDP; `answerAcked` missing → broadcast; `heartbeatOk` missing → DB; `iceConnected` missing → NAT/TURN).
-- Result is shown in the modal AND copyable so we can paste it in chat if it fails on a real device.
-
-### 7. Changelog + version bump
-- No version bump (per the "never bump unless asked" rule) — v0.4.0 stays intact.
-- Add a bullet under the existing v0.4.0 changelog entry: `Voice: hardened accept-call handshake (answer retry, heartbeat retry, teardown guard) so pickup no longer leaves the peer stuck on "Not in call".`
-
-## Files touched
-
-- `src/contexts/VoiceContext.tsx` — items 1–5.
-- `src/components/app/CallDiagnosticsModal.tsx` — item 6.
-- `src/lib/changelog.ts` — item 7.
-
-## Verification
-
-- Build passes.
-- Manual: open Call Diagnostics → **Test pickup with CubblyBot** → expect PASS with all 4 stages green.
-- Then ask you to try a live call with geassbound and share the diagnostics output if it still fails so we get an exact stage rather than another round of guessing.
+7. **Verify**
+   - Check the database catalog for zero dual-currency active items.
+   - Check shop sorting and buttons visually.
+   - Check direct purchase and gift flows use the correct currency rules.
