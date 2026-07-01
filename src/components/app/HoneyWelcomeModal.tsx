@@ -75,6 +75,16 @@ export default function HoneyWelcomeModal() {
       setWantsToShow(false);
       return;
     }
+    // Only fire after the user has seen (dismissed) the current release's
+    // What's New modal. This keeps the Honey pop-up from ambushing users who
+    // are online when we grant them Honey server-side — they'll see it only
+    // once they've updated to the current app version and closed the
+    // changelog.
+    const seenWhatsNew = localStorage.getItem(`cubbly-whats-new-seen:${CURRENT_VERSION}`);
+    if (!seenWhatsNew) {
+      setWantsToShow(false);
+      return;
+    }
     setWantsToShow(true);
     setSheetOpen(false);
   }, [user, ent.loaded, ent.tier]);
