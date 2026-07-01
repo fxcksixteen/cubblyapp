@@ -12,7 +12,7 @@ export interface Entitlements {
   maxEquippedBadges: number;    // 1 | 2 | 3
   maxNotes: number | null;      // null = unlimited
   attachmentCapMB: number;      // 25 | 100 | 250
-  messageCapChars: number;      // 2000 | 4000 | 8000
+  messageCapChars: number;      // 2000 | 1000 | 4000
   canUseMotionNameColors: boolean;
   canUseAnimatedThemes: boolean;
   canShareNoteAdvanced: boolean; // live edit, allow-save
@@ -41,7 +41,7 @@ function fromTier(tier: SubscriptionTier): Entitlements {
     return {
       tier, isHoney: true, isHoneyMember: true,
       coinMultiplier: 2, maxEquippedBadges: 3, maxNotes: null,
-      attachmentCapMB: 250, messageCapChars: 8000,
+      attachmentCapMB: 250, messageCapChars: 4000,
       canUseMotionNameColors: true, canUseAnimatedThemes: true,
       canShareNoteAdvanced: true, monthlyGems: 500, loaded: true,
     };
@@ -49,9 +49,9 @@ function fromTier(tier: SubscriptionTier): Entitlements {
   if (tier === "basic") {
     return {
       tier, isHoney: false, isHoneyMember: true,
-      coinMultiplier: 2, maxEquippedBadges: 2, maxNotes: null,
-      attachmentCapMB: 100, messageCapChars: 4000,
-      canUseMotionNameColors: true, canUseAnimatedThemes: true,
+      coinMultiplier: 1, maxEquippedBadges: 2, maxNotes: null,
+      attachmentCapMB: 100, messageCapChars: 1000,
+      canUseMotionNameColors: false, canUseAnimatedThemes: false,
       canShareNoteAdvanced: true, monthlyGems: 0, loaded: true,
     };
   }
@@ -67,6 +67,28 @@ export function useEntitlements(): Entitlements {
     let cancelled = false;
 
     const fetchTier = async () => {
+      const { data: rpcEnt } = await supabase.rpc("honey_entitlements", { _user_id: user.id });
+      if (cancelled) return;
+      const row = Array.isArray(rpcEnt) ? rpcEnt[0] : null;
+      if (row) {
+        setEnt({
+          tier: (row.tier as SubscriptionTier) || "free",
+          isHoney: row.tier === "honey",
+          isHoneyMember: row.tier === "basic" || row.tier === "honey",
+          coinMultiplier: row.coin_multiplier ?? 1,
+          maxEquippedBadges: row.max_equipped_badges ?? 1,
+          maxNotes: row.tier === "free" ? 10 : null,
+          attachmentCapMB: row.attachment_cap_mb ?? 25,
+          messageCapChars: row.message_cap_chars ?? 2000,
+          canUseMotionNameColors: !!row.can_use_motion_name_colors,
+          canUseAnimatedThemes: !!row.can_use_animated_themes,
+          canShareNoteAdvanced: !!row.can_share_note_advanced,
+          monthlyGems: row.monthly_gems ?? 0,
+          loaded: true,
+        });
+        return;
+      }
+
       const { data } = await supabase
         .from("subscriptions")
         .select("tier, status, current_period_end")
