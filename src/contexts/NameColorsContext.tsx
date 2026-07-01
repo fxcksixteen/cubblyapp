@@ -17,7 +17,7 @@ export type AnimatedNameStyle = "sweep" | "hueshift" | "conic" | "pulse";
 export type NameColor =
   | { kind: "static"; color: string }
   | { kind: "gradient"; from: string; to: string }
-  | { kind: "animated"; stops: string[]; duration: string; style?: AnimatedNameStyle };
+  | { kind: "animated"; stops: string[]; duration: string; style?: AnimatedNameStyle; bow?: boolean };
 
 interface Ctx {
   get: (userId: string | null | undefined) => NameColor | null;
