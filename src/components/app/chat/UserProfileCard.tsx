@@ -312,7 +312,7 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
             {profile?.bio && (
               <div className="mt-3 rounded-lg bg-[#1e1f22] p-3">
                 <p className="text-xs font-semibold text-[#949ba4] uppercase tracking-wide mb-1">About Me</p>
-                <p className="text-sm text-[#dbdee1] leading-relaxed">{profile.bio}</p>
+                <p className="text-sm text-[#dbdee1] leading-relaxed whitespace-pre-wrap break-words">{profile.bio}</p>
               </div>
             )}
 
@@ -548,7 +548,7 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
           </div>
         )}
         {profile?.bio && (
-          <p className="mt-2 text-xs text-[#dbdee1] leading-relaxed line-clamp-3">{profile.bio}</p>
+          <p className="mt-2 text-xs text-[#dbdee1] leading-relaxed line-clamp-3 whitespace-pre-wrap break-words">{profile.bio}</p>
         )}
       </div>
 

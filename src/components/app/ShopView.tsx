@@ -54,12 +54,14 @@ interface ShopItem {
   sort_order: number;
 }
 
-const TABS: { id: Category | "all" | "wishlist"; label: string }[] = [
-  { id: "all", label: "All" },
-  { id: "name_color", label: "Name Colors" },
-  { id: "theme", label: "Themes" },
-  { id: "badge", label: "Badges" },
-  { id: "wishlist", label: "Wishlist" },
+import { ShopAllIcon, ShopNameColorIcon, ShopThemeIcon, ShopBadgeIcon, ShopWishlistIcon } from "./shop/ShopTabIcons";
+
+const TABS: { id: Category | "all" | "wishlist"; label: string; Icon: (p: any) => JSX.Element }[] = [
+  { id: "all", label: "All", Icon: ShopAllIcon },
+  { id: "name_color", label: "Name Colors", Icon: ShopNameColorIcon },
+  { id: "theme", label: "Themes", Icon: ShopThemeIcon },
+  { id: "badge", label: "Badges", Icon: ShopBadgeIcon },
+  { id: "wishlist", label: "Wishlist", Icon: ShopWishlistIcon },
 ];
 
 
@@ -547,23 +549,29 @@ const ShopView = () => {
       </div>
 
       {/* Tabs */}
-      <div className="sticky top-0 z-10 px-6 sm:px-10 py-3 flex gap-2 backdrop-blur"
+      <div className="sticky top-0 z-10 px-6 sm:px-10 py-3 flex items-center gap-2 backdrop-blur"
            style={{ backgroundColor: "color-mix(in srgb, var(--app-bg-primary) 85%, transparent)" }}>
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setActiveTab(t.id)}
-            className="rounded-full px-4 py-1.5 text-sm font-semibold transition-all"
-            style={{
-              backgroundColor: activeTab === t.id ? "var(--app-active, #404249)" : "transparent",
-              color: activeTab === t.id ? "white" : "var(--app-text-secondary)",
-              border: `1px solid ${activeTab === t.id ? "var(--app-border, #3f4147)" : "transparent"}`,
-            }}
-          >
-            {t.label}
-          </button>
-        ))}
+        {TABS.map((t) => {
+          const isWishlist = t.id === "wishlist";
+          const active = activeTab === t.id;
+          return (
+            <button
+              key={t.id}
+              onClick={() => setActiveTab(t.id)}
+              className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition-all inline-flex items-center gap-1.5 ${isWishlist ? "ml-auto" : ""}`}
+              style={{
+                backgroundColor: active ? "var(--app-active, #404249)" : "transparent",
+                color: active ? "white" : "var(--app-text-secondary)",
+                border: `1px solid ${active ? "var(--app-border, #3f4147)" : "transparent"}`,
+              }}
+            >
+              <t.Icon className="h-4 w-4" />
+              {t.label}
+            </button>
+          );
+        })}
       </div>
+
 
       {/* Grid */}
       <div className="px-6 sm:px-10 py-6 pb-12">

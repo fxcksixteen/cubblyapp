@@ -69,8 +69,8 @@ const GemPill = ({ size = "md" }: { size?: "sm" | "md" }) => {
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent
-          className="max-w-md rounded-2xl border-0 p-0 overflow-hidden"
-          style={{ backgroundColor: "var(--app-bg-secondary)", boxShadow: "0 24px 48px rgba(0,0,0,0.4)" }}
+          className="app-themed max-w-md rounded-2xl border-0 p-0 overflow-hidden"
+          style={{ backgroundColor: "var(--app-bg-secondary, #2b2d31)", boxShadow: "0 24px 48px rgba(0,0,0,0.4)" }}
         >
           <div
             className="flex flex-col items-center gap-3 px-6 pt-7 pb-5"
