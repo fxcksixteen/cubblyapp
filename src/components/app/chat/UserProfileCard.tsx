@@ -215,8 +215,10 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
     }
     setFriendshipStatus("blocked");
     toast.success("User blocked");
+  };
 
   const sendWishlistGift = async (item: WishlistEntry) => {
+
     if (!item.price_gems) return;
     if (gemBalance < item.price_gems) {
       toast.error("Not enough gems");
