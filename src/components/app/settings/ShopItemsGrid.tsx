@@ -206,7 +206,6 @@ const ShopItemsGrid = ({ category, emptyLabel = "No items yet" }: Props) => {
     load();
     const onEquippedChanged = () => load();
     window.addEventListener("cubbly:shop-equipped-changed", onEquippedChanged);
-    return () => { alive = false; };
     return () => { alive = false; window.removeEventListener("cubbly:shop-equipped-changed", onEquippedChanged); };
   }, [user, category]);
 
