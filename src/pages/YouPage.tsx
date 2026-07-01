@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getProfileColor } from "@/lib/profileColors";
 import StatusIndicator from "@/components/app/StatusIndicator";
 import SettingsModal from "@/components/app/SettingsModal";
+import type { SettingsCategory } from "@/components/app/SettingsModal";
 import { ChevronRight, Settings, LogOut, Bell, Activity, Headphones, Palette, Shield } from "lucide-react";
 import { toast } from "sonner";
 
@@ -27,6 +28,7 @@ const YouPage = () => {
   const [profile, setProfile] = useState<any>(null);
   const [status, setStatus] = useState("online");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsCategory, setSettingsCategory] = useState<SettingsCategory | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -54,14 +56,15 @@ const YouPage = () => {
   const username = profile?.username || user?.user_metadata?.username || "user";
   const color = user ? getProfileColor(user.id) : { bg: "#5865f2" };
 
-  const openSettings = (_section?: string) => {
+  const openSettings = (section?: SettingsCategory | null) => {
+    setSettingsCategory(section ?? null);
     setSettingsOpen(true);
   };
 
   const rows: Row[] = [
     { icon: <Bell className="h-5 w-5" />, label: "Notifications", onClick: () => openSettings("notifications") },
-    { icon: <Headphones className="h-5 w-5" />, label: "Voice & Video", onClick: () => openSettings("voice") },
-    { icon: <Activity className="h-5 w-5" />, label: "Activity Privacy", onClick: () => openSettings("activity") },
+    { icon: <Headphones className="h-5 w-5" />, label: "Voice & Video", onClick: () => openSettings("voice-video") },
+    { icon: <Activity className="h-5 w-5" />, label: "Activity Privacy", onClick: () => openSettings("activity-privacy") },
     { icon: <Palette className="h-5 w-5" />, label: "Appearance", onClick: () => openSettings("appearance") },
     { icon: <Shield className="h-5 w-5" />, label: "Account", onClick: () => openSettings("account") },
     { icon: <Settings className="h-5 w-5" />, label: "All Settings", onClick: () => openSettings() },
@@ -154,7 +157,7 @@ const YouPage = () => {
         </button>
       </div>
 
-      <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} initialCategory={settingsCategory} />
     </div>
   );
 };
