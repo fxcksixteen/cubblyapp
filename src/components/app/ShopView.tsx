@@ -194,16 +194,18 @@ function ItemPreview({ item, displayName }: { item: ShopItem; displayName: strin
       return (
         <div className="relative h-20 w-full rounded-lg overflow-hidden" style={{ background: "radial-gradient(ellipse at 30% 20%, #4c1d95 0%, #1e0b3b 50%, #05030f 100%)" }}>
           <div className="absolute inset-0" style={{ background: "radial-gradient(circle at 70% 70%, rgba(236,72,153,0.45), transparent 55%), radial-gradient(circle at 25% 40%, rgba(168,85,247,0.4), transparent 55%)", mixBlendMode: "screen", animation: "cb-nebula-pulse 6s ease-in-out infinite" }} />
-          <div className="absolute inset-0" style={{ backgroundImage: "radial-gradient(1px 1px at 15px 20px,#fff,transparent),radial-gradient(1px 1px at 60px 50px,#fff,transparent),radial-gradient(1px 1px at 120px 30px,#fbcfe8,transparent),radial-gradient(1px 1px at 180px 70px,#fff,transparent)", backgroundSize: "220px 120px", opacity: 0.85 }} />
+          <div className="absolute inset-0 shop-preview-stars" style={{ opacity: 0.9 }} />
         </div>
       );
     }
     if (item.id === "theme_cyber_grid") {
       return (
-        <div className="relative h-20 w-full rounded-lg overflow-hidden" style={{ background: "linear-gradient(180deg,#05010f 0%,#200a55 55%,#ff2fbf 90%,#ffb15c 100%)" }}>
-          <div className="absolute" style={{ left: "50%", bottom: "48%", width: 80, height: 40, marginLeft: -40, background: "radial-gradient(ellipse at 50% 100%, #fde68a 0%, #ff2fbf 45%, #7c1d8e 80%, transparent 100%)", borderRadius: "80px 80px 0 0", boxShadow: "0 0 24px rgba(255,47,191,0.55)" }} />
-          <div className="absolute left-0 right-0" style={{ bottom: "48%", height: 1.5, background: "linear-gradient(90deg, transparent, #fff 50%, transparent)", boxShadow: "0 0 8px #ff2fbf" }} />
-          <div className="absolute" style={{ left: "-25%", right: "-25%", bottom: 0, height: "48%", background: "linear-gradient(rgba(0,240,255,0.85) 1px, transparent 1px) 0 0/100% 14px, linear-gradient(90deg, rgba(0,240,255,0.75) 1px, transparent 1px) 0 0/18px 100%", transform: "perspective(240px) rotateX(60deg)", transformOrigin: "50% 0", animation: "cb-cyber-scroll 4s linear infinite", maskImage: "linear-gradient(to bottom, transparent, #000 30%, #000)", WebkitMaskImage: "linear-gradient(to bottom, transparent, #000 30%, #000)" }} />
+        <div className="relative h-20 w-full rounded-lg overflow-hidden" style={{ background: "linear-gradient(180deg,#05010f 0%,#200a55 45%,#ff2fbf 82%,#ffb15c 100%)" }}>
+          <div className="absolute" style={{ left: "50%", bottom: "50%", width: 90, height: 45, marginLeft: -45, background: "radial-gradient(ellipse at 50% 100%, #fde68a 0%, #ff2fbf 45%, #7c1d8e 80%, transparent 100%)", borderRadius: "90px 90px 0 0", boxShadow: "0 0 24px rgba(255,47,191,0.55)" }} />
+          <div className="absolute left-0 right-0" style={{ bottom: "50%", height: 1.5, background: "linear-gradient(90deg, transparent, #fff 50%, transparent)", boxShadow: "0 0 8px #ff2fbf" }} />
+          <div className="absolute overflow-hidden" style={{ left: 0, right: 0, bottom: 0, top: "50%" }}>
+            <div className="absolute" style={{ left: "-60%", right: "-60%", top: "-20%", bottom: "-40%", background: "linear-gradient(rgba(0,240,255,0.9) 1px, transparent 1px) 0 0/100% 10px, linear-gradient(90deg, rgba(0,240,255,0.8) 1px, transparent 1px) 0 0/14px 100%", transform: "perspective(140px) rotateX(62deg)", transformOrigin: "50% 0", animation: "cb-cyber-scroll 3s linear infinite" }} />
+          </div>
         </div>
       );
     }
@@ -211,7 +213,7 @@ function ItemPreview({ item, displayName }: { item: ShopItem; displayName: strin
       return (
         <div className="relative h-20 w-full rounded-lg overflow-hidden" style={{ background: "radial-gradient(ellipse at 50% 110%, #ff5b1f 0%, #7a1502 35%, #1a0503 100%)" }}>
           <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse at 50% 100%, rgba(255,140,40,0.6), transparent 65%)", mixBlendMode: "screen", animation: "cb-volcanic-heat 4s ease-in-out infinite" }} />
-          <div className="absolute inset-0" style={{ backgroundImage: "radial-gradient(2px 2px at 20% 80%,#ffb050,transparent),radial-gradient(1.5px 1.5px at 45% 65%,#ff8030,transparent),radial-gradient(2px 2px at 70% 75%,#ffc060,transparent)", filter: "drop-shadow(0 0 4px rgba(255,140,40,0.8))" }} />
+          <div className="absolute inset-0" style={{ backgroundImage: "radial-gradient(2px 2px at 20% 80%,#ffb050,transparent),radial-gradient(1.5px 1.5px at 45% 65%,#ff8030,transparent),radial-gradient(2px 2px at 70% 75%,#ffc060,transparent),radial-gradient(1.5px 1.5px at 30% 40%,#ffb050,transparent),radial-gradient(2px 2px at 85% 55%,#ff9040,transparent)", backgroundSize: "100% 200%", filter: "drop-shadow(0 0 4px rgba(255,140,40,0.8))", animation: "cb-volcanic-embers 5s linear infinite" }} />
         </div>
       );
     }
@@ -219,7 +221,7 @@ function ItemPreview({ item, displayName }: { item: ShopItem; displayName: strin
       return (
         <div className="relative h-20 w-full rounded-lg overflow-hidden" style={{ background: "radial-gradient(ellipse at 50% 15%, #063a75 0%, #021640 55%, #01081c 100%)" }}>
           <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse at 30% 40%, rgba(56,189,248,0.4), transparent 55%), radial-gradient(ellipse at 75% 65%, rgba(94,234,212,0.35), transparent 55%)", mixBlendMode: "screen", animation: "cb-nebula-pulse 5s ease-in-out infinite" }} />
-          <div className="absolute inset-0" style={{ backgroundImage: "radial-gradient(1.5px 1.5px at 20% 30%,#7dd3fc,transparent),radial-gradient(1px 1px at 60% 50%,#a5f3fc,transparent),radial-gradient(1.5px 1.5px at 85% 25%,#6ee7b7,transparent)", filter: "drop-shadow(0 0 4px rgba(125,211,252,0.85))" }} />
+          <div className="absolute inset-0" style={{ backgroundImage: "radial-gradient(1.5px 1.5px at 20% 30%,#7dd3fc,transparent),radial-gradient(1px 1px at 60% 50%,#a5f3fc,transparent),radial-gradient(1.5px 1.5px at 85% 25%,#6ee7b7,transparent),radial-gradient(1px 1px at 45% 75%,#a5f3fc,transparent),radial-gradient(1.5px 1.5px at 15% 80%,#6ee7b7,transparent)", backgroundSize: "100% 200%", filter: "drop-shadow(0 0 4px rgba(125,211,252,0.85))", animation: "cb-volcanic-embers 8s linear infinite" }} />
         </div>
       );
     }
@@ -227,6 +229,7 @@ function ItemPreview({ item, displayName }: { item: ShopItem; displayName: strin
       return (
         <div className="relative h-20 w-full rounded-lg overflow-hidden" style={{ background: "linear-gradient(180deg,#01102a 0%,#03215a 55%,#042038 100%)" }}>
           <div className="absolute" style={{ inset: "0 -20% 30% -20%", background: "linear-gradient(180deg, transparent, rgba(52,211,153,0.75) 40%, rgba(59,130,246,0.6) 70%, transparent)", filter: "blur(14px)", mixBlendMode: "screen", animation: "cb-aurora-wave 8s ease-in-out infinite" }} />
+          <div className="absolute" style={{ inset: "0 -30% 40% -30%", background: "linear-gradient(180deg, transparent, rgba(168,85,247,0.55) 45%, transparent)", filter: "blur(18px)", mixBlendMode: "screen", animation: "cb-aurora-wave 12s ease-in-out infinite reverse", animationDelay: "-3s" }} />
           <div className="absolute left-0 right-0 bottom-0" style={{ height: "40%", background: "#031225", clipPath: "polygon(0 55%, 20% 40%, 40% 55%, 60% 30%, 80% 55%, 100% 45%, 100% 100%, 0 100%)" }} />
         </div>
       );
@@ -235,7 +238,8 @@ function ItemPreview({ item, displayName }: { item: ShopItem; displayName: strin
       return (
         <div className="relative h-20 w-full rounded-lg overflow-hidden" style={{ background: "linear-gradient(180deg,#2a0e30 0%,#5c1846 40%,#c86e94 80%,#f4c1a6 100%)" }}>
           <div className="absolute" style={{ right: "18%", top: "18%", width: 22, height: 22, borderRadius: "50%", background: "radial-gradient(circle at 40% 40%, #fff0d5, #f8a488 60%, transparent)", boxShadow: "0 0 20px rgba(255,180,140,0.6)" }} />
-          <div className="absolute inset-0" style={{ backgroundImage: "radial-gradient(3px 4px at 15% 20%,#fbcfe8,transparent 70%),radial-gradient(2.5px 3.5px at 40% 55%,#f9a8d4,transparent 70%),radial-gradient(3px 4px at 70% 30%,#fbcfe8,transparent 70%),radial-gradient(2px 3px at 85% 65%,#f472b6,transparent 70%)", backgroundSize: "100% 180%", animation: "cb-sakura-fall 10s linear infinite" }} />
+          <div className="absolute inset-0" style={{ backgroundImage: "radial-gradient(3px 4px at 15% 20%,#fbcfe8,transparent 70%),radial-gradient(2.5px 3.5px at 40% 55%,#f9a8d4,transparent 70%),radial-gradient(3px 4px at 70% 30%,#fbcfe8,transparent 70%),radial-gradient(2px 3px at 85% 65%,#f472b6,transparent 70%)", backgroundSize: "100% 180%", animation: "cb-sakura-fall 6s linear infinite" }} />
+          <div className="absolute inset-0" style={{ backgroundImage: "radial-gradient(2px 3px at 25% 40%,#fbcfe8,transparent 70%),radial-gradient(3px 4px at 55% 15%,#f9a8d4,transparent 70%),radial-gradient(2px 3px at 90% 50%,#fbcfe8,transparent 70%)", backgroundSize: "100% 180%", animation: "cb-sakura-fall 10s linear infinite", animationDelay: "-2s", opacity: 0.7 }} />
         </div>
       );
     }
@@ -727,6 +731,17 @@ const ShopView = () => {
             radial-gradient(0.8px 0.8px at 200px 14px,#fff,transparent);
           background-size: 240px 60px; opacity: 0.85; animation: shopHillsTwinkle 4s ease-in-out infinite; }
         @keyframes shopHillsTwinkle { 0%,100%{opacity:.55} 50%{opacity:.95} }
+
+        /* Twinkling starfield for cosmic/bio previews */
+        .shop-preview-stars { background-image:
+            radial-gradient(1px 1px at 15px 12px,#fff,transparent),
+            radial-gradient(1px 1px at 60px 30px,#fff,transparent),
+            radial-gradient(0.8px 0.8px at 100px 50px,#fbcfe8,transparent),
+            radial-gradient(1px 1px at 140px 18px,#fff,transparent),
+            radial-gradient(0.8px 0.8px at 180px 60px,#fff,transparent),
+            radial-gradient(1px 1px at 40px 70px,#fff,transparent),
+            radial-gradient(0.6px 0.6px at 200px 30px,#e9d5ff,transparent);
+          background-size: 220px 90px; animation: shopSpaceDrift 20s linear infinite, shopHillsTwinkle 3s ease-in-out infinite; }
       `}</style>
 
       {/* Banner ads (carousel — shifts by one card) */}
