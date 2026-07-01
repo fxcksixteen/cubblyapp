@@ -63,6 +63,14 @@ export default function HoneyWelcomeModal() {
   const ent = useEntitlements();
   const [wantsToShow, setWantsToShow] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [whatsNewTick, setWhatsNewTick] = useState(0);
+
+  // Re-check eligibility whenever the What's New modal is dismissed.
+  useEffect(() => {
+    const bump = () => setWhatsNewTick((n) => n + 1);
+    window.addEventListener("cubbly:whats-new-dismissed", bump);
+    return () => window.removeEventListener("cubbly:whats-new-dismissed", bump);
+  }, []);
 
   useEffect(() => {
     if (!user || !ent.loaded) return;
@@ -75,19 +83,18 @@ export default function HoneyWelcomeModal() {
       setWantsToShow(false);
       return;
     }
-    // Only fire after the user has seen (dismissed) the current release's
-    // What's New modal. This keeps the Honey pop-up from ambushing users who
-    // are online when we grant them Honey server-side — they'll see it only
-    // once they've updated to the current app version and closed the
-    // changelog.
-    const seenWhatsNew = localStorage.getItem(`cubbly-whats-new-seen:${CURRENT_VERSION}`);
+    // Only fire after the user has dismissed the current release's What's New
+    // modal — same storage key WhatsNewModal writes on close.
+    const seenWhatsNew = localStorage.getItem(
+      `cubbly-whats-new-seen:${CURRENT_VERSION}:${user.id}`
+    );
     if (!seenWhatsNew) {
       setWantsToShow(false);
       return;
     }
     setWantsToShow(true);
     setSheetOpen(false);
-  }, [user, ent.loaded, ent.tier]);
+  }, [user, ent.loaded, ent.tier, whatsNewTick]);
 
   // Reserve a slot in the global auto-popup queue (priority 90 — sits below
   // the What's New / changelog modal so users see the changelog first).
