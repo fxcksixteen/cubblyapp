@@ -398,7 +398,7 @@ function BannerCarousel({ onTab }: { onTab: TabSetter }) {
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
               <div className="absolute inset-0 p-4 flex flex-col justify-end">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-white/70">Premium · Gems</span>
-                <h3 className="text-lg font-extrabold text-white drop-shadow">Aurora Borealis</h3>
+                <h3 className="text-lg font-extrabold text-white drop-shadow">Northern Lights</h3>
                 <p className="text-[11px] text-white/85 line-clamp-2">Dancing green and violet curtains over quiet mountains.</p>
               </div>
             </button>
