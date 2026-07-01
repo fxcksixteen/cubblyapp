@@ -449,6 +449,7 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                   >
                     {isPinned(conv.id) ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
                     {isPinned(conv.id) ? "Unpin" : `Pin${pinnedCount() >= MAX_PINNED_CONVERSATIONS && !isPinned(conv.id) ? ` (${MAX_PINNED_CONVERSATIONS} max)` : ""}`}
+                  </ContextMenuItem>
                   {!conv.is_group && (
                     <ContextMenuItem
                       onClick={() => handleRemoveFriend(conv.participant.user_id)}
