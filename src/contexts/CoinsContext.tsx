@@ -107,41 +107,22 @@ export const CoinsProvider = ({ children }: { children: ReactNode }) => {
     refreshBalance();
   }, [refreshBalance]);
 
-  // Realtime: balance updates + reward toasts.
+  // Refresh balance whenever the tab regains focus — the realtime publication
+  // for user_coins/coin_transactions was disabled for security (they contained
+  // sensitive balance data). We poll on focus + after each heartbeat instead.
   useEffect(() => {
     if (!user) return;
-    removeChannelByTopic(`coins:${user.id}`);
-    const channel = supabase
-      .channel(`coins:${user.id}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "user_coins", filter: `user_id=eq.${user.id}` },
-        (payload) => {
-          const next = (payload.new as any)?.balance;
-          if (typeof next === "number") setBalance(next);
-        }
-      )
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "coin_transactions", filter: `user_id=eq.${user.id}` },
-        (payload) => {
-          const row = payload.new as { amount: number; reason: string };
-          // Only show a toast for *positive* awards. Spends (negative) don't toast.
-          if (row.amount > 0 && row.reason !== "signup_bonus") {
-            playSound("coinsReceive", { volume: 0.5 });
-            toast.custom(() => <RewardToast amount={row.amount} reason={row.reason} />, {
-              duration: 4000,
-            });
-          }
-        }
-      )
-      .subscribe();
+    const onFocus = () => { void refreshBalance(); };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
     return () => {
-      supabase.removeChannel(channel);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
     };
-  }, [user]);
+  }, [user, refreshBalance]);
 
-  // Heartbeat: every minute, send accrued seconds to the server.
+  // Heartbeat: every minute, send accrued seconds to the server, then refresh
+  // the balance to reflect any awards.
   useEffect(() => {
     if (!user) return;
     const interval = window.setInterval(async () => {
@@ -156,6 +137,22 @@ export const CoinsProvider = ({ children }: { children: ReactNode }) => {
           _voice_seconds: voiceSec,
           _gaming_seconds: gameSec,
         });
+        // Refetch after accrual so any award immediately reflects in UI.
+        // If the balance actually grew, surface a subtle reward toast.
+        const prev = balanceRef.current;
+        const { data } = await supabase
+          .from("user_coins")
+          .select("balance")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        const next = data?.balance ?? prev;
+        if (next > prev) {
+          const delta = next - prev;
+          const reason = gameSec > 0 ? "gaming_minutes" : "voice_minutes";
+          playSound("coinsReceive", { volume: 0.5 });
+          toast.custom(() => <RewardToast amount={delta} reason={reason} />, { duration: 4000 });
+        }
+        setBalance(next);
       } catch (err) {
         // Network blip — drop this tick rather than double-counting.
         console.warn("[coins] accrue failed:", err);
