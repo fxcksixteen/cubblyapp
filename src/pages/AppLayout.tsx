@@ -764,7 +764,8 @@ const AppLayout = () => {
                       <img src={activityIcon} alt="Activity" className="h-5 w-5 invert opacity-60 hover:opacity-100 transition-opacity cursor-pointer" />
                     </button>
                   )}
-                  {!isServerRoute && (
+                  {!isServerRoute && !isRequests && (
+
                     <button
                       onClick={() => navigate("/@me/requests", { replace: true })}
                       className="relative transition-opacity duration-200"
