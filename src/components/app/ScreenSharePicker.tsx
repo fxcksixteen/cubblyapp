@@ -88,7 +88,7 @@ const ScreenSharePicker = ({ isOpen, onClose, onSelect }: ScreenSharePickerProps
     setLoadingSources(true);
     setPickingType(type);
     try {
-      const allSources: DesktopSource[] = await (window as any).electronAPI.getDesktopSources();
+      const allSources: DesktopSource[] = (await (window as any).electronAPI?.getDesktopSources?.()) ?? [];
 
       if (type === "screen") {
         const screens = allSources.filter(s => s.id.startsWith("screen:"));
