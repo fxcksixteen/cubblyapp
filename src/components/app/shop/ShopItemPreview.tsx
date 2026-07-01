@@ -79,7 +79,14 @@ export function ShopItemPreview({ item, displayName, sizeClass = "h-20 w-full ro
           : style === "pulse"
           ? `cb-animated-name ${dur} ease-in-out infinite, cb-animated-name-pulse ${dur} ease-in-out infinite`
           : `cb-animated-name ${dur} ease-in-out infinite`;
-      const iconUrl = typeof (item.config as any)?.icon_url === "string" ? (item.config as any).icon_url : undefined;
+      const rawIconUrl = typeof (item.config as any)?.icon_url === "string" ? (item.config as any).icon_url : undefined;
+      // Electron loads pages via file://, so DB-stored absolute paths like
+      // "/assets/shop/foo.png" resolve to the filesystem root and 404. Rewrite
+      // to a document-relative path so it lands under dist/assets/... instead.
+      const isElectron = typeof window !== "undefined" && !!(window as any).electronAPI;
+      const iconUrl = rawIconUrl && isElectron && rawIconUrl.startsWith("/")
+        ? `.${rawIconUrl}`
+        : rawIconUrl;
       const hasBow = !!(item.config as any)?.bow;
       const iconSrc = iconUrl || (hasBow ? imgPetite : null);
       const hasIcon = !!iconSrc;
