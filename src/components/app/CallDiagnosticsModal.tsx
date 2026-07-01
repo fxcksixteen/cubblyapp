@@ -73,7 +73,7 @@ const SparklineRtt = ({ history }: { history: number[] }) => {
 };
 
 const CallDiagnosticsModal = ({ open, onClose }: Props) => {
-  const { getCallDiagnostics, activeCall, ping } = useVoice();
+  const { getCallDiagnostics, activeCall, ping, runPickupSelfTest } = useVoice();
   const [diag, setDiag] = useState<CallDiagnostics | null>(null);
   const [rttHistory, setRttHistory] = useState<number[]>([]);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
