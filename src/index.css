@@ -316,7 +316,217 @@
 .cb-hills-layer.h3 { height: 18%; background: #08091a;
   clip-path: polygon(0 80%, 15% 60%, 30% 75%, 45% 55%, 60% 70%, 75% 60%, 90% 75%, 100% 65%, 100% 100%, 0 100%); }
 
-/* Cubbly theme 3D shadow effects */
+/* ────────────────────────────────────────────────────────────
+   Premium gem-only animated themes
+   Same isolation pattern as Space/Sky/etc: only the ROOT app
+   surface (.h-screen) is transparent so modals stay opaque.
+   ──────────────────────────────────────────────────────────── */
+[data-theme="nebula"] .app-themed  { --app-bg-primary:#160a30; --app-bg-secondary:#1c0f3d; --app-bg-tertiary:#0b0522; --app-bg-accent:#241556; --app-text-primary:#f0e6ff; --app-text-secondary:#b6a6d8; --app-text-muted:#7a6aa0; --app-border:#2a1a5c; --app-hover:#2a1a5c; --app-active:#382072; --app-input:#2a1a5c; --app-toggle-on:#c084fc; --app-toggle-off:#2a1a5c; --scrollbar-thumb:rgba(192,132,252,0.24); --scrollbar-thumb-hover:rgba(192,132,252,0.45); }
+[data-theme="cyber"] .app-themed   { --app-bg-primary:#0a0524; --app-bg-secondary:#100835; --app-bg-tertiary:#050115; --app-bg-accent:#1a0f4a; --app-text-primary:#eaf6ff; --app-text-secondary:#a2b8d8; --app-text-muted:#6a7ba0; --app-border:#241a5e; --app-hover:#241a5e; --app-active:#332278; --app-input:#241a5e; --app-toggle-on:#ff2fbf; --app-toggle-off:#241a5e; --scrollbar-thumb:rgba(255,47,191,0.24); --scrollbar-thumb-hover:rgba(255,47,191,0.5); }
+[data-theme="volcanic"] .app-themed{ --app-bg-primary:#1a0805; --app-bg-secondary:#231110; --app-bg-tertiary:#0d0402; --app-bg-accent:#3a1a10; --app-text-primary:#ffe8dc; --app-text-secondary:#d0a08c; --app-text-muted:#8f6858; --app-border:#3d1e13; --app-hover:#3d1e13; --app-active:#5a2a1a; --app-input:#3d1e13; --app-toggle-on:#ff8a3d; --app-toggle-off:#3d1e13; --scrollbar-thumb:rgba(255,138,61,0.24); --scrollbar-thumb-hover:rgba(255,138,61,0.5); }
+[data-theme="abyss"] .app-themed   { --app-bg-primary:#02132a; --app-bg-secondary:#031a3a; --app-bg-tertiary:#01091a; --app-bg-accent:#062754; --app-text-primary:#dff2ff; --app-text-secondary:#8ab0d0; --app-text-muted:#5478a0; --app-border:#0a2c5a; --app-hover:#0a2c5a; --app-active:#12437e; --app-input:#0a2c5a; --app-toggle-on:#22d3ee; --app-toggle-off:#0a2c5a; --scrollbar-thumb:rgba(34,211,238,0.24); --scrollbar-thumb-hover:rgba(34,211,238,0.5); }
+[data-theme="aurora"] .app-themed  { --app-bg-primary:#031a3a; --app-bg-secondary:#052250; --app-bg-tertiary:#01102a; --app-bg-accent:#093362; --app-text-primary:#e6faf6; --app-text-secondary:#9dc6c0; --app-text-muted:#628780; --app-border:#0d3a68; --app-hover:#0d3a68; --app-active:#14528e; --app-input:#0d3a68; --app-toggle-on:#6ee7b7; --app-toggle-off:#0d3a68; --scrollbar-thumb:rgba(110,231,183,0.24); --scrollbar-thumb-hover:rgba(110,231,183,0.5); }
+[data-theme="sakura"] .app-themed  { --app-bg-primary:#2a0e26; --app-bg-secondary:#3a1130; --app-bg-tertiary:#180618; --app-bg-accent:#4d1a44; --app-text-primary:#ffe8f2; --app-text-secondary:#d5a9c1; --app-text-muted:#96718a; --app-border:#4a1a3f; --app-hover:#4a1a3f; --app-active:#63235a; --app-input:#4a1a3f; --app-toggle-on:#f9a8d4; --app-toggle-off:#4a1a3f; --scrollbar-thumb:rgba(249,168,212,0.28); --scrollbar-thumb-hover:rgba(249,168,212,0.55); }
+
+[data-theme="nebula"] body,
+[data-theme="cyber"] body,
+[data-theme="volcanic"] body,
+[data-theme="abyss"] body,
+[data-theme="aurora"] body,
+[data-theme="sakura"] body { background-color: #05030f; }
+
+[data-theme="nebula"] .app-themed.h-screen,
+[data-theme="cyber"] .app-themed.h-screen,
+[data-theme="volcanic"] .app-themed.h-screen,
+[data-theme="abyss"] .app-themed.h-screen,
+[data-theme="aurora"] .app-themed.h-screen,
+[data-theme="sakura"] .app-themed.h-screen { position: relative; background-color: transparent !important; }
+
+[data-theme="nebula"]   .app-themed.h-screen .sidebar-primary,
+[data-theme="nebula"]   .app-themed.h-screen .sidebar-tertiary,
+[data-theme="nebula"]   .app-themed.h-screen .user-panel,
+[data-theme="cyber"]    .app-themed.h-screen .sidebar-primary,
+[data-theme="cyber"]    .app-themed.h-screen .sidebar-tertiary,
+[data-theme="cyber"]    .app-themed.h-screen .user-panel,
+[data-theme="volcanic"] .app-themed.h-screen .sidebar-primary,
+[data-theme="volcanic"] .app-themed.h-screen .sidebar-tertiary,
+[data-theme="volcanic"] .app-themed.h-screen .user-panel,
+[data-theme="abyss"]    .app-themed.h-screen .sidebar-primary,
+[data-theme="abyss"]    .app-themed.h-screen .sidebar-tertiary,
+[data-theme="abyss"]    .app-themed.h-screen .user-panel,
+[data-theme="aurora"]   .app-themed.h-screen .sidebar-primary,
+[data-theme="aurora"]   .app-themed.h-screen .sidebar-tertiary,
+[data-theme="aurora"]   .app-themed.h-screen .user-panel,
+[data-theme="sakura"]   .app-themed.h-screen .sidebar-primary,
+[data-theme="sakura"]   .app-themed.h-screen .sidebar-tertiary,
+[data-theme="sakura"]   .app-themed.h-screen .user-panel { background-color: rgba(10, 8, 24, 0.72); backdrop-filter: blur(10px); }
+
+/* ── Cosmic Nebula ─────────────────────────────────────── */
+.cb-nebula-bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+  background:
+    radial-gradient(ellipse at 25% 20%, #6d28d9 0%, transparent 55%),
+    radial-gradient(ellipse at 78% 78%, #db2777 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 45%, #1e40af 0%, transparent 60%),
+    radial-gradient(ellipse at 30% 90%, #22d3ee 0%, transparent 45%),
+    #05030f;
+  background-size: 200% 200%, 220% 220%, 260% 260%, 200% 200%, 100% 100%;
+  animation: cb-nebula-drift 40s ease-in-out infinite; }
+.cb-nebula-stars { position:absolute; inset:-50%;
+  background-image:
+    radial-gradient(1px 1px at 20px 30px,#fff,transparent),
+    radial-gradient(1.5px 1.5px at 90px 120px,#e9d5ff,transparent),
+    radial-gradient(1px 1px at 160px 60px,#fff,transparent),
+    radial-gradient(0.7px 0.7px at 240px 200px,#fff,transparent),
+    radial-gradient(1.5px 1.5px at 320px 80px,#fbcfe8,transparent),
+    radial-gradient(1px 1px at 400px 180px,#fff,transparent);
+  background-size: 480px 260px; opacity:.75; animation: cb-space-drift 240s linear infinite, cb-nebula-twinkle 5s ease-in-out infinite; }
+.cb-nebula-glow { position:absolute; inset:0; mix-blend-mode:screen; opacity:.55;
+  background: radial-gradient(circle at 30% 30%, rgba(168,85,247,.35), transparent 45%),
+              radial-gradient(circle at 70% 70%, rgba(236,72,153,.28), transparent 45%);
+  animation: cb-nebula-pulse 9s ease-in-out infinite; }
+@keyframes cb-nebula-drift { 0%,100%{background-position:0% 0%,100% 100%,50% 50%,20% 90%,0 0} 50%{background-position:20% 30%,80% 70%,60% 40%,30% 60%,0 0} }
+@keyframes cb-nebula-twinkle { 0%,100%{opacity:.5} 50%{opacity:.85} }
+@keyframes cb-nebula-pulse { 0%,100%{opacity:.4} 50%{opacity:.7} }
+
+/* ── Cyber Grid ─────────────────────────────────────────── */
+.cb-cyber-bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+  background: linear-gradient(180deg, #050014 0%, #0a0320 45%, #0e0530 60%, #1a0745 75%, #ff2fbf 100%); }
+.cb-cyber-sun { position:absolute; left:50%; bottom:22%; width:340px; height:340px; margin-left:-170px; border-radius:50%;
+  background: radial-gradient(circle at 50% 30%, #ffe066 0%, #ff2fbf 45%, #7c1d8e 75%, transparent 100%);
+  filter: blur(2px); box-shadow: 0 0 80px rgba(255,47,191,.6), 0 0 160px rgba(255,47,191,.3); }
+.cb-cyber-sun::after { content:""; position:absolute; left:0; right:0; top:60%; bottom:0;
+  background: repeating-linear-gradient(to bottom, transparent 0 8px, rgba(0,0,0,.55) 8px 12px);
+  border-radius: 0 0 50% 50% / 0 0 100% 100%; }
+.cb-cyber-grid { position:absolute; left:-25%; right:-25%; bottom:0; height:55%;
+  background:
+    linear-gradient(rgba(0,255,255,.85) 1px, transparent 1px) 0 0 / 100% 40px,
+    linear-gradient(90deg, rgba(0,255,255,.75) 1px, transparent 1px) 0 0 / 40px 100%;
+  transform: perspective(500px) rotateX(70deg);
+  transform-origin: 50% 0;
+  animation: cb-cyber-scroll 3s linear infinite;
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 30%, #000 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 30%, #000 100%); }
+.cb-cyber-scan { position:absolute; inset:0; pointer-events:none;
+  background: repeating-linear-gradient(to bottom, transparent 0 3px, rgba(255,255,255,.03) 3px 4px);
+  mix-blend-mode: overlay; }
+@keyframes cb-cyber-scroll { from { background-position: 0 0, 0 0; } to { background-position: 0 40px, 0 0; } }
+
+/* ── Volcanic ───────────────────────────────────────────── */
+.cb-volcanic-bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+  background: radial-gradient(ellipse at 50% 110%, #ff5b1f 0%, #b83208 20%, #4a0d02 45%, #1a0503 80%, #05010a 100%); }
+.cb-volcanic-glow { position:absolute; left:0; right:0; bottom:0; height:60%;
+  background: radial-gradient(ellipse at 50% 100%, rgba(255,140,40,.65), rgba(255,80,20,.25) 40%, transparent 70%);
+  animation: cb-volcanic-heat 6s ease-in-out infinite; mix-blend-mode: screen; }
+.cb-volcanic-cracks { position:absolute; inset:0;
+  background:
+    radial-gradient(2px 60px at 20% 90%, rgba(255,160,60,.9), transparent 70%),
+    radial-gradient(3px 100px at 62% 95%, rgba(255,90,20,.9), transparent 65%),
+    radial-gradient(2px 50px at 80% 88%, rgba(255,180,80,.8), transparent 70%),
+    radial-gradient(2px 80px at 42% 96%, rgba(255,120,40,.85), transparent 70%);
+  filter: blur(.5px); animation: cb-volcanic-heat 4s ease-in-out infinite; }
+.cb-volcanic-embers { position:absolute; inset:0;
+  background-image:
+    radial-gradient(2px 2px at 12% 90%, #ffb050, transparent 60%),
+    radial-gradient(1.5px 1.5px at 28% 70%, #ff8030, transparent 60%),
+    radial-gradient(2px 2px at 46% 82%, #ffa040, transparent 60%),
+    radial-gradient(1.5px 1.5px at 60% 60%, #ff9020, transparent 60%),
+    radial-gradient(2px 2px at 74% 78%, #ffc060, transparent 60%),
+    radial-gradient(1.5px 1.5px at 88% 66%, #ff8030, transparent 60%);
+  background-size: 100% 200%; filter: drop-shadow(0 0 6px rgba(255,140,40,.9));
+  animation: cb-volcanic-embers 12s linear infinite; }
+@keyframes cb-volcanic-heat { 0%,100% { opacity: .85; transform: scale(1); } 50% { opacity: 1; transform: scale(1.03); } }
+@keyframes cb-volcanic-embers { from { background-position: 0 100%; } to { background-position: 0 -100%; } }
+
+/* ── Bioluminescent (Abyss) ─────────────────────────────── */
+.cb-abyss-bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+  background: radial-gradient(ellipse at 50% 15%, #063a75 0%, #021640 45%, #01081c 80%, #000308 100%); }
+.cb-abyss-caustics { position:absolute; inset:0; mix-blend-mode: screen; opacity:.5;
+  background:
+    radial-gradient(ellipse at 20% 30%, rgba(56,189,248,.35), transparent 40%),
+    radial-gradient(ellipse at 80% 55%, rgba(94,234,212,.28), transparent 45%),
+    radial-gradient(ellipse at 40% 80%, rgba(59,130,246,.28), transparent 40%);
+  animation: cb-nebula-drift 26s ease-in-out infinite; }
+.cb-abyss-motes { position:absolute; inset:0;
+  background-image:
+    radial-gradient(1.5px 1.5px at 15% 20%, #7dd3fc, transparent 60%),
+    radial-gradient(1px 1px at 32% 45%, #a5f3fc, transparent 60%),
+    radial-gradient(2px 2px at 58% 25%, #7dd3fc, transparent 60%),
+    radial-gradient(1.5px 1.5px at 74% 62%, #67e8f9, transparent 60%),
+    radial-gradient(1px 1px at 88% 30%, #a5f3fc, transparent 60%),
+    radial-gradient(2px 2px at 22% 80%, #6ee7b7, transparent 60%),
+    radial-gradient(1.5px 1.5px at 50% 88%, #a5f3fc, transparent 60%),
+    radial-gradient(1px 1px at 80% 90%, #7dd3fc, transparent 60%);
+  filter: drop-shadow(0 0 6px rgba(125,211,252,.85));
+  animation: cb-abyss-motes 22s linear infinite, cb-nebula-twinkle 4.5s ease-in-out infinite; }
+.cb-abyss-jelly { position:absolute; width:110px; height:150px; border-radius:55% 55% 45% 45% / 60% 60% 40% 40%;
+  background: radial-gradient(ellipse at 50% 35%, rgba(240,190,255,.75), rgba(180,120,255,.35) 55%, transparent 75%);
+  filter: blur(1px) drop-shadow(0 0 24px rgba(200,120,255,.75)); opacity:.85; }
+.cb-abyss-jelly.j1 { left: 12%; top: -20%; animation: cb-jelly-float-1 30s ease-in-out infinite; }
+.cb-abyss-jelly.j2 { left: 62%; top: -30%; transform: scale(.7); animation: cb-jelly-float-2 42s ease-in-out infinite; background: radial-gradient(ellipse at 50% 35%, rgba(140,220,255,.75), rgba(80,140,255,.35) 55%, transparent 75%); filter: blur(1px) drop-shadow(0 0 24px rgba(80,160,255,.75)); }
+.cb-abyss-jelly.j3 { left: 38%; top: -25%; transform: scale(1.2); animation: cb-jelly-float-3 38s ease-in-out infinite; background: radial-gradient(ellipse at 50% 35%, rgba(180,255,220,.65), rgba(80,220,180,.3) 55%, transparent 75%); filter: blur(1px) drop-shadow(0 0 24px rgba(80,220,180,.7)); }
+@keyframes cb-jelly-float-1 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(20vw, 120vh) scale(1.05); } }
+@keyframes cb-jelly-float-2 { 0%,100% { transform: translate(0,0) scale(.7); } 50% { transform: translate(-15vw, 130vh) scale(.75); } }
+@keyframes cb-jelly-float-3 { 0%,100% { transform: translate(0,0) scale(1.2); } 50% { transform: translate(10vw, 125vh) scale(1.25); } }
+@keyframes cb-abyss-motes { from { transform: translateY(0); } to { transform: translateY(-30vh); } }
+
+/* ── Aurora Borealis ────────────────────────────────────── */
+.cb-aurora-bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+  background: linear-gradient(180deg, #01081c 0%, #021a44 35%, #032a5a 70%, #042038 100%); }
+.cb-aurora-stars { position:absolute; inset:0;
+  background-image:
+    radial-gradient(1px 1px at 30px 40px,#fff,transparent),
+    radial-gradient(1.5px 1.5px at 160px 90px,#fff,transparent),
+    radial-gradient(1px 1px at 280px 30px,#e0e7ff,transparent),
+    radial-gradient(0.8px 0.8px at 90px 160px,#fff,transparent);
+  background-size: 340px 200px; opacity: 0.7; animation: cb-nebula-twinkle 6s ease-in-out infinite; }
+.cb-aurora-curtain { position:absolute; left:-20%; right:-20%; top:0; height:70%;
+  background: linear-gradient(180deg, transparent 0%, rgba(110,231,183,.55) 15%, rgba(52,211,153,.85) 30%, rgba(59,130,246,.7) 55%, rgba(139,92,246,.5) 75%, transparent 100%);
+  filter: blur(28px) saturate(1.5); mix-blend-mode: screen; opacity:.85;
+  animation: cb-aurora-wave 12s ease-in-out infinite; }
+.cb-aurora-curtain.c2 { top: 8%; height:62%; opacity: .6; filter: blur(40px) saturate(1.4);
+  background: linear-gradient(180deg, transparent 0%, rgba(110,231,183,.4) 20%, rgba(59,130,246,.7) 55%, rgba(236,72,153,.4) 90%, transparent 100%);
+  animation: cb-aurora-wave 18s ease-in-out infinite reverse; animation-delay:-4s; }
+.cb-aurora-curtain.c3 { top: 4%; height:66%; opacity:.45; filter: blur(50px) saturate(1.3);
+  background: linear-gradient(180deg, transparent 0%, rgba(34,211,238,.5) 25%, rgba(139,92,246,.55) 60%, transparent 100%);
+  animation: cb-aurora-wave 22s ease-in-out infinite; animation-delay:-9s; }
+.cb-aurora-hills { position:absolute; left:0; right:0; bottom:0; }
+.cb-aurora-hills.h1 { height:32%; background:#031225;
+  clip-path: polygon(0 55%, 12% 45%, 24% 55%, 36% 35%, 50% 50%, 62% 35%, 76% 55%, 88% 45%, 100% 55%, 100% 100%, 0 100%); }
+.cb-aurora-hills.h2 { height:20%; background:#010a18;
+  clip-path: polygon(0 75%, 15% 55%, 30% 70%, 50% 45%, 70% 70%, 85% 55%, 100% 65%, 100% 100%, 0 100%); }
+@keyframes cb-aurora-wave {
+  0%,100% { transform: translateX(0) skewX(0deg) scaleY(1); }
+  25%     { transform: translateX(3%)  skewX(-3deg) scaleY(1.05); }
+  50%     { transform: translateX(-2%) skewX(4deg)  scaleY(.95); }
+  75%     { transform: translateX(2%)  skewX(-2deg) scaleY(1.03); }
+}
+
+/* ── Sakura Storm ───────────────────────────────────────── */
+.cb-sakura-bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+  background: linear-gradient(180deg, #2a0e30 0%, #5c1846 35%, #c86e94 75%, #f4c1a6 100%); }
+.cb-sakura-sun { position:absolute; right:14%; top:16%; width:120px; height:120px; border-radius:50%;
+  background: radial-gradient(circle at 40% 40%, #fff0d5, #f8a488 60%, transparent 100%);
+  box-shadow: 0 0 80px rgba(255,180,140,.7), 0 0 160px rgba(255,140,120,.35); }
+.cb-sakura-petals { position:absolute; inset:0;
+  background-image:
+    radial-gradient(3px 4px at 12% 20%, #fbcfe8, transparent 70%),
+    radial-gradient(2.5px 3.5px at 28% 50%, #f9a8d4, transparent 70%),
+    radial-gradient(3.5px 4.5px at 46% 25%, #fbcfe8, transparent 70%),
+    radial-gradient(2.5px 3.5px at 64% 60%, #f472b6, transparent 70%),
+    radial-gradient(3px 4px at 82% 35%, #fbcfe8, transparent 70%),
+    radial-gradient(2px 3px at 20% 80%, #f9a8d4, transparent 70%),
+    radial-gradient(3.5px 4.5px at 56% 88%, #fbcfe8, transparent 70%),
+    radial-gradient(2.5px 3.5px at 92% 74%, #f472b6, transparent 70%);
+  background-size: 100% 200%; filter: drop-shadow(0 0 3px rgba(251,207,232,.9));
+  animation: cb-sakura-fall 14s linear infinite; }
+.cb-sakura-petals.l2 { background-size: 140% 260%; opacity:.7;
+  animation: cb-sakura-fall 22s linear infinite, cb-sakura-sway 6s ease-in-out infinite; }
+.cb-sakura-petals.l3 { background-size: 180% 320%; opacity:.5;
+  animation: cb-sakura-fall 32s linear infinite, cb-sakura-sway 9s ease-in-out infinite; }
+@keyframes cb-sakura-fall { from { background-position: 0 -200%; } to { background-position: 30% 200%; } }
+@keyframes cb-sakura-sway { 0%,100% { transform: translateX(0); } 50% { transform: translateX(4vw); } }
+
+
 [data-theme="cubbly"] .app-themed .cubbly-3d-circle {
   box-shadow: 0 4px 0 #1a0f05, 0 6px 12px rgba(0,0,0,0.35);
   transition: box-shadow 0.15s ease, transform 0.15s ease;
