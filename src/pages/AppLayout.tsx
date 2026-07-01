@@ -43,6 +43,7 @@ import { useActiveCallElsewhere, useRemoteHangupListener } from "@/hooks/useActi
 import CoinPill from "@/components/app/CoinPill";
 import GemPill from "@/components/app/GemPill";
 import UserProfileCard from "@/components/app/chat/UserProfileCard";
+import HoneyWelcomeModal from "@/components/app/HoneyWelcomeModal";
 
 type FriendTab = "online" | "all" | "pending" | "blocked" | "add";
 
