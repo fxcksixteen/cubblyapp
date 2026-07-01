@@ -481,13 +481,13 @@
   animation: cb-abyss-motes 22s linear infinite, cb-nebula-twinkle 4.5s ease-in-out infinite; }
 .cb-abyss-jelly { position:absolute; width:110px; height:150px; border-radius:55% 55% 45% 45% / 60% 60% 40% 40%;
   background: radial-gradient(ellipse at 50% 35%, rgba(240,190,255,.75), rgba(180,120,255,.35) 55%, transparent 75%);
-  filter: blur(1px) drop-shadow(0 0 24px rgba(200,120,255,.75)); opacity:.85; }
-.cb-abyss-jelly.j1 { left: 12%; top: -20%; animation: cb-jelly-float-1 30s ease-in-out infinite; }
-.cb-abyss-jelly.j2 { left: 62%; top: -30%; transform: scale(.7); animation: cb-jelly-float-2 42s ease-in-out infinite; background: radial-gradient(ellipse at 50% 35%, rgba(140,220,255,.75), rgba(80,140,255,.35) 55%, transparent 75%); filter: blur(1px) drop-shadow(0 0 24px rgba(80,160,255,.75)); }
-.cb-abyss-jelly.j3 { left: 38%; top: -25%; transform: scale(1.2); animation: cb-jelly-float-3 38s ease-in-out infinite; background: radial-gradient(ellipse at 50% 35%, rgba(180,255,220,.65), rgba(80,220,180,.3) 55%, transparent 75%); filter: blur(1px) drop-shadow(0 0 24px rgba(80,220,180,.7)); }
-@keyframes cb-jelly-float-1 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(20vw, 120vh) scale(1.05); } }
-@keyframes cb-jelly-float-2 { 0%,100% { transform: translate(0,0) scale(.7); } 50% { transform: translate(-15vw, 130vh) scale(.75); } }
-@keyframes cb-jelly-float-3 { 0%,100% { transform: translate(0,0) scale(1.2); } 50% { transform: translate(10vw, 125vh) scale(1.25); } }
+  filter: blur(1px) drop-shadow(0 0 24px rgba(200,120,255,.75)); opacity:.85; will-change: transform; }
+.cb-abyss-jelly.j1 { left: 12%; bottom: -25%; animation: cb-jelly-rise-1 30s linear infinite; }
+.cb-abyss-jelly.j2 { left: 62%; bottom: -35%; transform: scale(.7); animation: cb-jelly-rise-2 42s linear infinite; animation-delay:-8s; background: radial-gradient(ellipse at 50% 35%, rgba(140,220,255,.75), rgba(80,140,255,.35) 55%, transparent 75%); filter: blur(1px) drop-shadow(0 0 24px rgba(80,160,255,.75)); }
+.cb-abyss-jelly.j3 { left: 38%; bottom: -30%; transform: scale(1.2); animation: cb-jelly-rise-3 38s linear infinite; animation-delay:-18s; background: radial-gradient(ellipse at 50% 35%, rgba(180,255,220,.65), rgba(80,220,180,.3) 55%, transparent 75%); filter: blur(1px) drop-shadow(0 0 24px rgba(80,220,180,.7)); }
+@keyframes cb-jelly-rise-1 { 0% { transform: translate(0, 0) scale(1); } 50% { transform: translate(8vw, -70vh) scale(1.05); } 100% { transform: translate(-4vw, -140vh) scale(1); } }
+@keyframes cb-jelly-rise-2 { 0% { transform: translate(0, 0) scale(.7); } 50% { transform: translate(-10vw, -80vh) scale(.75); } 100% { transform: translate(6vw, -150vh) scale(.7); } }
+@keyframes cb-jelly-rise-3 { 0% { transform: translate(0, 0) scale(1.2); } 50% { transform: translate(6vw, -75vh) scale(1.25); } 100% { transform: translate(-8vw, -145vh) scale(1.2); } }
 @keyframes cb-abyss-motes { from { transform: translateY(0); } to { transform: translateY(-30vh); } }
 
 /* ── Aurora Borealis ────────────────────────────────────── */
