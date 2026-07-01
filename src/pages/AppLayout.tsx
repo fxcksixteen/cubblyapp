@@ -501,7 +501,7 @@ const AppLayout = () => {
               } else if (view === "shop") {
                 navigate("/@me/shop", { replace: true });
               } else if (view === "honey") {
-                navigate("/@me/honey", { replace: true });
+                navigate("/honey", { replace: true });
               } else if (view === "notes") {
                 navigate("/@me/notes", { replace: true });
               } else if (view === "requests") {
@@ -594,7 +594,7 @@ const AppLayout = () => {
               } else if (view === "shop") {
                 navigate("/@me/shop", { replace: true });
               } else if (view === "honey") {
-                navigate("/@me/honey", { replace: true });
+                navigate("/honey", { replace: true });
               } else if (view === "notes") {
                 navigate("/@me/notes", { replace: true });
               } else if (view === "requests") {
