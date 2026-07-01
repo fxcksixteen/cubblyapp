@@ -782,3 +782,19 @@ html.cubbly-low-power * {
   0%, 100% { box-shadow: 0 0 10px rgba(245,165,36,0.5); transform: translateY(-50%) scale(1); }
   50%      { box-shadow: 0 0 18px rgba(245,165,36,0.95); transform: translateY(-50%) scale(1.06); }
 }
+
+/* ── Honey Welcome Modal animated gradient title ─────────── */
+.cb-honey-gradient-text {
+  background: linear-gradient(90deg, #ffe08a 0%, #ffb84a 25%, #ff9a3c 50%, #ffb84a 75%, #ffe08a 100%);
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation: cb-honey-shimmer 3.5s ease-in-out infinite;
+  filter: drop-shadow(0 2px 6px rgba(255,154,60,0.35));
+}
+@keyframes cb-honey-shimmer {
+  0%,100% { background-position: 0% 50%; }
+  50%     { background-position: 100% 50%; }
+}

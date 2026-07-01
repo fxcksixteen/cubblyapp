@@ -18,6 +18,7 @@ import ChatSettings from "./settings/ChatSettings";
 import LanguageTimeSettings from "./settings/LanguageTimeSettings";
 import DataPrivacySettings from "./settings/DataPrivacySettings";
 import DevicesSettings from "./settings/DevicesSettings";
+import { Switch } from "@/components/ui/switch";
 import ContentSocialSettings from "./settings/ContentSocialSettings";
 import AccessibilitySettings from "./settings/AccessibilitySettings";
 import KeybindsSettings from "./settings/KeybindsSettings";
@@ -452,12 +453,9 @@ const SettingsModal = ({ isOpen, onClose, initialCategory = null }: SettingsModa
                         When enabled, other users can see the shop items you want from your profile.
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={currentData.public_wishlist}
-                      onClick={() => {
-                        const nextValue = !currentData.public_wishlist;
+                    <Switch
+                      checked={!!currentData.public_wishlist}
+                      onCheckedChange={(nextValue) => {
                         setPendingChanges((prev) => {
                           const next = { ...prev };
                           if (nextValue === originalData.public_wishlist) delete next.public_wishlist;
@@ -465,14 +463,9 @@ const SettingsModal = ({ isOpen, onClose, initialCategory = null }: SettingsModa
                           return next;
                         });
                       }}
-                      className="relative h-7 w-12 shrink-0 rounded-full transition-colors"
-                      style={{ backgroundColor: currentData.public_wishlist ? "#5865f2" : "var(--app-hover)" }}
-                    >
-                      <span
-                        className="absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform"
-                        style={{ transform: currentData.public_wishlist ? "translateX(23px)" : "translateX(4px)" }}
-                      />
-                    </button>
+                      aria-label="Show wishlist on my public profile"
+                    />
+
                   </div>
                 </div>
 
