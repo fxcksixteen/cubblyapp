@@ -319,8 +319,8 @@ const ShopView = () => {
       .then(({ data }) => setDisplayName(data?.display_name || ""));
   }, [user]);
 
-  // Effective price for sorting — gems items win on price_gems, coin items on price.
-  const effPrice = (it: ShopItem) => (it.price_gems != null ? it.price_gems : it.price);
+  // Effective direct-buy price for sorting — coin items use coins, gem-only items use gems.
+  const effPrice = (it: ShopItem) => ((it.config as any)?.gems_only && it.price_gems != null ? it.price_gems : it.price);
 
   const visible = useMemo(
     () => {
@@ -594,7 +594,7 @@ const ShopView = () => {
             const gemsOnly = !!(item.config as any)?.gems_only;
             const canAfford = balance >= item.price;
             const isBusy = purchasing === item.id;
-            const canBuyGems = item.price_gems !== null && item.price_gems > 0;
+            const canBuyGems = gemsOnly && item.price_gems !== null && item.price_gems > 0;
             return (
               <div
                 key={item.id}
