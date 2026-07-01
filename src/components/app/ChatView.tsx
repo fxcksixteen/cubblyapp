@@ -1273,12 +1273,12 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
             </span>
           )}
 
-          {recipientUserId && !conversation?.is_group && !isBotConversation && recipientUserId !== user?.id && (
+          {!isBotConversation && conversationId && (
             <div className="relative flex items-center pb-1">
               <button
                 onClick={() => setGiftModalOpen(true)}
                 className="flex items-center justify-center"
-                title={`Send ${recipientName} a gift`}
+                title="Gift Honey to this chat"
               >
                 <img src={giftIcon} alt="Gift" className="h-5 w-5 invert opacity-60 hover:opacity-100 transition-opacity" />
               </button>
