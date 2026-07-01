@@ -7,7 +7,7 @@ import { useActivity } from "@/contexts/ActivityContext";
 import { useFriends } from "@/hooks/useFriends";
 import { Conversation } from "@/hooks/useConversations";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, X, Users, MoreVertical, CheckCheck, BellOff, Bell } from "lucide-react";
+import { Plus, X, Users, MoreVertical, CheckCheck, BellOff, Bell, Pin, PinOff } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { getProfileColor } from "@/lib/profileColors";
 import { activityLabel } from "@/lib/activityLabel";
@@ -24,6 +24,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { useConversationMutes, type MuteDuration } from "@/hooks/useConversationMutes";
+import { useConversationPins, MAX_PINNED_CONVERSATIONS } from "@/hooks/useConversationPins";
 import ProfilePopup from "./ProfilePopup";
 import SettingsModal from "./SettingsModal";
 import SearchBar from "./SearchBar";
@@ -66,6 +67,22 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
   const { getActivity } = useActivity();
   const { pending } = useFriends();
   const { isMuted, mutedUntil, setMute } = useConversationMutes();
+  const { isPinned, pinnedAt, pinnedCount, setPinned } = useConversationPins();
+
+  const handleTogglePin = async (convId: string, label: string) => {
+    const currentlyPinned = isPinned(convId);
+    if (!currentlyPinned && pinnedCount() >= MAX_PINNED_CONVERSATIONS) {
+      toast.error(`You can only pin up to ${MAX_PINNED_CONVERSATIONS} conversations`);
+      return;
+    }
+    const res = await setPinned(convId, !currentlyPinned);
+    if (!res.ok) {
+      if (res.reason === "limit") toast.error(`You can only pin up to ${MAX_PINNED_CONVERSATIONS} conversations`);
+      else toast.error("Couldn't update pin — try again");
+      return;
+    }
+    toast.success(currentlyPinned ? `Unpinned ${label}` : `Pinned ${label}`);
+  };
   const incomingPendingCount = pending.filter((p) => p.addressee_id === user?.id).length;
   const displayName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "User";
   const username = user?.user_metadata?.username || displayName.toLowerCase();
@@ -273,9 +290,22 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
           </button>
         </div>
 
-        {/* DM list */}
+        {/* DM list — pinned float to the top, most-recently-pinned first */}
         <div className="mt-1 flex flex-col gap-0.5">
-          {conversations.map((conv) => {
+          {[...conversations]
+            .sort((a, b) => {
+              const ap = isPinned(a.id);
+              const bp = isPinned(b.id);
+              if (ap && !bp) return -1;
+              if (!ap && bp) return 1;
+              if (ap && bp) {
+                const at = pinnedAt(a.id) || "";
+                const bt = pinnedAt(b.id) || "";
+                return bt.localeCompare(at);
+              }
+              return 0;
+            })
+            .map((conv) => {
             const isActive = activeView === `dm:${conv.id}`;
             const displayName = conv.is_group
               ? (conv.name || conv.members.map((m) => m.display_name).slice(0, 3).join(", ") || "Group")
@@ -348,6 +378,9 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                             <UserBadges userId={conv.participant.user_id} size={12} />
                           </>
                         )}
+                        {isPinned(conv.id) && (
+                          <Pin className="h-3 w-3 shrink-0 opacity-90 rotate-45" style={{ filter: "none", color: "var(--app-accent, #5865f2)" }} />
+                        )}
                         {isMuted(conv.id) && (
                           <BellOff className="h-3 w-3 shrink-0 opacity-100" style={{ filter: "none" }} />
                         )}
@@ -409,6 +442,13 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                   >
                     <img src={friendsIcon} alt="" className="h-4 w-4 invert opacity-70" />
                     {conv.is_group ? "Open" : "View Profile"}
+                  </ContextMenuItem>
+                  <ContextMenuItem
+                    onClick={() => handleTogglePin(conv.id, conv.is_group ? (conv.name || "group") : conv.participant.display_name)}
+                    className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[#dbdee1] hover:bg-[#5865f2] hover:text-white cursor-pointer"
+                  >
+                    {isPinned(conv.id) ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
+                    {isPinned(conv.id) ? "Unpin" : `Pin${pinnedCount() >= MAX_PINNED_CONVERSATIONS && !isPinned(conv.id) ? ` (${MAX_PINNED_CONVERSATIONS} max)` : ""}`}
                   </ContextMenuItem>
                   {!conv.is_group && (
                     <ContextMenuItem
