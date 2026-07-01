@@ -52,25 +52,30 @@ const HoneyGiftMessage = ({ payload, isOwn }: Props) => {
 
   useEffect(() => {
     let alive = true;
+    // v0.4.0: subscribe AFTER initial fetch resolves + unique suffix so two
+    // simultaneous renders of the same gift don't collide.
+    const suffix = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    let ch: ReturnType<typeof supabase.channel> | null = null;
     (async () => {
       const { data } = await supabase
         .from("honey_gifts")
         .select("status, claimed_by, claimed_at, sender_id, message")
         .eq("id", payload.giftId)
         .maybeSingle();
-      if (alive) setRow((data as GiftRow) ?? null);
+      if (!alive) return;
+      setRow((data as GiftRow) ?? null);
+      ch = supabase
+        .channel(`honey-gift-${payload.giftId}-${suffix}`)
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "honey_gifts", filter: `id=eq.${payload.giftId}` },
+          (p) => { if (alive) setRow(p.new as GiftRow); },
+        )
+        .subscribe();
     })();
-    const ch = supabase
-      .channel(`honey-gift-${payload.giftId}`)
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "honey_gifts", filter: `id=eq.${payload.giftId}` },
-        (p) => setRow(p.new as GiftRow),
-      )
-      .subscribe();
     return () => {
       alive = false;
-      supabase.removeChannel(ch);
+      if (ch) supabase.removeChannel(ch);
     };
   }, [payload.giftId]);
 
