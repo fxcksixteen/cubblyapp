@@ -290,9 +290,22 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
           </button>
         </div>
 
-        {/* DM list */}
+        {/* DM list — pinned float to the top, most-recently-pinned first */}
         <div className="mt-1 flex flex-col gap-0.5">
-          {conversations.map((conv) => {
+          {[...conversations]
+            .sort((a, b) => {
+              const ap = isPinned(a.id);
+              const bp = isPinned(b.id);
+              if (ap && !bp) return -1;
+              if (!ap && bp) return 1;
+              if (ap && bp) {
+                const at = pinnedAt(a.id) || "";
+                const bt = pinnedAt(b.id) || "";
+                return bt.localeCompare(at);
+              }
+              return 0;
+            })
+            .map((conv) => {
             const isActive = activeView === `dm:${conv.id}`;
             const displayName = conv.is_group
               ? (conv.name || conv.members.map((m) => m.display_name).slice(0, 3).join(", ") || "Group")
