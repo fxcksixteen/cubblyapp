@@ -306,7 +306,7 @@ export function useMessages(conversationId: string | null) {
     if (!user || !conversationId || !content.trim()) return false;
 
     const trimmedContent = content.trim();
-    const tempId = `temp-${Date.now()}`;
+    const tempId = `temp-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
     const replyPreview: ReplyPreview | null = replyToId
       ? (() => {
           const m = messages.find((mm) => mm.id === replyToId);
