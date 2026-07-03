@@ -33,6 +33,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     hero: bearImage,
     newFeatures: [
       "Screen sharing now defaults to VP9 with adaptive bitrate — sharper picture at the same bandwidth and smoother when your network dips.",
+      "“Live · Join Stream” button on server voice channels when someone is screen sharing.",
     ],
     bugFixes: [
       "Fixed calls sometimes stuck on “Ringing” after the other person picked up.",
