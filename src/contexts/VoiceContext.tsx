@@ -2813,7 +2813,16 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       // why their picture looks noticeably sharper than an equivalent VP8
       // stream at the same bandwidth. We match, and slightly beat, those caps.
       const isHighFps = effectiveFps >= 50;
-      const resBitrateBase: Record<string, number> = {
+      const isUltra = opt === "ultra";
+      // v0.4.4: Ultra gets its own ladder (~30% above Discord-parity) so the
+      // default preset for every user is genuinely the sharpest option we can
+      // push. Clarity/Motion stay at parity for specialised needs.
+      const resBitrateBase: Record<string, number> = isUltra ? {
+        "480p":  1_500_000,
+        "720p":  isHighFps ? 4_500_000 : 3_500_000,
+        "1080p": isHighFps ? 10_000_000 : 6_000_000,
+        "1440p": isHighFps ? 16_000_000 : 11_000_000,
+      } : {
         "480p":  1_000_000,
         "720p":  isHighFps ? 3_000_000 : 2_500_000,
         "1080p": isHighFps ? 7_500_000 : 4_500_000,
