@@ -1648,9 +1648,21 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               console.warn("[Voice] addIceCandidate failed:", e);
             }
           } else {
-            console.log("[Voice] Queuing incoming ICE candidate (no remote desc yet)");
+            // v0.4.3: bound the queue. Prior builds logged & appended forever
+            // (see console: "Queuing incoming ICE candidate" x dozens per
+            // second) which both leaked memory and hid the underlying bug
+            // that remoteDescription never got set for that PC generation.
+            if (incomingCandidateQueue.current.length >= 50) {
+              incomingCandidateQueue.current.shift();
+            } else {
+              // Log only for the first few — the flood was drowning the console.
+              if (incomingCandidateQueue.current.length < 5) {
+                console.log("[Voice] Queuing incoming ICE candidate (no remote desc yet)");
+              }
+            }
             incomingCandidateQueue.current.push(payload.candidate);
           }
+
           return;
         }
 
