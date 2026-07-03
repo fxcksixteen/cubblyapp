@@ -33,6 +33,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     hero: bearImage,
     newFeatures: [
       "Screen sharing now defaults to VP9 with adaptive bitrate — sharper picture at the same bandwidth and smoother when your network dips.",
+      "“Live · Join Stream” button on server voice channels when someone is screen sharing.",
     ],
     bugFixes: [
       "Fixed calls sometimes stuck on “Ringing” after the other person picked up.",
@@ -44,6 +45,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Wishlisted “Cute” badge no longer shows as its old name on other people's profiles.",
       "Premium animated themes now render properly on the desktop app when hardware acceleration is off.",
       "More reliable in-game details (map, hero, score) for Valorant, Fortnite, Marvel Rivals and Roblox.",
+      "Activity time now shows just the clock (e.g. 12:34) instead of “12:34 elapsed”.",
     ],
   },
   {

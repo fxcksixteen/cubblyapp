@@ -38,6 +38,7 @@ const ServerView = () => {
   const server = servers.find((s) => s.id === serverId);
   const { channels } = useServerChannels(serverId || null);
   const { members } = useServerMembers(serverId || null);
+  const groupCall = useGroupCall();
   const [activeConv, setActiveConv] = useState<Conversation | null>(null);
 
   const isOwner = !!server && server.owner_id === user?.id;
@@ -158,7 +159,17 @@ const ServerView = () => {
           <ChannelGroup label="Text Channels" channels={channels.filter((c) => c.kind === "text")} activeId={channelId}
             onSelect={(id) => navigate(`/@me/server/${serverId}/${id}`)} />
           <ChannelGroup label="Voice Channels" channels={channels.filter((c) => c.kind === "voice")} activeId={channelId}
-            onSelect={(id) => navigate(`/@me/server/${serverId}/${id}`)} />
+            onSelect={(id) => navigate(`/@me/server/${serverId}/${id}`)}
+            onJoinVoice={async (c) => {
+              if (!c.conversation_id || !server) return;
+              navigate(`/@me/server/${serverId}/${c.id}`);
+              try {
+                const memberIds = members.map((m) => m.user_id);
+                await groupCall.startCall(c.conversation_id, c.name, memberIds);
+              } catch (e) {
+                console.error("[ServerView] join stream failed", e);
+              }
+            }} />
         </div>
         {/* Voice-Connected card pinned to the bottom of the channel sidebar,
             mirroring the DM sidebar so users can mute/share/disconnect without
@@ -306,8 +317,8 @@ const MenuItem = ({ icon: Icon, label, onClick, danger }: { icon: LucideIcon; la
 );
 
 const ChannelGroup = ({
-  label, channels, activeId, onSelect,
-}: { label: string; channels: ServerChannel[]; activeId?: string; onSelect: (id: string) => void }) => {
+  label, channels, activeId, onSelect, onJoinVoice,
+}: { label: string; channels: ServerChannel[]; activeId?: string; onSelect: (id: string) => void; onJoinVoice?: (channel: ServerChannel) => void }) => {
   if (channels.length === 0) return null;
   return (
     <div className="mb-2">
@@ -331,7 +342,10 @@ const ChannelGroup = ({
               <span className="truncate">{c.name}</span>
             </button>
             {c.kind === "voice" && c.conversation_id && (
-              <VoiceChannelParticipants conversationId={c.conversation_id} />
+              <VoiceChannelParticipants
+                conversationId={c.conversation_id}
+                onJoinStream={onJoinVoice ? () => onJoinVoice(c) : undefined}
+              />
             )}
           </div>
         );
@@ -341,8 +355,11 @@ const ChannelGroup = ({
 };
 
 /** Discord-style list of avatars + names of users currently in a voice channel. */
-const VoiceChannelParticipants = ({ conversationId }: { conversationId: string }) => {
+const VoiceChannelParticipants = ({ conversationId, onJoinStream }: { conversationId: string; onJoinStream?: () => void }) => {
   const { participants } = useChannelVoiceParticipants(conversationId);
+  const groupCall = useGroupCall();
+  const alreadyJoined = groupCall.activeCall?.conversationId === conversationId;
+  const anySharing = participants.some((p) => p.is_screen_sharing);
   if (participants.length === 0) return null;
   return (
     <div className="ml-6 mt-0.5 mb-1 space-y-0.5">
@@ -377,6 +394,19 @@ const VoiceChannelParticipants = ({ conversationId }: { conversationId: string }
           </div>
         </div>
       ))}
+      {anySharing && !alreadyJoined && onJoinStream && (
+        <button
+          onClick={onJoinStream}
+          className="ml-7 mt-1 flex items-center gap-1.5 rounded px-2 py-1 text-[11px] font-semibold uppercase tracking-wide transition-colors"
+          style={{ backgroundColor: "#ed4245", color: "white" }}
+          onMouseEnter={(e) => (e.currentTarget.style.filter = "brightness(1.1)")}
+          onMouseLeave={(e) => (e.currentTarget.style.filter = "")}
+          title="Join channel to watch stream"
+        >
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-white" />
+          Live · Join Stream
+        </button>
+      )}
     </div>
   );
 };
