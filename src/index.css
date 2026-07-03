@@ -771,35 +771,22 @@ html.cubbly-low-power *:not(img):not(svg):not(.cubbly-keep-filter)::after {
 html.cubbly-low-power *:not(.cubbly-keep-shadow) {
   box-shadow: none !important;
 }
-html.cubbly-low-power *:not(.cubbly-keep-animation) {
-  /* Disable non-essential transitions/animations; keep opacity/colors snappy. */
+/* Kill non-essential animations, but keep the premium animated themes going.
+   Blurs/mix-blend-mode are already stripped above — what remains is cheap
+   transform/opacity motion that the software renderer can handle fine, and
+   without it the premium themes render as dead squares in shop previews. */
+html.cubbly-low-power *:not(.cubbly-keep-animation),
+html.cubbly-low-power *:not(.cubbly-keep-animation)::before,
+html.cubbly-low-power *:not(.cubbly-keep-animation)::after {
   transition-duration: 0ms !important;
-  animation-duration: 0ms !important;
 }
-
-/* v0.4.3 pass 2: premium animated themes rely on filter: blur() and
-   mix-blend-mode, which Chromium's software renderer can't paint smoothly
-   when hardware acceleration is off — so previews and equipped backgrounds
-   render as dead squares. Strip the expensive blurs but KEEP the transform/
-   opacity animations running so the theme still visibly moves. Base gradients
-   are already static, so the fallback still reads as the theme's palette. */
-html.cubbly-low-power .cb-nebula-bg,
-html.cubbly-low-power .cb-nebula-bg *,
-html.cubbly-low-power .cb-cyber-bg,
-html.cubbly-low-power .cb-cyber-bg *,
-html.cubbly-low-power .cb-volcanic-bg,
-html.cubbly-low-power .cb-volcanic-bg *,
-html.cubbly-low-power .cb-abyss-bg,
-html.cubbly-low-power .cb-abyss-bg *,
-html.cubbly-low-power .cb-aurora-bg,
-html.cubbly-low-power .cb-aurora-bg *,
-html.cubbly-low-power .cb-sakura-bg,
-html.cubbly-low-power .cb-sakura-bg *,
-html.cubbly-low-power .shop-preview-stars,
-html.cubbly-low-power [class*="shop-"][class*="-preview"],
-html.cubbly-low-power [class*="shop-"][class*="-preview"] * {
-  animation-duration: unset !important;
-  transition-duration: unset !important;
+html.cubbly-low-power
+  *:not(.cubbly-keep-animation):not([class*="cb-nebula"]):not([class*="cb-cyber"]):not([class*="cb-volcanic"]):not([class*="cb-abyss"]):not([class*="cb-aurora"]):not([class*="cb-sakura"]):not([class*="cb-space"]):not([class*="cb-sky"]):not([class*="cb-snow"]):not([class*="cb-hills"]):not([class*="shop-"]),
+html.cubbly-low-power
+  *:not(.cubbly-keep-animation):not([class*="cb-nebula"]):not([class*="cb-cyber"]):not([class*="cb-volcanic"]):not([class*="cb-abyss"]):not([class*="cb-aurora"]):not([class*="cb-sakura"]):not([class*="cb-space"]):not([class*="cb-sky"]):not([class*="cb-snow"]):not([class*="cb-hills"]):not([class*="shop-"])::before,
+html.cubbly-low-power
+  *:not(.cubbly-keep-animation):not([class*="cb-nebula"]):not([class*="cb-cyber"]):not([class*="cb-volcanic"]):not([class*="cb-abyss"]):not([class*="cb-aurora"]):not([class*="cb-sakura"]):not([class*="cb-space"]):not([class*="cb-sky"]):not([class*="cb-snow"]):not([class*="cb-hills"]):not([class*="shop-"])::after {
+  animation-duration: 0ms !important;
 }
 
 /* Honey "NEW" pill */
