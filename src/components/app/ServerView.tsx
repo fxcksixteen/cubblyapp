@@ -306,8 +306,8 @@ const MenuItem = ({ icon: Icon, label, onClick, danger }: { icon: LucideIcon; la
 );
 
 const ChannelGroup = ({
-  label, channels, activeId, onSelect,
-}: { label: string; channels: ServerChannel[]; activeId?: string; onSelect: (id: string) => void }) => {
+  label, channels, activeId, onSelect, onJoinVoice,
+}: { label: string; channels: ServerChannel[]; activeId?: string; onSelect: (id: string) => void; onJoinVoice?: (channel: ServerChannel) => void }) => {
   if (channels.length === 0) return null;
   return (
     <div className="mb-2">
@@ -331,7 +331,10 @@ const ChannelGroup = ({
               <span className="truncate">{c.name}</span>
             </button>
             {c.kind === "voice" && c.conversation_id && (
-              <VoiceChannelParticipants conversationId={c.conversation_id} />
+              <VoiceChannelParticipants
+                conversationId={c.conversation_id}
+                onJoinStream={onJoinVoice ? () => onJoinVoice(c) : undefined}
+              />
             )}
           </div>
         );
@@ -341,8 +344,11 @@ const ChannelGroup = ({
 };
 
 /** Discord-style list of avatars + names of users currently in a voice channel. */
-const VoiceChannelParticipants = ({ conversationId }: { conversationId: string }) => {
+const VoiceChannelParticipants = ({ conversationId, onJoinStream }: { conversationId: string; onJoinStream?: () => void }) => {
   const { participants } = useChannelVoiceParticipants(conversationId);
+  const groupCall = useGroupCall();
+  const alreadyJoined = groupCall.activeCall?.conversationId === conversationId;
+  const anySharing = participants.some((p) => p.is_screen_sharing);
   if (participants.length === 0) return null;
   return (
     <div className="ml-6 mt-0.5 mb-1 space-y-0.5">
