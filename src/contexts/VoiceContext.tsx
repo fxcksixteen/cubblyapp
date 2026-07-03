@@ -2802,7 +2802,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       // (encoder/decoder CPU + jitter buffer underruns) and "low quality"
       // didn't actually lower bitrate. Discord-style caps used here.
       const opt = screenShareSettings.optimizeFor;
-      const hint = opt === "motion" ? "motion" : "detail";
+      // Ultra = no contentHint bias (let the encoder do its best across text
+      // AND motion given the very high bitrate headroom). Motion = "motion"
+      // hint. Clarity = "detail" hint.
+      const hint = opt === "ultra" ? "" : opt === "motion" ? "motion" : "detail";
       // v0.4.3: much stricter per-preset caps. Previous ceilings were letting
       // "low quality" negotiate 1.35 Mbps at 30 fps of native 4K frames on
       // Electron (Chromium desktopCapturer ignores getDisplayMedia size
