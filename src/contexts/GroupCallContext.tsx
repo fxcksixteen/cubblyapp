@@ -213,6 +213,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
   // Local camera + screenshare track refs
   const localVideoTrackRef = useRef<MediaStreamTrack | null>(null);
   const localScreenTrackRef = useRef<MediaStreamTrack | null>(null);
+  const localScreenEncodingRef = useRef<{ bitrate: number; maxFramerate: number; scaleResolutionDownBy: number } | null>(null);
   /** Cleanup fn for an active native (WASAPI) per-window audio capture, if any. */
   const nativeWindowAudioStopRef = useRef<(() => void) | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
@@ -381,7 +382,8 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     // Add our local audio tracks
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => {
-        pc.addTrack(track, localStreamRef.current!);
+        const sender = pc.addTrack(track, localStreamRef.current!);
+        if (track.kind === "audio") void applyRealtimeAudioParams(sender);
       });
     }
     // If we already have local video / screen on, add those too (so a NEW peer
@@ -398,6 +400,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       Object.defineProperty(screenStream, "id", { value: `cubbly-screen-${user.id}` });
       const sender = pc.addTrack(localScreenTrackRef.current, screenStream);
       screenSendersRef.current.set(peerId, sender);
+      if (localScreenEncodingRef.current) void applyGroupScreenVideoParams(sender, localScreenEncodingRef.current);
     }
 
     pc.ontrack = (event) => {
@@ -532,7 +535,16 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     };
 
     pc.oniceconnectionstatechange = () => {
-      if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "closed") {
+      if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+        pc.getSenders().forEach((sender) => {
+          if (sender.track?.kind === "audio") void applyRealtimeAudioParams(sender);
+        });
+      }
+      if (pc.iceConnectionState === "failed") {
+        try { (pc as any).restartIce?.(); } catch {}
+        return;
+      }
+      if (pc.iceConnectionState === "closed") {
         removePeer(peerId);
       }
     };
