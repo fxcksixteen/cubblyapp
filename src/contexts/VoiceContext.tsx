@@ -121,31 +121,33 @@ export const SERVER_REGIONS = [
  * downscale resolution, drop frames before quality on bandwidth pressure.
  * This is what fixes "screenshare looks pixelated to the OTHER user".
  */
-async function applyScreenBitrate(sender: RTCRtpSender, maxBitrate: number) {
+async function applyScreenBitrate(sender: RTCRtpSender, maxBitrate: number, opts?: { scaleResolutionDownBy?: number; maxFramerate?: number }) {
   try {
     const params = sender.getParameters();
     if (!params.encodings || params.encodings.length === 0) {
       params.encodings = [{}];
     }
     params.encodings[0].maxBitrate = maxBitrate;
-    // Allow encoder to scale resolution down under CPU/bandwidth pressure
-    // so it doesn't keep encoding 1080p frames at the expense of dropping
-    // voice RTP packets — that was the "everyone lags when streaming a
-    // game" symptom. Cap framerate too.
-    (params.encodings[0] as any).maxFramerate = (params.encodings[0] as any).maxFramerate ?? 60;
+    // v0.4.3: force the encoder to downscale on the sender. Electron's
+    // desktopCapturer ignores getDisplayMedia width/height constraints and
+    // applyConstraints on the track is a no-op for most desktop capture
+    // sources — so "480p" was actually encoding native 1440p/4K frames and
+    // the encoder would collapse framerate to <10 fps trying to keep up.
+    // Setting scaleResolutionDownBy is the only reliable path.
+    if (opts?.scaleResolutionDownBy && opts.scaleResolutionDownBy > 1) {
+      (params.encodings[0] as any).scaleResolutionDownBy = opts.scaleResolutionDownBy;
+    }
+    (params.encodings[0] as any).maxFramerate = opts?.maxFramerate ?? (params.encodings[0] as any).maxFramerate ?? 60;
     (params.encodings[0] as any).networkPriority = "medium";
     (params.encodings[0] as any).priority = "medium";
-    // maintain-framerate → drop resolution before frames. This is what stops
-    // Marvel-Rivals-style fast-motion gameplay from looking like a slideshow:
-    // a steady 30/60 fps at a lower res reads as smoother than full-res at
-    // 8 fps. Previous "balanced" was letting the encoder collapse FPS first,
-    // which is exactly the "starts choppy and slowly improves" symptom.
+    // maintain-framerate → drop resolution before frames.
     (params as any).degradationPreference = "maintain-framerate";
     await sender.setParameters(params);
   } catch (e) {
     console.warn("[Voice] Could not set screen encoding bitrate:", e);
   }
 }
+
 
 /**
  * Apply high-quality stereo Opus encoding to a screenshare *audio* sender so
