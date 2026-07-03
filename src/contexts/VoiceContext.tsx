@@ -2907,9 +2907,18 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       const screenPc = new RTCPeerConnection({ iceServers: iceServersRef.current });
       screenPcOutRef.current = screenPc;
 
+      let videoSenderRef: RTCRtpSender | null = null;
       stream.getTracks().forEach(track => {
         const sender = screenPc.addTrack(track, stream);
-        if (track.kind === "video") applyScreenBitrate(sender, maxBitrate, encodingOpts);
+        if (track.kind === "video") {
+          videoSenderRef = sender;
+          applyScreenBitrate(sender, maxBitrate, encodingOpts);
+          // v0.4.4: force VP9 (or AV1 if present) on the video transceiver so
+          // this share negotiates the same modern codec Discord uses instead
+          // of falling back to VP8's mushier screen-content encoding.
+          const tx = screenPc.getTransceivers().find((t) => t.sender === sender);
+          preferScreenShareCodec(tx || null);
+        }
         if (track.kind === "audio") applyScreenAudioBitrate(sender);
         track.onended = () => {
           stopScreenShare();
@@ -2930,10 +2939,23 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       offer.sdp = patchScreenShareOpusSdp(offer.sdp || "");
       await screenPc.setLocalDescription(offer);
 
-      // Periodically log outbound stats so we can confirm the encoder is
-      // actually delivering the bitrate / resolution we asked for.
+      // v0.4.4: adaptive bitrate loop, Discord-style.
+      // Every 3s we sample outbound-rtp + remote-inbound-rtp:
+      //  • if sustained packet loss >8% over TWO consecutive samples → drop
+      //    maxBitrate 25% (floor 40% of the user's chosen target).
+      //  • if loss stays <2% for 4 consecutive samples AND we've throttled →
+      //    step back up 15% toward target.
+      // This is the piece that lets the stream stay smooth on flaky wifi
+      // without permanently sacrificing quality on good networks.
+      const targetBitrate = maxBitrate;
+      const minBitrate = Math.max(300_000, Math.round(targetBitrate * 0.4));
+      let currentBitrate = targetBitrate;
+      let lossyStreak = 0;
+      let cleanStreak = 0;
       let lastBytes = 0;
       let lastStatsAt = performance.now();
+      let lastRemoteLost = 0;
+      let lastRemotePkts = 0;
       const statsInterval = setInterval(async () => {
         if (!screenPcOutRef.current || screenPcOutRef.current !== screenPc) {
           clearInterval(statsInterval);
@@ -2941,6 +2963,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         }
         try {
           const stats = await screenPc.getStats();
+          let fractionLost = 0;
+          let outboundInfo = "";
           stats.forEach((report: any) => {
             if (report.type === "outbound-rtp" && report.kind === "video") {
               const now = performance.now();
@@ -2948,11 +2972,55 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               const kbps = lastBytes > 0 ? Math.round(((bytes - lastBytes) * 8) / Math.max(1, now - lastStatsAt)) : 0;
               lastBytes = bytes;
               lastStatsAt = now;
-              console.log(`[Voice] 🖥️ outbound screen video — ${report.frameWidth}x${report.frameHeight}@${report.framesPerSecond}fps, bitrate≈${kbps}kbps`);
+              outboundInfo = `${report.frameWidth}x${report.frameHeight}@${report.framesPerSecond}fps, ${kbps}kbps`;
+            }
+            if (report.type === "remote-inbound-rtp" && report.kind === "video") {
+              const lost = report.packetsLost ?? 0;
+              const pkts = (report as any).packetsReceived ?? 0;
+              const dLost = Math.max(0, lost - lastRemoteLost);
+              const dPkts = Math.max(0, pkts - lastRemotePkts);
+              lastRemoteLost = lost;
+              lastRemotePkts = pkts;
+              const denom = dLost + dPkts;
+              if (denom > 0) fractionLost = dLost / denom;
+              else if (typeof report.fractionLost === "number") fractionLost = report.fractionLost;
             }
           });
+
+          if (fractionLost > 0.08) {
+            lossyStreak += 1;
+            cleanStreak = 0;
+          } else if (fractionLost < 0.02) {
+            cleanStreak += 1;
+            lossyStreak = 0;
+          } else {
+            lossyStreak = 0;
+            cleanStreak = 0;
+          }
+
+          if (videoSenderRef && lossyStreak >= 2 && currentBitrate > minBitrate) {
+            const next = Math.max(minBitrate, Math.round(currentBitrate * 0.75));
+            if (next !== currentBitrate) {
+              currentBitrate = next;
+              lossyStreak = 0;
+              await applyScreenBitrate(videoSenderRef, currentBitrate, encodingOpts);
+              console.log(`[Voice] 🔻 adaptive: loss ${(fractionLost * 100).toFixed(1)}% → cap ${(currentBitrate / 1000) | 0}kbps`);
+            }
+          } else if (videoSenderRef && cleanStreak >= 4 && currentBitrate < targetBitrate) {
+            const next = Math.min(targetBitrate, Math.round(currentBitrate * 1.15));
+            if (next !== currentBitrate) {
+              currentBitrate = next;
+              cleanStreak = 0;
+              await applyScreenBitrate(videoSenderRef, currentBitrate, encodingOpts);
+              console.log(`[Voice] 🔺 adaptive: clean → cap ${(currentBitrate / 1000) | 0}kbps`);
+            }
+          }
+
+          if (outboundInfo) {
+            console.log(`[Voice] 🖥️ outbound — ${outboundInfo} (loss ${(fractionLost * 100).toFixed(1)}%, cap ${(currentBitrate / 1000) | 0}kbps)`);
+          }
         } catch {}
-      }, 15_000);
+      }, 3_000);
 
       channelRef.current.send({
         type: "broadcast",
