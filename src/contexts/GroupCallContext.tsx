@@ -28,6 +28,7 @@ import { playSound, playLooping, stopLooping } from "@/lib/sounds";
 import { startNativeWindowAudioStream } from "@/lib/nativeWindowAudio";
 import { usePeerGains } from "@/lib/peerGain";
 import { armRemoteAudio } from "@/lib/iosAudioUnlock";
+import { STUN_FALLBACK_SERVERS, sanitizeIceServersForSession } from "@/lib/webrtcIce";
 
 export interface GroupPeer {
   userId: string;
@@ -80,7 +81,7 @@ interface GroupCallContextType {
   toggleMute: () => void;
   toggleDeafen: () => void;
   toggleVideo: () => Promise<void>;
-  toggleScreenShare: (sourceId?: string) => Promise<void>;
+  toggleScreenShare: (sourceId?: string, options?: { fps?: number; quality?: string }) => Promise<void>;
   /** Local camera stream (for self-tile preview). */
   localVideoStream: MediaStream | null;
   /** Local screenshare stream (for self-tile preview). */
@@ -97,10 +98,14 @@ interface GroupCallContextType {
 const GroupCallContext = createContext<GroupCallContextType>({} as GroupCallContextType);
 export const useGroupCall = () => useContext(GroupCallContext);
 
-const STUN_SERVERS: RTCIceServer[] = [
-  { urls: "stun:stun.l.google.com:19302" },
-  { urls: "stun:stun1.l.google.com:19302" },
-];
+const STUN_SERVERS: RTCIceServer[] = STUN_FALLBACK_SERVERS;
+
+const GROUP_SCREEN_RESOLUTIONS: Record<string, { width: number; height: number; bitrate: number }> = {
+  "480p": { width: 854, height: 480, bitrate: 600_000 },
+  "720p": { width: 1280, height: 720, bitrate: 1_200_000 },
+  "1080p": { width: 1920, height: 1080, bitrate: 2_200_000 },
+  "1440p": { width: 2560, height: 1440, bitrate: 3_000_000 },
+};
 
 /**
  * iOS Safari rejects strict sampleRate/sampleSize/channelCount on getUserMedia
