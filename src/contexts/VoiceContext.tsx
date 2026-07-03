@@ -2972,7 +2972,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       // This is the piece that lets the stream stay smooth on flaky wifi
       // without permanently sacrificing quality on good networks.
       const targetBitrate = maxBitrate;
-      const minBitrate = Math.max(300_000, Math.round(targetBitrate * 0.4));
+      // v0.4.4: Ultra never falls below 60% of its ceiling (so even under
+      // sustained loss it stays above Clarity/Motion bandwidth). Other
+      // presets keep the original 40% floor.
+      const minBitrate = Math.max(300_000, Math.round(targetBitrate * (isUltra ? 0.6 : 0.4)));
+      const recoveryStep = isUltra ? 1.20 : 1.15;
       let currentBitrate = targetBitrate;
       let lossyStreak = 0;
       let cleanStreak = 0;
