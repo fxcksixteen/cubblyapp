@@ -1,82 +1,48 @@
-## v0.4.3 tightening pass 2
+# Make Ultra Actually Ultra
 
-Four separate issues, all frontend-only. No version bump, no DB changes.
+Right now Ultra is the default for every user but under the hood it behaves the same as Clarity — same bitrate ladder, same encoder settings, only `contentHint = "detail"` and `maintain-resolution` degradation. So "Ultra" is a label, not a real quality tier.
 
----
+This plan makes Ultra the objectively best screenshare mode, so the default experience for everyone is the highest quality Cubbly can deliver, while Clarity and Motion remain the specialized alternatives for text or fast motion.
 
-### 1. Screenshare FPS is capped below what the user picked
+## What changes
 
-In `VoiceContext.tsx` around line 2772 there's a per-resolution FPS ceiling:
-- ≤480p → forced to 15
-- ≤720p → forced to 24
-- else → user's chosen fps
+**1. Ultra gets its own bitrate ladder (~30% above Discord parity)**
+`VoiceContext.tsx` `resBitrateBase`:
 
-So if the user picks 30 fps but 720p (or a preset that resolves to 720p), it silently sends 24 — and after further scale-down and encoder pressure the viewer sees ~15. This is why "30 fps" looks like a slideshow even after the choppiness fix.
+| Res    | Clarity/Motion (now) | Ultra (new)          |
+|--------|----------------------|-----------------------|
+| 480p   | 1.0 Mbps             | 1.5 Mbps              |
+| 720p30 | 2.5 Mbps             | 3.5 Mbps              |
+| 720p60 | 3.0 Mbps             | 4.5 Mbps              |
+| 1080p30| 4.5 Mbps             | 6.0 Mbps              |
+| 1080p60| 7.5 Mbps             | 10 Mbps               |
+| 1440p30| 8.0 Mbps             | 11 Mbps               |
+| 1440p60| 12 Mbps              | 16 Mbps               |
 
-**Fix:** honor the user's selected fps at 720p and above (only clamp at ≤480p, and even there raise the floor to 20). Keep `contentHint = "motion"` when Optimize-For-Motion is on so the encoder trades resolution for framerate instead of the other way around. Add a one-line diag log showing "requested Xfps, negotiated Yfps" so future regressions are visible.
+**2. Ultra uses VP9 temporal scalability (`L1T3`)**
+Adds `scalabilityMode: "L1T3"` on the sender encoding when the negotiated codec is VP9/AV1. Under packet loss, the decoder drops the enhancement layer instead of the whole frame — so framerate stays stable without the picture turning to mush. Clarity/Motion stay on single-layer.
 
----
+**3. Ultra degradation = `balanced`**
+Instead of "maintain-resolution" (Clarity) or "maintain-framerate" (Motion), Ultra sets `degradationPreference = "balanced"` so WebRTC trades res *and* fps proportionally when the network dips — which is what actually looks best for mixed content.
 
-### 2. Wishlist shows "Petite" instead of "Cute"
+**4. Ultra keeps `contentHint = "detail"`**
+Same as today (sharpness-biased), but combined with the higher bitrate + temporal layers it no longer needs to sacrifice framerate.
 
-`ShopView` and `ShopItemsGrid` already remap `badge_petite → { name: "Cute", description: ... }` client-side (v0.3.17). `UserProfileCard.tsx` (line 137-145) hydrates wishlist rows straight from `shop_items` without that remap, so on someone else's profile the wishlisted badge still reads "Petite".
+**5. Adaptive-bitrate floor raised for Ultra**
+The adaptive loop (v0.4.4) drops as low as 40% of the ceiling. For Ultra we raise the floor to 60%, so even under sustained loss Ultra never falls below Clarity-tier bandwidth. Ceiling recovery step also bumped from 15% to 20%.
 
-**Fix:** apply the same remap in `UserProfileCard`'s wishlist mapper.
+**6. Opus audio stays 256 kbps stereo for all presets** (already correct).
 
----
+**7. Settings copy updated**
+`VoiceVideoSettings.tsx`: Ultra description becomes "Maximum quality — higher bitrate, VP9 temporal layers, best possible picture. Recommended for everyone." Keep the "Rec." badge.
 
-### 3. Premium animated themes don't render in the desktop app when HW-accel is off
+**8. Changelog**
+One-line v0.4.4 bullet: "Ultra screenshare preset is now the true top tier — higher bitrate ceiling and VP9 temporal layers for a sharper, smoother picture under any network."
 
-Themes that still work with software rendering (Space, Sky, Snowy, Hills) use only `transform` + `background-position` animations — cheap on CPU.
+## Files touched
 
-Themes that don't render (Cosmic Nebula, Cyber Grid, Volcanic, Bioluminescent Abyss, Aurora Borealis, Sakura Storm) all lean on:
-- `filter: blur(38–60px)` on full-screen layers
-- `mix-blend-mode: screen`
-- `drop-shadow()` filter animations
+- `src/contexts/VoiceContext.tsx` — bitrate table branch on `opt === "ultra"`, `scalabilityMode` in `applyScreenBitrate`, `degradationPreference` branch, adaptive-loop floor/step branch
+- `src/components/app/settings/VoiceVideoSettings.tsx` — Ultra description
+- `src/lib/changelog.ts` — one bullet
 
-Chromium's software rasterizer effectively can't paint these at interactive framerates — the layers get dropped or freeze. That's why previews look completely dead when HW accel is off.
-
-**Fix:** detect "software rendering mode" and swap those six themes to a lightweight static-fallback variant while keeping the fancy version for GPU users.
-- Electron main process already knows the HW-accel setting; expose it via `electronAPI.getHardwareAcceleration()` (already exists per `main.cjs` line 476) and set `document.documentElement.dataset.gfx = "software"` on boot when it's off.
-- Add `[data-gfx="software"] .cb-nebula-glow, .cb-aurora-curtain, .cb-abyss-jelly, .cb-volcanic-glow, .cb-cyber-scan, .cb-sakura-petals { filter: none; mix-blend-mode: normal; animation: none; }` style guards, and provide a simple gradient fallback so the theme still visually reads as its brand color palette.
-- Same guard applied inside the shop *previews* (`ShopItemPreview`) so the tile isn't a dead black square.
-
-This is not a "make it identical without a GPU" fix — that's impossible with those effects. It's "the theme still looks like itself as a static/soft-animated version" so previews and the equipped background never render as nothing.
-
----
-
-### 4. Advanced game activity (Valorant / Fortnite / Roblox / Marvel Rivals) not visible publicly
-
-Pipeline is wired correctly (`electron/gameDetails.cjs` → `electronAPI.getGameDetails` → `activity_details` table → realtime subscription → `ActivityCard` render). DB grants + RLS are correct. So the failure is at the parser level: either the log path is wrong for the current game version, or the regex doesn't match what the game actually writes.
-
-Since I can't run these games in the sandbox to confirm the current log format, the plan is:
-
-1. **Add a `[game-details]` diag channel** (main-process console + renderer console when devtools are open) that logs: which parser ran, which log/lockfile path it read, and whether it returned a payload or null. This makes it obvious *why* nothing shows up when the user next tests.
-2. **Widen the parsers** with the patterns most likely to hit current versions:
-   - Valorant: also try `Loading map .*Maps/([A-Za-z]+)/` and the `Game state:` line.
-   - Roblox: also try `Report game_join_loadtime` (contains placeId + universeId in modern logs) and the `Connecting to game '…'` line.
-   - Fortnite: also try `MatchState[:=]\s*(\w+)` and `PlaylistName[:=]`.
-   - Marvel Rivals: also read the newer `MarvelGame\Saved\Logs\MarvelGame.log` path in addition to `Marvel\Saved\Logs`.
-3. **LoL:** call the live-client endpoint on the `HTTPS 2999` route with the `riotgames.pem`-style cert-ignore path (already correct) but also fall back to `/liveclientdata/activeplayername` when the full payload 404s during loading screens.
-4. Keep every parser wrapped in try/catch — a broken regex must never break the activity tick.
-
-After this ships, if a specific game still shows no details, the console will name exactly which parser failed and where, and I can patch that one regex without another exploration round.
-
----
-
-### Files touched
-
-- `src/contexts/VoiceContext.tsx` — screenshare fps floor
-- `src/components/app/chat/UserProfileCard.tsx` — wishlist Petite→Cute remap
-- `src/index.css` — `[data-gfx="software"]` fallbacks for six premium themes
-- `src/components/app/shop/ShopItemPreview.tsx` — mirror the same fallback in previews
-- `src/main.tsx` (or a small `useGfxMode` bridge) — set `data-gfx` from `electronAPI.getHardwareAcceleration()`
-- `electron/preload.cjs` — expose `getHardwareAcceleration` if not already whitelisted
-- `electron/gameDetails.cjs` — wider regexes + `[game-details]` diag logs
-- `src/lib/changelog.ts` — one-line bullets for the four fixes
-
-### Out of scope
-
-- TURN (confirmed not needed for home wifi).
-- Full glare / perfect-negotiation refactor.
-- Any DB / RLS / schema change.
+No version bump, no backend changes, no new dependencies.
