@@ -182,10 +182,7 @@ const SidebarGroupCallCard = ({ fallbackServerInfo = null }: Props = {}) => {
         onClose={() => setShowSharePicker(false)}
         onSelect={(_type: ScreenShareType, _options) => {
           setShowSharePicker(false);
-          // GroupCall toggleScreenShare accepts an optional Electron sourceId.
-          // The DM picker returns richer options; for server calls we pass the
-          // sourceId when available and let getDisplayMedia handle the browser case.
-          toggleScreenShare((_options as any)?.sourceId);
+          toggleScreenShare((_options as any)?.sourceId, { fps: (_options as any)?.fps, quality: (_options as any)?.quality });
         }}
       />
     </div>
