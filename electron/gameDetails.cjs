@@ -284,22 +284,29 @@ function parseRoblox() {
     logPath = newestFileIn(dir, (n) => n.endsWith(".log"));
     if (logPath) break;
   }
-  if (!logPath) return null;
+  if (!logPath) { console.log("[game-details] roblox: no log directory found"); return null; }
   const tail = tailFile(logPath, 128 * 1024);
   if (!tail) return null;
 
   // Try several common patterns Roblox emits for the joined experience.
   const placeNameMatch =
     [...tail.matchAll(/placeName[\s"':=]+"?([^"\r\n,}]+)"?/gi)].pop() ||
-    [...tail.matchAll(/GameName[\s"':=]+"?([^"\r\n,}]+)"?/gi)].pop();
+    [...tail.matchAll(/GameName[\s"':=]+"?([^"\r\n,}]+)"?/gi)].pop() ||
+    [...tail.matchAll(/Connecting to game '([^']+)'/gi)].pop();
   const placeIdMatch =
     [...tail.matchAll(/placeId[\s"':=]+(\d{5,})/gi)].pop() ||
-    [...tail.matchAll(/Joining game [^\d]*(\d{5,})/gi)].pop();
-  const universeMatch = [...tail.matchAll(/universeId[\s"':=]+(\d{5,})/gi)].pop();
+    [...tail.matchAll(/Joining game [^\d]*(\d{5,})/gi)].pop() ||
+    [...tail.matchAll(/game_join_loadtime[^0-9]+placeid[:=\s"']+(\d{5,})/gi)].pop();
+  const universeMatch =
+    [...tail.matchAll(/universeId[\s"':=]+(\d{5,})/gi)].pop() ||
+    [...tail.matchAll(/game_join_loadtime[^0-9]+universeid[:=\s"']+(\d{5,})/gi)].pop();
   const serverTypeMatch = [...tail.matchAll(/serverType[\s"':=]+"?([A-Za-z_]+)/gi)].pop();
   const studio = /RobloxStudio/i.test(logPath);
 
-  if (!placeNameMatch && !placeIdMatch && !universeMatch && !studio) return null;
+  if (!placeNameMatch && !placeIdMatch && !universeMatch && !studio) {
+    console.log("[game-details] roblox: log found but no matches");
+    return null;
+  }
   return {
     experience: placeNameMatch?.[1]?.trim() || null,
     placeId: placeIdMatch?.[1] ? Number(placeIdMatch[1]) : null,
@@ -319,6 +326,7 @@ const PARSERS = {
   "marvel rivals": { key: "marvel-rivals", run: async () => parseMarvelRivals() },
   "marvelrivals": { key: "marvel-rivals", run: async () => parseMarvelRivals() },
   "marvel-win64-shipping": { key: "marvel-rivals", run: async () => parseMarvelRivals() },
+  "marvelgame-win64-shipping": { key: "marvel-rivals", run: async () => parseMarvelRivals() },
   "fortnite": { key: "fortnite", run: async () => parseFortnite() },
   "fortniteclient-win64-shipping": { key: "fortnite", run: async () => parseFortnite() },
   "roblox": { key: "roblox", run: async () => parseRoblox() },
@@ -331,12 +339,14 @@ async function getGameDetails(identifier) {
   if (!identifier) return null;
   const key = String(identifier).toLowerCase().trim();
   const entry = PARSERS[key];
-  if (!entry) return null;
+  if (!entry) { console.log(`[game-details] no parser for "${key}"`); return null; }
   try {
     const payload = await entry.run();
-    if (!payload) return null;
+    if (!payload) { console.log(`[game-details] ${entry.key}: parser returned null for "${key}"`); return null; }
+    console.log(`[game-details] ${entry.key}: OK`, payload);
     return { gameKey: entry.key, payload };
-  } catch {
+  } catch (e) {
+    console.log(`[game-details] ${entry.key}: threw`, e?.message || e);
     return null;
   }
 }
