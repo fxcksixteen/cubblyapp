@@ -5,6 +5,7 @@ import { playSound, playLooping, stopLooping } from "@/lib/sounds";
 import { startNativeWindowAudioStream } from "@/lib/nativeWindowAudio";
 import { usePeerGains } from "@/lib/peerGain";
 import { armRemoteAudio } from "@/lib/iosAudioUnlock";
+import { STUN_FALLBACK_SERVERS, sanitizeIceServersForSession } from "@/lib/webrtcIce";
 
 type ParticipantStatePatch = {
   is_muted?: boolean;
@@ -183,10 +184,7 @@ function patchScreenShareOpusSdp(sdp: string): string {
   );
 }
 
-const STUN_ONLY_SERVERS: RTCIceServer[] = [
-  { urls: "stun:stun.l.google.com:19302" },
-  { urls: "stun:stun1.l.google.com:19302" },
-];
+const STUN_ONLY_SERVERS: RTCIceServer[] = STUN_FALLBACK_SERVERS;
 
 /**
  * v0.3.12 — Reliable signaling send.
@@ -512,6 +510,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   // throttle itself while the user is in a call.
   useEffect(() => {
     (window as any).__cubblyInCall = !!activeCall && activeCall.state !== "ended";
+    try { window.dispatchEvent(new Event("cubbly:realtime-media-load-change")); } catch {}
     return () => { (window as any).__cubblyInCall = false; };
   }, [activeCall]);
 
@@ -525,6 +524,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   // PowerShell calls block the main thread). Mirrors `__cubblyInCall`.
   useEffect(() => {
     (window as any).__cubblyScreenSharing = !!isScreenSharing;
+    try { window.dispatchEvent(new Event("cubbly:realtime-media-load-change")); } catch {}
     return () => { (window as any).__cubblyScreenSharing = false; };
   }, [isScreenSharing]);
 
@@ -634,11 +634,14 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       .invoke("get-turn-credentials", {
         body: { preferredRegion },
       })
-      .then(({ data, error }) => {
+      .then(async ({ data, error }) => {
         if (!error && data?.iceServers) {
-          iceServersRef.current = data.iceServers;
+          iceServersRef.current = await sanitizeIceServersForSession(data.iceServers);
+        } else {
+          iceServersRef.current = STUN_ONLY_SERVERS;
         }
-      });
+      })
+      .catch(() => { iceServersRef.current = STUN_ONLY_SERVERS; });
   }, [user, settings.serverRegion, detectedRegion]);
 
   useEffect(() => {
@@ -1229,6 +1232,28 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     });
   }, [user]);
 
+  const peerLooksLiveInCall = useCallback(async (callEventId: string, peerUserId?: string | null, freshMs = 25_000): Promise<boolean> => {
+    if (!user) return false;
+    try {
+      const { data } = await (supabase as any)
+        .from("call_participants")
+        .select("user_id, last_seen_at, joined_at, left_at")
+        .eq("call_event_id", callEventId)
+        .is("left_at", null);
+
+      const now = Date.now();
+      return !!(data as any[])?.some((row: any) => {
+        if (row.user_id === user.id) return false;
+        if (peerUserId && row.user_id !== peerUserId) return false;
+        const baselineStr = row.last_seen_at ?? row.joined_at;
+        const baseline = baselineStr ? new Date(baselineStr).getTime() : 0;
+        return baseline > 0 && now - baseline < freshMs;
+      });
+    } catch {
+      return false;
+    }
+  }, [user]);
+
   const initializeOutgoingConnection = useCallback(async (channel: ReturnType<typeof supabase.channel>, conversationId: string, options?: { forceFreshOffer?: boolean }) => {
     if (!user) return;
     const outgoingCallMeta = outgoingCallMetaRef.current;
@@ -1368,16 +1393,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       // Only trigger if the callee looks alive on their end.
       let peerAlive = false;
       try {
-        const { data } = await (supabase as any)
-          .from("call_participants")
-          .select("user_id, last_heartbeat_at")
-          .eq("call_event_id", watchedCallEventId);
-        const now = Date.now();
-        peerAlive = !!(data as any[])?.some((row: any) => {
-          if (row.user_id === user.id) return false;
-          const hb = row.last_heartbeat_at ? new Date(row.last_heartbeat_at).getTime() : 0;
-          return now - hb < 20_000;
-        });
+        peerAlive = await peerLooksLiveInCall(watchedCallEventId, activeCallRef.current?.peerId, 25_000);
       } catch {}
       if (!peerAlive) return;
       renegotiated = true;
@@ -1399,7 +1415,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     void tryAutoRenegotiate(6000);
     void tryAutoRenegotiate(10000);
 
-  }, [user, getUserMedia, createPeerConnection, startAudioLevelMonitor, stopAudioLevelMonitor]);
+  }, [user, getUserMedia, createPeerConnection, startAudioLevelMonitor, stopAudioLevelMonitor, peerLooksLiveInCall]);
 
   const setupSignaling = useCallback((conversationId: string): Promise<ReturnType<typeof supabase.channel>> => {
     return new Promise((resolve, reject) => {
@@ -1460,6 +1476,18 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             // v0.3.8: do NOT endCall on signaling errors — they're often
             // transient races on join. The user can hang up manually.
           }
+          return;
+        }
+
+        if (payload.type === "peer-accepted") {
+          if (payload.callEventId && callEventIdSnapshot && payload.callEventId !== callEventIdSnapshot) {
+            return;
+          }
+          console.log("[acceptDiag] peer.accepted ack received", payload.callEventId);
+          stopLooping("outgoingRing");
+          setActiveCall(prev => prev && prev.conversationId === conversationId
+            ? { ...prev, state: prev.state === "connected" ? "connected" : "calling", ringTimedOut: false, peerLeftAt: undefined }
+            : prev);
           return;
         }
 
@@ -2388,6 +2416,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
       const channel = await setupSignaling(acceptedCall.conversationId);
 
+      await sendSignalReliably(channel, {
+        type: "peer-accepted",
+        senderId: user.id,
+        callEventId: acceptedCall.callEventId,
+      }, "peer-accepted");
+
       // FAST PATH — caller's offer was prefetched during the pre-accept
       // ready-for-offer. Just answer it.
       if (acceptedCall.offer) {
@@ -2730,18 +2764,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         "1440p": 3_000_000,
       };
       const baseFor = resBitrateBase[effectiveQuality] ?? 1_200_000;
-      const maxBitrate = Math.min(
-        4_000_000,
-        opt === "ultra"  ? Math.round(baseFor * 1.5) :
-        opt === "motion" ? Math.round(baseFor * 0.85) :
-        baseFor
-      );
+      const maxBitrate = baseFor;
       // Per-preset FPS floor: at low resolutions the encoder simply can't
       // keep up with 30/60 fps of 4K native input, so cap FPS unless the
       // user explicitly picked motion.
       const targetHeight = res?.height ?? 1080;
       const fpsCap =
-        opt === "motion" ? effectiveFps :
         targetHeight <= 480 ? Math.min(effectiveFps, 15) :
         targetHeight <= 720 ? Math.min(effectiveFps, 24) :
         effectiveFps;
@@ -2858,6 +2886,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
       // Periodically log outbound stats so we can confirm the encoder is
       // actually delivering the bitrate / resolution we asked for.
+      let lastBytes = 0;
+      let lastStatsAt = performance.now();
       const statsInterval = setInterval(async () => {
         if (!screenPcOutRef.current || screenPcOutRef.current !== screenPc) {
           clearInterval(statsInterval);
@@ -2867,11 +2897,16 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           const stats = await screenPc.getStats();
           stats.forEach((report: any) => {
             if (report.type === "outbound-rtp" && report.kind === "video") {
-              console.log(`[Voice] 🖥️ outbound screen video — ${report.frameWidth}x${report.frameHeight}@${report.framesPerSecond}fps, bitrate≈${Math.round((report.bytesSent || 0) * 8 / 1000)}kbps total`);
+              const now = performance.now();
+              const bytes = report.bytesSent || 0;
+              const kbps = lastBytes > 0 ? Math.round(((bytes - lastBytes) * 8) / Math.max(1, now - lastStatsAt)) : 0;
+              lastBytes = bytes;
+              lastStatsAt = now;
+              console.log(`[Voice] 🖥️ outbound screen video — ${report.frameWidth}x${report.frameHeight}@${report.framesPerSecond}fps, bitrate≈${kbps}kbps`);
             }
           });
         } catch {}
-      }, 5000);
+      }, 15_000);
 
       channelRef.current.send({
         type: "broadcast",

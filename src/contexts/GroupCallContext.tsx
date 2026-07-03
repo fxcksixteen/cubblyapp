@@ -28,6 +28,7 @@ import { playSound, playLooping, stopLooping } from "@/lib/sounds";
 import { startNativeWindowAudioStream } from "@/lib/nativeWindowAudio";
 import { usePeerGains } from "@/lib/peerGain";
 import { armRemoteAudio } from "@/lib/iosAudioUnlock";
+import { STUN_FALLBACK_SERVERS, sanitizeIceServersForSession } from "@/lib/webrtcIce";
 
 export interface GroupPeer {
   userId: string;
@@ -80,7 +81,7 @@ interface GroupCallContextType {
   toggleMute: () => void;
   toggleDeafen: () => void;
   toggleVideo: () => Promise<void>;
-  toggleScreenShare: (sourceId?: string) => Promise<void>;
+  toggleScreenShare: (sourceId?: string, options?: { fps?: number; quality?: string }) => Promise<void>;
   /** Local camera stream (for self-tile preview). */
   localVideoStream: MediaStream | null;
   /** Local screenshare stream (for self-tile preview). */
@@ -97,10 +98,14 @@ interface GroupCallContextType {
 const GroupCallContext = createContext<GroupCallContextType>({} as GroupCallContextType);
 export const useGroupCall = () => useContext(GroupCallContext);
 
-const STUN_SERVERS: RTCIceServer[] = [
-  { urls: "stun:stun.l.google.com:19302" },
-  { urls: "stun:stun1.l.google.com:19302" },
-];
+const STUN_SERVERS: RTCIceServer[] = STUN_FALLBACK_SERVERS;
+
+const GROUP_SCREEN_RESOLUTIONS: Record<string, { width: number; height: number; bitrate: number }> = {
+  "480p": { width: 854, height: 480, bitrate: 600_000 },
+  "720p": { width: 1280, height: 720, bitrate: 1_200_000 },
+  "1080p": { width: 1920, height: 1080, bitrate: 2_200_000 },
+  "1440p": { width: 2560, height: 1440, bitrate: 3_000_000 },
+};
 
 /**
  * iOS Safari rejects strict sampleRate/sampleSize/channelCount on getUserMedia
@@ -150,6 +155,33 @@ function mungeGroupCallOpusSdp(sdp: string | undefined | null): string {
   });
 }
 
+async function applyGroupScreenVideoParams(sender: RTCRtpSender, opts: { bitrate: number; maxFramerate: number; scaleResolutionDownBy: number }) {
+  try {
+    const params = sender.getParameters();
+    if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
+    params.encodings[0].maxBitrate = opts.bitrate;
+    (params.encodings[0] as any).maxFramerate = opts.maxFramerate;
+    if (opts.scaleResolutionDownBy > 1) {
+      (params.encodings[0] as any).scaleResolutionDownBy = opts.scaleResolutionDownBy;
+    }
+    (params.encodings[0] as any).networkPriority = "medium";
+    (params.encodings[0] as any).priority = "medium";
+    (params as any).degradationPreference = "maintain-framerate";
+    await sender.setParameters(params);
+  } catch {}
+}
+
+async function applyRealtimeAudioParams(sender: RTCRtpSender, bitrate = 128_000) {
+  try {
+    const params = sender.getParameters();
+    if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
+    params.encodings[0].maxBitrate = bitrate;
+    (params.encodings[0] as any).networkPriority = "high";
+    (params.encodings[0] as any).priority = "high";
+    await sender.setParameters(params);
+  } catch {}
+}
+
 export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
   const { user } = useAuth();
   const [activeCall, setActiveCall] = useState<GroupActiveCall | null>(null);
@@ -181,6 +213,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
   // Local camera + screenshare track refs
   const localVideoTrackRef = useRef<MediaStreamTrack | null>(null);
   const localScreenTrackRef = useRef<MediaStreamTrack | null>(null);
+  const localScreenEncodingRef = useRef<{ bitrate: number; maxFramerate: number; scaleResolutionDownBy: number } | null>(null);
   /** Cleanup fn for an active native (WASAPI) per-window audio capture, if any. */
   const nativeWindowAudioStopRef = useRef<(() => void) | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
@@ -194,12 +227,24 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
   // Per-user volume / local mute (shared with VoiceContext via localStorage).
   const { getUserVolume, setUserVolume, isUserMuted, setUserMuted, setLocalDeafened, attachPeerGain, clearAllPeerGains } = usePeerGains();
 
+  useEffect(() => {
+    (window as any).__cubblyInCall = !!activeCall;
+    (window as any).__cubblyScreenSharing = !!activeCall?.isScreenSharing;
+    try { window.dispatchEvent(new Event("cubbly:realtime-media-load-change")); } catch {}
+    return () => {
+      (window as any).__cubblyInCall = false;
+      (window as any).__cubblyScreenSharing = false;
+    };
+  }, [activeCall?.conversationId, activeCall?.isScreenSharing]);
+
   // Fetch ICE servers (same as 1-on-1)
   useEffect(() => {
     if (!user) return;
-    supabase.functions.invoke("get-turn-credentials").then(({ data, error }) => {
-      if (!error && data?.iceServers) iceServersRef.current = data.iceServers;
-    });
+    supabase.functions.invoke("get-turn-credentials").then(async ({ data, error }) => {
+      iceServersRef.current = !error && data?.iceServers
+        ? await sanitizeIceServersForSession(data.iceServers)
+        : STUN_SERVERS;
+    }).catch(() => { iceServersRef.current = STUN_SERVERS; });
   }, [user]);
 
   /** Load and cache a profile (display_name + avatar) by user_id. */
@@ -228,6 +273,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       const data = new Uint8Array(analyser.frequencyBinCount);
       let lastSelf = 0;
       const tick = () => {
+        if (typeof document !== "undefined" && document.hidden) return;
         analyser.getByteFrequencyData(data);
         const avg = data.reduce((s, v) => s + v, 0) / data.length;
         const next = (avg / 255) * 100;
@@ -235,16 +281,17 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
           lastSelf = next;
           setSelfAudioLevel(next);
         }
-        selfAnimRef.current = requestAnimationFrame(tick);
       };
       tick();
+      selfAnimRef.current = window.setInterval(tick, 100) as unknown as number;
     } catch (e) {
       console.warn("[GroupCall] Failed to start self audio monitor:", e);
     }
   }, []);
 
   const stopSelfMonitor = useCallback(() => {
-    cancelAnimationFrame(selfAnimRef.current);
+    try { window.clearInterval(selfAnimRef.current as unknown as number); } catch {}
+    try { cancelAnimationFrame(selfAnimRef.current); } catch {}
     audioContextRef.current?.close().catch(() => {});
     audioContextRef.current = null;
     setSelfAudioLevel(0);
@@ -260,9 +307,10 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       analyser.smoothingTimeConstant = 0.35;
       source.connect(analyser);
       const data = new Uint8Array(analyser.frequencyBinCount);
-      let raf = 0;
+      let interval = 0;
       let lastLevel = 0;
       const tick = () => {
+        if (typeof document !== "undefined" && document.hidden) return;
         analyser.getByteFrequencyData(data);
         const avg = data.reduce((s, v) => s + v, 0) / data.length;
         const next = (avg / 255) * 100;
@@ -272,11 +320,11 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
           lastLevel = next;
           setPeers(prev => prev.map(p => p.userId === peerId ? { ...p, audioLevel: next } : p));
         }
-        raf = requestAnimationFrame(tick);
       };
       tick();
+      interval = window.setInterval(tick, 100);
       audioCleanupRef.current.set(peerId, () => {
-        cancelAnimationFrame(raf);
+        window.clearInterval(interval);
         ctx.close().catch(() => {});
       });
     } catch (e) {
@@ -334,7 +382,8 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     // Add our local audio tracks
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => {
-        pc.addTrack(track, localStreamRef.current!);
+        const sender = pc.addTrack(track, localStreamRef.current!);
+        if (track.kind === "audio") void applyRealtimeAudioParams(sender);
       });
     }
     // If we already have local video / screen on, add those too (so a NEW peer
@@ -351,6 +400,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       Object.defineProperty(screenStream, "id", { value: `cubbly-screen-${user.id}` });
       const sender = pc.addTrack(localScreenTrackRef.current, screenStream);
       screenSendersRef.current.set(peerId, sender);
+      if (localScreenEncodingRef.current) void applyGroupScreenVideoParams(sender, localScreenEncodingRef.current);
     }
 
     pc.ontrack = (event) => {
@@ -485,7 +535,16 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     };
 
     pc.oniceconnectionstatechange = () => {
-      if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "closed") {
+      if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+        pc.getSenders().forEach((sender) => {
+          if (sender.track?.kind === "audio") void applyRealtimeAudioParams(sender);
+        });
+      }
+      if (pc.iceConnectionState === "failed") {
+        try { (pc as any).restartIce?.(); } catch {}
+        return;
+      }
+      if (pc.iceConnectionState === "closed") {
         removePeer(peerId);
       }
     };
@@ -751,6 +810,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
             await pc.addIceCandidate(new RTCIceCandidate(payload.candidate)).catch(() => {});
           } else {
             const queue = queuedIceRef.current.get(payload.fromUserId) || [];
+            if (queue.length >= 50) queue.shift();
             queue.push(payload.candidate);
             queuedIceRef.current.set(payload.fromUserId, queue);
           }
@@ -1042,11 +1102,18 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
    * accepts an optional sourceId from the screen picker. Auto-disables when
    * the user clicks "Stop sharing" in the OS prompt.
    */
-  const toggleScreenShare = useCallback(async (sourceId?: string) => {
+  const toggleScreenShare = useCallback(async (sourceId?: string, options?: { fps?: number; quality?: string }) => {
     if (!activeCall || !user) return;
     if (!activeCall.isScreenSharing) {
       let stream: MediaStream;
       const wantAudio = true;
+      const effectiveQuality = options?.quality || "720p";
+      const selectedRes = GROUP_SCREEN_RESOLUTIONS[effectiveQuality] || GROUP_SCREEN_RESOLUTIONS["720p"];
+      const targetFps = selectedRes.height <= 480
+        ? Math.min(options?.fps ?? 15, 15)
+        : selectedRes.height <= 720
+          ? Math.min(options?.fps ?? 24, 24)
+          : Math.min(options?.fps ?? 30, 30);
       // High-quality stereo audio constraints — disable voice DSP so music/games sound right.
       const screenAudioConstraints: any = {
         echoCancellation: false,
@@ -1079,7 +1146,11 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
           await api.setSelectedShareSource(chosenId, useChromiumLoopback);
           try {
             stream = await navigator.mediaDevices.getDisplayMedia({
-              video: true,
+              video: {
+                width: { ideal: selectedRes.width },
+                height: { ideal: selectedRes.height },
+                frameRate: { ideal: targetFps, max: targetFps },
+              },
               audio: useChromiumLoopback ? screenAudioConstraints : false,
             } as any);
           } finally {
@@ -1108,7 +1179,11 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
           }
         } else {
           stream = await navigator.mediaDevices.getDisplayMedia({
-            video: true,
+            video: {
+              width: { ideal: selectedRes.width },
+              height: { ideal: selectedRes.height },
+              frameRate: { ideal: targetFps, max: targetFps },
+            },
             audio: wantAudio ? ({ ...screenAudioConstraints, systemAudio: "include" } as any) : false,
           } as any);
         }
@@ -1117,36 +1192,28 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
       const track = stream.getVideoTracks()[0];
+      try { (track as any).contentHint = "motion"; } catch {}
+      try { await track.applyConstraints({ width: selectedRes.width, height: selectedRes.height, frameRate: targetFps }); } catch {}
+      const actualHeight = (track.getSettings?.().height || 0) as number;
+      const encoding = {
+        bitrate: selectedRes.bitrate,
+        maxFramerate: targetFps,
+        scaleResolutionDownBy: actualHeight > selectedRes.height ? +(actualHeight / selectedRes.height).toFixed(2) : 1,
+      };
+      localScreenEncodingRef.current = encoding;
       localScreenTrackRef.current = track;
       setLocalScreenStream(stream);
-
-      const applyHQ = async (sender: RTCRtpSender, kind: "video" | "audio") => {
-        try {
-          const params = sender.getParameters();
-          if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
-          if (kind === "video") {
-            params.encodings[0].maxBitrate = 12_000_000;
-            (params.encodings[0] as any).scaleResolutionDownBy = 1;
-            (params as any).degradationPreference = "maintain-resolution";
-          } else {
-            params.encodings[0].maxBitrate = 256_000;
-          }
-          (params.encodings[0] as any).networkPriority = "high";
-          (params.encodings[0] as any).priority = "high";
-          await sender.setParameters(params);
-        } catch {}
-      };
 
       for (const [peerId, pc] of pcsRef.current) {
         const labeledStream = new MediaStream([track]);
         Object.defineProperty(labeledStream, "id", { value: `cubbly-screen-${user.id}` });
         const sender = pc.addTrack(track, labeledStream);
         screenSendersRef.current.set(peerId, sender);
-        applyHQ(sender, "video");
+        void applyGroupScreenVideoParams(sender, encoding);
         stream.getAudioTracks().forEach((atrack) => {
           try {
             const aSender = pc.addTrack(atrack, labeledStream);
-            applyHQ(aSender, "audio");
+            void applyRealtimeAudioParams(aSender, 192_000);
           } catch (e) { console.warn("[GroupCall] add screen audio failed:", e); }
         });
       }
@@ -1163,6 +1230,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       const track = localScreenTrackRef.current;
       if (track) track.stop();
       localScreenTrackRef.current = null;
+      localScreenEncodingRef.current = null;
       setLocalScreenStream(null);
       // Tear down native per-window audio if it was active
       if (nativeWindowAudioStopRef.current) {
