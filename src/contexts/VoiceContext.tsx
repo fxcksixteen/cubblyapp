@@ -5,6 +5,7 @@ import { playSound, playLooping, stopLooping } from "@/lib/sounds";
 import { startNativeWindowAudioStream } from "@/lib/nativeWindowAudio";
 import { usePeerGains } from "@/lib/peerGain";
 import { armRemoteAudio } from "@/lib/iosAudioUnlock";
+import { STUN_FALLBACK_SERVERS, sanitizeIceServersForSession } from "@/lib/webrtcIce";
 
 type ParticipantStatePatch = {
   is_muted?: boolean;
@@ -183,10 +184,7 @@ function patchScreenShareOpusSdp(sdp: string): string {
   );
 }
 
-const STUN_ONLY_SERVERS: RTCIceServer[] = [
-  { urls: "stun:stun.l.google.com:19302" },
-  { urls: "stun:stun1.l.google.com:19302" },
-];
+const STUN_ONLY_SERVERS: RTCIceServer[] = STUN_FALLBACK_SERVERS;
 
 /**
  * v0.3.12 — Reliable signaling send.
