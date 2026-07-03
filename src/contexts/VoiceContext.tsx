@@ -510,6 +510,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   // throttle itself while the user is in a call.
   useEffect(() => {
     (window as any).__cubblyInCall = !!activeCall && activeCall.state !== "ended";
+    try { window.dispatchEvent(new Event("cubbly:realtime-media-load-change")); } catch {}
     return () => { (window as any).__cubblyInCall = false; };
   }, [activeCall]);
 
@@ -523,6 +524,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   // PowerShell calls block the main thread). Mirrors `__cubblyInCall`.
   useEffect(() => {
     (window as any).__cubblyScreenSharing = !!isScreenSharing;
+    try { window.dispatchEvent(new Event("cubbly:realtime-media-load-change")); } catch {}
     return () => { (window as any).__cubblyScreenSharing = false; };
   }, [isScreenSharing]);
 
