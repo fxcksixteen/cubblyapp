@@ -45,6 +45,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Wishlisted “Cute” badge no longer shows as its old name on other people's profiles.",
       "Premium animated themes now render properly on the desktop app when hardware acceleration is off.",
       "More reliable in-game details (map, hero, score) for Valorant, Fortnite, Marvel Rivals and Roblox.",
+      "Activity time now shows just the clock (e.g. 12:34) instead of “12:34 elapsed”.",
     ],
   },
   {
