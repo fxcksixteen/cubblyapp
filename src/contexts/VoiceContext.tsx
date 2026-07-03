@@ -2866,6 +2866,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         scaleResolutionDownBy,
         maxFramerate: fpsCap,
         preferMotion: opt === "motion",
+        ultra: isUltra,
       };
 
 
