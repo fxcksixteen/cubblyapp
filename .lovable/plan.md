@@ -1,60 +1,82 @@
-# v0.4.3 Final Hardening Pass
+## v0.4.3 tightening pass 2
 
-Honest answer: the big fixes are in, but "bulletproof" is a strong word for realtime voice/video over WebRTC. Here's what's still worth tightening before we call v0.4.3 truly done.
-
-## What's already solid
-- Call pickup watchdog + `peer-accepted` ack (no more stuck-on-ringing)
-- TURN expiry auto-detected, strips dead creds, falls back to STUN
-- Activity/game polling backs off during calls
-- Screenshare encoder-level downscale + strict FPS/bitrate caps
-- Audio meters throttled to 10Hz + pause when hidden
-- Group calls at parity with 1:1
-
-## What's NOT bulletproof yet
-
-### 1. TURN is expired — real-world impact
-Without a working relay, ~10–20% of users on strict NAT / mobile hotspots / corporate wifi still can't connect at all. STUN fallback doesn't help them. Options:
-- Wire in Cloudflare's free TURN (Realtime product, generous free tier)
-- Or Metered.ca free tier (50GB/mo)
-- Or just document it as a known limit until you renew
-
-### 2. Call reliability edge cases still untested
-- Simultaneous call-both-sides (glare) — does the `peer-accepted` ack handle it?
-- Network switch mid-call (wifi → cellular) — ICE restart path exists but no verification
-- Rapid hang-up + redial within 2s — could race the watchdog
-
-### 3. Screenshare — no adaptive downshift
-Current caps are static per quality tier. If bandwidth drops mid-stream, we don't drop resolution automatically. Chrome's `degradationPreference: maintain-framerate` helps but doesn't rescale.
-
-### 4. Game-lag — one gap remains
-`ActivityContext` backs off during calls, but the **initial** game scan on launch is still heavy. First 2–3 seconds after launching a game while in-call could still hitch.
-
-### 5. Group calls — mesh scaling
-Current group call is full-mesh peer connections. Past ~5 people, CPU/bandwidth compounds fast. Not a v0.4.3 fix (needs SFU), but worth flagging.
-
-### 6. No telemetry
-We can't see if the fixes are actually working for users. No stats logging for ICE state, relay usage, bitrate achieved, disconnect frequency.
-
-## Proposed v0.4.3 tightening (safe, no version bump)
-
-1. **Cloudflare TURN integration** — free, drop-in replacement for expired TURN account. Update `get-turn-credentials` edge function to mint Cloudflare creds.
-2. **Glare handling** — polite/impolite peer pattern in `VoiceContext` so simultaneous calls resolve cleanly.
-3. **ICE restart on connection failure** — trigger `pc.restartIce()` on `iceConnectionState === 'failed'` before full teardown.
-4. **Screenshare adaptive quality** — monitor `outbound-rtp` stats every 3s; if packet loss >5% or bitrate <50% of target, drop one quality tier automatically.
-5. **Game scan first-run throttle** — skip the initial heavy scan if a call is already active; wait for next interval.
-6. **Lightweight call diagnostics** — log ICE state transitions, selected candidate type (host/srflx/relay), and stream stats to console with `[voice-diag]` prefix so we can debug user reports.
-
-## Out of scope for v0.4.3
-- SFU migration for large group calls
-- User-facing connection quality indicator
-- Persistent telemetry to backend
-
-## Technical notes
-- No DB, RLS, or schema changes
-- Edge function edit: `supabase/functions/get-turn-credentials/index.ts` (if we go with Cloudflare)
-- Would need `CLOUDFLARE_TURN_TOKEN_ID` + `CLOUDFLARE_TURN_API_TOKEN` secrets if you have a Cloudflare account
-- All other changes are frontend-only in `VoiceContext.tsx`, `GroupCallContext.tsx`, `ActivityContext.tsx`
+Four separate issues, all frontend-only. No version bump, no DB changes.
 
 ---
 
-**Bottom line:** the app is meaningfully better than it was before v0.4.3, but calling it bulletproof requires (a) working TURN and (b) the 6 tightenings above. Want me to proceed with all 6, or pick a subset?
+### 1. Screenshare FPS is capped below what the user picked
+
+In `VoiceContext.tsx` around line 2772 there's a per-resolution FPS ceiling:
+- ≤480p → forced to 15
+- ≤720p → forced to 24
+- else → user's chosen fps
+
+So if the user picks 30 fps but 720p (or a preset that resolves to 720p), it silently sends 24 — and after further scale-down and encoder pressure the viewer sees ~15. This is why "30 fps" looks like a slideshow even after the choppiness fix.
+
+**Fix:** honor the user's selected fps at 720p and above (only clamp at ≤480p, and even there raise the floor to 20). Keep `contentHint = "motion"` when Optimize-For-Motion is on so the encoder trades resolution for framerate instead of the other way around. Add a one-line diag log showing "requested Xfps, negotiated Yfps" so future regressions are visible.
+
+---
+
+### 2. Wishlist shows "Petite" instead of "Cute"
+
+`ShopView` and `ShopItemsGrid` already remap `badge_petite → { name: "Cute", description: ... }` client-side (v0.3.17). `UserProfileCard.tsx` (line 137-145) hydrates wishlist rows straight from `shop_items` without that remap, so on someone else's profile the wishlisted badge still reads "Petite".
+
+**Fix:** apply the same remap in `UserProfileCard`'s wishlist mapper.
+
+---
+
+### 3. Premium animated themes don't render in the desktop app when HW-accel is off
+
+Themes that still work with software rendering (Space, Sky, Snowy, Hills) use only `transform` + `background-position` animations — cheap on CPU.
+
+Themes that don't render (Cosmic Nebula, Cyber Grid, Volcanic, Bioluminescent Abyss, Aurora Borealis, Sakura Storm) all lean on:
+- `filter: blur(38–60px)` on full-screen layers
+- `mix-blend-mode: screen`
+- `drop-shadow()` filter animations
+
+Chromium's software rasterizer effectively can't paint these at interactive framerates — the layers get dropped or freeze. That's why previews look completely dead when HW accel is off.
+
+**Fix:** detect "software rendering mode" and swap those six themes to a lightweight static-fallback variant while keeping the fancy version for GPU users.
+- Electron main process already knows the HW-accel setting; expose it via `electronAPI.getHardwareAcceleration()` (already exists per `main.cjs` line 476) and set `document.documentElement.dataset.gfx = "software"` on boot when it's off.
+- Add `[data-gfx="software"] .cb-nebula-glow, .cb-aurora-curtain, .cb-abyss-jelly, .cb-volcanic-glow, .cb-cyber-scan, .cb-sakura-petals { filter: none; mix-blend-mode: normal; animation: none; }` style guards, and provide a simple gradient fallback so the theme still visually reads as its brand color palette.
+- Same guard applied inside the shop *previews* (`ShopItemPreview`) so the tile isn't a dead black square.
+
+This is not a "make it identical without a GPU" fix — that's impossible with those effects. It's "the theme still looks like itself as a static/soft-animated version" so previews and the equipped background never render as nothing.
+
+---
+
+### 4. Advanced game activity (Valorant / Fortnite / Roblox / Marvel Rivals) not visible publicly
+
+Pipeline is wired correctly (`electron/gameDetails.cjs` → `electronAPI.getGameDetails` → `activity_details` table → realtime subscription → `ActivityCard` render). DB grants + RLS are correct. So the failure is at the parser level: either the log path is wrong for the current game version, or the regex doesn't match what the game actually writes.
+
+Since I can't run these games in the sandbox to confirm the current log format, the plan is:
+
+1. **Add a `[game-details]` diag channel** (main-process console + renderer console when devtools are open) that logs: which parser ran, which log/lockfile path it read, and whether it returned a payload or null. This makes it obvious *why* nothing shows up when the user next tests.
+2. **Widen the parsers** with the patterns most likely to hit current versions:
+   - Valorant: also try `Loading map .*Maps/([A-Za-z]+)/` and the `Game state:` line.
+   - Roblox: also try `Report game_join_loadtime` (contains placeId + universeId in modern logs) and the `Connecting to game '…'` line.
+   - Fortnite: also try `MatchState[:=]\s*(\w+)` and `PlaylistName[:=]`.
+   - Marvel Rivals: also read the newer `MarvelGame\Saved\Logs\MarvelGame.log` path in addition to `Marvel\Saved\Logs`.
+3. **LoL:** call the live-client endpoint on the `HTTPS 2999` route with the `riotgames.pem`-style cert-ignore path (already correct) but also fall back to `/liveclientdata/activeplayername` when the full payload 404s during loading screens.
+4. Keep every parser wrapped in try/catch — a broken regex must never break the activity tick.
+
+After this ships, if a specific game still shows no details, the console will name exactly which parser failed and where, and I can patch that one regex without another exploration round.
+
+---
+
+### Files touched
+
+- `src/contexts/VoiceContext.tsx` — screenshare fps floor
+- `src/components/app/chat/UserProfileCard.tsx` — wishlist Petite→Cute remap
+- `src/index.css` — `[data-gfx="software"]` fallbacks for six premium themes
+- `src/components/app/shop/ShopItemPreview.tsx` — mirror the same fallback in previews
+- `src/main.tsx` (or a small `useGfxMode` bridge) — set `data-gfx` from `electronAPI.getHardwareAcceleration()`
+- `electron/preload.cjs` — expose `getHardwareAcceleration` if not already whitelisted
+- `electron/gameDetails.cjs` — wider regexes + `[game-details]` diag logs
+- `src/lib/changelog.ts` — one-line bullets for the four fixes
+
+### Out of scope
+
+- TURN (confirmed not needed for home wifi).
+- Full glare / perfect-negotiation refactor.
+- Any DB / RLS / schema change.
