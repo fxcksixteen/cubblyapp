@@ -280,7 +280,17 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
       }
     };
 
-    tick(); // immediate
+    // v0.4.3 hardening: skip the immediate heavy first scan if we're already
+    // in a call or screensharing. The first `tasklist` / PowerShell probe is
+    // the single biggest CPU hitch on desktop and causes the "launching a game
+    // while in a call = 2-3s of audio stutter" the user saw. Wait for the next
+    // scheduled tick instead (which will already be on the slow cadence).
+    const busyAtBoot =
+      (window as any).__cubblyInCall === true ||
+      (window as any).__cubblyScreenSharing === true;
+    if (!busyAtBoot) {
+      tick(); // immediate
+    }
     // Use slow polling when gaming-mode suppression OR an active call is happening,
     // to avoid the heavy `tasklist` scan competing with WebRTC for CPU/wifi.
     const getInterval = () => {
