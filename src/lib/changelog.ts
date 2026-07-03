@@ -36,6 +36,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Fixed calls sometimes stuck on “Ringing” after the other person picked up.",
       "Voice no longer stays laggy after launching a game mid-call.",
       "Screen sharing on the lowest quality is actually low-bandwidth now.",
+      "Less audio stutter in the first few seconds after launching a game while in a call.",
     ],
   },
   {
