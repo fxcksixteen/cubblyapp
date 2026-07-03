@@ -1343,6 +1343,60 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
 
     setActiveCall(prev => prev && prev.conversationId === conversationId ? { ...prev, state: "ringing" } : prev);
+
+    // v0.4.3: caller-side pickup-stuck watchdog.
+    // Symptom: callee accepts (their heartbeat lands in the DB, their UI
+    // says "In call") but the caller stays on "Ringing…" until they
+    // manually hang up + Rejoin. Root cause is the caller's PC never
+    // finishing ICE against the answer (answer dropped mid-resubscribe,
+    // stale PC generation, etc). Automate the "hang up + rejoin" fix:
+    // at +3s / +6s / +10s, if this PC is still not ICE-connected AND
+    // there's a live participant on the other side, tear this PC down and
+    // trigger a fresh offer for the same call_event.
+    const watchedCallEventId = outgoingCallMeta.callEventId;
+    let renegotiated = false;
+    const tryAutoRenegotiate = async (delay: number) => {
+      await new Promise(r => setTimeout(r, delay));
+      if (renegotiated) return;
+      // Guard: still on the same call?
+      if (currentCallEventIdRef.current !== watchedCallEventId) return;
+      if (pcRef.current !== pc) return;
+      const iceState = pc.iceConnectionState;
+      if (iceState === "connected" || iceState === "completed") return;
+      // Only trigger if the callee looks alive on their end.
+      let peerAlive = false;
+      try {
+        const { data } = await (supabase as any)
+          .from("call_participants")
+          .select("user_id, last_heartbeat_at")
+          .eq("call_event_id", watchedCallEventId);
+        const now = Date.now();
+        peerAlive = !!(data as any[])?.some((row: any) => {
+          if (row.user_id === user.id) return false;
+          const hb = row.last_heartbeat_at ? new Date(row.last_heartbeat_at).getTime() : 0;
+          return now - hb < 20_000;
+        });
+      } catch {}
+      if (!peerAlive) return;
+      renegotiated = true;
+      console.warn(`[Voice] ⏱ pickup-watchdog: caller PC still ${iceState} at +${delay}ms but peer is live — auto-renegotiating`);
+      try { pc.close(); } catch {}
+      if (pcRef.current === pc) pcRef.current = null;
+      pendingOfferRef.current = null;
+      outgoingCandidateBuffer.current = [];
+      incomingCandidateQueue.current = [];
+      remoteDescriptionSet.current = false;
+      try {
+        await initializeOutgoingConnection(channel, conversationId, { forceFreshOffer: true });
+      } catch (e) {
+        console.warn("[Voice] pickup-watchdog renegotiate failed:", e);
+      }
+    };
+    // Fire but don't await — these are background timers.
+    void tryAutoRenegotiate(3000);
+    void tryAutoRenegotiate(6000);
+    void tryAutoRenegotiate(10000);
+
   }, [user, getUserMedia, createPeerConnection, startAudioLevelMonitor, stopAudioLevelMonitor]);
 
   const setupSignaling = useCallback((conversationId: string): Promise<ReturnType<typeof supabase.channel>> => {
