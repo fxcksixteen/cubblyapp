@@ -988,7 +988,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       // context — the surviving loop eventually read from a dead source and
       // the peer ring would freeze at 0 for the rest of the call.
       try {
-        if (remoteAnimFrameRef.current) cancelAnimationFrame(remoteAnimFrameRef.current);
+        if (remoteAnimFrameRef.current) {
+          try { window.clearInterval(remoteAnimFrameRef.current as unknown as number); } catch {}
+          try { cancelAnimationFrame(remoteAnimFrameRef.current); } catch {}
+        }
         remoteAnimFrameRef.current = 0;
       } catch {}
       try {
@@ -1008,19 +1011,23 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         remoteAnalyserRef.current = remoteAnalyser;
         const remoteData = new Uint8Array(remoteAnalyser.frequencyBinCount);
         let lastRemote = 0;
+        // v0.4.3: 10 Hz interval instead of RAF — see startAudioLevelMonitor.
         const tickRemote = () => {
-          remoteAnalyser.getByteFrequencyData(remoteData);
+          if (typeof document !== "undefined" && document.hidden) return;
+          const a = remoteAnalyserRef.current;
+          if (!a) return;
+          a.getByteFrequencyData(remoteData);
           const avg = remoteData.reduce((sum, v) => sum + v, 0) / remoteData.length;
           const next = (avg / 255) * 100;
           if (Math.abs(next - lastRemote) > 0.3) {
             lastRemote = next;
             setRemoteAudioLevel(next);
           }
-          remoteAnimFrameRef.current = requestAnimationFrame(tickRemote);
         };
-        tickRemote();
+        remoteAnimFrameRef.current = window.setInterval(tickRemote, 100) as unknown as number;
       } catch {}
     };
+
 
     pc.oniceconnectionstatechange = () => {
       console.log("[Voice] ICE state:", pc.iceConnectionState);
