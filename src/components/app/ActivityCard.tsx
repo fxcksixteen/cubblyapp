@@ -72,10 +72,10 @@ const formatElapsed = (startedAt: string) => {
   const h = Math.floor(totalSec / 3600);
   const m = Math.floor((totalSec % 3600) / 60);
   const s = totalSec % 60;
-  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")} elapsed`;
-  if (m > 0) return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")} elapsed`;
+  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  if (m > 0) return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
   if (totalSec < 5) return "just started";
-  return `${s}s elapsed`;
+  return `0:${String(s).padStart(2, "0")}`;
 };
 
 /**
