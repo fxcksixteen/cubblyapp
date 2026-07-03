@@ -771,9 +771,21 @@ html.cubbly-low-power *:not(img):not(svg):not(.cubbly-keep-filter)::after {
 html.cubbly-low-power *:not(.cubbly-keep-shadow) {
   box-shadow: none !important;
 }
-html.cubbly-low-power * {
-  /* Disable non-essential transitions/animations; keep opacity/colors snappy. */
+/* Kill non-essential animations, but keep the premium animated themes going.
+   Blurs/mix-blend-mode are already stripped above — what remains is cheap
+   transform/opacity motion that the software renderer can handle fine, and
+   without it the premium themes render as dead squares in shop previews. */
+html.cubbly-low-power *:not(.cubbly-keep-animation),
+html.cubbly-low-power *:not(.cubbly-keep-animation)::before,
+html.cubbly-low-power *:not(.cubbly-keep-animation)::after {
   transition-duration: 0ms !important;
+}
+html.cubbly-low-power
+  *:not(.cubbly-keep-animation):not([class*="cb-nebula"]):not([class*="cb-cyber"]):not([class*="cb-volcanic"]):not([class*="cb-abyss"]):not([class*="cb-aurora"]):not([class*="cb-sakura"]):not([class*="cb-space"]):not([class*="cb-sky"]):not([class*="cb-snow"]):not([class*="cb-hills"]):not([class*="shop-"]),
+html.cubbly-low-power
+  *:not(.cubbly-keep-animation):not([class*="cb-nebula"]):not([class*="cb-cyber"]):not([class*="cb-volcanic"]):not([class*="cb-abyss"]):not([class*="cb-aurora"]):not([class*="cb-sakura"]):not([class*="cb-space"]):not([class*="cb-sky"]):not([class*="cb-snow"]):not([class*="cb-hills"]):not([class*="shop-"])::before,
+html.cubbly-low-power
+  *:not(.cubbly-keep-animation):not([class*="cb-nebula"]):not([class*="cb-cyber"]):not([class*="cb-volcanic"]):not([class*="cb-abyss"]):not([class*="cb-aurora"]):not([class*="cb-sakura"]):not([class*="cb-space"]):not([class*="cb-sky"]):not([class*="cb-snow"]):not([class*="cb-hills"]):not([class*="shop-"])::after {
   animation-duration: 0ms !important;
 }
 

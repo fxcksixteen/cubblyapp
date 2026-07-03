@@ -136,7 +136,10 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
         .filter(Boolean)
         .map((it: any) => ({
           item_id: it.id,
-          name: it.name,
+          // v0.3.17: "Petite" badge is publicly rebranded to "Cute". Mirror the
+          // remap ShopView/ShopItemsGrid apply so wishlists don't leak the
+          // old name on other users' profiles.
+          name: it.id === "badge_petite" ? "Cute" : it.name,
           price: it.price ?? null,
           price_gems: it.price_gems ?? null,
           category: it.category,
