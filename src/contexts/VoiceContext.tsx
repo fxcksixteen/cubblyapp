@@ -2719,32 +2719,43 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       // didn't actually lower bitrate. Discord-style caps used here.
       const opt = screenShareSettings.optimizeFor;
       const hint = opt === "motion" ? "motion" : "detail";
+      // v0.4.3: much stricter per-preset caps. Previous ceilings were letting
+      // "low quality" negotiate 1.35 Mbps at 30 fps of native 4K frames on
+      // Electron (Chromium desktopCapturer ignores getDisplayMedia size
+      // constraints), which is why viewers saw a slideshow.
       const resBitrateBase: Record<string, number> = {
-        "480p":  900_000,
-        "720p":  1_800_000,
-        "1080p": 2_500_000,
-        "1440p": 3_500_000,
+        "480p":  600_000,
+        "720p":  1_200_000,
+        "1080p": 2_200_000,
+        "1440p": 3_000_000,
       };
-      const baseFor = resBitrateBase[effectiveQuality] ?? 1_800_000;
-      // "ultra" gets a modest +50%, "motion" shaves quality for smoothness,
-      // "detail" stays at base. Hard ceiling at 4 Mbps so a single screen-
-      // share never starves the voice transceiver.
+      const baseFor = resBitrateBase[effectiveQuality] ?? 1_200_000;
       const maxBitrate = Math.min(
         4_000_000,
         opt === "ultra"  ? Math.round(baseFor * 1.5) :
         opt === "motion" ? Math.round(baseFor * 0.85) :
         baseFor
       );
+      // Per-preset FPS floor: at low resolutions the encoder simply can't
+      // keep up with 30/60 fps of 4K native input, so cap FPS unless the
+      // user explicitly picked motion.
+      const targetHeight = res?.height ?? 1080;
+      const fpsCap =
+        opt === "motion" ? effectiveFps :
+        targetHeight <= 480 ? Math.min(effectiveFps, 15) :
+        targetHeight <= 720 ? Math.min(effectiveFps, 24) :
+        effectiveFps;
 
-      // Force resolution / FPS via applyConstraints on the actual track —
-      // Electron's desktopCapturer ignores constraints at getDisplayMedia time
-      // so we must downscale post-capture.
+      // applyConstraints is a no-op on most desktop capture sources — kept
+      // as a hint only. Real downscaling happens via scaleResolutionDownBy
+      // in applyScreenBitrate below.
+      let capturedHeight = 0;
       for (const t of stream.getVideoTracks()) {
         try { (t as any).contentHint = hint; } catch {}
         try {
           await (t as any).applyConstraints?.({
             ...(res ? { width: res.width, height: res.height } : {}),
-            frameRate: effectiveFps,
+            frameRate: fpsCap,
           });
         } catch (e) {
           console.warn("[Voice] applyConstraints on screen track failed:", e);
@@ -2752,8 +2763,14 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         try {
           const s = (t as any).getSettings?.();
           console.log("[Voice] 🖥️ screen video track settings:", s);
+          if (s?.height) capturedHeight = Math.max(capturedHeight, s.height);
         } catch {}
       }
+      const scaleResolutionDownBy = capturedHeight > targetHeight
+        ? +(capturedHeight / targetHeight).toFixed(2)
+        : 1;
+      const encodingOpts = { scaleResolutionDownBy, maxFramerate: fpsCap };
+
 
       // Bot call → loopback screenshare (echo video + audio back to yourself)
       if (isBotCall) {
