@@ -155,6 +155,33 @@ function mungeGroupCallOpusSdp(sdp: string | undefined | null): string {
   });
 }
 
+async function applyGroupScreenVideoParams(sender: RTCRtpSender, opts: { bitrate: number; maxFramerate: number; scaleResolutionDownBy: number }) {
+  try {
+    const params = sender.getParameters();
+    if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
+    params.encodings[0].maxBitrate = opts.bitrate;
+    (params.encodings[0] as any).maxFramerate = opts.maxFramerate;
+    if (opts.scaleResolutionDownBy > 1) {
+      (params.encodings[0] as any).scaleResolutionDownBy = opts.scaleResolutionDownBy;
+    }
+    (params.encodings[0] as any).networkPriority = "medium";
+    (params.encodings[0] as any).priority = "medium";
+    (params as any).degradationPreference = "maintain-framerate";
+    await sender.setParameters(params);
+  } catch {}
+}
+
+async function applyRealtimeAudioParams(sender: RTCRtpSender, bitrate = 128_000) {
+  try {
+    const params = sender.getParameters();
+    if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
+    params.encodings[0].maxBitrate = bitrate;
+    (params.encodings[0] as any).networkPriority = "high";
+    (params.encodings[0] as any).priority = "high";
+    await sender.setParameters(params);
+  } catch {}
+}
+
 export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
   const { user } = useAuth();
   const [activeCall, setActiveCall] = useState<GroupActiveCall | null>(null);
