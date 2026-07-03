@@ -174,13 +174,24 @@ function parseValorant() {
     "VALORANT", "Saved", "Logs", "ShooterGame.log",
   );
   const tail = tailFile(logPath, 128 * 1024);
-  if (!tail) return null;
-  // Try to grab the most recent map + queue + score lines.
-  const mapMatch = [...tail.matchAll(/LogMapLoad: Loading map ([A-Za-z]+)/g)].pop();
-  const queueMatch = [...tail.matchAll(/QueueId: ([a-z]+)/gi)].pop();
-  const agentMatch = [...tail.matchAll(/LogShooterAgent: .*?Agent (\w+)/gi)].pop();
+  if (!tail) { console.log("[game-details] valorant: no log at", logPath); return null; }
+  // Try to grab the most recent map + queue + score lines. Riot changes these
+  // formats between patches, so try multiple variants.
+  const mapMatch =
+    [...tail.matchAll(/LogMapLoad: Loading map ([A-Za-z]+)/g)].pop() ||
+    [...tail.matchAll(/Loading map [^\r\n]*Maps\/([A-Za-z_0-9]+)/g)].pop() ||
+    [...tail.matchAll(/MapName[:=\s"']+([A-Za-z_0-9]+)/g)].pop();
+  const queueMatch =
+    [...tail.matchAll(/QueueId[:=\s"']+([a-z]+)/gi)].pop() ||
+    [...tail.matchAll(/GameMode[:=\s"']+([A-Za-z_0-9]+)/g)].pop();
+  const agentMatch =
+    [...tail.matchAll(/LogShooterAgent: .*?Agent (\w+)/gi)].pop() ||
+    [...tail.matchAll(/CharacterID[:=\s"']+([A-Za-z_0-9]+)/g)].pop();
   const scoreMatch = [...tail.matchAll(/RoundResultsScore[^0-9-]*([0-9]+)[^0-9]+([0-9]+)/g)].pop();
-  if (!mapMatch && !queueMatch && !agentMatch && !scoreMatch) return null;
+  if (!mapMatch && !queueMatch && !agentMatch && !scoreMatch) {
+    console.log("[game-details] valorant: log found but no matches");
+    return null;
+  }
   return {
     map: mapMatch?.[1] ?? null,
     mode: queueMatch?.[1] ?? null,
