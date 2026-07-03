@@ -383,6 +383,19 @@ const VoiceChannelParticipants = ({ conversationId, onJoinStream }: { conversati
           </div>
         </div>
       ))}
+      {anySharing && !alreadyJoined && onJoinStream && (
+        <button
+          onClick={onJoinStream}
+          className="ml-7 mt-1 flex items-center gap-1.5 rounded px-2 py-1 text-[11px] font-semibold uppercase tracking-wide transition-colors"
+          style={{ backgroundColor: "#ed4245", color: "white" }}
+          onMouseEnter={(e) => (e.currentTarget.style.filter = "brightness(1.1)")}
+          onMouseLeave={(e) => (e.currentTarget.style.filter = "")}
+          title="Join channel to watch stream"
+        >
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-white" />
+          Live · Join Stream
+        </button>
+      )}
     </div>
   );
 };
