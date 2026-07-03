@@ -37,6 +37,10 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Voice no longer stays laggy after launching a game mid-call.",
       "Screen sharing on the lowest quality is actually low-bandwidth now.",
       "Less audio stutter in the first few seconds after launching a game while in a call.",
+      "Screen share now actually runs at the framerate you picked instead of silently capping to 24 fps.",
+      "Wishlisted “Cute” badge no longer shows as its old name on other people's profiles.",
+      "Premium animated themes now render properly on the desktop app when hardware acceleration is off.",
+      "More reliable in-game details (map, hero, score) for Valorant, Fortnite, Marvel Rivals and Roblox.",
     ],
   },
   {
