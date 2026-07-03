@@ -632,11 +632,14 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       .invoke("get-turn-credentials", {
         body: { preferredRegion },
       })
-      .then(({ data, error }) => {
+      .then(async ({ data, error }) => {
         if (!error && data?.iceServers) {
-          iceServersRef.current = data.iceServers;
+          iceServersRef.current = await sanitizeIceServersForSession(data.iceServers);
+        } else {
+          iceServersRef.current = STUN_ONLY_SERVERS;
         }
-      });
+      })
+      .catch(() => { iceServersRef.current = STUN_ONLY_SERVERS; });
   }, [user, settings.serverRegion, detectedRegion]);
 
   useEffect(() => {
@@ -1227,6 +1230,28 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     });
   }, [user]);
 
+  const peerLooksLiveInCall = useCallback(async (callEventId: string, peerUserId?: string | null, freshMs = 25_000): Promise<boolean> => {
+    if (!user) return false;
+    try {
+      const { data } = await (supabase as any)
+        .from("call_participants")
+        .select("user_id, last_seen_at, joined_at, left_at")
+        .eq("call_event_id", callEventId)
+        .is("left_at", null);
+
+      const now = Date.now();
+      return !!(data as any[])?.some((row: any) => {
+        if (row.user_id === user.id) return false;
+        if (peerUserId && row.user_id !== peerUserId) return false;
+        const baselineStr = row.last_seen_at ?? row.joined_at;
+        const baseline = baselineStr ? new Date(baselineStr).getTime() : 0;
+        return baseline > 0 && now - baseline < freshMs;
+      });
+    } catch {
+      return false;
+    }
+  }, [user]);
+
   const initializeOutgoingConnection = useCallback(async (channel: ReturnType<typeof supabase.channel>, conversationId: string, options?: { forceFreshOffer?: boolean }) => {
     if (!user) return;
     const outgoingCallMeta = outgoingCallMetaRef.current;
@@ -1366,16 +1391,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       // Only trigger if the callee looks alive on their end.
       let peerAlive = false;
       try {
-        const { data } = await (supabase as any)
-          .from("call_participants")
-          .select("user_id, last_heartbeat_at")
-          .eq("call_event_id", watchedCallEventId);
-        const now = Date.now();
-        peerAlive = !!(data as any[])?.some((row: any) => {
-          if (row.user_id === user.id) return false;
-          const hb = row.last_heartbeat_at ? new Date(row.last_heartbeat_at).getTime() : 0;
-          return now - hb < 20_000;
-        });
+        peerAlive = await peerLooksLiveInCall(watchedCallEventId, activeCallRef.current?.peerId, 25_000);
       } catch {}
       if (!peerAlive) return;
       renegotiated = true;
@@ -1397,7 +1413,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     void tryAutoRenegotiate(6000);
     void tryAutoRenegotiate(10000);
 
-  }, [user, getUserMedia, createPeerConnection, startAudioLevelMonitor, stopAudioLevelMonitor]);
+  }, [user, getUserMedia, createPeerConnection, startAudioLevelMonitor, stopAudioLevelMonitor, peerLooksLiveInCall]);
 
   const setupSignaling = useCallback((conversationId: string): Promise<ReturnType<typeof supabase.channel>> => {
     return new Promise((resolve, reject) => {
