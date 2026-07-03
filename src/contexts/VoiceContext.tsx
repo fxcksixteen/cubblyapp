@@ -2765,14 +2765,14 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       };
       const baseFor = resBitrateBase[effectiveQuality] ?? 1_200_000;
       const maxBitrate = baseFor;
-      // Per-preset FPS floor: at low resolutions the encoder simply can't
-      // keep up with 30/60 fps of 4K native input, so cap FPS unless the
-      // user explicitly picked motion.
+      // v0.4.3 pass 2: honor the user's chosen fps at 720p and above. Only
+      // clamp aggressively at ≤480p (and even there raise the floor to 20)
+      // so "30 fps" actually means 30 fps at typical stream resolutions.
       const targetHeight = res?.height ?? 1080;
       const fpsCap =
-        targetHeight <= 480 ? Math.min(effectiveFps, 15) :
-        targetHeight <= 720 ? Math.min(effectiveFps, 24) :
+        targetHeight <= 480 ? Math.max(20, Math.min(effectiveFps, 24)) :
         effectiveFps;
+      console.log(`[Voice] 🖥️ screenshare requested ${effectiveFps}fps @ ${targetHeight}p → negotiating ${fpsCap}fps`);
 
       // applyConstraints is a no-op on most desktop capture sources — kept
       // as a hint only. Real downscaling happens via scaleResolutionDownBy
