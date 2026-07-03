@@ -2793,13 +2793,19 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       // "low quality" negotiate 1.35 Mbps at 30 fps of native 4K frames on
       // Electron (Chromium desktopCapturer ignores getDisplayMedia size
       // constraints), which is why viewers saw a slideshow.
+      // v0.4.4: Discord-parity ladder. Discord's desktop client caps around
+      // 2.5 Mbps @720p, 4.5 Mbps @1080p30, 7.5 Mbps @1080p60, 9 Mbps @1440p —
+      // and pairs those with VP9 (see preferScreenShareCodec above), which is
+      // why their picture looks noticeably sharper than an equivalent VP8
+      // stream at the same bandwidth. We match, and slightly beat, those caps.
+      const isHighFps = effectiveFps >= 50;
       const resBitrateBase: Record<string, number> = {
-        "480p":  600_000,
-        "720p":  1_200_000,
-        "1080p": 2_200_000,
-        "1440p": 3_000_000,
+        "480p":  1_000_000,
+        "720p":  isHighFps ? 3_000_000 : 2_500_000,
+        "1080p": isHighFps ? 7_500_000 : 4_500_000,
+        "1440p": isHighFps ? 12_000_000 : 8_000_000,
       };
-      const baseFor = resBitrateBase[effectiveQuality] ?? 1_200_000;
+      const baseFor = resBitrateBase[effectiveQuality] ?? 2_500_000;
       const maxBitrate = baseFor;
       // v0.4.3 pass 2: honor the user's chosen fps at 720p and above. Only
       // clamp aggressively at ≤480p (and even there raise the floor to 20)
