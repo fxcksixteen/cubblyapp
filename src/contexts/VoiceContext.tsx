@@ -121,31 +121,33 @@ export const SERVER_REGIONS = [
  * downscale resolution, drop frames before quality on bandwidth pressure.
  * This is what fixes "screenshare looks pixelated to the OTHER user".
  */
-async function applyScreenBitrate(sender: RTCRtpSender, maxBitrate: number) {
+async function applyScreenBitrate(sender: RTCRtpSender, maxBitrate: number, opts?: { scaleResolutionDownBy?: number; maxFramerate?: number }) {
   try {
     const params = sender.getParameters();
     if (!params.encodings || params.encodings.length === 0) {
       params.encodings = [{}];
     }
     params.encodings[0].maxBitrate = maxBitrate;
-    // Allow encoder to scale resolution down under CPU/bandwidth pressure
-    // so it doesn't keep encoding 1080p frames at the expense of dropping
-    // voice RTP packets — that was the "everyone lags when streaming a
-    // game" symptom. Cap framerate too.
-    (params.encodings[0] as any).maxFramerate = (params.encodings[0] as any).maxFramerate ?? 60;
+    // v0.4.3: force the encoder to downscale on the sender. Electron's
+    // desktopCapturer ignores getDisplayMedia width/height constraints and
+    // applyConstraints on the track is a no-op for most desktop capture
+    // sources — so "480p" was actually encoding native 1440p/4K frames and
+    // the encoder would collapse framerate to <10 fps trying to keep up.
+    // Setting scaleResolutionDownBy is the only reliable path.
+    if (opts?.scaleResolutionDownBy && opts.scaleResolutionDownBy > 1) {
+      (params.encodings[0] as any).scaleResolutionDownBy = opts.scaleResolutionDownBy;
+    }
+    (params.encodings[0] as any).maxFramerate = opts?.maxFramerate ?? (params.encodings[0] as any).maxFramerate ?? 60;
     (params.encodings[0] as any).networkPriority = "medium";
     (params.encodings[0] as any).priority = "medium";
-    // maintain-framerate → drop resolution before frames. This is what stops
-    // Marvel-Rivals-style fast-motion gameplay from looking like a slideshow:
-    // a steady 30/60 fps at a lower res reads as smoother than full-res at
-    // 8 fps. Previous "balanced" was letting the encoder collapse FPS first,
-    // which is exactly the "starts choppy and slowly improves" symptom.
+    // maintain-framerate → drop resolution before frames.
     (params as any).degradationPreference = "maintain-framerate";
     await sender.setParameters(params);
   } catch (e) {
     console.warn("[Voice] Could not set screen encoding bitrate:", e);
   }
 }
+
 
 /**
  * Apply high-quality stereo Opus encoding to a screenshare *audio* sender so
@@ -815,28 +817,35 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     analyserRef.current = analyser;
     const dataArray = new Uint8Array(analyser.frequencyBinCount);
     let lastLocal = 0;
+    // v0.4.3: throttle to ~10 Hz (was RAF/60 Hz). RAF competed with the game
+    // for main-thread CPU whenever a user launched a game mid-call, and
+    // NEVER recovered because the RAF loop stays hot forever. Also pause
+    // entirely while the tab is hidden.
     const tick = () => {
-      analyser.getByteFrequencyData(dataArray);
+      if (typeof document !== "undefined" && document.hidden) return;
+      const a = analyserRef.current;
+      if (!a) return;
+      a.getByteFrequencyData(dataArray);
       const avg = dataArray.reduce((sum, v) => sum + v, 0) / dataArray.length;
       const next = (avg / 255) * 100;
-      // Smaller gate (0.3) keeps the speaking-ring smooth & reactive while
-      // still cutting most idle re-renders.
       if (Math.abs(next - lastLocal) > 0.3) {
         lastLocal = next;
         setAudioLevel(next);
       }
-      animFrameRef.current = requestAnimationFrame(tick);
     };
-    tick();
+    // setInterval id lives in animFrameRef (same lifecycle slot).
+    animFrameRef.current = window.setInterval(tick, 100) as unknown as number;
   }, []);
 
   const stopAudioLevelMonitor = useCallback(() => {
-    cancelAnimationFrame(animFrameRef.current);
+    try { window.clearInterval(animFrameRef.current as unknown as number); } catch {}
+    try { cancelAnimationFrame(animFrameRef.current); } catch {}
     audioContextRef.current?.close();
     audioContextRef.current = null;
     analyserRef.current = null;
     setAudioLevel(0);
   }, []);
+
 
   const getUserMedia = useCallback(async () => {
     // v0.3.17: `sampleSize: 24` paired with `deviceId: { exact: ... }` made
@@ -981,7 +990,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       // context — the surviving loop eventually read from a dead source and
       // the peer ring would freeze at 0 for the rest of the call.
       try {
-        if (remoteAnimFrameRef.current) cancelAnimationFrame(remoteAnimFrameRef.current);
+        if (remoteAnimFrameRef.current) {
+          try { window.clearInterval(remoteAnimFrameRef.current as unknown as number); } catch {}
+          try { cancelAnimationFrame(remoteAnimFrameRef.current); } catch {}
+        }
         remoteAnimFrameRef.current = 0;
       } catch {}
       try {
@@ -1001,19 +1013,23 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         remoteAnalyserRef.current = remoteAnalyser;
         const remoteData = new Uint8Array(remoteAnalyser.frequencyBinCount);
         let lastRemote = 0;
+        // v0.4.3: 10 Hz interval instead of RAF — see startAudioLevelMonitor.
         const tickRemote = () => {
-          remoteAnalyser.getByteFrequencyData(remoteData);
+          if (typeof document !== "undefined" && document.hidden) return;
+          const a = remoteAnalyserRef.current;
+          if (!a) return;
+          a.getByteFrequencyData(remoteData);
           const avg = remoteData.reduce((sum, v) => sum + v, 0) / remoteData.length;
           const next = (avg / 255) * 100;
           if (Math.abs(next - lastRemote) > 0.3) {
             lastRemote = next;
             setRemoteAudioLevel(next);
           }
-          remoteAnimFrameRef.current = requestAnimationFrame(tickRemote);
         };
-        tickRemote();
+        remoteAnimFrameRef.current = window.setInterval(tickRemote, 100) as unknown as number;
       } catch {}
     };
+
 
     pc.oniceconnectionstatechange = () => {
       console.log("[Voice] ICE state:", pc.iceConnectionState);
@@ -1329,6 +1345,60 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
 
     setActiveCall(prev => prev && prev.conversationId === conversationId ? { ...prev, state: "ringing" } : prev);
+
+    // v0.4.3: caller-side pickup-stuck watchdog.
+    // Symptom: callee accepts (their heartbeat lands in the DB, their UI
+    // says "In call") but the caller stays on "Ringing…" until they
+    // manually hang up + Rejoin. Root cause is the caller's PC never
+    // finishing ICE against the answer (answer dropped mid-resubscribe,
+    // stale PC generation, etc). Automate the "hang up + rejoin" fix:
+    // at +3s / +6s / +10s, if this PC is still not ICE-connected AND
+    // there's a live participant on the other side, tear this PC down and
+    // trigger a fresh offer for the same call_event.
+    const watchedCallEventId = outgoingCallMeta.callEventId;
+    let renegotiated = false;
+    const tryAutoRenegotiate = async (delay: number) => {
+      await new Promise(r => setTimeout(r, delay));
+      if (renegotiated) return;
+      // Guard: still on the same call?
+      if (currentCallEventIdRef.current !== watchedCallEventId) return;
+      if (pcRef.current !== pc) return;
+      const iceState = pc.iceConnectionState;
+      if (iceState === "connected" || iceState === "completed") return;
+      // Only trigger if the callee looks alive on their end.
+      let peerAlive = false;
+      try {
+        const { data } = await (supabase as any)
+          .from("call_participants")
+          .select("user_id, last_heartbeat_at")
+          .eq("call_event_id", watchedCallEventId);
+        const now = Date.now();
+        peerAlive = !!(data as any[])?.some((row: any) => {
+          if (row.user_id === user.id) return false;
+          const hb = row.last_heartbeat_at ? new Date(row.last_heartbeat_at).getTime() : 0;
+          return now - hb < 20_000;
+        });
+      } catch {}
+      if (!peerAlive) return;
+      renegotiated = true;
+      console.warn(`[Voice] ⏱ pickup-watchdog: caller PC still ${iceState} at +${delay}ms but peer is live — auto-renegotiating`);
+      try { pc.close(); } catch {}
+      if (pcRef.current === pc) pcRef.current = null;
+      pendingOfferRef.current = null;
+      outgoingCandidateBuffer.current = [];
+      incomingCandidateQueue.current = [];
+      remoteDescriptionSet.current = false;
+      try {
+        await initializeOutgoingConnection(channel, conversationId, { forceFreshOffer: true });
+      } catch (e) {
+        console.warn("[Voice] pickup-watchdog renegotiate failed:", e);
+      }
+    };
+    // Fire but don't await — these are background timers.
+    void tryAutoRenegotiate(3000);
+    void tryAutoRenegotiate(6000);
+    void tryAutoRenegotiate(10000);
+
   }, [user, getUserMedia, createPeerConnection, startAudioLevelMonitor, stopAudioLevelMonitor]);
 
   const setupSignaling = useCallback((conversationId: string): Promise<ReturnType<typeof supabase.channel>> => {
@@ -1634,9 +1704,21 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               console.warn("[Voice] addIceCandidate failed:", e);
             }
           } else {
-            console.log("[Voice] Queuing incoming ICE candidate (no remote desc yet)");
+            // v0.4.3: bound the queue. Prior builds logged & appended forever
+            // (see console: "Queuing incoming ICE candidate" x dozens per
+            // second) which both leaked memory and hid the underlying bug
+            // that remoteDescription never got set for that PC generation.
+            if (incomingCandidateQueue.current.length >= 50) {
+              incomingCandidateQueue.current.shift();
+            } else {
+              // Log only for the first few — the flood was drowning the console.
+              if (incomingCandidateQueue.current.length < 5) {
+                console.log("[Voice] Queuing incoming ICE candidate (no remote desc yet)");
+              }
+            }
             incomingCandidateQueue.current.push(payload.candidate);
           }
+
           return;
         }
 
@@ -1935,12 +2017,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           remoteAnalyserRef.current = remoteAnalyser;
           const remoteData = new Uint8Array(remoteAnalyser.frequencyBinCount);
           const tickRemote = () => {
+            if (typeof document !== "undefined" && document.hidden) return;
             remoteAnalyser.getByteFrequencyData(remoteData);
             const avg = remoteData.reduce((sum, v) => sum + v, 0) / remoteData.length;
             setRemoteAudioLevel(avg / 255 * 100);
-            remoteAnimFrameRef.current = requestAnimationFrame(tickRemote);
           };
-          tickRemote();
+          remoteAnimFrameRef.current = window.setInterval(tickRemote, 100) as unknown as number;
+
         } catch {}
       };
 
@@ -2636,32 +2719,43 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       // didn't actually lower bitrate. Discord-style caps used here.
       const opt = screenShareSettings.optimizeFor;
       const hint = opt === "motion" ? "motion" : "detail";
+      // v0.4.3: much stricter per-preset caps. Previous ceilings were letting
+      // "low quality" negotiate 1.35 Mbps at 30 fps of native 4K frames on
+      // Electron (Chromium desktopCapturer ignores getDisplayMedia size
+      // constraints), which is why viewers saw a slideshow.
       const resBitrateBase: Record<string, number> = {
-        "480p":  900_000,
-        "720p":  1_800_000,
-        "1080p": 2_500_000,
-        "1440p": 3_500_000,
+        "480p":  600_000,
+        "720p":  1_200_000,
+        "1080p": 2_200_000,
+        "1440p": 3_000_000,
       };
-      const baseFor = resBitrateBase[effectiveQuality] ?? 1_800_000;
-      // "ultra" gets a modest +50%, "motion" shaves quality for smoothness,
-      // "detail" stays at base. Hard ceiling at 4 Mbps so a single screen-
-      // share never starves the voice transceiver.
+      const baseFor = resBitrateBase[effectiveQuality] ?? 1_200_000;
       const maxBitrate = Math.min(
         4_000_000,
         opt === "ultra"  ? Math.round(baseFor * 1.5) :
         opt === "motion" ? Math.round(baseFor * 0.85) :
         baseFor
       );
+      // Per-preset FPS floor: at low resolutions the encoder simply can't
+      // keep up with 30/60 fps of 4K native input, so cap FPS unless the
+      // user explicitly picked motion.
+      const targetHeight = res?.height ?? 1080;
+      const fpsCap =
+        opt === "motion" ? effectiveFps :
+        targetHeight <= 480 ? Math.min(effectiveFps, 15) :
+        targetHeight <= 720 ? Math.min(effectiveFps, 24) :
+        effectiveFps;
 
-      // Force resolution / FPS via applyConstraints on the actual track —
-      // Electron's desktopCapturer ignores constraints at getDisplayMedia time
-      // so we must downscale post-capture.
+      // applyConstraints is a no-op on most desktop capture sources — kept
+      // as a hint only. Real downscaling happens via scaleResolutionDownBy
+      // in applyScreenBitrate below.
+      let capturedHeight = 0;
       for (const t of stream.getVideoTracks()) {
         try { (t as any).contentHint = hint; } catch {}
         try {
           await (t as any).applyConstraints?.({
             ...(res ? { width: res.width, height: res.height } : {}),
-            frameRate: effectiveFps,
+            frameRate: fpsCap,
           });
         } catch (e) {
           console.warn("[Voice] applyConstraints on screen track failed:", e);
@@ -2669,8 +2763,14 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         try {
           const s = (t as any).getSettings?.();
           console.log("[Voice] 🖥️ screen video track settings:", s);
+          if (s?.height) capturedHeight = Math.max(capturedHeight, s.height);
         } catch {}
       }
+      const scaleResolutionDownBy = capturedHeight > targetHeight
+        ? +(capturedHeight / targetHeight).toFixed(2)
+        : 1;
+      const encodingOpts = { scaleResolutionDownBy, maxFramerate: fpsCap };
+
 
       // Bot call → loopback screenshare (echo video + audio back to yourself)
       if (isBotCall) {
@@ -2699,7 +2799,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
         stream.getTracks().forEach(track => {
           const sender = localPc.addTrack(track, stream);
-          if (track.kind === "video") applyScreenBitrate(sender, maxBitrate);
+          if (track.kind === "video") applyScreenBitrate(sender, maxBitrate, encodingOpts);
           if (track.kind === "audio") applyScreenAudioBitrate(sender);
           track.onended = () => { stopScreenShare(); };
         });
@@ -2735,7 +2835,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
       stream.getTracks().forEach(track => {
         const sender = screenPc.addTrack(track, stream);
-        if (track.kind === "video") applyScreenBitrate(sender, maxBitrate);
+        if (track.kind === "video") applyScreenBitrate(sender, maxBitrate, encodingOpts);
         if (track.kind === "audio") applyScreenAudioBitrate(sender);
         track.onended = () => {
           stopScreenShare();

@@ -174,7 +174,7 @@ export function installRealtimeWatchdog() {
     // Debounce — bursts of online/visible/focus shouldn't tear healthy
     // channels down repeatedly.
     const now = Date.now();
-    if (now - lastWakeAt < 2000) return;
+    if (now - lastWakeAt < 10_000) return;
     lastWakeAt = now;
     log(`watchdog wake (${reason}) — pinging realtime`);
     try {

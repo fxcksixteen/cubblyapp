@@ -23,9 +23,21 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.4.2";
+export const CURRENT_VERSION = "0.4.3";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.4.3",
+    title: "Call reliability hotfix",
+    date: "2026-07-03",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Fixed calls sometimes stuck on “Ringing” after the other person picked up.",
+      "Voice no longer stays laggy after launching a game mid-call.",
+      "Screen sharing on the lowest quality is actually low-bandwidth now.",
+    ],
+  },
   {
     version: "0.4.2",
     title: "Shop previews + live profile edits",
@@ -37,6 +49,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Display name and username changes now update everywhere immediately without needing a refresh or restart.",
     ],
   },
+
   {
     version: "0.4.1",
     title: "Honey welcome fix",
