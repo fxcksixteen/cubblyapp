@@ -114,35 +114,71 @@ export const SERVER_REGIONS = [
 ];
 
 /**
- * Bump the maxBitrate on a screenshare video sender. Called right after
- * addTrack() so encoding parameters reflect the user's Optimization preset.
+ * v0.4.4 — Prefer VP9 (then VP8, then H.264) for a screenshare video
+ * transceiver. VP9 delivers ~30–40% better quality per bit than VP8/H.264
+ * for screen content — matching what Discord's desktop client picks — and
+ * Chromium/Electron both support hardware/software VP9 encode.
+ *
+ * Safe no-op if `RTCRtpSender.getCapabilities` or `setCodecPreferences` are
+ * unavailable, or if VP9 isn't offered by the current build.
  */
+function preferScreenShareCodec(transceiver: RTCRtpTransceiver | null | undefined): string | null {
+  if (!transceiver || typeof (transceiver as any).setCodecPreferences !== "function") return null;
+  try {
+    const caps = (RTCRtpSender as any).getCapabilities?.("video");
+    if (!caps?.codecs?.length) return null;
+    const rank = (mime: string): number => {
+      const m = mime.toLowerCase();
+      if (m === "video/av1") return 0;      // best quality/bit, if the peer decodes it
+      if (m === "video/vp9") return 1;      // Discord's default
+      if (m === "video/vp8") return 2;
+      if (m === "video/h264") return 3;
+      return 9;
+    };
+    const codecs = [...caps.codecs].sort((a: any, b: any) => rank(a.mimeType) - rank(b.mimeType));
+    (transceiver as any).setCodecPreferences(codecs);
+    const chosen = codecs[0]?.mimeType || null;
+    console.log(`[Voice] 🎞️ screenshare codec preference:`, codecs.slice(0, 3).map((c: any) => c.mimeType).join(" → "));
+    return chosen;
+  } catch (e) {
+    console.warn("[Voice] setCodecPreferences failed:", e);
+    return null;
+  }
+}
+
 /**
- * Apply high-quality screenshare *video* encoding parameters: max bitrate, never
- * downscale resolution, drop frames before quality on bandwidth pressure.
- * This is what fixes "screenshare looks pixelated to the OTHER user".
+ * Apply high-quality screenshare *video* encoding parameters: max bitrate,
+ * per-preset degradation preference, high network priority, optional
+ * hard-downscale via scaleResolutionDownBy for capture sources that ignore
+ * getDisplayMedia size constraints.
  */
-async function applyScreenBitrate(sender: RTCRtpSender, maxBitrate: number, opts?: { scaleResolutionDownBy?: number; maxFramerate?: number }) {
+async function applyScreenBitrate(
+  sender: RTCRtpSender,
+  maxBitrate: number,
+  opts?: {
+    scaleResolutionDownBy?: number;
+    maxFramerate?: number;
+    /** "motion" drops resolution before frames; "detail" drops frames before resolution. */
+    preferMotion?: boolean;
+  },
+) {
   try {
     const params = sender.getParameters();
     if (!params.encodings || params.encodings.length === 0) {
       params.encodings = [{}];
     }
     params.encodings[0].maxBitrate = maxBitrate;
-    // v0.4.3: force the encoder to downscale on the sender. Electron's
-    // desktopCapturer ignores getDisplayMedia width/height constraints and
-    // applyConstraints on the track is a no-op for most desktop capture
-    // sources — so "480p" was actually encoding native 1440p/4K frames and
-    // the encoder would collapse framerate to <10 fps trying to keep up.
-    // Setting scaleResolutionDownBy is the only reliable path.
     if (opts?.scaleResolutionDownBy && opts.scaleResolutionDownBy > 1) {
       (params.encodings[0] as any).scaleResolutionDownBy = opts.scaleResolutionDownBy;
     }
     (params.encodings[0] as any).maxFramerate = opts?.maxFramerate ?? (params.encodings[0] as any).maxFramerate ?? 60;
-    (params.encodings[0] as any).networkPriority = "medium";
-    (params.encodings[0] as any).priority = "medium";
-    // maintain-framerate → drop resolution before frames.
-    (params as any).degradationPreference = "maintain-framerate";
+    // v0.4.4: bump to "high" so a browser under load prioritises screenshare
+    // packets over background fetches — Discord does the same.
+    (params.encodings[0] as any).networkPriority = "high";
+    (params.encodings[0] as any).priority = "high";
+    // v0.4.4: respect Optimize-For preset. Motion → keep fps, drop res.
+    // Detail (text/reading) → keep res sharp, drop fps under pressure.
+    (params as any).degradationPreference = opts?.preferMotion ? "maintain-framerate" : "maintain-resolution";
     await sender.setParameters(params);
   } catch (e) {
     console.warn("[Voice] Could not set screen encoding bitrate:", e);
