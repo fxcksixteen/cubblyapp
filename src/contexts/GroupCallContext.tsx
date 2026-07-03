@@ -202,9 +202,11 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
   // Fetch ICE servers (same as 1-on-1)
   useEffect(() => {
     if (!user) return;
-    supabase.functions.invoke("get-turn-credentials").then(({ data, error }) => {
-      if (!error && data?.iceServers) iceServersRef.current = data.iceServers;
-    });
+    supabase.functions.invoke("get-turn-credentials").then(async ({ data, error }) => {
+      iceServersRef.current = !error && data?.iceServers
+        ? await sanitizeIceServersForSession(data.iceServers)
+        : STUN_SERVERS;
+    }).catch(() => { iceServersRef.current = STUN_SERVERS; });
   }, [user]);
 
   /** Load and cache a profile (display_name + avatar) by user_id. */
@@ -233,6 +235,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       const data = new Uint8Array(analyser.frequencyBinCount);
       let lastSelf = 0;
       const tick = () => {
+        if (typeof document !== "undefined" && document.hidden) return;
         analyser.getByteFrequencyData(data);
         const avg = data.reduce((s, v) => s + v, 0) / data.length;
         const next = (avg / 255) * 100;
@@ -240,16 +243,17 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
           lastSelf = next;
           setSelfAudioLevel(next);
         }
-        selfAnimRef.current = requestAnimationFrame(tick);
       };
       tick();
+      selfAnimRef.current = window.setInterval(tick, 100) as unknown as number;
     } catch (e) {
       console.warn("[GroupCall] Failed to start self audio monitor:", e);
     }
   }, []);
 
   const stopSelfMonitor = useCallback(() => {
-    cancelAnimationFrame(selfAnimRef.current);
+    try { window.clearInterval(selfAnimRef.current as unknown as number); } catch {}
+    try { cancelAnimationFrame(selfAnimRef.current); } catch {}
     audioContextRef.current?.close().catch(() => {});
     audioContextRef.current = null;
     setSelfAudioLevel(0);
@@ -265,9 +269,10 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       analyser.smoothingTimeConstant = 0.35;
       source.connect(analyser);
       const data = new Uint8Array(analyser.frequencyBinCount);
-      let raf = 0;
+      let interval = 0;
       let lastLevel = 0;
       const tick = () => {
+        if (typeof document !== "undefined" && document.hidden) return;
         analyser.getByteFrequencyData(data);
         const avg = data.reduce((s, v) => s + v, 0) / data.length;
         const next = (avg / 255) * 100;
@@ -277,11 +282,11 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
           lastLevel = next;
           setPeers(prev => prev.map(p => p.userId === peerId ? { ...p, audioLevel: next } : p));
         }
-        raf = requestAnimationFrame(tick);
       };
       tick();
+      interval = window.setInterval(tick, 100);
       audioCleanupRef.current.set(peerId, () => {
-        cancelAnimationFrame(raf);
+        window.clearInterval(interval);
         ctx.close().catch(() => {});
       });
     } catch (e) {
