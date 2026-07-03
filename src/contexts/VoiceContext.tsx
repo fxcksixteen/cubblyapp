@@ -1477,6 +1477,18 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           return;
         }
 
+        if (payload.type === "peer-accepted") {
+          if (payload.callEventId && callEventIdSnapshot && payload.callEventId !== callEventIdSnapshot) {
+            return;
+          }
+          console.log("[acceptDiag] peer.accepted ack received", payload.callEventId);
+          stopLooping("outgoingRing");
+          setActiveCall(prev => prev && prev.conversationId === conversationId
+            ? { ...prev, state: prev.state === "connected" ? "connected" : "calling", ringTimedOut: false, peerLeftAt: undefined }
+            : prev);
+          return;
+        }
+
         if (payload.type === "offer") {
           if (payload.callEventId && callEventIdSnapshot && payload.callEventId !== callEventIdSnapshot) {
             console.log(`[Voice] 🛑 Ignoring offer for stale call ${payload.callEventId} (current=${callEventIdSnapshot})`);
@@ -2401,6 +2413,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       void heartbeatWithRetry(acceptedCall.callEventId, "accept-init");
 
       const channel = await setupSignaling(acceptedCall.conversationId);
+
+      await sendSignalReliably(channel, {
+        type: "peer-accepted",
+        senderId: user.id,
+        callEventId: acceptedCall.callEventId,
+      }, "peer-accepted");
 
       // FAST PATH — caller's offer was prefetched during the pre-accept
       // ready-for-offer. Just answer it.
