@@ -2764,18 +2764,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         "1440p": 3_000_000,
       };
       const baseFor = resBitrateBase[effectiveQuality] ?? 1_200_000;
-      const maxBitrate = Math.min(
-        4_000_000,
-        opt === "ultra"  ? Math.round(baseFor * 1.5) :
-        opt === "motion" ? Math.round(baseFor * 0.85) :
-        baseFor
-      );
+      const maxBitrate = baseFor;
       // Per-preset FPS floor: at low resolutions the encoder simply can't
       // keep up with 30/60 fps of 4K native input, so cap FPS unless the
       // user explicitly picked motion.
       const targetHeight = res?.height ?? 1080;
       const fpsCap =
-        opt === "motion" ? effectiveFps :
         targetHeight <= 480 ? Math.min(effectiveFps, 15) :
         targetHeight <= 720 ? Math.min(effectiveFps, 24) :
         effectiveFps;
@@ -2892,6 +2886,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
       // Periodically log outbound stats so we can confirm the encoder is
       // actually delivering the bitrate / resolution we asked for.
+      let lastBytes = 0;
+      let lastStatsAt = performance.now();
       const statsInterval = setInterval(async () => {
         if (!screenPcOutRef.current || screenPcOutRef.current !== screenPc) {
           clearInterval(statsInterval);
@@ -2901,11 +2897,16 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           const stats = await screenPc.getStats();
           stats.forEach((report: any) => {
             if (report.type === "outbound-rtp" && report.kind === "video") {
-              console.log(`[Voice] 🖥️ outbound screen video — ${report.frameWidth}x${report.frameHeight}@${report.framesPerSecond}fps, bitrate≈${Math.round((report.bytesSent || 0) * 8 / 1000)}kbps total`);
+              const now = performance.now();
+              const bytes = report.bytesSent || 0;
+              const kbps = lastBytes > 0 ? Math.round(((bytes - lastBytes) * 8) / Math.max(1, now - lastStatsAt)) : 0;
+              lastBytes = bytes;
+              lastStatsAt = now;
+              console.log(`[Voice] 🖥️ outbound screen video — ${report.frameWidth}x${report.frameHeight}@${report.framesPerSecond}fps, bitrate≈${kbps}kbps`);
             }
           });
         } catch {}
-      }, 5000);
+      }, 15_000);
 
       channelRef.current.send({
         type: "broadcast",
