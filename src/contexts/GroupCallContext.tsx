@@ -199,6 +199,16 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
   // Per-user volume / local mute (shared with VoiceContext via localStorage).
   const { getUserVolume, setUserVolume, isUserMuted, setUserMuted, setLocalDeafened, attachPeerGain, clearAllPeerGains } = usePeerGains();
 
+  useEffect(() => {
+    (window as any).__cubblyInCall = !!activeCall;
+    (window as any).__cubblyScreenSharing = !!activeCall?.isScreenSharing;
+    try { window.dispatchEvent(new Event("cubbly:realtime-media-load-change")); } catch {}
+    return () => {
+      (window as any).__cubblyInCall = false;
+      (window as any).__cubblyScreenSharing = false;
+    };
+  }, [activeCall?.conversationId, activeCall?.isScreenSharing]);
+
   // Fetch ICE servers (same as 1-on-1)
   useEffect(() => {
     if (!user) return;
