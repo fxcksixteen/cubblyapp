@@ -2839,7 +2839,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       const scaleResolutionDownBy = capturedHeight > targetHeight
         ? +(capturedHeight / targetHeight).toFixed(2)
         : 1;
-      const encodingOpts = { scaleResolutionDownBy, maxFramerate: fpsCap };
+      const encodingOpts = {
+        scaleResolutionDownBy,
+        maxFramerate: fpsCap,
+        preferMotion: opt === "motion",
+      };
 
 
       // Bot call → loopback screenshare (echo video + audio back to yourself)
