@@ -203,20 +203,35 @@ function parseValorant() {
 // ---------- MARVEL RIVALS ----------------------------------------------------
 function parseMarvelRivals() {
   if (process.platform !== "win32") return null;
-  const base = path.join(
-    process.env.LOCALAPPDATA || "",
-    "Marvel", "Saved", "Logs",
-  );
-  const logPath = fs.existsSync(path.join(base, "Marvel.log"))
-    ? path.join(base, "Marvel.log")
-    : newestFileIn(base, (n) => n.endsWith(".log"));
-  if (!logPath) return null;
+  const candidates = [
+    path.join(process.env.LOCALAPPDATA || "", "MarvelGame", "Saved", "Logs"),
+    path.join(process.env.LOCALAPPDATA || "", "Marvel", "Saved", "Logs"),
+  ];
+  let logPath = null;
+  for (const base of candidates) {
+    if (!fs.existsSync(base)) continue;
+    const preferred = ["MarvelGame.log", "Marvel.log"]
+      .map((n) => path.join(base, n))
+      .find((p) => fs.existsSync(p));
+    logPath = preferred || newestFileIn(base, (n) => n.endsWith(".log"));
+    if (logPath) break;
+  }
+  if (!logPath) { console.log("[game-details] marvel-rivals: no log directory found"); return null; }
   const tail = tailFile(logPath, 96 * 1024);
   if (!tail) return null;
-  const mapMatch = [...tail.matchAll(/LoadLevel.*?Maps\/[^\/]+\/([A-Za-z_0-9]+)/g)].pop();
-  const heroMatch = [...tail.matchAll(/SelectedHero[:=]\s*([A-Za-z_0-9]+)/g)].pop();
-  const modeMatch = [...tail.matchAll(/GameMode[:=]\s*([A-Za-z_0-9]+)/g)].pop();
-  if (!mapMatch && !heroMatch && !modeMatch) return null;
+  const mapMatch =
+    [...tail.matchAll(/LoadLevel.*?Maps\/[^\/]+\/([A-Za-z_0-9]+)/g)].pop() ||
+    [...tail.matchAll(/CurrentMap[:=\s"']+([A-Za-z_0-9]+)/g)].pop();
+  const heroMatch =
+    [...tail.matchAll(/SelectedHero[:=]\s*([A-Za-z_0-9]+)/g)].pop() ||
+    [...tail.matchAll(/HeroName[:=\s"']+([A-Za-z_0-9]+)/g)].pop();
+  const modeMatch =
+    [...tail.matchAll(/GameMode[:=]\s*([A-Za-z_0-9]+)/g)].pop() ||
+    [...tail.matchAll(/MatchType[:=\s"']+([A-Za-z_0-9]+)/g)].pop();
+  if (!mapMatch && !heroMatch && !modeMatch) {
+    console.log("[game-details] marvel-rivals: log found but no matches");
+    return null;
+  }
   return {
     map: mapMatch?.[1]?.replace(/_/g, " ") ?? null,
     hero: heroMatch?.[1] ?? null,
@@ -232,11 +247,21 @@ function parseFortnite() {
     "FortniteGame", "Saved", "Logs", "FortniteGame.log",
   );
   const tail = tailFile(logPath, 96 * 1024);
-  if (!tail) return null;
-  const playlistMatch = [...tail.matchAll(/Playlist:\s*([A-Za-z_0-9]+)/g)].pop();
-  const placementMatch = [...tail.matchAll(/Placement[:=]\s*(\d+)/g)].pop();
-  const killsMatch = [...tail.matchAll(/PlayerKills[:=]\s*(\d+)/g)].pop();
-  if (!playlistMatch && !placementMatch && !killsMatch) return null;
+  if (!tail) { console.log("[game-details] fortnite: no log at", logPath); return null; }
+  const playlistMatch =
+    [...tail.matchAll(/Playlist[:=]\s*([A-Za-z_0-9]+)/g)].pop() ||
+    [...tail.matchAll(/PlaylistName[:=\s"']+([A-Za-z_0-9]+)/g)].pop() ||
+    [...tail.matchAll(/MatchState[:=]\s*([A-Za-z_0-9]+)/g)].pop();
+  const placementMatch =
+    [...tail.matchAll(/Placement[:=]\s*(\d+)/g)].pop() ||
+    [...tail.matchAll(/TeamPlacement[:=\s"']+(\d+)/g)].pop();
+  const killsMatch =
+    [...tail.matchAll(/PlayerKills[:=]\s*(\d+)/g)].pop() ||
+    [...tail.matchAll(/TeamKills[:=\s"']+(\d+)/g)].pop();
+  if (!playlistMatch && !placementMatch && !killsMatch) {
+    console.log("[game-details] fortnite: log found but no matches");
+    return null;
+  }
   return {
     mode: playlistMatch?.[1]?.replace(/^Playlist_/i, "") ?? null,
     placement: placementMatch?.[1] ? Number(placementMatch[1]) : null,
