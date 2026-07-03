@@ -376,7 +376,7 @@ const ServerVoicePanel = ({ conversationId }: Props) => {
           onClose={() => setPickerOpen(false)}
           onSelect={async (_type, options) => {
             setPickerOpen(false);
-            await toggleScreenShare(options.sourceId);
+            await toggleScreenShare(options.sourceId, { fps: options.fps, quality: options.quality });
           }}
         />
       )}
