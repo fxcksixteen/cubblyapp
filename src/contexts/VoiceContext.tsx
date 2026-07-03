@@ -815,28 +815,35 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     analyserRef.current = analyser;
     const dataArray = new Uint8Array(analyser.frequencyBinCount);
     let lastLocal = 0;
+    // v0.4.3: throttle to ~10 Hz (was RAF/60 Hz). RAF competed with the game
+    // for main-thread CPU whenever a user launched a game mid-call, and
+    // NEVER recovered because the RAF loop stays hot forever. Also pause
+    // entirely while the tab is hidden.
     const tick = () => {
-      analyser.getByteFrequencyData(dataArray);
+      if (typeof document !== "undefined" && document.hidden) return;
+      const a = analyserRef.current;
+      if (!a) return;
+      a.getByteFrequencyData(dataArray);
       const avg = dataArray.reduce((sum, v) => sum + v, 0) / dataArray.length;
       const next = (avg / 255) * 100;
-      // Smaller gate (0.3) keeps the speaking-ring smooth & reactive while
-      // still cutting most idle re-renders.
       if (Math.abs(next - lastLocal) > 0.3) {
         lastLocal = next;
         setAudioLevel(next);
       }
-      animFrameRef.current = requestAnimationFrame(tick);
     };
-    tick();
+    // setInterval id lives in animFrameRef (same lifecycle slot).
+    animFrameRef.current = window.setInterval(tick, 100) as unknown as number;
   }, []);
 
   const stopAudioLevelMonitor = useCallback(() => {
-    cancelAnimationFrame(animFrameRef.current);
+    try { window.clearInterval(animFrameRef.current as unknown as number); } catch {}
+    try { cancelAnimationFrame(animFrameRef.current); } catch {}
     audioContextRef.current?.close();
     audioContextRef.current = null;
     analyserRef.current = null;
     setAudioLevel(0);
   }, []);
+
 
   const getUserMedia = useCallback(async () => {
     // v0.3.17: `sampleSize: 24` paired with `deviceId: { exact: ... }` made
