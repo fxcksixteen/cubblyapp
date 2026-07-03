@@ -293,6 +293,10 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
       // Highest priority: while we're sending real-time PCM/video to peers,
       // never spawn `tasklist` / PowerShell — they block the IPC main thread.
       if (screenSharing) return POLL_INTERVAL_SCREENSHARE_MS;
+      // Calls always win over presence accuracy. Process scans and rich game
+      // probes are heavy on desktop, so do not keep the normal game-detected
+      // cadence while WebRTC is active.
+      if (inCall) return POLL_INTERVAL_SUPPRESSED_MS;
       // If we currently THINK a game is running, keep polling at the base
       // cadence so we notice when it closes — being unfocused is the expected
       // state mid-game, so we can't back off then or we ghost-detect for
@@ -316,6 +320,9 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
     };
     schedule();
 
+    const handleRealtimeLoadChange = () => schedule();
+    window.addEventListener("cubbly:realtime-media-load-change", handleRealtimeLoadChange);
+
     // Best-effort cleanup: when the app/tab closes, delete our activity row
     // so friends don't keep seeing "Playing Discord" after we're gone.
     const handleUnload = () => {
@@ -335,6 +342,7 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
       cancelled = true;
       if (pollTimerRef.current) clearInterval(pollTimerRef.current);
       pollTimerRef.current = null;
+      window.removeEventListener("cubbly:realtime-media-load-change", handleRealtimeLoadChange);
       window.removeEventListener("beforeunload", handleUnload);
       // Also clean up on unmount (sign-out)
       handleUnload();
