@@ -1,30 +1,60 @@
-Implement a stronger v0.4.3 hotfix pass for the exact three issues: pickup stuck on ringing, game-launch call lag, and unwatchable streams.
+# v0.4.3 Final Hardening Pass
 
-1. Fix call pickup getting stuck after the other person accepts
-- Correct the caller-side pickup watchdog so it checks the real participant heartbeat fields (`last_seen_at`/`joined_at`) instead of a non-matching heartbeat column.
-- Add an explicit “peer accepted” signaling ack when the callee taps Accept so the caller stops the ringing state immediately and enters a real connecting/recovery path.
-- If the answer or ICE path still does not connect after the peer is confirmed live, automatically rebuild the caller peer connection and send a forced fresh offer without requiring hang up + Rejoin.
-- Keep ICE candidate queues bounded and scoped to the current call event so stale candidates from an older attempt cannot poison the next pickup.
+Honest answer: the big fixes are in, but "bulletproof" is a strong word for realtime voice/video over WebRTC. Here's what's still worth tightening before we call v0.4.3 truly done.
 
-2. Make TURN failure/expiry stop causing silent call failures
-- Treat expired/missing relay credentials as a real possible cause: TURN absolutely can affect pickup and streams when either side cannot connect peer-to-peer.
-- Add a short TURN/relay health timeout on startup; if relay credentials are missing, expired, or produce no relay candidates quickly, fall back to STUN/direct mode for that session instead of letting bad relay candidates slow or wedge negotiation.
-- Keep diagnostics able to show whether a call is direct or relayed, so if direct STUN cannot connect because relay quota is gone, the app fails visibly instead of pretending the call is still ringing forever.
+## What's already solid
+- Call pickup watchdog + `peer-accepted` ack (no more stuck-on-ringing)
+- TURN expiry auto-detected, strips dead creds, falls back to STUN
+- Activity/game polling backs off during calls
+- Screenshare encoder-level downscale + strict FPS/bitrate caps
+- Audio meters throttled to 10Hz + pause when hidden
+- Group calls at parity with 1:1
 
-3. Stop game launch from permanently lagging active calls
-- Rework activity/game polling so active calls always win over game detection: while in a call, process scans and rich game-detail probes back off hard or pause instead of continuing at the normal cadence once a game is detected.
-- Reschedule the activity poll immediately when call/screenshare state changes instead of waiting until the next long timer tick.
-- Keep voice audio sender priority high and reduce background stats/debug polling during active gaming/calls so CPU/network contention recovers without restarting Cubbly.
+## What's NOT bulletproof yet
 
-4. Make streams actually low-lag on desktop
-- Enforce encoder-level downscaling and FPS caps for desktop streams, not just `getDisplayMedia` constraints that Electron/Chromium can ignore.
-- Cap 480p to low bitrate + 15 FPS and 720p to moderate bitrate + 24 FPS even when the user picks motion/ultra, so “lowest quality” is genuinely lightweight.
-- Lower screenshare debug/stats polling and make bitrate logs delta-based/lightweight so the stream itself is not competing with diagnostics.
+### 1. TURN is expired — real-world impact
+Without a working relay, ~10–20% of users on strict NAT / mobile hotspots / corporate wifi still can't connect at all. STUN fallback doesn't help them. Options:
+- Wire in Cloudflare's free TURN (Realtime product, generous free tier)
+- Or Metered.ca free tier (50GB/mo)
+- Or just document it as a known limit until you renew
 
-5. Apply the same performance fixes to group/server calls
-- Group calls still use 60 FPS audio meter loops and very high screenshare bitrate settings, so apply the same throttled meters, sender priority, downscale, FPS, and bitrate caps there too.
-- Avoid tearing down group peer connections on transient ICE failure; restart ICE first, like the 1:1 call path.
+### 2. Call reliability edge cases still untested
+- Simultaneous call-both-sides (glare) — does the `peer-accepted` ack handle it?
+- Network switch mid-call (wifi → cellular) — ICE restart path exists but no verification
+- Rapid hang-up + redial within 2s — could race the watchdog
 
-6. Keep this as v0.4.3
-- Do not bump the app version.
-- Update the existing v0.4.3 changelog bullets only if needed, keeping them short and user-facing.
+### 3. Screenshare — no adaptive downshift
+Current caps are static per quality tier. If bandwidth drops mid-stream, we don't drop resolution automatically. Chrome's `degradationPreference: maintain-framerate` helps but doesn't rescale.
+
+### 4. Game-lag — one gap remains
+`ActivityContext` backs off during calls, but the **initial** game scan on launch is still heavy. First 2–3 seconds after launching a game while in-call could still hitch.
+
+### 5. Group calls — mesh scaling
+Current group call is full-mesh peer connections. Past ~5 people, CPU/bandwidth compounds fast. Not a v0.4.3 fix (needs SFU), but worth flagging.
+
+### 6. No telemetry
+We can't see if the fixes are actually working for users. No stats logging for ICE state, relay usage, bitrate achieved, disconnect frequency.
+
+## Proposed v0.4.3 tightening (safe, no version bump)
+
+1. **Cloudflare TURN integration** — free, drop-in replacement for expired TURN account. Update `get-turn-credentials` edge function to mint Cloudflare creds.
+2. **Glare handling** — polite/impolite peer pattern in `VoiceContext` so simultaneous calls resolve cleanly.
+3. **ICE restart on connection failure** — trigger `pc.restartIce()` on `iceConnectionState === 'failed'` before full teardown.
+4. **Screenshare adaptive quality** — monitor `outbound-rtp` stats every 3s; if packet loss >5% or bitrate <50% of target, drop one quality tier automatically.
+5. **Game scan first-run throttle** — skip the initial heavy scan if a call is already active; wait for next interval.
+6. **Lightweight call diagnostics** — log ICE state transitions, selected candidate type (host/srflx/relay), and stream stats to console with `[voice-diag]` prefix so we can debug user reports.
+
+## Out of scope for v0.4.3
+- SFU migration for large group calls
+- User-facing connection quality indicator
+- Persistent telemetry to backend
+
+## Technical notes
+- No DB, RLS, or schema changes
+- Edge function edit: `supabase/functions/get-turn-credentials/index.ts` (if we go with Cloudflare)
+- Would need `CLOUDFLARE_TURN_TOKEN_ID` + `CLOUDFLARE_TURN_API_TOKEN` secrets if you have a Cloudflare account
+- All other changes are frontend-only in `VoiceContext.tsx`, `GroupCallContext.tsx`, `ActivityContext.tsx`
+
+---
+
+**Bottom line:** the app is meaningfully better than it was before v0.4.3, but calling it bulletproof requires (a) working TURN and (b) the 6 tightenings above. Want me to proceed with all 6, or pick a subset?
