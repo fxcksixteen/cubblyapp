@@ -2799,7 +2799,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
         stream.getTracks().forEach(track => {
           const sender = localPc.addTrack(track, stream);
-          if (track.kind === "video") applyScreenBitrate(sender, maxBitrate);
+          if (track.kind === "video") applyScreenBitrate(sender, maxBitrate, encodingOpts);
           if (track.kind === "audio") applyScreenAudioBitrate(sender);
           track.onended = () => { stopScreenShare(); };
         });
@@ -2835,7 +2835,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
       stream.getTracks().forEach(track => {
         const sender = screenPc.addTrack(track, stream);
-        if (track.kind === "video") applyScreenBitrate(sender, maxBitrate);
+        if (track.kind === "video") applyScreenBitrate(sender, maxBitrate, encodingOpts);
         if (track.kind === "audio") applyScreenAudioBitrate(sender);
         track.onended = () => {
           stopScreenShare();
