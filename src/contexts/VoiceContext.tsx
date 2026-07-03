@@ -3035,7 +3035,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               console.log(`[Voice] 🔻 adaptive: loss ${(fractionLost * 100).toFixed(1)}% → cap ${(currentBitrate / 1000) | 0}kbps`);
             }
           } else if (videoSenderRef && cleanStreak >= 4 && currentBitrate < targetBitrate) {
-            const next = Math.min(targetBitrate, Math.round(currentBitrate * 1.15));
+            const next = Math.min(targetBitrate, Math.round(currentBitrate * recoveryStep));
             if (next !== currentBitrate) {
               currentBitrate = next;
               cleanStreak = 0;
