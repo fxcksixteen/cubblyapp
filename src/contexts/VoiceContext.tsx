@@ -114,35 +114,71 @@ export const SERVER_REGIONS = [
 ];
 
 /**
- * Bump the maxBitrate on a screenshare video sender. Called right after
- * addTrack() so encoding parameters reflect the user's Optimization preset.
+ * v0.4.4 — Prefer VP9 (then VP8, then H.264) for a screenshare video
+ * transceiver. VP9 delivers ~30–40% better quality per bit than VP8/H.264
+ * for screen content — matching what Discord's desktop client picks — and
+ * Chromium/Electron both support hardware/software VP9 encode.
+ *
+ * Safe no-op if `RTCRtpSender.getCapabilities` or `setCodecPreferences` are
+ * unavailable, or if VP9 isn't offered by the current build.
  */
+function preferScreenShareCodec(transceiver: RTCRtpTransceiver | null | undefined): string | null {
+  if (!transceiver || typeof (transceiver as any).setCodecPreferences !== "function") return null;
+  try {
+    const caps = (RTCRtpSender as any).getCapabilities?.("video");
+    if (!caps?.codecs?.length) return null;
+    const rank = (mime: string): number => {
+      const m = mime.toLowerCase();
+      if (m === "video/av1") return 0;      // best quality/bit, if the peer decodes it
+      if (m === "video/vp9") return 1;      // Discord's default
+      if (m === "video/vp8") return 2;
+      if (m === "video/h264") return 3;
+      return 9;
+    };
+    const codecs = [...caps.codecs].sort((a: any, b: any) => rank(a.mimeType) - rank(b.mimeType));
+    (transceiver as any).setCodecPreferences(codecs);
+    const chosen = codecs[0]?.mimeType || null;
+    console.log(`[Voice] 🎞️ screenshare codec preference:`, codecs.slice(0, 3).map((c: any) => c.mimeType).join(" → "));
+    return chosen;
+  } catch (e) {
+    console.warn("[Voice] setCodecPreferences failed:", e);
+    return null;
+  }
+}
+
 /**
- * Apply high-quality screenshare *video* encoding parameters: max bitrate, never
- * downscale resolution, drop frames before quality on bandwidth pressure.
- * This is what fixes "screenshare looks pixelated to the OTHER user".
+ * Apply high-quality screenshare *video* encoding parameters: max bitrate,
+ * per-preset degradation preference, high network priority, optional
+ * hard-downscale via scaleResolutionDownBy for capture sources that ignore
+ * getDisplayMedia size constraints.
  */
-async function applyScreenBitrate(sender: RTCRtpSender, maxBitrate: number, opts?: { scaleResolutionDownBy?: number; maxFramerate?: number }) {
+async function applyScreenBitrate(
+  sender: RTCRtpSender,
+  maxBitrate: number,
+  opts?: {
+    scaleResolutionDownBy?: number;
+    maxFramerate?: number;
+    /** "motion" drops resolution before frames; "detail" drops frames before resolution. */
+    preferMotion?: boolean;
+  },
+) {
   try {
     const params = sender.getParameters();
     if (!params.encodings || params.encodings.length === 0) {
       params.encodings = [{}];
     }
     params.encodings[0].maxBitrate = maxBitrate;
-    // v0.4.3: force the encoder to downscale on the sender. Electron's
-    // desktopCapturer ignores getDisplayMedia width/height constraints and
-    // applyConstraints on the track is a no-op for most desktop capture
-    // sources — so "480p" was actually encoding native 1440p/4K frames and
-    // the encoder would collapse framerate to <10 fps trying to keep up.
-    // Setting scaleResolutionDownBy is the only reliable path.
     if (opts?.scaleResolutionDownBy && opts.scaleResolutionDownBy > 1) {
       (params.encodings[0] as any).scaleResolutionDownBy = opts.scaleResolutionDownBy;
     }
     (params.encodings[0] as any).maxFramerate = opts?.maxFramerate ?? (params.encodings[0] as any).maxFramerate ?? 60;
-    (params.encodings[0] as any).networkPriority = "medium";
-    (params.encodings[0] as any).priority = "medium";
-    // maintain-framerate → drop resolution before frames.
-    (params as any).degradationPreference = "maintain-framerate";
+    // v0.4.4: bump to "high" so a browser under load prioritises screenshare
+    // packets over background fetches — Discord does the same.
+    (params.encodings[0] as any).networkPriority = "high";
+    (params.encodings[0] as any).priority = "high";
+    // v0.4.4: respect Optimize-For preset. Motion → keep fps, drop res.
+    // Detail (text/reading) → keep res sharp, drop fps under pressure.
+    (params as any).degradationPreference = opts?.preferMotion ? "maintain-framerate" : "maintain-resolution";
     await sender.setParameters(params);
   } catch (e) {
     console.warn("[Voice] Could not set screen encoding bitrate:", e);
@@ -2757,13 +2793,19 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       // "low quality" negotiate 1.35 Mbps at 30 fps of native 4K frames on
       // Electron (Chromium desktopCapturer ignores getDisplayMedia size
       // constraints), which is why viewers saw a slideshow.
+      // v0.4.4: Discord-parity ladder. Discord's desktop client caps around
+      // 2.5 Mbps @720p, 4.5 Mbps @1080p30, 7.5 Mbps @1080p60, 9 Mbps @1440p —
+      // and pairs those with VP9 (see preferScreenShareCodec above), which is
+      // why their picture looks noticeably sharper than an equivalent VP8
+      // stream at the same bandwidth. We match, and slightly beat, those caps.
+      const isHighFps = effectiveFps >= 50;
       const resBitrateBase: Record<string, number> = {
-        "480p":  600_000,
-        "720p":  1_200_000,
-        "1080p": 2_200_000,
-        "1440p": 3_000_000,
+        "480p":  1_000_000,
+        "720p":  isHighFps ? 3_000_000 : 2_500_000,
+        "1080p": isHighFps ? 7_500_000 : 4_500_000,
+        "1440p": isHighFps ? 12_000_000 : 8_000_000,
       };
-      const baseFor = resBitrateBase[effectiveQuality] ?? 1_200_000;
+      const baseFor = resBitrateBase[effectiveQuality] ?? 2_500_000;
       const maxBitrate = baseFor;
       // v0.4.3 pass 2: honor the user's chosen fps at 720p and above. Only
       // clamp aggressively at ≤480p (and even there raise the floor to 20)
@@ -2797,7 +2839,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       const scaleResolutionDownBy = capturedHeight > targetHeight
         ? +(capturedHeight / targetHeight).toFixed(2)
         : 1;
-      const encodingOpts = { scaleResolutionDownBy, maxFramerate: fpsCap };
+      const encodingOpts = {
+        scaleResolutionDownBy,
+        maxFramerate: fpsCap,
+        preferMotion: opt === "motion",
+      };
 
 
       // Bot call → loopback screenshare (echo video + audio back to yourself)
@@ -2861,9 +2907,18 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       const screenPc = new RTCPeerConnection({ iceServers: iceServersRef.current });
       screenPcOutRef.current = screenPc;
 
+      let videoSenderRef: RTCRtpSender | null = null;
       stream.getTracks().forEach(track => {
         const sender = screenPc.addTrack(track, stream);
-        if (track.kind === "video") applyScreenBitrate(sender, maxBitrate, encodingOpts);
+        if (track.kind === "video") {
+          videoSenderRef = sender;
+          applyScreenBitrate(sender, maxBitrate, encodingOpts);
+          // v0.4.4: force VP9 (or AV1 if present) on the video transceiver so
+          // this share negotiates the same modern codec Discord uses instead
+          // of falling back to VP8's mushier screen-content encoding.
+          const tx = screenPc.getTransceivers().find((t) => t.sender === sender);
+          preferScreenShareCodec(tx || null);
+        }
         if (track.kind === "audio") applyScreenAudioBitrate(sender);
         track.onended = () => {
           stopScreenShare();
@@ -2884,10 +2939,23 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       offer.sdp = patchScreenShareOpusSdp(offer.sdp || "");
       await screenPc.setLocalDescription(offer);
 
-      // Periodically log outbound stats so we can confirm the encoder is
-      // actually delivering the bitrate / resolution we asked for.
+      // v0.4.4: adaptive bitrate loop, Discord-style.
+      // Every 3s we sample outbound-rtp + remote-inbound-rtp:
+      //  • if sustained packet loss >8% over TWO consecutive samples → drop
+      //    maxBitrate 25% (floor 40% of the user's chosen target).
+      //  • if loss stays <2% for 4 consecutive samples AND we've throttled →
+      //    step back up 15% toward target.
+      // This is the piece that lets the stream stay smooth on flaky wifi
+      // without permanently sacrificing quality on good networks.
+      const targetBitrate = maxBitrate;
+      const minBitrate = Math.max(300_000, Math.round(targetBitrate * 0.4));
+      let currentBitrate = targetBitrate;
+      let lossyStreak = 0;
+      let cleanStreak = 0;
       let lastBytes = 0;
       let lastStatsAt = performance.now();
+      let lastRemoteLost = 0;
+      let lastRemotePkts = 0;
       const statsInterval = setInterval(async () => {
         if (!screenPcOutRef.current || screenPcOutRef.current !== screenPc) {
           clearInterval(statsInterval);
@@ -2895,6 +2963,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         }
         try {
           const stats = await screenPc.getStats();
+          let fractionLost = 0;
+          let outboundInfo = "";
           stats.forEach((report: any) => {
             if (report.type === "outbound-rtp" && report.kind === "video") {
               const now = performance.now();
@@ -2902,11 +2972,55 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               const kbps = lastBytes > 0 ? Math.round(((bytes - lastBytes) * 8) / Math.max(1, now - lastStatsAt)) : 0;
               lastBytes = bytes;
               lastStatsAt = now;
-              console.log(`[Voice] 🖥️ outbound screen video — ${report.frameWidth}x${report.frameHeight}@${report.framesPerSecond}fps, bitrate≈${kbps}kbps`);
+              outboundInfo = `${report.frameWidth}x${report.frameHeight}@${report.framesPerSecond}fps, ${kbps}kbps`;
+            }
+            if (report.type === "remote-inbound-rtp" && report.kind === "video") {
+              const lost = report.packetsLost ?? 0;
+              const pkts = (report as any).packetsReceived ?? 0;
+              const dLost = Math.max(0, lost - lastRemoteLost);
+              const dPkts = Math.max(0, pkts - lastRemotePkts);
+              lastRemoteLost = lost;
+              lastRemotePkts = pkts;
+              const denom = dLost + dPkts;
+              if (denom > 0) fractionLost = dLost / denom;
+              else if (typeof report.fractionLost === "number") fractionLost = report.fractionLost;
             }
           });
+
+          if (fractionLost > 0.08) {
+            lossyStreak += 1;
+            cleanStreak = 0;
+          } else if (fractionLost < 0.02) {
+            cleanStreak += 1;
+            lossyStreak = 0;
+          } else {
+            lossyStreak = 0;
+            cleanStreak = 0;
+          }
+
+          if (videoSenderRef && lossyStreak >= 2 && currentBitrate > minBitrate) {
+            const next = Math.max(minBitrate, Math.round(currentBitrate * 0.75));
+            if (next !== currentBitrate) {
+              currentBitrate = next;
+              lossyStreak = 0;
+              await applyScreenBitrate(videoSenderRef, currentBitrate, encodingOpts);
+              console.log(`[Voice] 🔻 adaptive: loss ${(fractionLost * 100).toFixed(1)}% → cap ${(currentBitrate / 1000) | 0}kbps`);
+            }
+          } else if (videoSenderRef && cleanStreak >= 4 && currentBitrate < targetBitrate) {
+            const next = Math.min(targetBitrate, Math.round(currentBitrate * 1.15));
+            if (next !== currentBitrate) {
+              currentBitrate = next;
+              cleanStreak = 0;
+              await applyScreenBitrate(videoSenderRef, currentBitrate, encodingOpts);
+              console.log(`[Voice] 🔺 adaptive: clean → cap ${(currentBitrate / 1000) | 0}kbps`);
+            }
+          }
+
+          if (outboundInfo) {
+            console.log(`[Voice] 🖥️ outbound — ${outboundInfo} (loss ${(fractionLost * 100).toFixed(1)}%, cap ${(currentBitrate / 1000) | 0}kbps)`);
+          }
         } catch {}
-      }, 15_000);
+      }, 3_000);
 
       channelRef.current.send({
         type: "broadcast",

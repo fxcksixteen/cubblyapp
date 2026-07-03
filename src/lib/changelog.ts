@@ -23,21 +23,24 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.4.3";
+export const CURRENT_VERSION = "0.4.4";
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    version: "0.4.3",
-    title: "Call reliability hotfix",
+    version: "0.4.4",
+    title: "Discord-parity screen sharing",
     date: "2026-07-03",
     hero: bearImage,
-    newFeatures: [],
+    newFeatures: [
+      "Screen sharing now defaults to VP9 with adaptive bitrate — sharper picture at the same bandwidth and smoother when your network dips.",
+    ],
     bugFixes: [
       "Fixed calls sometimes stuck on “Ringing” after the other person picked up.",
       "Voice no longer stays laggy after launching a game mid-call.",
       "Screen sharing on the lowest quality is actually low-bandwidth now.",
       "Less audio stutter in the first few seconds after launching a game while in a call.",
       "Screen share now actually runs at the framerate you picked instead of silently capping to 24 fps.",
+      "Optimize-For-Text finally keeps resolution sharp under bandwidth pressure instead of blurring first.",
       "Wishlisted “Cute” badge no longer shows as its old name on other people's profiles.",
       "Premium animated themes now render properly on the desktop app when hardware acceleration is off.",
       "More reliable in-game details (map, hero, score) for Valorant, Fortnite, Marvel Rivals and Roblox.",
