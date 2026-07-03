@@ -1949,12 +1949,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           remoteAnalyserRef.current = remoteAnalyser;
           const remoteData = new Uint8Array(remoteAnalyser.frequencyBinCount);
           const tickRemote = () => {
+            if (typeof document !== "undefined" && document.hidden) return;
             remoteAnalyser.getByteFrequencyData(remoteData);
             const avg = remoteData.reduce((sum, v) => sum + v, 0) / remoteData.length;
             setRemoteAudioLevel(avg / 255 * 100);
-            remoteAnimFrameRef.current = requestAnimationFrame(tickRemote);
           };
-          tickRemote();
+          remoteAnimFrameRef.current = window.setInterval(tickRemote, 100) as unknown as number;
+
         } catch {}
       };
 
