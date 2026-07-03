@@ -160,6 +160,8 @@ async function applyScreenBitrate(
     maxFramerate?: number;
     /** "motion" drops resolution before frames; "detail" drops frames before resolution. */
     preferMotion?: boolean;
+    /** "ultra" = balanced degradation + VP9 temporal scalability (L1T3). */
+    ultra?: boolean;
   },
 ) {
   try {
@@ -176,9 +178,21 @@ async function applyScreenBitrate(
     // packets over background fetches — Discord does the same.
     (params.encodings[0] as any).networkPriority = "high";
     (params.encodings[0] as any).priority = "high";
-    // v0.4.4: respect Optimize-For preset. Motion → keep fps, drop res.
-    // Detail (text/reading) → keep res sharp, drop fps under pressure.
-    (params as any).degradationPreference = opts?.preferMotion ? "maintain-framerate" : "maintain-resolution";
+    // v0.4.4: Ultra uses VP9/AV1 temporal scalability so a lost frame drops
+    // the enhancement layer instead of the whole picture — framerate stays
+    // stable under packet loss without the picture turning to mush.
+    if (opts?.ultra) {
+      (params.encodings[0] as any).scalabilityMode = "L1T3";
+    }
+    // v0.4.4: respect Optimize-For preset.
+    // Ultra    → balanced (trade res + fps proportionally).
+    // Motion   → keep fps, drop res.
+    // Clarity  → keep res sharp, drop fps under pressure.
+    (params as any).degradationPreference = opts?.ultra
+      ? "balanced"
+      : opts?.preferMotion
+        ? "maintain-framerate"
+        : "maintain-resolution";
     await sender.setParameters(params);
   } catch (e) {
     console.warn("[Voice] Could not set screen encoding bitrate:", e);
