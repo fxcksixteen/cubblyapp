@@ -38,6 +38,7 @@ const ServerView = () => {
   const server = servers.find((s) => s.id === serverId);
   const { channels } = useServerChannels(serverId || null);
   const { members } = useServerMembers(serverId || null);
+  const groupCall = useGroupCall();
   const [activeConv, setActiveConv] = useState<Conversation | null>(null);
 
   const isOwner = !!server && server.owner_id === user?.id;
