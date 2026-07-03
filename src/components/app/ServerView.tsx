@@ -158,7 +158,17 @@ const ServerView = () => {
           <ChannelGroup label="Text Channels" channels={channels.filter((c) => c.kind === "text")} activeId={channelId}
             onSelect={(id) => navigate(`/@me/server/${serverId}/${id}`)} />
           <ChannelGroup label="Voice Channels" channels={channels.filter((c) => c.kind === "voice")} activeId={channelId}
-            onSelect={(id) => navigate(`/@me/server/${serverId}/${id}`)} />
+            onSelect={(id) => navigate(`/@me/server/${serverId}/${id}`)}
+            onJoinVoice={async (c) => {
+              if (!c.conversation_id || !server) return;
+              navigate(`/@me/server/${serverId}/${c.id}`);
+              try {
+                const memberIds = members.map((m) => m.user_id);
+                await groupCall.startCall(c.conversation_id, c.name, memberIds);
+              } catch (e) {
+                console.error("[ServerView] join stream failed", e);
+              }
+            }} />
         </div>
         {/* Voice-Connected card pinned to the bottom of the channel sidebar,
             mirroring the DM sidebar so users can mute/share/disconnect without
