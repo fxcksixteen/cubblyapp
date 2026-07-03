@@ -160,6 +160,8 @@ async function applyScreenBitrate(
     maxFramerate?: number;
     /** "motion" drops resolution before frames; "detail" drops frames before resolution. */
     preferMotion?: boolean;
+    /** "ultra" = balanced degradation + VP9 temporal scalability (L1T3). */
+    ultra?: boolean;
   },
 ) {
   try {
@@ -176,9 +178,21 @@ async function applyScreenBitrate(
     // packets over background fetches — Discord does the same.
     (params.encodings[0] as any).networkPriority = "high";
     (params.encodings[0] as any).priority = "high";
-    // v0.4.4: respect Optimize-For preset. Motion → keep fps, drop res.
-    // Detail (text/reading) → keep res sharp, drop fps under pressure.
-    (params as any).degradationPreference = opts?.preferMotion ? "maintain-framerate" : "maintain-resolution";
+    // v0.4.4: Ultra uses VP9/AV1 temporal scalability so a lost frame drops
+    // the enhancement layer instead of the whole picture — framerate stays
+    // stable under packet loss without the picture turning to mush.
+    if (opts?.ultra) {
+      (params.encodings[0] as any).scalabilityMode = "L1T3";
+    }
+    // v0.4.4: respect Optimize-For preset.
+    // Ultra    → balanced (trade res + fps proportionally).
+    // Motion   → keep fps, drop res.
+    // Clarity  → keep res sharp, drop fps under pressure.
+    (params as any).degradationPreference = opts?.ultra
+      ? "balanced"
+      : opts?.preferMotion
+        ? "maintain-framerate"
+        : "maintain-resolution";
     await sender.setParameters(params);
   } catch (e) {
     console.warn("[Voice] Could not set screen encoding bitrate:", e);
@@ -2799,7 +2813,16 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       // why their picture looks noticeably sharper than an equivalent VP8
       // stream at the same bandwidth. We match, and slightly beat, those caps.
       const isHighFps = effectiveFps >= 50;
-      const resBitrateBase: Record<string, number> = {
+      const isUltra = opt === "ultra";
+      // v0.4.4: Ultra gets its own ladder (~30% above Discord-parity) so the
+      // default preset for every user is genuinely the sharpest option we can
+      // push. Clarity/Motion stay at parity for specialised needs.
+      const resBitrateBase: Record<string, number> = isUltra ? {
+        "480p":  1_500_000,
+        "720p":  isHighFps ? 4_500_000 : 3_500_000,
+        "1080p": isHighFps ? 10_000_000 : 6_000_000,
+        "1440p": isHighFps ? 16_000_000 : 11_000_000,
+      } : {
         "480p":  1_000_000,
         "720p":  isHighFps ? 3_000_000 : 2_500_000,
         "1080p": isHighFps ? 7_500_000 : 4_500_000,
@@ -2843,6 +2866,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         scaleResolutionDownBy,
         maxFramerate: fpsCap,
         preferMotion: opt === "motion",
+        ultra: isUltra,
       };
 
 
@@ -2948,7 +2972,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       // This is the piece that lets the stream stay smooth on flaky wifi
       // without permanently sacrificing quality on good networks.
       const targetBitrate = maxBitrate;
-      const minBitrate = Math.max(300_000, Math.round(targetBitrate * 0.4));
+      // v0.4.4: Ultra never falls below 60% of its ceiling (so even under
+      // sustained loss it stays above Clarity/Motion bandwidth). Other
+      // presets keep the original 40% floor.
+      const minBitrate = Math.max(300_000, Math.round(targetBitrate * (isUltra ? 0.6 : 0.4)));
+      const recoveryStep = isUltra ? 1.20 : 1.15;
       let currentBitrate = targetBitrate;
       let lossyStreak = 0;
       let cleanStreak = 0;
@@ -3007,7 +3035,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               console.log(`[Voice] 🔻 adaptive: loss ${(fractionLost * 100).toFixed(1)}% → cap ${(currentBitrate / 1000) | 0}kbps`);
             }
           } else if (videoSenderRef && cleanStreak >= 4 && currentBitrate < targetBitrate) {
-            const next = Math.min(targetBitrate, Math.round(currentBitrate * 1.15));
+            const next = Math.min(targetBitrate, Math.round(currentBitrate * recoveryStep));
             if (next !== currentBitrate) {
               currentBitrate = next;
               cleanStreak = 0;

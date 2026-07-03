@@ -902,7 +902,7 @@ function VideoTab({ settings, updateSettings, availableDevices, screenShareSetti
               </span>
             </div>
             <p className="text-[11px] mt-1 leading-4" style={{ color: "var(--app-text-secondary)" }}>
-              Best of both worlds — sharp <em>and</em> smooth. Recommended for everything.
+              Maximum quality — higher bitrate ceiling and VP9 temporal layers. Recommended for everyone.
             </p>
           </button>
           <button

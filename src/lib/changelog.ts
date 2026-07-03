@@ -33,6 +33,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     hero: bearImage,
     newFeatures: [
       "Screen sharing now defaults to VP9 with adaptive bitrate — sharper picture at the same bandwidth and smoother when your network dips.",
+      "Ultra screenshare preset is now the true top tier — higher bitrate ceiling and VP9 temporal layers for a sharper, smoother picture under any network.",
       "“Live · Join Stream” button on server voice channels when someone is screen sharing.",
     ],
     bugFixes: [
