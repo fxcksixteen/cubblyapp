@@ -810,6 +810,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
             await pc.addIceCandidate(new RTCIceCandidate(payload.candidate)).catch(() => {});
           } else {
             const queue = queuedIceRef.current.get(payload.fromUserId) || [];
+            if (queue.length >= 50) queue.shift();
             queue.push(payload.candidate);
             queuedIceRef.current.set(payload.fromUserId, queue);
           }
