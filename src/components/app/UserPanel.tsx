@@ -72,7 +72,9 @@ const UserPanel = () => {
         <div className="flex items-center gap-0.5 shrink-0">
           <button
             onClick={() => {
-              if (activeCall) { toggleMute(); } else {
+              if (activeCall) { toggleMute(); }
+              else if (groupCall) { toggleGroupMute(); }
+              else {
                 const next = !localMuted;
                 setLocalMuted(next);
                 playSound(next ? "mute" : "unmute", { volume: 0.4 });
