@@ -182,6 +182,49 @@ async function applyRealtimeAudioParams(sender: RTCRtpSender, bitrate = 128_000)
   } catch {}
 }
 
+/**
+ * Ring one member on their `voice-global:<uid>` broadcast channel. Waits for
+ * the JOIN ack before publishing — supabase-js resolves `.subscribe()`
+ * BEFORE the topic is actually joined server-side, and any broadcast fired
+ * in that window is dropped on the floor. That race is the reason group-call
+ * rings intermittently failed to reach every member. Retries once on failure
+ * so a transient Realtime hiccup never leaves a friend with no way to join.
+ */
+async function ringMemberWithRetry(mid: string, payload: Record<string, unknown>, attempt = 0): Promise<void> {
+  const ch = supabase.channel(`voice-global:${mid}`);
+  const joined = await new Promise<boolean>((resolve) => {
+    let settled = false;
+    const timer = window.setTimeout(() => { if (!settled) { settled = true; resolve(false); } }, 4000);
+    ch.subscribe((status) => {
+      if (settled) return;
+      if (status === "SUBSCRIBED") { settled = true; window.clearTimeout(timer); resolve(true); }
+      else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+        settled = true; window.clearTimeout(timer); resolve(false);
+      }
+    });
+  });
+  try {
+    if (joined) {
+      const res: any = await ch.send({ type: "broadcast", event: "group-incoming-call", payload });
+      if (res !== "ok" && attempt === 0) {
+        setTimeout(() => { supabase.removeChannel(ch); void ringMemberWithRetry(mid, payload, 1); }, 400);
+        return;
+      }
+    } else if (attempt === 0) {
+      setTimeout(() => { supabase.removeChannel(ch); void ringMemberWithRetry(mid, payload, 1); }, 400);
+      return;
+    }
+  } catch {
+    if (attempt === 0) {
+      setTimeout(() => { supabase.removeChannel(ch); void ringMemberWithRetry(mid, payload, 1); }, 400);
+      return;
+    }
+  }
+  setTimeout(() => supabase.removeChannel(ch), 3000);
+}
+
+
+
 export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
   const { user } = useAuth();
   const [activeCall, setActiveCall] = useState<GroupActiveCall | null>(null);
