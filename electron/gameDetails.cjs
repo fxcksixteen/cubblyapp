@@ -431,6 +431,7 @@ const PARSERS = {
   "robloxplayer": { key: "roblox", run: async () => parseRoblox() },
   "robloxplayerbeta": { key: "roblox", run: async () => parseRoblox() },
   "robloxstudiobeta": { key: "roblox", run: async () => parseRoblox() },
+  "robloxplayerlauncher": { key: "roblox", run: async () => ({ inLauncher: true, status: "In Launcher" }) },
 };
 
 async function getGameDetails(identifier) {
