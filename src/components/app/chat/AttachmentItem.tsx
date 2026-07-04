@@ -133,18 +133,11 @@ const AttachmentItem = ({ attachment }: AttachmentItemProps) => {
 
     setUrl(null);
     setErrored(false);
-    supabase.storage
-      .from("chat-attachments")
-      .createSignedUrl(path, 60 * 60 * 24)
-      .then(({ data, error }) => {
-        if (cancelled) return;
-        if (data?.signedUrl) {
-          setUrl(data.signedUrl);
-        } else {
-          console.warn("[Attachment] failed to sign URL:", error?.message);
-          setErrored(true);
-        }
-      });
+    getSignedAttachmentUrl(path).then((signed) => {
+      if (cancelled) return;
+      if (signed) setUrl(signed);
+      else setErrored(true);
+    });
     return () => {
       cancelled = true;
     };
