@@ -159,8 +159,10 @@ const ServerView = ({ unreadByConv }: { unreadByConv?: Map<string, UnreadInfo> }
         {/* Channel list */}
         <div className="flex-1 overflow-y-auto px-2 py-2">
           <ChannelGroup label="Text Channels" channels={channels.filter((c) => c.kind === "text")} activeId={channelId}
+            unreadByConv={unreadByConv}
             onSelect={(id) => navigate(`/@me/server/${serverId}/${id}`)} />
           <ChannelGroup label="Voice Channels" channels={channels.filter((c) => c.kind === "voice")} activeId={channelId}
+            unreadByConv={unreadByConv}
             onSelect={(id) => navigate(`/@me/server/${serverId}/${id}`)}
             onJoinVoice={async (c) => {
               if (!c.conversation_id || !server) return;
