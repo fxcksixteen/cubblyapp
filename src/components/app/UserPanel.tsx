@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useVoice } from "@/contexts/VoiceContext";
+import { useGroupCall } from "@/contexts/GroupCallContext";
 import { playSound } from "@/lib/sounds";
 import ProfilePopup from "./ProfilePopup";
 import SettingsModal from "./SettingsModal";
