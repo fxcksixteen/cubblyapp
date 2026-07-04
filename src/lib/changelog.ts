@@ -40,6 +40,8 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Wishlists update live on other people's profiles instead of needing a refresh.",
       "Rich game details (Roblox experience name, Valorant map/agent/score, Rivals hero/map, Fortnite mode) now actually show up on your friends' profiles.",
       "Group and server call screen sharing now uses the same high-quality pipeline as 1-on-1 calls — no more wrong-window audio leaks or getting auto-muted when you start sharing.",
+      "Server text channels now show a white unread indicator and message count when someone posts while you're not in that channel.",
+      "Images in server text channels load much faster.",
     ],
   },
   {
