@@ -122,7 +122,7 @@ export const SERVER_REGIONS = [
  * Safe no-op if `RTCRtpSender.getCapabilities` or `setCodecPreferences` are
  * unavailable, or if VP9 isn't offered by the current build.
  */
-function preferScreenShareCodec(transceiver: RTCRtpTransceiver | null | undefined): string | null {
+export function preferScreenShareCodec(transceiver: RTCRtpTransceiver | null | undefined): string | null {
   if (!transceiver || typeof (transceiver as any).setCodecPreferences !== "function") return null;
   try {
     const caps = (RTCRtpSender as any).getCapabilities?.("video");
