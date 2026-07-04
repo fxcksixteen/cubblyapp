@@ -42,6 +42,9 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Group and server call screen sharing now uses the same high-quality pipeline as 1-on-1 calls — no more wrong-window audio leaks or getting auto-muted when you start sharing.",
       "Server text channels now show a white unread indicator and message count when someone posts while you're not in that channel.",
       "Images in server text channels load much faster.",
+      "Mute and deafen buttons at the bottom of the sidebar now work when you're in a server or group voice call, not just DMs.",
+      "Sidebar call timer now shows hours for long calls instead of stopping at 59 minutes.",
+      "Add-a-game modal now opens on top of the Settings window instead of being hidden behind it.",
     ],
   },
   {
