@@ -74,7 +74,7 @@ interface GroupCallContextType {
   peers: GroupPeer[];
   /** Round-trip ping (ms) — averaged across active peer connections. */
   ping: number;
-  startCall: (conversationId: string, conversationName: string, memberIds: string[]) => Promise<void>;
+  startCall: (conversationId: string, conversationName: string, memberIds: string[], options?: { isServerChannel?: boolean }) => Promise<void>;
   acceptCall: () => Promise<void>;
   declineCall: () => void;
   leaveCall: () => void;
