@@ -417,7 +417,7 @@ const VoiceChannelPanel = ({ channel, conversation }: { channel: ServerChannel; 
   const handleJoin = async () => {
     if (!conversation) return;
     if (isJoined) { groupCall.leaveCall(); return; }
-    await groupCall.startCall(conversation.id, channel.name, conversation.members.map((m) => m.user_id));
+    await groupCall.startCall(conversation.id, channel.name, conversation.members.map((m) => m.user_id), { isServerChannel: true });
   };
 
   return (
