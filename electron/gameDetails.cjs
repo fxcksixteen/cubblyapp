@@ -365,7 +365,10 @@ async function parseRoblox() {
     combined = tailFile(logPath, 128 * 1024) || "";
   }
   const tail = combined;
-  if (!tail) return null;
+  if (!tail) {
+    console.log("[game-details] roblox: logs were empty — treating as launcher/home");
+    return { inLauncher: true, status: "In Launcher", studio: null };
+  }
 
   // Expanded regexes covering real Roblox client log formats seen in the wild.
   const placeNameMatch =

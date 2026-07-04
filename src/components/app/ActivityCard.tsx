@@ -23,8 +23,13 @@ interface Props {
  * Supports the keys produced by `electron/gameDetails.cjs` for LoL, Valorant,
  * Marvel Rivals, and Fortnite — falls back gracefully if a field is missing.
  */
-const renderDetailLines = (details: Record<string, any> | null | undefined): string[] => {
-  if (!details) return [];
+const isRobloxActivity = (name: string) => /roblox/i.test(name);
+
+const renderDetailLines = (name: string, details: Record<string, any> | null | undefined): string[] => {
+  // Older desktop clients can still publish the base Roblox activity without a
+  // matching activity_details row. For Roblox specifically, that no-detail
+  // state is the launcher/home app, so don't leave profiles as just a timer.
+  if (!details) return isRobloxActivity(name) ? ["In Launcher"] : [];
   const lines: string[] = [];
   // League of Legends
   if (details.champion || details.kda || details.gameMode) {
@@ -73,7 +78,7 @@ const renderDetailLines = (details: Record<string, any> | null | undefined): str
     lines.push(details.status);
     return lines;
   }
-  return lines;
+  return lines.length === 0 && isRobloxActivity(name) ? ["In Launcher"] : lines;
 };
 
 
@@ -103,7 +108,7 @@ const ActivityCard = ({ name, processName, type, startedAt, variant = "default",
 
 
   const verb = type === "software" || isSoftwareActivity({ name }) ? "Using" : "Playing";
-  const detailLines = renderDetailLines(details);
+  const detailLines = renderDetailLines(name, details);
 
   // Sizes per variant
   const iconSize = variant === "sidebar" ? 40 : variant === "compact" ? 36 : 48;
