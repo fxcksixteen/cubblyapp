@@ -74,7 +74,7 @@ interface GroupCallContextType {
   peers: GroupPeer[];
   /** Round-trip ping (ms) — averaged across active peer connections. */
   ping: number;
-  startCall: (conversationId: string, conversationName: string, memberIds: string[]) => Promise<void>;
+  startCall: (conversationId: string, conversationName: string, memberIds: string[], options?: { isServerChannel?: boolean }) => Promise<void>;
   acceptCall: () => Promise<void>;
   declineCall: () => void;
   leaveCall: () => void;
@@ -181,6 +181,49 @@ async function applyRealtimeAudioParams(sender: RTCRtpSender, bitrate = 128_000)
     await sender.setParameters(params);
   } catch {}
 }
+
+/**
+ * Ring one member on their `voice-global:<uid>` broadcast channel. Waits for
+ * the JOIN ack before publishing — supabase-js resolves `.subscribe()`
+ * BEFORE the topic is actually joined server-side, and any broadcast fired
+ * in that window is dropped on the floor. That race is the reason group-call
+ * rings intermittently failed to reach every member. Retries once on failure
+ * so a transient Realtime hiccup never leaves a friend with no way to join.
+ */
+async function ringMemberWithRetry(mid: string, payload: Record<string, unknown>, attempt = 0): Promise<void> {
+  const ch = supabase.channel(`voice-global:${mid}`);
+  const joined = await new Promise<boolean>((resolve) => {
+    let settled = false;
+    const timer = window.setTimeout(() => { if (!settled) { settled = true; resolve(false); } }, 4000);
+    ch.subscribe((status) => {
+      if (settled) return;
+      if (status === "SUBSCRIBED") { settled = true; window.clearTimeout(timer); resolve(true); }
+      else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+        settled = true; window.clearTimeout(timer); resolve(false);
+      }
+    });
+  });
+  try {
+    if (joined) {
+      const res: any = await ch.send({ type: "broadcast", event: "group-incoming-call", payload });
+      if (res !== "ok" && attempt === 0) {
+        setTimeout(() => { supabase.removeChannel(ch); void ringMemberWithRetry(mid, payload, 1); }, 400);
+        return;
+      }
+    } else if (attempt === 0) {
+      setTimeout(() => { supabase.removeChannel(ch); void ringMemberWithRetry(mid, payload, 1); }, 400);
+      return;
+    }
+  } catch {
+    if (attempt === 0) {
+      setTimeout(() => { supabase.removeChannel(ch); void ringMemberWithRetry(mid, payload, 1); }, 400);
+      return;
+    }
+  }
+  setTimeout(() => supabase.removeChannel(ch), 3000);
+}
+
+
 
 export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
   const { user } = useAuth();
@@ -567,13 +610,14 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
    * group-incoming-call notification to every member's personal channel.
    * Joins the realtime call channel and announces presence.
    */
-  const startCall = useCallback(async (conversationId: string, conversationName: string, memberIds: string[]) => {
+  const startCall = useCallback(async (conversationId: string, conversationName: string, memberIds: string[], options?: { isServerChannel?: boolean }) => {
     if (!user) return;
     if (activeCall) {
       console.warn("[GroupCall] Already in a call");
       return;
     }
-    console.log("[GroupCall] 📞 Starting group call in", conversationId, "with", memberIds.length, "members");
+    const isServerChannel = !!options?.isServerChannel;
+    console.log("[GroupCall] 📞 Starting group call in", conversationId, "with", memberIds.length, "members", isServerChannel ? "(server channel)" : "");
 
     // v0.3.17: defensively wipe any stale PCs/senders left over from a prior
     // call that didn't fully clean up. Reusing an existing PC from a prior
@@ -600,9 +644,12 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
 
     // Reuse an existing ongoing call_event for this conversation if one
     // exists — that's how "rejoin" works after everyone left or after a
-    // user dropped out and wants to come back. Without this we'd insert a
-    // brand-new event row and the rejoiner would sit in their own empty
-    // call while the original "ongoing" row continues to claim it's live.
+    // user dropped out and wants to come back. For SERVER voice channels we
+    // ALWAYS reuse any ongoing event (the channel is a persistent room, so a
+    // fresh joiner must land in the same call as anyone already there — even
+    // if their heartbeat is stale from a brief network hiccup). For group DMs
+    // we only reuse when at least one OTHER participant is genuinely fresh,
+    // otherwise the elapsed timer would jump to hours-old on a ghost event.
     let callEventId: string;
     let callStartedAt: number = Date.now();
     try {
@@ -615,30 +662,33 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         .limit(1)
         .maybeSingle();
 
-      // Only reuse an existing ongoing call_event (and inherit its started_at)
-      // if at least one OTHER participant is FRESHLY live — otherwise we'd
-      // join a stale ghost event and the elapsed timer would jump to e.g.
-      // "1:29:00" the moment we tap join. Mirrors VoiceContext liveness.
       let reused = false;
       if (existing?.id) {
-        const { data: liveRows } = await supabase
-          .from("call_participants")
-          .select("user_id, last_seen_at, left_at")
-          .eq("call_event_id", existing.id);
-        const FRESH_MS = 30_000;
-        const now = Date.now();
-        const otherActive = (liveRows || []).some((r: any) =>
-          r.user_id !== user.id &&
-          r.left_at === null &&
-          (!r.last_seen_at || now - new Date(r.last_seen_at).getTime() < FRESH_MS)
-        );
-        if (otherActive) {
+        if (isServerChannel) {
+          // Server voice channels: unconditionally reuse. One channel = one call.
           callEventId = existing.id;
           if (existing.started_at) callStartedAt = new Date(existing.started_at).getTime();
           reused = true;
         } else {
-          // Close the stale ghost so it doesn't keep haunting future joins.
-          try { await (supabase as any).rpc("end_call_event_if_stale", { _call_event_id: existing.id }); } catch {}
+          const { data: liveRows } = await supabase
+            .from("call_participants")
+            .select("user_id, last_seen_at, left_at")
+            .eq("call_event_id", existing.id);
+          const FRESH_MS = 30_000;
+          const now = Date.now();
+          const otherActive = (liveRows || []).some((r: any) =>
+            r.user_id !== user.id &&
+            r.left_at === null &&
+            (!r.last_seen_at || now - new Date(r.last_seen_at).getTime() < FRESH_MS)
+          );
+          if (otherActive) {
+            callEventId = existing.id;
+            if (existing.started_at) callStartedAt = new Date(existing.started_at).getTime();
+            reused = true;
+          } else {
+            // Close the stale ghost so it doesn't keep haunting future joins.
+            try { await (supabase as any).rpc("end_call_event_if_stale", { _call_event_id: existing.id }); } catch {}
+          }
         }
       }
       if (!reused) {
@@ -681,36 +731,38 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     // Subscribe to call channel
     await joinCallChannel(conversationId);
 
-    // Notify each member individually via their global channel
+    // Server voice channels are drop-in rooms — they must NEVER ring the
+    // server roster. Group DMs do ring every member so friends get the
+    // incoming-call overlay.
+    if (isServerChannel) return;
+
+    // Notify each member individually via their global channel. Wait for the
+    // JOIN ack before sending (supabase.channel().subscribe() resolves BEFORE
+    // the server has actually joined the topic, and a broadcast fired in that
+    // window is silently dropped — which is why rings intermittently didn't
+    // reach every member). Retry once on failure so a transient dropout
+    // doesn't leave a friend with no way to join.
     let callerAvatarUrl: string | undefined;
     try {
       const { data } = await supabase.from("profiles").select("avatar_url").eq("user_id", user.id).maybeSingle();
       callerAvatarUrl = data?.avatar_url || undefined;
     } catch {}
+    const payloadFor = (mid: string) => ({
+      targetId: mid,
+      conversationId,
+      conversationName,
+      callerId: user.id,
+      callerName: user.user_metadata?.display_name || "Member",
+      callerAvatarUrl,
+      callEventId,
+    });
     for (const mid of memberIds) {
       if (mid === user.id) continue;
-      const ch = supabase.channel(`voice-global:${mid}`);
-      ch.subscribe(status => {
-        if (status === "SUBSCRIBED") {
-          ch.send({
-            type: "broadcast",
-            event: "group-incoming-call",
-            payload: {
-              targetId: mid,
-              conversationId,
-              conversationName,
-              callerId: user.id,
-              callerName: user.user_metadata?.display_name || "Member",
-              callerAvatarUrl,
-              callEventId,
-            },
-          });
-          setTimeout(() => supabase.removeChannel(ch), 3000);
-        }
-      });
+      void ringMemberWithRetry(mid, payloadFor(mid));
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, activeCall]);
+
 
   /**
    * Subscribe to the per-conversation broadcast channel and wire up signaling.

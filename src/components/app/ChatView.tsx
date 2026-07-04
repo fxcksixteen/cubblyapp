@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useMessages, Message, MessageStatus } from "@/hooks/useMessages";
 import { useAuth } from "@/contexts/AuthContext";
 import { useVoice } from "@/contexts/VoiceContext";
+import { useGroupCall } from "@/contexts/GroupCallContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Phone, X, Reply as ReplyIcon } from "lucide-react";
@@ -96,6 +97,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
   const ent = useEntitlements();
   const messageCap = ent.messageCapChars;
   const { activeCall, callEvents, startCall } = useVoice();
+  const groupCall = useGroupCall();
   const { messages, loading, sendMessage, loadOlder, hasMore, loadingOlder } = useMessages(conversationId);
   const [input, setInput] = useState("");
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
@@ -305,20 +307,29 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
     .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())[0];
   const liveCallInThisChat = activeCall?.conversationId === conversationId;
 
-  // Rejoin = behave EXACTLY like the header phone button. AppLayout's
-  // handleVoiceCall calls `startCall(convId, peerId, peerName)` — we do
-  // the same thing here, no Promise.resolve cast wrapping that was making
-  // the button feel inert when the existing call_event was stale.
+  const inGroupCallHere = groupCall.activeCall?.conversationId === conversationId;
+
+  // Rejoin = behave EXACTLY like the header phone button. For 1:1 DMs, that's
+  // VoiceContext.startCall. For group DMs, it's groupCall.startCall, which
+  // reuses the ongoing call_event so we land in the same room as everyone
+  // already there.
   const handleRejoin = (eventId: string) => {
-    if (!recipientUserId) return;
     setRejoiningEventId(eventId);
     try {
-      startCall(conversationId, recipientUserId, recipientName);
+      if (conversation?.is_group) {
+        const memberIds = (conversation.members || []).map((m: any) => m.user_id);
+        const name = conversation.name || recipientName || "Group Call";
+        void groupCall.startCall(conversationId, name, memberIds);
+      } else {
+        if (!recipientUserId) { setRejoiningEventId(null); return; }
+        startCall(conversationId, recipientUserId, recipientName);
+      }
     } catch (e) {
       console.error("[Rejoin] startCall failed:", e);
       setRejoiningEventId(null);
     }
   };
+
 
   // ---- Auto-scroll ----
   const scrollToBottom = useCallback(() => {
@@ -381,7 +392,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
 
   useEffect(() => {
     if (!rejoiningEventId) return;
-    const joinedThisConversation = activeCall?.conversationId === conversationId;
+    const joinedThisConversation = activeCall?.conversationId === conversationId || groupCall.activeCall?.conversationId === conversationId;
     const targetEventStillOngoing = callEvents.some((event) => event.id === rejoiningEventId && event.state === "ongoing");
     if (joinedThisConversation || !targetEventStillOngoing) {
       setRejoiningEventId(null);
@@ -799,7 +810,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
         </div>
       )}
 
-      {!conversation?.is_group && latestOngoingCallEvent && latestEventRejoinable && !liveCallInThisChat && !!recipientUserId && (
+      {latestOngoingCallEvent && latestEventRejoinable && !liveCallInThisChat && !inGroupCallHere && (conversation?.is_group || !!recipientUserId) && (
         <div className="shrink-0 border-b px-4 py-3" style={{ borderColor: "var(--app-border)", backgroundColor: "var(--app-bg-secondary)" }}>
           <div className="flex items-center justify-between gap-3 rounded-xl border px-3 py-3" style={{ borderColor: "var(--app-border)", backgroundColor: "var(--app-bg-tertiary)" }}>
             <div className="flex min-w-0 items-center gap-3">
@@ -879,7 +890,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
               }
 
               if (item.type === "call-event") {
-                const canRejoin = item.event.state === "ongoing" && !conversation?.is_group && !!recipientUserId && !liveCallInThisChat && rejoinableEventIds.has(item.event.id);
+                const canRejoin = item.event.state === "ongoing" && (conversation?.is_group || !!recipientUserId) && !liveCallInThisChat && !inGroupCallHere && rejoinableEventIds.has(item.event.id);
                 const isRejoiningThisEvent = rejoiningEventId === item.event.id;
                 const isFirstJoin = neverJoinedEventIds.has(item.event.id);
                 const labelBase = isFirstJoin ? "Join Call" : "Rejoin";
