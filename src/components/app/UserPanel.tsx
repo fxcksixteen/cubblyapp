@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useVoice } from "@/contexts/VoiceContext";
+import { useGroupCall } from "@/contexts/GroupCallContext";
 import { playSound } from "@/lib/sounds";
 import ProfilePopup from "./ProfilePopup";
 import SettingsModal from "./SettingsModal";
@@ -20,6 +21,7 @@ import settingsIcon from "@/assets/icons/settings.svg";
 const UserPanel = () => {
   const { user } = useAuth();
   const { activeCall, toggleMute, toggleDeafen } = useVoice();
+  const { activeCall: groupCall, toggleMute: toggleGroupMute, toggleDeafen: toggleGroupDeafen } = useGroupCall();
   const displayName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "User";
   const username = user?.user_metadata?.username || displayName.toLowerCase();
 
@@ -43,8 +45,10 @@ const UserPanel = () => {
       });
   }, [user]);
 
-  const muted = activeCall ? activeCall.isMuted : localMuted;
-  const deafened = activeCall ? activeCall.isDeafened : localDeafened;
+  // Reflect whichever call the user is actually in — DM voice or group/server
+  // voice. Priority: DM active call > group/server call > local (no-call) state.
+  const muted = activeCall ? activeCall.isMuted : groupCall ? groupCall.isMuted : localMuted;
+  const deafened = activeCall ? activeCall.isDeafened : groupCall ? groupCall.isDeafened : localDeafened;
 
   return (
     <>
@@ -68,7 +72,9 @@ const UserPanel = () => {
         <div className="flex items-center gap-0.5 shrink-0">
           <button
             onClick={() => {
-              if (activeCall) { toggleMute(); } else {
+              if (activeCall) { toggleMute(); }
+              else if (groupCall) { toggleGroupMute(); }
+              else {
                 const next = !localMuted;
                 setLocalMuted(next);
                 playSound(next ? "mute" : "unmute", { volume: 0.4 });
@@ -89,7 +95,9 @@ const UserPanel = () => {
           </button>
           <button
             onClick={() => {
-              if (activeCall) { toggleDeafen(); } else {
+              if (activeCall) { toggleDeafen(); }
+              else if (groupCall) { toggleGroupDeafen(); }
+              else {
                 const next = !localDeafened;
                 setLocalDeafened(next);
                 playSound(next ? "deafen" : "undeafen", { volume: 0.4 });
