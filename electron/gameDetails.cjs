@@ -287,9 +287,10 @@ function parseMarvelRivals() {
     [...tail.matchAll(/GameMode[:=]\s*([A-Za-z_0-9]+)/g)].pop() ||
     [...tail.matchAll(/MatchType[:=\s"']+([A-Za-z_0-9]+)/g)].pop();
   if (!mapMatch && !heroMatch && !modeMatch) {
-    console.log("[game-details] marvel-rivals: log found but no matches");
-    return null;
+    console.log("[game-details] marvel-rivals: log found but no matches — publishing minimal payload");
+    return { status: "In match" };
   }
+
   return {
     map: mapMatch?.[1]?.replace(/_/g, " ") ?? null,
     hero: heroMatch?.[1] ?? null,
