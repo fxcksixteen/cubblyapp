@@ -81,7 +81,7 @@ interface GroupCallContextType {
   toggleMute: () => void;
   toggleDeafen: () => void;
   toggleVideo: () => Promise<void>;
-  toggleScreenShare: (sourceId?: string, options?: { fps?: number; quality?: string }) => Promise<void>;
+  toggleScreenShare: (type?: "screen" | "window" | "tab", options?: { audio?: boolean; fps?: number; quality?: string; sourceId?: string }) => Promise<void>;
   /** Local camera stream (for self-tile preview). */
   localVideoStream: MediaStream | null;
   /** Local screenshare stream (for self-tile preview). */
