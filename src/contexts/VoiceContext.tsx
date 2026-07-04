@@ -468,7 +468,7 @@ function loadSettings(): VoiceSettings {
   return { ...DEFAULT_SETTINGS };
 }
 
-function loadScreenShareSettings(): ScreenShareSettings {
+export function loadScreenShareSettings(): ScreenShareSettings {
   try {
     const raw = localStorage.getItem("cubbly-screenshare-settings");
     if (raw) return { ...DEFAULT_SCREEN_SHARE_SETTINGS, ...JSON.parse(raw) };
