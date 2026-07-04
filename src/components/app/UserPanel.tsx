@@ -45,8 +45,10 @@ const UserPanel = () => {
       });
   }, [user]);
 
-  const muted = activeCall ? activeCall.isMuted : localMuted;
-  const deafened = activeCall ? activeCall.isDeafened : localDeafened;
+  // Reflect whichever call the user is actually in — DM voice or group/server
+  // voice. Priority: DM active call > group/server call > local (no-call) state.
+  const muted = activeCall ? activeCall.isMuted : groupCall ? groupCall.isMuted : localMuted;
+  const deafened = activeCall ? activeCall.isDeafened : groupCall ? groupCall.isDeafened : localDeafened;
 
   return (
     <>
