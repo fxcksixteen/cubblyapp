@@ -246,8 +246,8 @@ function parseValorant() {
     [...tail.matchAll(/CharacterID[:=\s"']+([A-Za-z_0-9]+)/g)].pop();
   const scoreMatch = [...tail.matchAll(/RoundResultsScore[^0-9-]*([0-9]+)[^0-9]+([0-9]+)/g)].pop();
   if (!mapMatch && !queueMatch && !agentMatch && !scoreMatch) {
-    console.log("[game-details] valorant: log found but no matches");
-    return null;
+    console.log("[game-details] valorant: log found but no matches — publishing minimal payload");
+    return { status: "In match" };
   }
   return {
     map: mapMatch?.[1] ?? null,
@@ -256,6 +256,7 @@ function parseValorant() {
     score: scoreMatch ? `${scoreMatch[1]}-${scoreMatch[2]}` : null,
   };
 }
+
 
 // ---------- MARVEL RIVALS ----------------------------------------------------
 function parseMarvelRivals() {
