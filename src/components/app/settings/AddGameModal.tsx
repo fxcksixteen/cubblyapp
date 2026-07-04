@@ -399,7 +399,8 @@ const AddGameModal = ({ isOpen, onClose }: AddGameModalProps) => {
             </div>
           )}
         </div>
-      </DialogContent>
+        </DialogContent>
+      </DialogPortal>
     </Dialog>
   );
 };
