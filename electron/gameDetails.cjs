@@ -307,7 +307,7 @@ function parseFortnite() {
     "FortniteGame", "Saved", "Logs", "FortniteGame.log",
   );
   const tail = tailFile(logPath, 96 * 1024);
-  if (!tail) { console.log("[game-details] fortnite: no log at", logPath); return null; }
+  if (!tail) { console.log("[game-details] fortnite: no log at", logPath); return { status: "In match" }; }
   const playlistMatch =
     [...tail.matchAll(/Playlist[:=]\s*([A-Za-z_0-9]+)/g)].pop() ||
     [...tail.matchAll(/PlaylistName[:=\s"']+([A-Za-z_0-9]+)/g)].pop() ||
