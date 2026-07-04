@@ -330,7 +330,7 @@ function parseFortnite() {
 // Roblox writes per-session logs at %LOCALAPPDATA%\Roblox\logs\*.log. Newest
 // file wins. Common lines include the target place name / placeId / universe
 // as it joins servers. Everything is best-effort — bail to null on failure.
-function parseRoblox() {
+async function parseRoblox() {
   const platformDirs = process.platform === "win32"
     ? [path.join(process.env.LOCALAPPDATA || "", "Roblox", "logs")]
     : process.platform === "darwin"
@@ -338,40 +338,77 @@ function parseRoblox() {
       : [];
   let logPath = null;
   for (const dir of platformDirs) {
+    // Roblox writes many small logs per session; scan the 5 newest instead of
+    // just the newest one — the very newest can be a launcher/logger log with
+    // no game-join lines yet, while the join lines land in a sibling log.
     logPath = newestFileIn(dir, (n) => n.endsWith(".log"));
     if (logPath) break;
   }
   if (!logPath) { console.log("[game-details] roblox: no log directory found"); return null; }
-  const tail = tailFile(logPath, 128 * 1024);
+
+  // Read the 5 newest logs (concatenated tails) so we catch join lines even
+  // when they're not in the single freshest file.
+  const dir = path.dirname(logPath);
+  let combined = "";
+  try {
+    const files = fs.readdirSync(dir)
+      .filter((n) => n.endsWith(".log"))
+      .map((n) => ({ n, m: (fs.statSync(path.join(dir, n)).mtimeMs || 0) }))
+      .sort((a, b) => b.m - a.m)
+      .slice(0, 5);
+    for (const { n } of files) combined += "\n" + (tailFile(path.join(dir, n), 96 * 1024) || "");
+  } catch {
+    combined = tailFile(logPath, 128 * 1024) || "";
+  }
+  const tail = combined;
   if (!tail) return null;
 
-  // Try several common patterns Roblox emits for the joined experience.
+  // Expanded regexes covering real Roblox client log formats seen in the wild.
   const placeNameMatch =
     [...tail.matchAll(/placeName[\s"':=]+"?([^"\r\n,}]+)"?/gi)].pop() ||
     [...tail.matchAll(/GameName[\s"':=]+"?([^"\r\n,}]+)"?/gi)].pop() ||
-    [...tail.matchAll(/Connecting to game '([^']+)'/gi)].pop();
+    [...tail.matchAll(/Connecting to game '([^']+)'/gi)].pop() ||
+    [...tail.matchAll(/joinGamePost\w*.*?place[= ]"?([A-Za-z0-9 _:'\-]+)"?/gi)].pop();
   const placeIdMatch =
-    [...tail.matchAll(/placeId[\s"':=]+(\d{5,})/gi)].pop() ||
-    [...tail.matchAll(/Joining game [^\d]*(\d{5,})/gi)].pop() ||
-    [...tail.matchAll(/game_join_loadtime[^0-9]+placeid[:=\s"']+(\d{5,})/gi)].pop();
+    [...tail.matchAll(/placeid[:=\s"']+(\d{5,})/gi)].pop() ||
+    [...tail.matchAll(/place\s*(\d{5,})/gi)].pop() ||
+    [...tail.matchAll(/Joining game [^\n]*?(\d{9,})/gi)].pop() ||
+    [...tail.matchAll(/game_join_loadtime[^0-9]+placeid[:=\s"']+(\d{5,})/gi)].pop() ||
+    [...tail.matchAll(/joinGamePostPrivateServer[^\d]*(\d{5,})/gi)].pop() ||
+    [...tail.matchAll(/initiateTeleportToPlaceInstance[^\d]*placeId[=:\s]+(\d{5,})/gi)].pop();
   const universeMatch =
-    [...tail.matchAll(/universeId[\s"':=]+(\d{5,})/gi)].pop() ||
+    [...tail.matchAll(/universeid[:=\s"']+(\d{5,})/gi)].pop() ||
     [...tail.matchAll(/game_join_loadtime[^0-9]+universeid[:=\s"']+(\d{5,})/gi)].pop();
   const serverTypeMatch = [...tail.matchAll(/serverType[\s"':=]+"?([A-Za-z_]+)/gi)].pop();
   const studio = /RobloxStudio/i.test(logPath);
 
-  if (!placeNameMatch && !placeIdMatch && !universeMatch && !studio) {
-    console.log("[game-details] roblox: log found but no matches");
-    return null;
+  const placeId = placeIdMatch?.[1] ? Number(placeIdMatch[1]) : null;
+  const universeId = universeMatch?.[1] ? Number(universeMatch[1]) : null;
+  let experience = placeNameMatch?.[1]?.trim() || null;
+
+  // Enrichment: if we only have a placeId, look up the experience name via
+  // Roblox's public REST API. This is the difference between friends seeing
+  // "Playing Roblox" and "Adopt Me!". Cached for 6h per placeId.
+  if (!experience && placeId) {
+    const lookup = await fetchRobloxPlaceName(placeId);
+    if (lookup?.name) experience = lookup.name;
+  }
+
+  if (!experience && !placeId && !universeId && !studio) {
+    console.log("[game-details] roblox: log found but no matches — publishing minimal payload");
+    // Publish SOMETHING so viewers see more than "Playing Roblox" + time.
+    // This confirms the pipeline is alive and updates once real details land.
+    return { status: "In an experience", studio: null };
   }
   return {
-    experience: placeNameMatch?.[1]?.trim() || null,
-    placeId: placeIdMatch?.[1] ? Number(placeIdMatch[1]) : null,
-    universeId: universeMatch?.[1] ? Number(universeMatch[1]) : null,
+    experience: experience || null,
+    placeId,
+    universeId,
     serverType: serverTypeMatch?.[1] || null,
     studio: studio || null,
   };
 }
+
 
 // ---------- Dispatcher -------------------------------------------------------
 const PARSERS = {
