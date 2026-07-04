@@ -97,6 +97,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
   const ent = useEntitlements();
   const messageCap = ent.messageCapChars;
   const { activeCall, callEvents, startCall } = useVoice();
+  const groupCall = useGroupCall();
   const { messages, loading, sendMessage, loadOlder, hasMore, loadingOlder } = useMessages(conversationId);
   const [input, setInput] = useState("");
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
