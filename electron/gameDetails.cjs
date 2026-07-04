@@ -318,9 +318,10 @@ function parseFortnite() {
     [...tail.matchAll(/PlayerKills[:=]\s*(\d+)/g)].pop() ||
     [...tail.matchAll(/TeamKills[:=\s"']+(\d+)/g)].pop();
   if (!playlistMatch && !placementMatch && !killsMatch) {
-    console.log("[game-details] fortnite: log found but no matches");
-    return null;
+    console.log("[game-details] fortnite: log found but no matches — publishing minimal payload");
+    return { status: "In match" };
   }
+
   return {
     mode: playlistMatch?.[1]?.replace(/^Playlist_/i, "") ?? null,
     placement: placementMatch?.[1] ? Number(placementMatch[1]) : null,
