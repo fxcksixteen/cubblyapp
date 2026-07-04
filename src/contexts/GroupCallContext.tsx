@@ -258,6 +258,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
   // Per-peer video & screen RTCRtpSender refs (to enable replace/remove tracks for renegotiation)
   const videoSendersRef = useRef<Map<string, RTCRtpSender>>(new Map());
   const screenSendersRef = useRef<Map<string, RTCRtpSender>>(new Map());
+  const screenAudioSendersRef = useRef<Map<string, RTCRtpSender[]>>(new Map());
 
   const localStreamRef = useRef<MediaStream | null>(null);
   // Local camera + screenshare track refs
