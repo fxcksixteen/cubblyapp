@@ -72,8 +72,9 @@ const AppLayout = () => {
       if (alive) setMessageRequestCount(count ?? 0);
     };
     fetchCount();
+    const suffix = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const ch = supabase
-      .channel(`topbar-msg-requests:${user.id}`)
+      .channel(`topbar-msg-requests:${user.id}:${suffix}`)
       .on("postgres_changes",
         { event: "*", schema: "public", table: "message_requests", filter: `recipient_id=eq.${user.id}` },
         () => fetchCount())
