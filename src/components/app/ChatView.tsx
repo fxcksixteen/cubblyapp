@@ -392,7 +392,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
 
   useEffect(() => {
     if (!rejoiningEventId) return;
-    const joinedThisConversation = activeCall?.conversationId === conversationId;
+    const joinedThisConversation = activeCall?.conversationId === conversationId || groupCall.activeCall?.conversationId === conversationId;
     const targetEventStillOngoing = callEvents.some((event) => event.id === rejoiningEventId && event.state === "ongoing");
     if (joinedThisConversation || !targetEventStillOngoing) {
       setRejoiningEventId(null);
