@@ -165,7 +165,7 @@ const ServerView = () => {
               navigate(`/@me/server/${serverId}/${c.id}`);
               try {
                 const memberIds = members.map((m) => m.user_id);
-                await groupCall.startCall(c.conversation_id, c.name, memberIds);
+                await groupCall.startCall(c.conversation_id, c.name, memberIds, { isServerChannel: true });
               } catch (e) {
                 console.error("[ServerView] join stream failed", e);
               }
