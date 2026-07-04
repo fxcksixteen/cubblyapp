@@ -348,7 +348,7 @@ async function parseRoblox() {
     logPath = newestFileIn(dir, (n) => n.endsWith(".log"));
     if (logPath) break;
   }
-  if (!logPath) { console.log("[game-details] roblox: no log directory found"); return { status: "In an experience" }; }
+  if (!logPath) { console.log("[game-details] roblox: no log directory found"); return { inLauncher: true, status: "In Launcher" }; }
 
   // Read the 5 newest logs (concatenated tails) so we catch join lines even
   // when they're not in the single freshest file.
