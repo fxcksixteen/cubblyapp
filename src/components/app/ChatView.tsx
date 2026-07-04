@@ -810,7 +810,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
         </div>
       )}
 
-      {!conversation?.is_group && latestOngoingCallEvent && latestEventRejoinable && !liveCallInThisChat && !!recipientUserId && (
+      {latestOngoingCallEvent && latestEventRejoinable && !liveCallInThisChat && !inGroupCallHere && (conversation?.is_group || !!recipientUserId) && (
         <div className="shrink-0 border-b px-4 py-3" style={{ borderColor: "var(--app-border)", backgroundColor: "var(--app-bg-secondary)" }}>
           <div className="flex items-center justify-between gap-3 rounded-xl border px-3 py-3" style={{ borderColor: "var(--app-border)", backgroundColor: "var(--app-bg-tertiary)" }}>
             <div className="flex min-w-0 items-center gap-3">
