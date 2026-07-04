@@ -321,8 +321,8 @@ const MenuItem = ({ icon: Icon, label, onClick, danger }: { icon: LucideIcon; la
 );
 
 const ChannelGroup = ({
-  label, channels, activeId, onSelect, onJoinVoice,
-}: { label: string; channels: ServerChannel[]; activeId?: string; onSelect: (id: string) => void; onJoinVoice?: (channel: ServerChannel) => void }) => {
+  label, channels, activeId, onSelect, onJoinVoice, unreadByConv,
+}: { label: string; channels: ServerChannel[]; activeId?: string; onSelect: (id: string) => void; onJoinVoice?: (channel: ServerChannel) => void; unreadByConv?: Map<string, UnreadInfo> }) => {
   if (channels.length === 0) return null;
   return (
     <div className="mb-2">
@@ -330,20 +330,43 @@ const ChannelGroup = ({
       {channels.map((c) => {
         const isActive = c.id === activeId;
         const Icon = c.kind === "voice" ? Volume2 : Hash;
+        // Discord-style unread pill: white half-circle indicator on the left
+        // edge of the sidebar + bold, brighter channel name. Only for text
+        // channels (voice channels never carry unread messages).
+        const unread = c.kind === "text" && c.conversation_id && !isActive
+          ? unreadByConv?.get(c.conversation_id)
+          : undefined;
+        const hasUnread = !!unread && unread.count > 0;
         return (
-          <div key={c.id}>
+          <div key={c.id} className="relative">
+            {hasUnread && (
+              <span
+                aria-hidden
+                className="absolute left-[-8px] top-1/2 -translate-y-1/2 h-2 w-2 rounded-full bg-white"
+                style={{ boxShadow: "0 0 0 1px rgba(0,0,0,0.2)" }}
+              />
+            )}
             <button
               onClick={() => onSelect(c.id)}
               className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm transition-colors"
               style={{
                 backgroundColor: isActive ? "var(--app-active, #404249)" : undefined,
-                color: isActive ? "var(--app-text-primary)" : "var(--app-text-secondary)",
+                color: isActive || hasUnread ? "var(--app-text-primary)" : "var(--app-text-secondary)",
+                fontWeight: hasUnread ? 600 : undefined,
               }}
               onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = "var(--app-hover)"; }}
               onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = ""; }}
             >
               <Icon className="h-4 w-4 shrink-0" />
-              <span className="truncate">{c.name}</span>
+              <span className="truncate flex-1 text-left">{c.name}</span>
+              {hasUnread && unread!.count > 0 && (
+                <span
+                  className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full text-[11px] font-bold flex items-center justify-center"
+                  style={{ backgroundColor: "#f23f42", color: "white" }}
+                >
+                  {unread!.count > 99 ? "99+" : unread!.count}
+                </span>
+              )}
             </button>
             {c.kind === "voice" && c.conversation_id && (
               <VoiceChannelParticipants
@@ -357,6 +380,7 @@ const ChannelGroup = ({
     </div>
   );
 };
+
 
 /** Discord-style list of avatars + names of users currently in a voice channel. */
 const VoiceChannelParticipants = ({ conversationId, onJoinStream }: { conversationId: string; onJoinStream?: () => void }) => {
