@@ -122,7 +122,7 @@ export const SERVER_REGIONS = [
  * Safe no-op if `RTCRtpSender.getCapabilities` or `setCodecPreferences` are
  * unavailable, or if VP9 isn't offered by the current build.
  */
-function preferScreenShareCodec(transceiver: RTCRtpTransceiver | null | undefined): string | null {
+export function preferScreenShareCodec(transceiver: RTCRtpTransceiver | null | undefined): string | null {
   if (!transceiver || typeof (transceiver as any).setCodecPreferences !== "function") return null;
   try {
     const caps = (RTCRtpSender as any).getCapabilities?.("video");
@@ -152,7 +152,7 @@ function preferScreenShareCodec(transceiver: RTCRtpTransceiver | null | undefine
  * hard-downscale via scaleResolutionDownBy for capture sources that ignore
  * getDisplayMedia size constraints.
  */
-async function applyScreenBitrate(
+export async function applyScreenBitrate(
   sender: RTCRtpSender,
   maxBitrate: number,
   opts?: {
@@ -204,7 +204,7 @@ async function applyScreenBitrate(
  * Apply high-quality stereo Opus encoding to a screenshare *audio* sender so
  * music/game audio doesn't get crushed to ~32 kbps mono speech.
  */
-async function applyScreenAudioBitrate(sender: RTCRtpSender) {
+export async function applyScreenAudioBitrate(sender: RTCRtpSender) {
   try {
     const params = sender.getParameters();
     if (!params.encodings || params.encodings.length === 0) {
@@ -220,7 +220,7 @@ async function applyScreenAudioBitrate(sender: RTCRtpSender) {
 }
 
 /** Patch SDP so the screen-share PC negotiates stereo high-bitrate Opus. */
-function patchScreenShareOpusSdp(sdp: string): string {
+export function patchScreenShareOpusSdp(sdp: string): string {
   return sdp.replace(
     /a=fmtp:111 ([^\r\n]*)/g,
     (m, existing) => {
@@ -468,7 +468,7 @@ function loadSettings(): VoiceSettings {
   return { ...DEFAULT_SETTINGS };
 }
 
-function loadScreenShareSettings(): ScreenShareSettings {
+export function loadScreenShareSettings(): ScreenShareSettings {
   try {
     const raw = localStorage.getItem("cubbly-screenshare-settings");
     if (raw) return { ...DEFAULT_SCREEN_SHARE_SETTINGS, ...JSON.parse(raw) };

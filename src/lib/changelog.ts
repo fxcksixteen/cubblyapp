@@ -39,6 +39,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Joining a server voice channel always puts you in the same call as everyone already there, no more accidental parallel calls.",
       "Wishlists update live on other people's profiles instead of needing a refresh.",
       "Rich game details (Roblox experience name, Valorant map/agent/score, Rivals hero/map, Fortnite mode) now actually show up on your friends' profiles.",
+      "Group and server call screen sharing now uses the same high-quality pipeline as 1-on-1 calls — no more wrong-window audio leaks or getting auto-muted when you start sharing.",
     ],
   },
   {

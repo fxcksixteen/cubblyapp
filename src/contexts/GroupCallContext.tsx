@@ -29,6 +29,13 @@ import { startNativeWindowAudioStream } from "@/lib/nativeWindowAudio";
 import { usePeerGains } from "@/lib/peerGain";
 import { armRemoteAudio } from "@/lib/iosAudioUnlock";
 import { STUN_FALLBACK_SERVERS, sanitizeIceServersForSession } from "@/lib/webrtcIce";
+import {
+  applyScreenBitrate,
+  applyScreenAudioBitrate,
+  preferScreenShareCodec,
+  patchScreenShareOpusSdp,
+  loadScreenShareSettings,
+} from "@/contexts/VoiceContext";
 
 export interface GroupPeer {
   userId: string;
@@ -81,7 +88,7 @@ interface GroupCallContextType {
   toggleMute: () => void;
   toggleDeafen: () => void;
   toggleVideo: () => Promise<void>;
-  toggleScreenShare: (sourceId?: string, options?: { fps?: number; quality?: string }) => Promise<void>;
+  toggleScreenShare: (type?: "screen" | "window" | "tab", options?: { audio?: boolean; fps?: number; quality?: string; sourceId?: string }) => Promise<void>;
   /** Local camera stream (for self-tile preview). */
   localVideoStream: MediaStream | null;
   /** Local screenshare stream (for self-tile preview). */
@@ -251,6 +258,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
   // Per-peer video & screen RTCRtpSender refs (to enable replace/remove tracks for renegotiation)
   const videoSendersRef = useRef<Map<string, RTCRtpSender>>(new Map());
   const screenSendersRef = useRef<Map<string, RTCRtpSender>>(new Map());
+  const screenAudioSendersRef = useRef<Map<string, RTCRtpSender[]>>(new Map());
 
   const localStreamRef = useRef<MediaStream | null>(null);
   // Local camera + screenshare track refs
@@ -1150,23 +1158,31 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
   }, [activeCall, user]);
 
   /**
-   * Toggle screen share. Uses getDisplayMedia in browsers; in Electron it
-   * accepts an optional sourceId from the screen picker. Auto-disables when
-   * the user clicks "Stop sharing" in the OS prompt.
+   * Toggle screen share. Unified with DM 1-on-1 pipeline (v0.4.5): honors the
+   * user's `screenShareSettings` (resolution/fps/audio/optimizeFor), applies
+   * the same Ultra vs Discord-parity bitrate ladder, prefers VP9/AV1, patches
+   * Opus SDP for stereo high-bitrate share audio, and re-asserts the mic mute
+   * state after renegotiation so starting a share never auto-unmutes/mutes.
+   * Same per-source audio strategy on Electron (Chromium loopback only for
+   * full-screen picks, native WASAPI addon for window/tab picks).
    */
-  const toggleScreenShare = useCallback(async (sourceId?: string, options?: { fps?: number; quality?: string }) => {
+  const toggleScreenShare = useCallback(async (type?: "screen" | "window" | "tab", options?: { audio?: boolean; fps?: number; quality?: string; sourceId?: string }) => {
     if (!activeCall || !user) return;
     if (!activeCall.isScreenSharing) {
-      let stream: MediaStream;
-      const wantAudio = true;
-      const effectiveQuality = options?.quality || "720p";
-      const selectedRes = GROUP_SCREEN_RESOLUTIONS[effectiveQuality] || GROUP_SCREEN_RESOLUTIONS["720p"];
-      const targetFps = selectedRes.height <= 480
-        ? Math.min(options?.fps ?? 15, 15)
-        : selectedRes.height <= 720
-          ? Math.min(options?.fps ?? 24, 24)
-          : Math.min(options?.fps ?? 30, 30);
-      // High-quality stereo audio constraints — disable voice DSP so music/games sound right.
+      const shareSettings = loadScreenShareSettings();
+      const effectiveAudio = options?.audio ?? shareSettings.audioShare;
+      const effectiveFps = options?.fps ?? shareSettings.frameRate;
+      const effectiveQuality = options?.quality ?? shareSettings.resolution;
+
+      const resolutionMap: Record<string, { width: number; height: number } | undefined> = {
+        "480p": { width: 854, height: 480 },
+        "720p": { width: 1280, height: 720 },
+        "1080p": { width: 1920, height: 1080 },
+        "1440p": { width: 2560, height: 1440 },
+      };
+      const res = resolutionMap[effectiveQuality];
+
+      // Same DSP-off stereo constraints DM uses so music/game audio isn't crushed.
       const screenAudioConstraints: any = {
         echoCancellation: false,
         noiseSuppression: false,
@@ -1174,45 +1190,56 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         channelCount: 2,
         sampleRate: 48000,
       };
+
+      let stream: MediaStream;
       try {
         const api = (window as any).electronAPI;
         if (api?.isElectron) {
-          let chosenId = sourceId;
-          if (!chosenId && api?.getDesktopSources) {
+          let selectedSourceId = options?.sourceId;
+          if (!selectedSourceId && api?.getDesktopSources) {
             const sources = await api.getDesktopSources();
-            chosenId = (sources.find((s: any) => s.id.startsWith("screen:")) || sources[0])?.id;
+            let selectedSource = sources[0];
+            if (type === "screen") {
+              selectedSource = sources.find((s: any) => s.id.startsWith("screen:")) || selectedSource;
+            } else if (type === "window") {
+              selectedSource = sources.find((s: any) => s.id.startsWith("window:")) || selectedSource;
+            }
+            if (!selectedSource) throw new Error("No screen sources available");
+            selectedSourceId = selectedSource.id;
           }
-          if (!chosenId) throw new Error("No screen sources available");
-
-          // ---- Per-source audio strategy (Electron) -----------------------
-          // Entire-screen pick → Chromium 'loopback' (system mix).
-          // Window/tab pick → native WASAPI process loopback addon (per-app).
-          // NEVER hand window/tab to Chromium loopback — leaks all system audio.
-          const isScreenPick = typeof chosenId === "string" && chosenId.startsWith("screen:");
+          // ---- Per-source audio strategy (Electron) — identical to DM path.
+          // screen:*  → Chromium 'loopback' (system mix, matches picked screen).
+          // window:*/tab → native WASAPI process-loopback addon (per-app only).
+          // NEVER hand a window/tab to Chromium loopback — that would leak
+          // every other app's audio (including the sharer hearing herself).
+          const isScreenPick = typeof selectedSourceId === "string" && selectedSourceId.startsWith("screen:");
+          const wantAudio = !!effectiveAudio;
           const nativeAvailable = api?.isWindowAudioCaptureAvailable
             ? await api.isWindowAudioCaptureAvailable()
             : false;
           const useChromiumLoopback = wantAudio && isScreenPick;
           const useNativeWindowAudio = wantAudio && !isScreenPick && nativeAvailable;
 
-          await api.setSelectedShareSource(chosenId, useChromiumLoopback);
+          await api.setSelectedShareSource(selectedSourceId, useChromiumLoopback);
+
+          const videoConstraints: any = {
+            frameRate: { ideal: effectiveFps, max: effectiveFps },
+            ...(res
+              ? { width: { ideal: res.width }, height: { ideal: res.height } }
+              : { width: { ideal: 1920 }, height: { ideal: 1080 } }),
+          };
           try {
             stream = await navigator.mediaDevices.getDisplayMedia({
-              video: {
-                width: { ideal: selectedRes.width },
-                height: { ideal: selectedRes.height },
-                frameRate: { ideal: targetFps, max: targetFps },
-              },
+              video: videoConstraints,
               audio: useChromiumLoopback ? screenAudioConstraints : false,
             } as any);
           } finally {
             try { await api.clearSelectedShareSource?.(); } catch {}
           }
 
-          // Window/tab + native addon → start per-process WASAPI capture.
-          if (useNativeWindowAudio && chosenId) {
+          if (useNativeWindowAudio && selectedSourceId) {
             try {
-              const { audioTrack, stop } = await startNativeWindowAudioStream(chosenId);
+              const { audioTrack, stop } = await startNativeWindowAudioStream(selectedSourceId);
               if (audioTrack) {
                 stream.addTrack(audioTrack);
                 nativeWindowAudioStopRef.current = stop;
@@ -1230,46 +1257,127 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
             console.warn("[GroupCall] Electron screen-share audio requested but no audio track produced");
           }
         } else {
+          // Browser path — same DM constraints incl. selfBrowserSurface:exclude.
+          const allowAudio = !!effectiveAudio && (type === "screen" || type === "tab");
+          const videoConstraints: any = {
+            frameRate: { ideal: effectiveFps, max: effectiveFps },
+            ...(res
+              ? { width: { ideal: res.width }, height: { ideal: res.height } }
+              : { width: { ideal: 1920 }, height: { ideal: 1080 } }),
+          };
+          if (type === "tab") videoConstraints.displaySurface = "browser";
+          else if (type === "window") videoConstraints.displaySurface = "window";
+          else if (type === "screen") videoConstraints.displaySurface = "monitor";
+
+          const audioConstraint = allowAudio
+            ? ({ ...screenAudioConstraints, systemAudio: "include" } as any)
+            : false;
+
           stream = await navigator.mediaDevices.getDisplayMedia({
-            video: {
-              width: { ideal: selectedRes.width },
-              height: { ideal: selectedRes.height },
-              frameRate: { ideal: targetFps, max: targetFps },
-            },
-            audio: wantAudio ? ({ ...screenAudioConstraints, systemAudio: "include" } as any) : false,
+            video: videoConstraints,
+            audio: audioConstraint,
+            // @ts-ignore - non-standard but supported in Chromium
+            surfaceSwitching: "include",
+            selfBrowserSurface: "exclude",
           } as any);
+
+          if (!allowAudio) {
+            stream.getAudioTracks().forEach(t => { t.stop(); stream.removeTrack(t); });
+          }
         }
       } catch (e) {
         console.error("[GroupCall] Screen share denied:", e);
         return;
       }
-      const track = stream.getVideoTracks()[0];
-      try { (track as any).contentHint = "motion"; } catch {}
-      try { await track.applyConstraints({ width: selectedRes.width, height: selectedRes.height, frameRate: targetFps }); } catch {}
-      const actualHeight = (track.getSettings?.().height || 0) as number;
-      const encoding = {
-        bitrate: selectedRes.bitrate,
-        maxFramerate: targetFps,
-        scaleResolutionDownBy: actualHeight > selectedRes.height ? +(actualHeight / selectedRes.height).toFixed(2) : 1,
+
+      // ---- Encoding params — identical ladder & degradation prefs to DM.
+      const opt = shareSettings.optimizeFor;
+      const hint = opt === "ultra" ? "" : opt === "motion" ? "motion" : "detail";
+      const isHighFps = effectiveFps >= 50;
+      const isUltra = opt === "ultra";
+      const resBitrateBase: Record<string, number> = isUltra ? {
+        "480p":  1_500_000,
+        "720p":  isHighFps ? 4_500_000 : 3_500_000,
+        "1080p": isHighFps ? 10_000_000 : 6_000_000,
+        "1440p": isHighFps ? 16_000_000 : 11_000_000,
+      } : {
+        "480p":  1_000_000,
+        "720p":  isHighFps ? 3_000_000 : 2_500_000,
+        "1080p": isHighFps ? 7_500_000 : 4_500_000,
+        "1440p": isHighFps ? 12_000_000 : 8_000_000,
       };
-      localScreenEncodingRef.current = encoding;
-      localScreenTrackRef.current = track;
+      const maxBitrate = resBitrateBase[effectiveQuality] ?? 2_500_000;
+      const targetHeight = res?.height ?? 1080;
+      const fpsCap =
+        targetHeight <= 480 ? Math.max(20, Math.min(effectiveFps, 24)) :
+        effectiveFps;
+
+      let capturedHeight = 0;
+      for (const t of stream.getVideoTracks()) {
+        try { (t as any).contentHint = hint; } catch {}
+        try {
+          await (t as any).applyConstraints?.({
+            ...(res ? { width: res.width, height: res.height } : {}),
+            frameRate: fpsCap,
+          });
+        } catch {}
+        try {
+          const s = (t as any).getSettings?.();
+          if (s?.height) capturedHeight = Math.max(capturedHeight, s.height);
+        } catch {}
+      }
+      const scaleResolutionDownBy = capturedHeight > targetHeight
+        ? +(capturedHeight / targetHeight).toFixed(2)
+        : 1;
+      const encodingOpts = {
+        scaleResolutionDownBy,
+        maxFramerate: fpsCap,
+        preferMotion: opt === "motion",
+        ultra: isUltra,
+      };
+
+      const videoTrack = stream.getVideoTracks()[0];
+      localScreenEncodingRef.current = {
+        bitrate: maxBitrate,
+        maxFramerate: fpsCap,
+        scaleResolutionDownBy,
+      };
+      localScreenTrackRef.current = videoTrack;
       setLocalScreenStream(stream);
 
+      // Attach to every peer's existing PC. Renegotiation fires via the
+      // per-peer `onnegotiationneeded` handler, which already runs
+      // `mungeGroupCallOpusSdp` on the mic transceiver and now benefits from
+      // `preferScreenShareCodec` on the newly-added screen transceiver.
       for (const [peerId, pc] of pcsRef.current) {
-        const labeledStream = new MediaStream([track]);
+        const labeledStream = new MediaStream([videoTrack]);
         Object.defineProperty(labeledStream, "id", { value: `cubbly-screen-${user.id}` });
-        const sender = pc.addTrack(track, labeledStream);
-        screenSendersRef.current.set(peerId, sender);
-        void applyGroupScreenVideoParams(sender, encoding);
+        const vSender = pc.addTrack(videoTrack, labeledStream);
+        screenSendersRef.current.set(peerId, vSender);
+        void applyScreenBitrate(vSender, maxBitrate, encodingOpts);
+        const tx = pc.getTransceivers().find((t) => t.sender === vSender);
+        preferScreenShareCodec(tx || null);
+
+        const audioSenders: RTCRtpSender[] = [];
         stream.getAudioTracks().forEach((atrack) => {
           try {
             const aSender = pc.addTrack(atrack, labeledStream);
-            void applyRealtimeAudioParams(aSender, 192_000);
-          } catch (e) { console.warn("[GroupCall] add screen audio failed:", e); }
+            void applyScreenAudioBitrate(aSender);
+            audioSenders.push(aSender);
+          } catch (e) {
+            console.warn("[GroupCall] add screen audio failed:", e);
+          }
         });
+        screenAudioSendersRef.current.set(peerId, audioSenders);
       }
-      track.onended = () => { toggleScreenShare(); };
+      videoTrack.onended = () => { toggleScreenShare(); };
+
+      // v0.4.5 mute-survival: renegotiation must NEVER silently flip the mic
+      // track's enabled bit. Re-assert the caller's chosen mute state right
+      // after the new senders are attached so starting a share can't auto-mute
+      // or auto-unmute the sharer.
+      const isMutedNow = activeCall.isMuted;
+      localStreamRef.current?.getAudioTracks().forEach((t) => { t.enabled = !isMutedNow; });
 
       setActiveCall(prev => prev ? { ...prev, isScreenSharing: true } : null);
       playSound("screenshareStart", { volume: 0.4 });
@@ -1279,22 +1387,38 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         payload: { type: "peer-screen", fromUserId: user.id, isScreenSharing: true },
       });
     } else {
+      // ---- Stop share — mirrors DM stopScreenShare cleanup.
       const track = localScreenTrackRef.current;
       if (track) track.stop();
       localScreenTrackRef.current = null;
       localScreenEncodingRef.current = null;
+      if (localScreenStream) {
+        try { localScreenStream.getTracks().forEach((t) => t.stop()); } catch {}
+      }
       setLocalScreenStream(null);
-      // Tear down native per-window audio if it was active
+
       if (nativeWindowAudioStopRef.current) {
         try { nativeWindowAudioStopRef.current(); } catch {}
         nativeWindowAudioStopRef.current = null;
       }
+
       for (const [peerId, sender] of screenSendersRef.current) {
         try { await sender.replaceTrack(null); } catch {}
         const pc = pcsRef.current.get(peerId);
         if (pc) { try { pc.removeTrack(sender); } catch {} }
+        const audioSenders = screenAudioSendersRef.current.get(peerId) || [];
+        for (const aSender of audioSenders) {
+          try { await aSender.replaceTrack(null); } catch {}
+          if (pc) { try { pc.removeTrack(aSender); } catch {} }
+        }
       }
       screenSendersRef.current.clear();
+      screenAudioSendersRef.current.clear();
+
+      // Re-assert mic state after teardown renegotiation too.
+      const isMutedNow = activeCall.isMuted;
+      localStreamRef.current?.getAudioTracks().forEach((t) => { t.enabled = !isMutedNow; });
+
       setActiveCall(prev => prev ? { ...prev, isScreenSharing: false } : null);
       playSound("screenshareStop", { volume: 0.4 });
       channelRef.current?.send({
@@ -1303,7 +1427,8 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         payload: { type: "peer-screen", fromUserId: user.id, isScreenSharing: false },
       });
     }
-  }, [activeCall, user]);
+  }, [activeCall, user, localScreenStream]);
+
 
   // Listen for global incoming group calls.
   // v0.4.0: read activeCall via ref so we don't tear down and rebuild this
