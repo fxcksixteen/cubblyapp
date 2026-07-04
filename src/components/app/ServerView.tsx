@@ -26,7 +26,9 @@ import ServerSettingsModal from "@/components/app/ServerSettingsModal";
 import GiftItemModal from "@/components/app/GiftItemModal";
 
 
-const ServerView = () => {
+import type { UnreadInfo } from "@/hooks/useUnreadCounts";
+
+const ServerView = ({ unreadByConv }: { unreadByConv?: Map<string, UnreadInfo> }) => {
   const location = useLocation();
   const parts = location.pathname.split("/").filter(Boolean);
   // /@me/server/:serverId/:channelId?
