@@ -231,7 +231,7 @@ function parseValorant() {
     "VALORANT", "Saved", "Logs", "ShooterGame.log",
   );
   const tail = tailFile(logPath, 128 * 1024);
-  if (!tail) { console.log("[game-details] valorant: no log at", logPath); return null; }
+  if (!tail) { console.log("[game-details] valorant: no log at", logPath); return { status: "In match" }; }
   // Try to grab the most recent map + queue + score lines. Riot changes these
   // formats between patches, so try multiple variants.
   const mapMatch =
