@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { getSignedAttachmentUrl } from "@/lib/attachmentUrlCache";
 import folderFileIcon from "@/assets/icons/folder-file.svg";
 import ImageLightbox from "@/components/app/ImageLightbox";
 import VideoLightbox from "@/components/app/VideoLightbox";
@@ -133,18 +133,11 @@ const AttachmentItem = ({ attachment }: AttachmentItemProps) => {
 
     setUrl(null);
     setErrored(false);
-    supabase.storage
-      .from("chat-attachments")
-      .createSignedUrl(path, 60 * 60 * 24)
-      .then(({ data, error }) => {
-        if (cancelled) return;
-        if (data?.signedUrl) {
-          setUrl(data.signedUrl);
-        } else {
-          console.warn("[Attachment] failed to sign URL:", error?.message);
-          setErrored(true);
-        }
-      });
+    getSignedAttachmentUrl(path).then((signed) => {
+      if (cancelled) return;
+      if (signed) setUrl(signed);
+      else setErrored(true);
+    });
     return () => {
       cancelled = true;
     };
@@ -185,6 +178,7 @@ const AttachmentItem = ({ attachment }: AttachmentItemProps) => {
                 className="max-h-[400px] max-w-full rounded-lg object-contain hover:brightness-90 transition-[filter]"
                 onError={() => setErrored(true)}
                 loading="lazy"
+                decoding="async"
               />
             </button>
           </ContextMenuTrigger>
