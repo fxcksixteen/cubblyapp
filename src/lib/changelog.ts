@@ -38,6 +38,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Server voice channels no longer ring anyone — you just join them like Discord.",
       "Joining a server voice channel always puts you in the same call as everyone already there, no more accidental parallel calls.",
       "Wishlists update live on other people's profiles instead of needing a refresh.",
+      "Rich game details (Roblox experience name, Valorant map/agent/score, Rivals hero/map, Fortnite mode) now actually show up on your friends' profiles.",
     ],
   },
   {

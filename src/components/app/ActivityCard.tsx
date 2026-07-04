@@ -34,10 +34,12 @@ const renderDetailLines = (details: Record<string, any> | null | undefined): str
     return lines;
   }
   // Valorant
-  if (details.agent || details.map || details.score) {
+  if (details.agent || details.map || details.score || details.queue) {
     const top = [details.agent, details.map].filter(Boolean).join(" on ");
     if (top) lines.push(top);
-    if (details.score) lines.push(`${details.queue ? details.queue + " · " : ""}${details.score}`);
+    const bottom = [details.queue || details.mode, details.score].filter(Boolean).join(" · ");
+    if (bottom) lines.push(bottom);
+    if (lines.length === 0 && details.status) lines.push(details.status);
     return lines;
   }
   // Roblox (experience/place/universe/studio)
@@ -47,15 +49,13 @@ const renderDetailLines = (details: Record<string, any> | null | undefined): str
       if (details.experience) lines.push(`Editing ${details.experience}`);
       return lines;
     }
-    const top = details.experience || (details.placeId ? `Place #${details.placeId}` : null);
+    const top = details.experience || (details.placeId ? `Experience #${details.placeId}` : null);
     if (top) lines.push(top);
-    const bottom = [details.serverType, details.universeId && `Universe ${details.universeId}`]
-      .filter(Boolean).join(" · ");
-    if (bottom) lines.push(bottom);
+    if (details.serverType) lines.push(`${details.serverType} server`);
     return lines;
   }
   // Marvel Rivals / Fortnite-ish (hero/mode/map/placement)
-  if (details.hero || details.map || details.mode || details.placement) {
+  if (details.hero || details.map || details.mode || details.placement || details.kills != null) {
     const top = [details.hero, details.map].filter(Boolean).join(" on ");
     if (top) lines.push(top);
     const bottom = [details.mode, details.placement && `#${details.placement}`, details.kills != null && `${details.kills} kills`]
@@ -63,8 +63,15 @@ const renderDetailLines = (details: Record<string, any> | null | undefined): str
     if (bottom) lines.push(bottom);
     return lines;
   }
+  // Minimal fallback payload — at least tell viewers the player is in an
+  // active session even when the game hasn't produced parseable log lines yet.
+  if (details.status) {
+    lines.push(details.status);
+    return lines;
+  }
   return lines;
 };
+
 
 const formatElapsed = (startedAt: string) => {
   const ms = Math.max(0, Date.now() - new Date(startedAt).getTime());
