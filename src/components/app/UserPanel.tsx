@@ -95,7 +95,9 @@ const UserPanel = () => {
           </button>
           <button
             onClick={() => {
-              if (activeCall) { toggleDeafen(); } else {
+              if (activeCall) { toggleDeafen(); }
+              else if (groupCall) { toggleGroupDeafen(); }
+              else {
                 const next = !localDeafened;
                 setLocalDeafened(next);
                 playSound(next ? "deafen" : "undeafen", { volume: 0.4 });
