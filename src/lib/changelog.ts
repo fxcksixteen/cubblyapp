@@ -23,9 +23,23 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.4.4";
+export const CURRENT_VERSION = "0.4.5";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.4.5",
+    title: "Group + server calls, live wishlists",
+    date: "2026-07-04",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Group calls now ring everyone in the chat more reliably.",
+      "Group call Join button now shows for every member of the chat, not just the caller and one other.",
+      "Server voice channels no longer ring anyone — you just join them like Discord.",
+      "Joining a server voice channel always puts you in the same call as everyone already there, no more accidental parallel calls.",
+      "Wishlists update live on other people's profiles instead of needing a refresh.",
+    ],
+  },
   {
     version: "0.4.4",
     title: "Discord-parity screen sharing",
