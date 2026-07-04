@@ -204,7 +204,7 @@ export async function applyScreenBitrate(
  * Apply high-quality stereo Opus encoding to a screenshare *audio* sender so
  * music/game audio doesn't get crushed to ~32 kbps mono speech.
  */
-async function applyScreenAudioBitrate(sender: RTCRtpSender) {
+export async function applyScreenAudioBitrate(sender: RTCRtpSender) {
   try {
     const params = sender.getParameters();
     if (!params.encodings || params.encodings.length === 0) {
