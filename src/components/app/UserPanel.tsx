@@ -21,6 +21,7 @@ import settingsIcon from "@/assets/icons/settings.svg";
 const UserPanel = () => {
   const { user } = useAuth();
   const { activeCall, toggleMute, toggleDeafen } = useVoice();
+  const { activeCall: groupCall, toggleMute: toggleGroupMute, toggleDeafen: toggleGroupDeafen } = useGroupCall();
   const displayName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "User";
   const username = user?.user_metadata?.username || displayName.toLowerCase();
 
