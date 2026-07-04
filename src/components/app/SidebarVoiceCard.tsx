@@ -100,9 +100,12 @@ const SidebarVoiceCard = ({ conversations, onOpenCall }: Props) => {
 
   const formatTime = (ms: number) => {
     const s = Math.floor(ms / 1000);
-    const m = Math.floor(s / 60);
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
     const sec = s % 60;
-    return `${m.toString().padStart(2, "0")}:${sec.toString().padStart(2, "0")}`;
+    const mm = m.toString().padStart(2, "0");
+    const ss = sec.toString().padStart(2, "0");
+    return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
   };
 
   return (
