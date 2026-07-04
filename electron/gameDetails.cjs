@@ -399,10 +399,10 @@ async function parseRoblox() {
   }
 
   if (!experience && !placeId && !universeId && !studio) {
-    console.log("[game-details] roblox: log found but no matches — publishing minimal payload");
-    // Publish SOMETHING so viewers see more than "Playing Roblox" + time.
-    // This confirms the pipeline is alive and updates once real details land.
-    return { status: "In an experience", studio: null };
+    console.log("[game-details] roblox: log found but no game-join lines — user is only in the launcher");
+    // No experience join detected — user is sitting in the Roblox launcher /
+    // home screen, not actually inside a specific experience yet.
+    return { inLauncher: true, status: "In Launcher", studio: null };
   }
   return {
     experience: experience || null,
