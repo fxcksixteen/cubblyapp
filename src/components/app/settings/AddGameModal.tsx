@@ -176,10 +176,14 @@ const AddGameModal = ({ isOpen, onClose }: AddGameModalProps) => {
 
   return (
     <Dialog open={isOpen} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent
-        className="max-w-lg p-0 gap-0 overflow-hidden border"
-        style={{ backgroundColor: "var(--app-bg-secondary)", borderColor: "var(--app-border)" }}
-      >
+      <DialogPortal>
+        {/* Explicit z-index above the SettingsModal (z-[1000]) so this modal
+            actually renders on top when opened from inside Settings. */}
+        <DialogOverlay className="z-[1200]" />
+        <DialogContent
+          className="max-w-lg p-0 gap-0 overflow-hidden border z-[1201]"
+          style={{ backgroundColor: "var(--app-bg-secondary)", borderColor: "var(--app-border)" }}
+        >
         <DialogHeader className="px-6 pt-5 pb-3 border-b" style={{ borderColor: "var(--app-border)" }}>
           <DialogTitle className="text-lg font-bold" style={{ color: "var(--app-text-primary)" }}>
             Add a game
