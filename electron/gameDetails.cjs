@@ -51,6 +51,63 @@ function newestFileIn(dir, predicate = () => true) {
   }
 }
 
+/**
+ * Simple HTTPS GET → JSON, resolves null on any failure. Used by Roblox
+ * place-name lookup and other public REST enrichment. Never throws.
+ */
+function httpsGetJson(url, timeoutMs = 2500) {
+  return new Promise((resolve) => {
+    try {
+      const u = new URL(url);
+      const req = https.request(
+        {
+          host: u.hostname,
+          port: u.port || 443,
+          path: u.pathname + u.search,
+          method: "GET",
+          headers: { Accept: "application/json", "User-Agent": "Cubbly/1.0" },
+          timeout: timeoutMs,
+        },
+        (res) => {
+          const chunks = [];
+          res.on("data", (c) => chunks.push(c));
+          res.on("end", () => {
+            try { resolve(JSON.parse(Buffer.concat(chunks).toString("utf8"))); }
+            catch { resolve(null); }
+          });
+        }
+      );
+      req.on("error", () => resolve(null));
+      req.on("timeout", () => { try { req.destroy(); } catch {} resolve(null); });
+      req.end();
+    } catch { resolve(null); }
+  });
+}
+
+// Cache Roblox place-name lookups so we don't hammer the API each tick.
+// Cleared on process exit — that's fine, a fresh Cubbly session re-populates.
+const _robloxNameCache = new Map(); // placeId → { name, universeId, ts }
+
+async function fetchRobloxPlaceName(placeId) {
+  if (!placeId) return null;
+  const cached = _robloxNameCache.get(String(placeId));
+  if (cached && Date.now() - cached.ts < 6 * 60 * 60 * 1000) return cached; // 6h TTL
+  try {
+    // Step 1: placeId → universeId (Roblox splits places from universes).
+    const uni = await httpsGetJson(`https://apis.roblox.com/universes/v1/places/${placeId}/universe`);
+    const universeId = uni?.universeId ?? null;
+    if (!universeId) { _robloxNameCache.set(String(placeId), { name: null, universeId: null, ts: Date.now() }); return null; }
+    // Step 2: universeId → name.
+    const games = await httpsGetJson(`https://games.roblox.com/v1/games?universeIds=${universeId}`);
+    const name = games?.data?.[0]?.name ?? null;
+    const entry = { name, universeId, ts: Date.now() };
+    _robloxNameCache.set(String(placeId), entry);
+    return entry;
+  } catch {
+    return null;
+  }
+}
+
 // ---------- LEAGUE OF LEGENDS (LCU REST) -------------------------------------
 // The Riot client exposes a localhost HTTPS API with a self-signed cert. We
 // discover the port + token from lockfile, then ask for the current champion
