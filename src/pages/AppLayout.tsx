@@ -407,7 +407,7 @@ const AppLayout = () => {
       return <MessageRequestsView onOpenConversation={(id) => navigate(`/@me/chat/${id}`, { replace: true })} />;
     }
     if (isServerRoute) {
-      return <ServerView />;
+      return <ServerView unreadByConv={unreadByConv} />;
     }
     return <FriendsView activeTab={friendTab} setActiveTab={setFriendTab} onOpenDM={handleOpenDM} activeNowOpen={activeNowOpen} setActiveNowOpen={setActiveNowOpen} />;
   };
