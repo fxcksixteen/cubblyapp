@@ -107,13 +107,18 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
   }, [userId, user]);
 
   // Fetch wishlist only when profile is loaded and wishlist is public (or it's
-  // the viewer's own profile — they should always see their own list).
+  // the viewer's own profile — they should always see their own list). Also
+  // subscribes to realtime changes on `wishlist_items` for this user AND on
+  // their `profiles` row so a public_wishlist toggle or a newly-added item
+  // shows up without the viewer needing to close/reopen the card.
+  const [wishlistTick, setWishlistTick] = useState(0);
   useEffect(() => {
     if (!profile) return;
     if (!isOwnProfile && profile.public_wishlist === false) {
       setWishlist([]);
       return;
     }
+
     let alive = true;
     (async () => {
       const { data: rows } = await supabase
