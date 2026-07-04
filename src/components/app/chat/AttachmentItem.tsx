@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { getSignedAttachmentUrl } from "@/lib/attachmentUrlCache";
 import folderFileIcon from "@/assets/icons/folder-file.svg";
 import ImageLightbox from "@/components/app/ImageLightbox";
 import VideoLightbox from "@/components/app/VideoLightbox";
