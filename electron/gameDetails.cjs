@@ -274,9 +274,10 @@ function parseMarvelRivals() {
     logPath = preferred || newestFileIn(base, (n) => n.endsWith(".log"));
     if (logPath) break;
   }
-  if (!logPath) { console.log("[game-details] marvel-rivals: no log directory found"); return null; }
+  if (!logPath) { console.log("[game-details] marvel-rivals: no log directory found"); return { status: "In match" }; }
   const tail = tailFile(logPath, 96 * 1024);
-  if (!tail) return null;
+  if (!tail) return { status: "In match" };
+
   const mapMatch =
     [...tail.matchAll(/LoadLevel.*?Maps\/[^\/]+\/([A-Za-z_0-9]+)/g)].pop() ||
     [...tail.matchAll(/CurrentMap[:=\s"']+([A-Za-z_0-9]+)/g)].pop();
