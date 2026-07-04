@@ -154,7 +154,22 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
       setWishlist(ordered);
     })();
     return () => { alive = false; };
-  }, [profile, userId, isOwnProfile]);
+  }, [profile, userId, isOwnProfile, wishlistTick]);
+
+  // Realtime: refetch wishlist whenever this user adds/removes an item.
+  useEffect(() => {
+    const suffix = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}`;
+    const ch = supabase
+      .channel(`wishlist-live:${userId}:${suffix}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "wishlist_items", filter: `user_id=eq.${userId}` },
+        () => setWishlistTick((n) => n + 1)
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [userId]);
+
 
 
   useEffect(() => {
