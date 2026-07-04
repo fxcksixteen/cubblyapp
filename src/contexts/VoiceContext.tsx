@@ -152,7 +152,7 @@ export function preferScreenShareCodec(transceiver: RTCRtpTransceiver | null | u
  * hard-downscale via scaleResolutionDownBy for capture sources that ignore
  * getDisplayMedia size constraints.
  */
-async function applyScreenBitrate(
+export async function applyScreenBitrate(
   sender: RTCRtpSender,
   maxBitrate: number,
   opts?: {
