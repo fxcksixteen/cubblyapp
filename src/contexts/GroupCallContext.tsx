@@ -29,6 +29,13 @@ import { startNativeWindowAudioStream } from "@/lib/nativeWindowAudio";
 import { usePeerGains } from "@/lib/peerGain";
 import { armRemoteAudio } from "@/lib/iosAudioUnlock";
 import { STUN_FALLBACK_SERVERS, sanitizeIceServersForSession } from "@/lib/webrtcIce";
+import {
+  applyScreenBitrate,
+  applyScreenAudioBitrate,
+  preferScreenShareCodec,
+  patchScreenShareOpusSdp,
+  loadScreenShareSettings,
+} from "@/contexts/VoiceContext";
 
 export interface GroupPeer {
   userId: string;
