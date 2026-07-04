@@ -220,7 +220,7 @@ export async function applyScreenAudioBitrate(sender: RTCRtpSender) {
 }
 
 /** Patch SDP so the screen-share PC negotiates stereo high-bitrate Opus. */
-function patchScreenShareOpusSdp(sdp: string): string {
+export function patchScreenShareOpusSdp(sdp: string): string {
   return sdp.replace(
     /a=fmtp:111 ([^\r\n]*)/g,
     (m, existing) => {
