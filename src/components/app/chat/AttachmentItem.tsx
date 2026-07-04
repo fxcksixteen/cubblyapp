@@ -178,6 +178,7 @@ const AttachmentItem = ({ attachment }: AttachmentItemProps) => {
                 className="max-h-[400px] max-w-full rounded-lg object-contain hover:brightness-90 transition-[filter]"
                 onError={() => setErrored(true)}
                 loading="lazy"
+                decoding="async"
               />
             </button>
           </ContextMenuTrigger>
