@@ -307,20 +307,29 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
     .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())[0];
   const liveCallInThisChat = activeCall?.conversationId === conversationId;
 
-  // Rejoin = behave EXACTLY like the header phone button. AppLayout's
-  // handleVoiceCall calls `startCall(convId, peerId, peerName)` — we do
-  // the same thing here, no Promise.resolve cast wrapping that was making
-  // the button feel inert when the existing call_event was stale.
+  const inGroupCallHere = groupCall.activeCall?.conversationId === conversationId;
+
+  // Rejoin = behave EXACTLY like the header phone button. For 1:1 DMs, that's
+  // VoiceContext.startCall. For group DMs, it's groupCall.startCall, which
+  // reuses the ongoing call_event so we land in the same room as everyone
+  // already there.
   const handleRejoin = (eventId: string) => {
-    if (!recipientUserId) return;
     setRejoiningEventId(eventId);
     try {
-      startCall(conversationId, recipientUserId, recipientName);
+      if (conversation?.is_group) {
+        const memberIds = (conversation.members || []).map((m: any) => m.user_id);
+        const name = conversation.name || recipientName || "Group Call";
+        void groupCall.startCall(conversationId, name, memberIds);
+      } else {
+        if (!recipientUserId) { setRejoiningEventId(null); return; }
+        startCall(conversationId, recipientUserId, recipientName);
+      }
     } catch (e) {
       console.error("[Rejoin] startCall failed:", e);
       setRejoiningEventId(null);
     }
   };
+
 
   // ---- Auto-scroll ----
   const scrollToBottom = useCallback(() => {
