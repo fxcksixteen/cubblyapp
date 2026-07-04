@@ -348,7 +348,7 @@ async function parseRoblox() {
     logPath = newestFileIn(dir, (n) => n.endsWith(".log"));
     if (logPath) break;
   }
-  if (!logPath) { console.log("[game-details] roblox: no log directory found"); return { status: "In an experience" }; }
+  if (!logPath) { console.log("[game-details] roblox: no log directory found"); return { inLauncher: true, status: "In Launcher" }; }
 
   // Read the 5 newest logs (concatenated tails) so we catch join lines even
   // when they're not in the single freshest file.
@@ -399,10 +399,10 @@ async function parseRoblox() {
   }
 
   if (!experience && !placeId && !universeId && !studio) {
-    console.log("[game-details] roblox: log found but no matches — publishing minimal payload");
-    // Publish SOMETHING so viewers see more than "Playing Roblox" + time.
-    // This confirms the pipeline is alive and updates once real details land.
-    return { status: "In an experience", studio: null };
+    console.log("[game-details] roblox: log found but no game-join lines — user is only in the launcher");
+    // No experience join detected — user is sitting in the Roblox launcher /
+    // home screen, not actually inside a specific experience yet.
+    return { inLauncher: true, status: "In Launcher", studio: null };
   }
   return {
     experience: experience || null,
@@ -431,6 +431,7 @@ const PARSERS = {
   "robloxplayer": { key: "roblox", run: async () => parseRoblox() },
   "robloxplayerbeta": { key: "roblox", run: async () => parseRoblox() },
   "robloxstudiobeta": { key: "roblox", run: async () => parseRoblox() },
+  "robloxplayerlauncher": { key: "roblox", run: async () => ({ inLauncher: true, status: "In Launcher" }) },
 };
 
 async function getGameDetails(identifier) {

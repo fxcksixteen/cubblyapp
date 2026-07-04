@@ -42,11 +42,15 @@ const renderDetailLines = (details: Record<string, any> | null | undefined): str
     if (lines.length === 0 && details.status) lines.push(details.status);
     return lines;
   }
-  // Roblox (experience/place/universe/studio)
-  if (details.experience || details.placeId || details.universeId || details.studio) {
+  // Roblox (experience/place/universe/studio/launcher)
+  if (details.experience || details.placeId || details.universeId || details.studio || details.inLauncher) {
     if (details.studio) {
       lines.push("In Roblox Studio");
       if (details.experience) lines.push(`Editing ${details.experience}`);
+      return lines;
+    }
+    if (details.inLauncher && !details.experience && !details.placeId) {
+      lines.push("In Launcher");
       return lines;
     }
     const top = details.experience || (details.placeId ? `Experience #${details.placeId}` : null);

@@ -45,6 +45,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Mute and deafen buttons at the bottom of the sidebar now work when you're in a server or group voice call, not just DMs.",
       "Sidebar call timer now shows hours for long calls instead of stopping at 59 minutes.",
       "Add-a-game modal now opens on top of the Settings window instead of being hidden behind it.",
+      "Roblox activity now shows \"In Launcher\" when a friend is only in the Roblox launcher and hasn't joined an experience yet.",
     ],
   },
   {
