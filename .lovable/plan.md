@@ -1,56 +1,59 @@
-## v0.4.5 — Group calls, server calls, wishlist live updates
+# v0.4.5 hotfix — Unified screenshare across DM, group, and server calls
 
-Four connected fixes. Everything else (single DM calls, chat, activity) stays untouched.
+## Problem
 
-### 1. Group DM calls — third friend can't see "Join Call" button
+Server voice channel screenshare (and by extension group DM screenshare) uses a **separate, simplified** screenshare pipeline from 1‑on‑1 DM calls. Concretely, users see:
 
-**Root cause:** In `src/components/app/ChatView.tsx`, the call-event pill's Join button is gated with `!conversation?.is_group`. So in any 3+ person group chat, the pill renders but the Join action is stripped — the third friend who missed the ring has no way in.
+1. Picking a single window shares audio from other windows too ("I could hear myself").
+2. Starting a screenshare in a server call auto-mutes the sharer, forcing them to leave and rejoin.
+3. Video quality/bitrate/codec are worse than DM shares because the group path skips the DM path's VP9/AV1 codec preference, adaptive bitrate loop, Opus SDP patching, `screenShareSettings` (resolution/fps/audio/optimization preset), and audio-track cleanup.
 
-**Fix:** Remove the `!is_group` gate. For group DMs, wire the Join action to `groupCall.startCall(conversation.id, group_name, all_member_ids)` (same call the sidebar uses to join an already-live group call — it correctly reuses the existing `call_event` when one is ongoing). For 1:1 DMs keep the existing `handleRejoin` path.
+Root cause: `GroupCallContext.toggleScreenShare` is a hand-rolled reimplementation of `VoiceContext.startScreenShare` / `stopScreenShare` that diverged over time. It hardcodes `wantAudio = true`, ignores the user's `screenShareSettings`, skips `selfBrowserSurface: "exclude"` / audio-track stripping on the browser path, and lacks the codec + adaptive-bitrate wiring the DM path added in v0.4.3/v0.4.4.
 
-### 2. Group DM calls — ring reliability
+## Fix
 
-**Root cause:** `startCall` in `GroupCallContext.tsx` creates a fresh `voice-global:{mid}` broadcast channel per member and fires the ring inside the `SUBSCRIBED` callback, then tears the channel down 3s later. In practice this races against Realtime reconnects (visible in the console logs already) and the ring is dropped on the floor for one or more members. There's also no server-side backup, so a missed broadcast = missed call forever.
+Rewrite `GroupCallContext.toggleScreenShare` so its capture, audio-selection, encoding, codec, and stop-flow logic are **line-for-line the same** as `VoiceContext.startScreenShare` / `stopScreenShare`, only differing where multi-peer group topology genuinely requires it (adding the resulting track to every peer `RTCPeerConnection` instead of one, and broadcasting `peer-screen` on the group channel).
 
-**Fix (two layers so a miss never means "no way to join"):**
-- Wait for JOIN ack before send with a small retry (mirror the iOS `awaitJoined` pattern already used in `CallSignaling.swift`); retry the broadcast once if the first send fails or the channel errors within 500ms.
-- Insert one row per invited member into a new lightweight `call_invites` table (or reuse `call_events` + participants) so the recipient's existing "ongoing call in this conversation" query (already realtime-subscribed) shows the pill even if the broadcast was lost. Combined with fix #1, this guarantees Join is always reachable.
+### Capture path (must match DM exactly)
 
-### 3. Server voice channels — never ring, always one shared call
+- Read `screenShareSettings` (resolution, frameRate, audioShare, optimizeFor) instead of hardcoding.
+- Accept `type?: "screen" | "window" | "tab"` + `options: { audio, fps, quality, sourceId }` — same signature as DM.
+- Electron: same per-source audio strategy (Chromium loopback only for `screen:*`, native WASAPI window-audio addon for `window:*`, video-only fallback otherwise).
+- Browser: same `getDisplayMedia` call with `displaySurface`, `surfaceSwitching: "include"`, `selfBrowserSurface: "exclude"`, and the same "strip audio tracks when `allowAudio` is false" cleanup.
+- Same `screenAudioConstraints` (no echo/noise/AGC, stereo 48 kHz).
 
-**Root cause:** Server voice channels reuse the exact same `groupCall.startCall(...)` path as group DMs (`ServerView.tsx` lines 168 and 420). That path:
-  a) Broadcasts `group-incoming-call` to every member id passed in — for a server this rings the entire server roster. Wrong.
-  b) Reuses an existing ongoing `call_event` only when another participant has a fresh (<30s) heartbeat AND `left_at IS NULL`. For a server channel that should behave as a persistent room, this is too strict — a brief network hiccup or an all-left-then-someone-returns pattern spawns a second parallel `call_event` and splits people across two "calls" in the same channel.
+### Encoding path (must match DM exactly)
 
-**Fix:**
-- Add an `isServerChannel: boolean` option to `startCall`. When true:
-  - Skip the ring broadcast loop entirely.
-  - Always reuse an ongoing `call_event` for that conversation regardless of participant freshness. Only insert a new event when there is literally no `ongoing` row. This makes a server voice channel behave as one persistent room.
-- Also add a server-channel-scoped stale sweeper: when the last participant leaves, mark the event `ended` immediately (rpc already exists) so the next joiner starts a clean event instead of resurrecting a ghost. This is what causes the "join / leave / rejoin multiple times" workaround to eventually succeed.
-- Pass `isServerChannel: true` from both call sites in `ServerView.tsx`.
+- Same `contentHint` selection (ultra=none, motion=motion, clarity=detail).
+- Same Ultra vs Discord-parity bitrate ladder (up to 16 Mbps at 1440p, 10 Mbps at 1080p60 for Ultra).
+- Same `applyScreenBitrate` + `applyScreenAudioBitrate` per sender.
+- Same `preferScreenShareCodec` (VP9 / AV1 preference) on the video transceiver.
+- Same `patchScreenShareOpusSdp` on generated offers.
+- Same 3-second adaptive-bitrate loop watching outbound-rtp / remote-inbound-rtp.
 
-### 4. Wishlist doesn't update live on other users' profile cards
+### Group-specific differences (kept)
 
-**Root cause:** `UserProfileCard.tsx` fetches `wishlist_items` and `profiles.public_wishlist` once on open with no realtime subscription. Additionally, `wishlist_items` isn't in the `supabase_realtime` publication.
+- Instead of one `screenPcOut`, iterate `pcsRef.current` and `addTrack` on every peer's PC — reuse the existing `screenSendersRef` map for later teardown.
+- Continue broadcasting `{ type: "peer-screen", isScreenSharing: true/false }` on the `group-signal` channel.
+- Continue using `localScreenTrackRef` + `localScreenStream` state.
 
-**Fix:**
-- Migration: `ALTER PUBLICATION supabase_realtime ADD TABLE public.wishlist_items;` (idempotent guard).
-- In `UserProfileCard.tsx`, add a scoped realtime channel that listens for `wishlist_items` changes filtered to `user_id=eq.{userId}` and for `profiles` changes on the same user (already published), and re-runs the fetch effect. Teardown on unmount.
+### Auto-mute regression
 
-### 5. Speaking rings not lighting up reliably in group calls
+The reported auto-mute-on-share is caused by the current group path re-negotiating with a fresh set of transceivers that don't preserve the mic sender's `enabled` state through the renegotiation offer. Fix by:
 
-Diagnostic pass, then fix if reproducible: verify the per-peer WebAudio `AnalyserNode` in `GroupCallContext.tsx` (`startPeerMonitor`) is re-attached when a peer's mic MediaStream is replaced via renegotiation (currently attached once in `ontrack`; a track-replace won't rewire it). If confirmed, rebind the analyser on every new inbound audio track and reset the level to 0 between binds. Independent of hardware acceleration.
+- Adding screenshare tracks to each PC **before** creating the offer inside `onnegotiationneeded` (the DM path already does this via the dedicated `screenPcOut`, so unifying resolves it).
+- Explicitly re-asserting `micTrackRef.current.enabled = !activeCall.isMuted` after the screenshare tracks are attached and after the local description is set, so the user's mute state survives renegotiation.
 
-### Changelog + version
+### Stop-share path
 
-- Bump to `v0.4.5` in `package.json`.
-- Short one-line bullets in `src/lib/changelog.ts` (no internals): "Group call Join button now works for everyone in the chat", "Group call rings are more reliable", "Server voice channels no longer ring members and always share one call", "Wishlists update live on profiles".
+Mirror `VoiceContext.stopScreenShare` — stop tracks, tear down native window-audio, `replaceTrack(null)` + `removeTrack` on every peer's screen sender, clear refs, broadcast `peer-screen: false`, play stop sound, and (new) re-assert mic `enabled` state.
 
-### Files touched
+## Files touched
 
-- `src/components/app/ChatView.tsx` — remove `!is_group` gate on Join, wire group-DM join.
-- `src/contexts/GroupCallContext.tsx` — `awaitJoined` + retry for ring; `isServerChannel` option (skip ring, always-reuse); analyser rebind on renegotiation.
-- `src/components/app/ServerView.tsx` — pass `isServerChannel: true` in both call sites.
-- `src/components/app/chat/UserProfileCard.tsx` — realtime subscription for wishlist + public_wishlist.
-- New migration — add `wishlist_items` to `supabase_realtime` publication.
-- `package.json`, `src/lib/changelog.ts`.
+- `src/contexts/GroupCallContext.tsx` — rewrite `toggleScreenShare` and its stop branch; import the same helpers `VoiceContext` uses (`applyScreenBitrate`, `applyScreenAudioBitrate`, `preferScreenShareCodec`, `patchScreenShareOpusSdp`, `startNativeWindowAudioStream`); pull `screenShareSettings` via the existing settings hook.
+- `src/components/app/ServerVoicePanel.tsx` & `src/components/app/GroupCallPanel.tsx` — pass `type` from the `ScreenSharePicker` selection through to `toggleScreenShare(type, { sourceId, audio, fps, quality })` so the unified signature is honored (currently they only pass `sourceId`, `fps`, `quality`).
+- `src/lib/changelog.ts` — one-line v0.4.5 bullet: "Group and server call screen sharing now uses the same high-quality pipeline as 1-on-1 calls (fixes wrong-window audio and auto-mute on share)."
+
+## Out of scope
+
+No version bump beyond the already-set 0.4.5. No changes to DM screenshare. No changes to 1‑on‑1 call logic.
