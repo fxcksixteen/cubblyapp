@@ -75,6 +75,7 @@ export const KNOWN_GAMES: Record<string, KnownActivity> = {
   // ── Roblox ──
   "robloxplayerbeta": { name: "Roblox", type: "game" },
   "robloxplayer": { name: "Roblox", type: "game" },
+  "robloxplayerlauncher": { name: "Roblox", type: "game" },
   "roblox": { name: "Roblox", type: "game" },
   "robloxstudiobeta": { name: "Roblox Studio", type: "software" },
 
@@ -213,7 +214,7 @@ export const KNOWN_PATTERNS: KnownPattern[] = [
   { match: /cyberpunk/i, name: "Cyberpunk 2077", type: "game" },
   { match: /witcher3/i, name: "The Witcher 3: Wild Hunt", type: "game" },
   { match: /minecraft/i, name: "Minecraft", type: "game" },
-  { match: /roblox(player|playerbeta)?$/i, name: "Roblox", type: "game" },
+  { match: /roblox(player|playerbeta|playerlauncher)?$/i, name: "Roblox", type: "game" },
   { match: /marvelrivals|marvel-win64/i, name: "Marvel Rivals", type: "game" },
   { match: /the[\W_]?finals|discovery-win64/i, name: "THE FINALS", type: "game" },
   { match: /^(cs2|csgo)$/i, name: "Counter-Strike 2", type: "game" },
