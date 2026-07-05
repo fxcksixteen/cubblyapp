@@ -220,7 +220,7 @@ const GroupCallPanel = ({ conversationId }: Props) => {
           </span>
         </div>
         <span className="text-[11px]" style={{ color: "var(--app-text-secondary)" }}>
-          {peers.length + 1} in call{ping > 0 ? ` · ${ping}ms` : ""}
+          {peers.length + 1} in call{ringingMembers.length > 0 ? ` · ${ringingMembers.length} ringing` : ""}{ping > 0 ? ` · ${ping}ms` : ""}
         </span>
       </div>
 
