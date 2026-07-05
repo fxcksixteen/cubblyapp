@@ -3,6 +3,7 @@ import StatusIndicator from "@/components/app/StatusIndicator";
 import GroupAvatar from "@/components/app/GroupAvatar";
 import { useAuth } from "@/contexts/AuthContext";
 import { useVoice } from "@/contexts/VoiceContext";
+import { useGroupCall } from "@/contexts/GroupCallContext";
 import { useActivity } from "@/contexts/ActivityContext";
 import { useFriends } from "@/hooks/useFriends";
 import { Conversation } from "@/hooks/useConversations";
