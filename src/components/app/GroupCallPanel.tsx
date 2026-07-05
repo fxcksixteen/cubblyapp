@@ -160,6 +160,37 @@ const ScreenShareViewer = ({ peer, onMaximize }: { peer: GroupPeer; onMaximize: 
   );
 };
 
+/** Greyed-out "Calling…" tile for a friend who's being rung but hasn't joined yet. */
+const RingingTile = ({ userId, displayName, avatarUrl }: { userId: string; displayName: string; avatarUrl: string | null }) => {
+  const color = getProfileColor(userId);
+  return (
+    <div className="flex flex-col items-center gap-2 opacity-70">
+      <div className="relative">
+        <div
+          className="flex h-20 w-20 items-center justify-center rounded-full text-2xl font-bold text-white overflow-hidden animate-pulse"
+          style={{ backgroundColor: color.bg }}
+        >
+          {avatarUrl ? (
+            <img src={avatarUrl} alt={displayName} className="h-full w-full object-cover" />
+          ) : (
+            displayName.charAt(0).toUpperCase() || "?"
+          )}
+        </div>
+        <div
+          className="absolute -bottom-1 left-1/2 -translate-x-1/2 flex items-center gap-1 rounded-full px-2 py-0.5 border"
+          style={{ backgroundColor: "var(--app-bg-tertiary)", borderColor: "var(--app-border)" }}
+        >
+          <span className="h-1.5 w-1.5 rounded-full bg-[#3ba55c] animate-pulse" />
+          <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--app-text-secondary)" }}>Ringing</span>
+        </div>
+      </div>
+      <span className="text-xs font-semibold max-w-[100px] truncate" style={{ color: "var(--app-text-secondary)" }}>
+        {displayName} · Calling…
+      </span>
+    </div>
+  );
+};
+
 interface Props {
   conversationId: string;
 }
@@ -169,7 +200,7 @@ const isElectron = typeof window !== "undefined" && (window as any).electronAPI?
 const GroupCallPanel = ({ conversationId }: Props) => {
   const { user } = useAuth();
   const {
-    activeCall, peers, selfAudioLevel, leaveCall,
+    activeCall, peers, ringingMembers, selfAudioLevel, leaveCall,
     toggleMute, toggleDeafen, toggleVideo, toggleScreenShare,
     localVideoStream, localScreenStream, ping,
     getUserVolume, setUserVolume, isUserMuted, setUserMuted,
@@ -220,7 +251,7 @@ const GroupCallPanel = ({ conversationId }: Props) => {
           </span>
         </div>
         <span className="text-[11px]" style={{ color: "var(--app-text-secondary)" }}>
-          {peers.length + 1} in call{ping > 0 ? ` · ${ping}ms` : ""}
+          {peers.length + 1} in call{ringingMembers.length > 0 ? ` · ${ringingMembers.length} ringing` : ""}{ping > 0 ? ` · ${ping}ms` : ""}
         </span>
       </div>
 
@@ -273,6 +304,9 @@ const GroupCallPanel = ({ conversationId }: Props) => {
             onMaximize={p.videoStream ? () => setFullscreenView({ stream: p.videoStream!, name: p.displayName, type: "cam" }) : undefined}
             onContextMenu={(e) => { e.preventDefault(); setVolumeMenu({ userId: p.userId, name: p.displayName, x: e.clientX, y: e.clientY }); }}
           />
+        ))}
+        {ringingMembers.map((r) => (
+          <RingingTile key={r.userId} userId={r.userId} displayName={r.displayName} avatarUrl={r.avatarUrl} />
         ))}
       </div>
 

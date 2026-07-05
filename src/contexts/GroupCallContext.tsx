@@ -75,10 +75,19 @@ interface GroupIncomingCall {
   callEventId?: string;
 }
 
+interface RingingMember {
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+}
+
 interface GroupCallContextType {
   activeCall: GroupActiveCall | null;
   incomingCall: GroupIncomingCall | null;
   peers: GroupPeer[];
+  /** Members who were invited when we started the call but haven't joined yet.
+   *  Empty for server voice channels — those don't ring anyone. */
+  ringingMembers: RingingMember[];
   /** Round-trip ping (ms) — averaged across active peer connections. */
   ping: number;
   startCall: (conversationId: string, conversationName: string, memberIds: string[], options?: { isServerChannel?: boolean }) => Promise<void>;
@@ -237,6 +246,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
   const [activeCall, setActiveCall] = useState<GroupActiveCall | null>(null);
   const [incomingCall, setIncomingCall] = useState<GroupIncomingCall | null>(null);
   const [peers, setPeers] = useState<GroupPeer[]>([]);
+  const [ringingMembers, setRingingMembers] = useState<RingingMember[]>([]);
   const [selfAudioLevel, setSelfAudioLevel] = useState(0);
   const [ping, setPing] = useState(0);
   const [localVideoStream, setLocalVideoStream] = useState<MediaStream | null>(null);
@@ -603,9 +613,11 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     return pc;
   }, [user, startPeerMonitor, removePeer]);
 
-  /** Build a peer entry in `peers` (lazy — avoids duplicates). */
+  /** Build a peer entry in `peers` (lazy — avoids duplicates). Also removes
+   *  the peer from `ringingMembers` since they've now joined. */
   const ensurePeerEntry = useCallback(async (peerId: string) => {
     setPeers(prev => prev.some(p => p.userId === peerId) ? prev : [...prev, { userId: peerId, displayName: "…", isMuted: false, audioLevel: 0, isVideoOn: false, isScreenSharing: false, videoStream: null, screenStream: null }]);
+    setRingingMembers(prev => prev.some(r => r.userId === peerId) ? prev.filter(r => r.userId !== peerId) : prev);
     const profile = await loadProfile(peerId);
     setPeers(prev => prev.map(p => p.userId === peerId
       ? { ...p, displayName: profile.display_name, avatarUrl: profile.avatar_url }
@@ -764,6 +776,24 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       callerAvatarUrl,
       callEventId,
     });
+    // Seed the ringing tiles immediately so the caller sees "Calling…" per
+    // invited member before their profiles resolve.
+    const rungIds = memberIds.filter(mid => mid !== user.id);
+    setRingingMembers(rungIds.map(mid => ({ userId: mid, displayName: "…", avatarUrl: null })));
+    // Hydrate names/avatars in the background.
+    void Promise.all(rungIds.map(async (mid) => {
+      const p = await loadProfile(mid);
+      setRingingMembers(prev => prev.map(r => r.userId === mid ? { ...r, displayName: p.display_name, avatarUrl: p.avatar_url } : r));
+    }));
+    // Auto-hide "Calling…" tiles for anyone who hasn't picked up in 30s —
+    // only if we're still in this same call (avoid clobbering a subsequent
+    // call started right after this one).
+    const ringTimeoutForConv = conversationId;
+    window.setTimeout(() => {
+      if (callConvIdRef.current !== ringTimeoutForConv) return;
+      setRingingMembers([]);
+    }, 30_000);
+
     for (const mid of memberIds) {
       if (mid === user.id) continue;
       void ringMemberWithRetry(mid, payloadFor(mid));
@@ -1022,6 +1052,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     if (activeCall) playSound("leaveCall", { volume: 0.4 });
     setActiveCall(null);
     setPeers([]);
+    setRingingMembers([]);
     setPing(0);
     callEventIdRef.current = null;
     callConvIdRef.current = null;
@@ -1514,15 +1545,18 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
   }, [activeCall, user]);
 
   // DB-driven peer reconcile: every 5s, scan call_participants for live peers
-  // we don't yet have a PC for and broadcast a peer-join so the higher-id side
-  // offers to us. Fixes "I left and rejoined and landed alone even though she
-  // was still in the channel" — relying on a single peer-join packet wasn't
-  // enough when realtime had momentarily dropped the broadcast.
+  // we don't yet have a PC for. If we're the higher-id side we IMMEDIATELY
+  // create the offer ourselves (a re-broadcast of `peer-join` alone wouldn't
+  // trigger anything — the handler only makes an offer when the OTHER side
+  // has a higher id). If we're the lower-id side we send a directed peer-join
+  // to nudge the higher-id peer to re-offer. Fixes "A and B in the same call
+  // don't see each other after joining".
   useEffect(() => {
     if (!activeCall || !user || !channelRef.current) return;
     const evtId = callEventIdRef.current;
     if (!evtId) return;
     let cancelled = false;
+    const lastAttemptAt = new Map<string, number>();
     const tick = async () => {
       try {
         const { data: rows } = await supabase
@@ -1539,27 +1573,52 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
           if (!baselineStr) continue;
           if (now - new Date(baselineStr).getTime() >= FRESH_MS) continue;
           if (pcsRef.current.has(r.user_id)) continue;
-          console.log("[GroupCall] 🔁 Reconcile: missing PC for live peer", r.user_id, "— re-broadcasting peer-join");
-          // Re-announce so the higher-id side offers to us.
-          channelRef.current?.send({
-            type: "broadcast",
-            event: "group-signal",
-            payload: { type: "peer-join", fromUserId: user.id },
-          });
-          break; // one rebroadcast per tick is enough; next tick re-checks
+          const lastAt = lastAttemptAt.get(r.user_id) || 0;
+          if (now - lastAt < 4_500) continue; // don't retry same peer every tick
+          lastAttemptAt.set(r.user_id, now);
+
+          await ensurePeerEntry(r.user_id);
+
+          if (user.id > r.user_id) {
+            // We're the offering side — build the PC and send an offer directly.
+            console.log("[GroupCall] 🔁 Reconcile: offering to missing peer", r.user_id);
+            try {
+              const pc = ensurePc(r.user_id);
+              const offer = await pc.createOffer();
+              offer.sdp = mungeGroupCallOpusSdp(offer.sdp);
+              await pc.setLocalDescription(offer);
+              channelRef.current?.send({
+                type: "broadcast",
+                event: "group-signal",
+                payload: { type: "offer", fromUserId: user.id, toUserId: r.user_id, sdp: pc.localDescription },
+              });
+            } catch (e) {
+              console.warn("[GroupCall] Reconcile offer failed:", e);
+            }
+          } else {
+            // We're the lower-id side — poke the higher-id peer to re-offer.
+            console.log("[GroupCall] 🔁 Reconcile: nudging higher-id peer", r.user_id, "to offer");
+            channelRef.current?.send({
+              type: "broadcast",
+              event: "group-signal",
+              payload: { type: "peer-join", fromUserId: user.id, toUserId: r.user_id },
+            });
+          }
         }
       } catch { /* best-effort */ }
     };
     const i = setInterval(tick, 5_000);
-    // First tick after a brief delay so the initial peer-join has a chance.
-    const seed = setTimeout(tick, 2_000);
+    // Fire the first tick almost immediately so a fresh joiner picks up
+    // existing peers within ~500ms instead of waiting 2s.
+    const seed = setTimeout(tick, 500);
     return () => { cancelled = true; clearInterval(i); clearTimeout(seed); };
-  }, [activeCall?.conversationId, user]);
+  }, [activeCall?.conversationId, user, ensurePc, ensurePeerEntry]);
+
 
 
   return (
     <GroupCallContext.Provider value={{
-      activeCall, incomingCall, peers, ping,
+      activeCall, incomingCall, peers, ringingMembers, ping,
       startCall, acceptCall, declineCall, leaveCall,
       toggleMute, toggleDeafen, toggleVideo, toggleScreenShare,
       localVideoStream, localScreenStream, selfAudioLevel,

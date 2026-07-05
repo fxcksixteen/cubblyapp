@@ -1,59 +1,77 @@
-# v0.4.5 hotfix — Unified screenshare across DM, group, and server calls
+# v0.4.5 patch — 3 more server/group call fixes
 
-## Problem
+## Problems
 
-Server voice channel screenshare (and by extension group DM screenshare) uses a **separate, simplified** screenshare pipeline from 1‑on‑1 DM calls. Concretely, users see:
+### 1. DM sidebar mute doesn't reflect / control server or group call
+The DM sidebar (`DMSidebar.tsx`) has its **own** inlined bottom user panel (not the shared `UserPanel.tsx`). That inlined panel only checks `VoiceContext.activeCall` for the DM 1‑on‑1 call. It has no awareness of `GroupCallContext.activeCall`. Effect: while in a server voice channel, if I click mute in the DM sidebar it toggles a local dummy state (`localMuted`) instead of muting the server call, and the icon shows unmuted even though the server call is muted. The equivalent `UserPanel.tsx` was already fixed in the previous batch — `DMSidebar.tsx` was missed because it duplicates the panel inline.
 
-1. Picking a single window shares audio from other windows too ("I could hear myself").
-2. Starting a screenshare in a server call auto-mutes the sharer, forcing them to leave and rejoin.
-3. Video quality/bitrate/codec are worse than DM shares because the group path skips the DM path's VP9/AV1 codec preference, adaptive bitrate loop, Opus SDP patching, `screenShareSettings` (resolution/fps/audio/optimization preset), and audio-track cleanup.
+### 2. Group calls give the caller no "ringing" feedback
+When you start a group DM call, `startCall` pings every member via `ringMemberWithRetry`, but `GroupCallPanel` only renders `peers` (people whose `RTCPeerConnection` is established). Until a friend accepts, they appear nowhere in the UI. The caller sees an empty room and can't tell whether their friends are being rung, whether the ring failed, or whether they're already declining. Discord shows a "Calling…" tile per invited-but-not-joined member — we have nothing.
 
-Root cause: `GroupCallContext.toggleScreenShare` is a hand-rolled reimplementation of `VoiceContext.startScreenShare` / `stopScreenShare` that diverged over time. It hardcodes `wantAudio = true`, ignores the user's `screenShareSettings`, skips `selfBrowserSurface: "exclude"` / audio-track stripping on the browser path, and lacks the codec + adaptive-bitrate wiring the DM path added in v0.4.3/v0.4.4.
+### 3. Peers can't see each other after (re)joining server/group calls
+Symptom: A joins first, B joins → B sees A but A doesn't see B, or vice versa. Repeatedly leaving/rejoining eventually works.
+
+Root cause is in the DB reconcile loop in `GroupCallContext.tsx` (~line 1521). When it detects a live peer we have no `RTCPeerConnection` for, it only **re-broadcasts `peer-join` with `fromUserId: self`**. But the `peer-join` handler only makes an offer when `user.id > payload.fromUserId` (higher-id side offers, to avoid glare):
+
+- If **I am the higher id** and the lower-id peer is missing: I re-broadcast `peer-join` with my id → the lower-id peer sees it, computes `theirId > myId` = false → nobody offers. Stuck.
+- The loop also `break`s after one missing peer per 5-second tick, so 2+ missing peers take multiple ticks each.
+- The initial `peer-join` broadcast fires immediately when `SUBSCRIBED` resolves; existing peers on a Realtime channel that momentarily hiccuped miss it and there's no per-peer retry beyond the general reconcile.
 
 ## Fix
 
-Rewrite `GroupCallContext.toggleScreenShare` so its capture, audio-selection, encoding, codec, and stop-flow logic are **line-for-line the same** as `VoiceContext.startScreenShare` / `stopScreenShare`, only differing where multi-peer group topology genuinely requires it (adding the resulting track to every peer `RTCPeerConnection` instead of one, and broadcasting `peer-screen` on the group channel).
+### 1. `src/components/app/DMSidebar.tsx` — wire the sidebar mute/deafen to group calls
 
-### Capture path (must match DM exactly)
+Mirror the exact logic already in `UserPanel.tsx`:
 
-- Read `screenShareSettings` (resolution, frameRate, audioShare, optimizeFor) instead of hardcoding.
-- Accept `type?: "screen" | "window" | "tab"` + `options: { audio, fps, quality, sourceId }` — same signature as DM.
-- Electron: same per-source audio strategy (Chromium loopback only for `screen:*`, native WASAPI window-audio addon for `window:*`, video-only fallback otherwise).
-- Browser: same `getDisplayMedia` call with `displaySurface`, `surfaceSwitching: "include"`, `selfBrowserSurface: "exclude"`, and the same "strip audio tracks when `allowAudio` is false" cleanup.
-- Same `screenAudioConstraints` (no echo/noise/AGC, stereo 48 kHz).
+- Import `useGroupCall` and destructure `activeCall: groupCall, toggleMute: toggleGroupMute, toggleDeafen: toggleGroupDeafen`.
+- Compute derived state:
+  ```
+  const muted = activeCall ? activeCall.isMuted : groupCall ? groupCall.isMuted : localMuted;
+  const deafened = activeCall ? activeCall.isDeafened : groupCall ? groupCall.isDeafened : localDeafened;
+  ```
+- Mute button `onClick`: `if (activeCall) toggleMute(); else if (groupCall) toggleGroupMute(); else { setLocalMuted…; playSound… }`. Deafen mirrors it.
+- Replace all inline `(activeCall ? activeCall.isMuted : localMuted)` ternaries with the new `muted`/`deafened` variables so the icon, background, and title all reflect the group-call state.
 
-### Encoding path (must match DM exactly)
+### 2. Ringing indicator for group calls
 
-- Same `contentHint` selection (ultra=none, motion=motion, clarity=detail).
-- Same Ultra vs Discord-parity bitrate ladder (up to 16 Mbps at 1440p, 10 Mbps at 1080p60 for Ultra).
-- Same `applyScreenBitrate` + `applyScreenAudioBitrate` per sender.
-- Same `preferScreenShareCodec` (VP9 / AV1 preference) on the video transceiver.
-- Same `patchScreenShareOpusSdp` on generated offers.
-- Same 3-second adaptive-bitrate loop watching outbound-rtp / remote-inbound-rtp.
+Extend `GroupCallContext` to expose invited-but-not-joined members, and render them as "Calling…" tiles in `GroupCallPanel`.
 
-### Group-specific differences (kept)
+- `GroupCallContext.tsx`:
+  - New interface field on the context: `ringingMembers: { userId: string; displayName: string; avatarUrl: string | null }[]`.
+  - New state `ringingMembers` populated in `startCall` from the `memberIds` argument (skip `user.id`; hydrate names/avatars via existing `loadProfile`). Only populated when `options?.isServerChannel` is falsy (server voice channels don't "ring" anyone).
+  - When a `peer-join` arrives from a member, or when `ensurePeerEntry` promotes them to a real `GroupPeer`, remove them from `ringingMembers`.
+  - Clear `ringingMembers` on `leaveCall` and when the call ends.
+  - New effect: 30 seconds after `startCall`, drop any still-ringing member (they didn't pick up) and, if `peers.length === 0` and `ringingMembers.length === 0`, treat as unanswered (existing leaveCall path is fine — no auto-hang-up in this patch, just stop showing "Calling…" forever).
+- `GroupCallPanel.tsx`:
+  - Read `ringingMembers` from the context.
+  - Render a tile per ringing member alongside the peer tiles: greyed-out avatar, pulsing ring, subtitle "Calling…". Reuse the existing `PeerTile` styling but pass `isMuted={false}`, `audioLevel={0}`, and add a small "Ringing" badge overlay.
+- No changes to `ServerVoicePanel.tsx` — server voice channels don't ring users.
 
-- Instead of one `screenPcOut`, iterate `pcsRef.current` and `addTrack` on every peer's PC — reuse the existing `screenSendersRef` map for later teardown.
-- Continue broadcasting `{ type: "peer-screen", isScreenSharing: true/false }` on the `group-signal` channel.
-- Continue using `localScreenTrackRef` + `localScreenStream` state.
+### 3. Reliable peer discovery in `GroupCallContext.tsx`
 
-### Auto-mute regression
+Rewrite the reconcile tick (~line 1521) so it does real recovery instead of only re-broadcasting `peer-join`:
 
-The reported auto-mute-on-share is caused by the current group path re-negotiating with a fresh set of transceivers that don't preserve the mic sender's `enabled` state through the renegotiation offer. Fix by:
-
-- Adding screenshare tracks to each PC **before** creating the offer inside `onnegotiationneeded` (the DM path already does this via the dedicated `screenPcOut`, so unifying resolves it).
-- Explicitly re-asserting `micTrackRef.current.enabled = !activeCall.isMuted` after the screenshare tracks are attached and after the local description is set, so the user's mute state survives renegotiation.
-
-### Stop-share path
-
-Mirror `VoiceContext.stopScreenShare` — stop tracks, tear down native window-audio, `replaceTrack(null)` + `removeTrack` on every peer's screen sender, clear refs, broadcast `peer-screen: false`, play stop sound, and (new) re-assert mic `enabled` state.
+- Remove the `break` — iterate every missing live peer per tick.
+- For each missing peer `r`:
+  - `await ensurePeerEntry(r.user_id)` so the tile appears immediately.
+  - If `user.id > r.user_id` (we're the offering side): call `ensurePc(r.user_id)`, `createOffer`, `mungeGroupCallOpusSdp`, `setLocalDescription`, and send a directed `offer` payload with `toUserId: r.user_id` — same code path as the `peer-join` handler.
+  - Else (we're the lower-id side): send a **directed** `peer-join` with `toUserId: r.user_id` so it's not filtered by anyone else and the higher-id peer definitely re-offers. If we already offered them within the last 5s (track a small `Map<userId, number>` of last-attempt timestamps), skip to avoid glare storms.
+- Keep the 2s seed tick and 5s interval.
+- Also, on `SUBSCRIBED`, in addition to the current broadcast `peer-join`, immediately kick a reconcile tick so a rejoiner picks up existing peers within ~500 ms instead of waiting for the 2s seed.
 
 ## Files touched
 
-- `src/contexts/GroupCallContext.tsx` — rewrite `toggleScreenShare` and its stop branch; import the same helpers `VoiceContext` uses (`applyScreenBitrate`, `applyScreenAudioBitrate`, `preferScreenShareCodec`, `patchScreenShareOpusSdp`, `startNativeWindowAudioStream`); pull `screenShareSettings` via the existing settings hook.
-- `src/components/app/ServerVoicePanel.tsx` & `src/components/app/GroupCallPanel.tsx` — pass `type` from the `ScreenSharePicker` selection through to `toggleScreenShare(type, { sourceId, audio, fps, quality })` so the unified signature is honored (currently they only pass `sourceId`, `fps`, `quality`).
-- `src/lib/changelog.ts` — one-line v0.4.5 bullet: "Group and server call screen sharing now uses the same high-quality pipeline as 1-on-1 calls (fixes wrong-window audio and auto-mute on share)."
+- `src/components/app/DMSidebar.tsx` — hook up group-call mute/deafen in the inlined bottom panel.
+- `src/contexts/GroupCallContext.tsx` — add `ringingMembers` state + context field; rewrite reconcile loop to actively offer to missing lower-id peers and iterate all misses; kick a reconcile tick on `SUBSCRIBED`.
+- `src/components/app/GroupCallPanel.tsx` — render "Calling…" tiles for `ringingMembers`.
+- `src/lib/changelog.ts` — three one-line v0.4.5 bullets (no version bump):
+  - "DM sidebar mute/deafen now controls the active server or group call."
+  - "Group calls now show a 'Calling…' tile for friends who are being rung."
+  - "Fixed peers not seeing each other after joining a server or group call."
 
 ## Out of scope
 
-No version bump beyond the already-set 0.4.5. No changes to DM screenshare. No changes to 1‑on‑1 call logic.
+- No version bump.
+- No changes to 1-on-1 DM call code.
+- No changes to the ring-out sound or the incoming-call modal.
+- No auto-hang-up when nobody answers a group ring (just hide the stale tiles after 30s).
