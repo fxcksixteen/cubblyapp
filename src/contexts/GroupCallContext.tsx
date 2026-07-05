@@ -776,6 +776,20 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       callerAvatarUrl,
       callEventId,
     });
+    // Seed the ringing tiles immediately so the caller sees "Calling…" per
+    // invited member before their profiles resolve.
+    const rungIds = memberIds.filter(mid => mid !== user.id);
+    setRingingMembers(rungIds.map(mid => ({ userId: mid, displayName: "…", avatarUrl: null })));
+    // Hydrate names/avatars in the background.
+    void Promise.all(rungIds.map(async (mid) => {
+      const p = await loadProfile(mid);
+      setRingingMembers(prev => prev.map(r => r.userId === mid ? { ...r, displayName: p.display_name, avatarUrl: p.avatar_url } : r));
+    }));
+    // Auto-hide "Calling…" tiles for anyone who hasn't picked up in 30s.
+    window.setTimeout(() => {
+      setRingingMembers(prev => prev.filter(r => false && r.userId === "")); // clear all
+    }, 30_000);
+
     for (const mid of memberIds) {
       if (mid === user.id) continue;
       void ringMemberWithRetry(mid, payloadFor(mid));
