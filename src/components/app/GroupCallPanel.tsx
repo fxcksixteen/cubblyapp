@@ -169,7 +169,7 @@ const isElectron = typeof window !== "undefined" && (window as any).electronAPI?
 const GroupCallPanel = ({ conversationId }: Props) => {
   const { user } = useAuth();
   const {
-    activeCall, peers, selfAudioLevel, leaveCall,
+    activeCall, peers, ringingMembers, selfAudioLevel, leaveCall,
     toggleMute, toggleDeafen, toggleVideo, toggleScreenShare,
     localVideoStream, localScreenStream, ping,
     getUserVolume, setUserVolume, isUserMuted, setUserMuted,
