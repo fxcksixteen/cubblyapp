@@ -1545,15 +1545,18 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
   }, [activeCall, user]);
 
   // DB-driven peer reconcile: every 5s, scan call_participants for live peers
-  // we don't yet have a PC for and broadcast a peer-join so the higher-id side
-  // offers to us. Fixes "I left and rejoined and landed alone even though she
-  // was still in the channel" — relying on a single peer-join packet wasn't
-  // enough when realtime had momentarily dropped the broadcast.
+  // we don't yet have a PC for. If we're the higher-id side we IMMEDIATELY
+  // create the offer ourselves (a re-broadcast of `peer-join` alone wouldn't
+  // trigger anything — the handler only makes an offer when the OTHER side
+  // has a higher id). If we're the lower-id side we send a directed peer-join
+  // to nudge the higher-id peer to re-offer. Fixes "A and B in the same call
+  // don't see each other after joining".
   useEffect(() => {
     if (!activeCall || !user || !channelRef.current) return;
     const evtId = callEventIdRef.current;
     if (!evtId) return;
     let cancelled = false;
+    const lastAttemptAt = new Map<string, number>();
     const tick = async () => {
       try {
         const { data: rows } = await supabase
@@ -1570,22 +1573,47 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
           if (!baselineStr) continue;
           if (now - new Date(baselineStr).getTime() >= FRESH_MS) continue;
           if (pcsRef.current.has(r.user_id)) continue;
-          console.log("[GroupCall] 🔁 Reconcile: missing PC for live peer", r.user_id, "— re-broadcasting peer-join");
-          // Re-announce so the higher-id side offers to us.
-          channelRef.current?.send({
-            type: "broadcast",
-            event: "group-signal",
-            payload: { type: "peer-join", fromUserId: user.id },
-          });
-          break; // one rebroadcast per tick is enough; next tick re-checks
+          const lastAt = lastAttemptAt.get(r.user_id) || 0;
+          if (now - lastAt < 4_500) continue; // don't retry same peer every tick
+          lastAttemptAt.set(r.user_id, now);
+
+          await ensurePeerEntry(r.user_id);
+
+          if (user.id > r.user_id) {
+            // We're the offering side — build the PC and send an offer directly.
+            console.log("[GroupCall] 🔁 Reconcile: offering to missing peer", r.user_id);
+            try {
+              const pc = ensurePc(r.user_id);
+              const offer = await pc.createOffer();
+              offer.sdp = mungeGroupCallOpusSdp(offer.sdp);
+              await pc.setLocalDescription(offer);
+              channelRef.current?.send({
+                type: "broadcast",
+                event: "group-signal",
+                payload: { type: "offer", fromUserId: user.id, toUserId: r.user_id, sdp: pc.localDescription },
+              });
+            } catch (e) {
+              console.warn("[GroupCall] Reconcile offer failed:", e);
+            }
+          } else {
+            // We're the lower-id side — poke the higher-id peer to re-offer.
+            console.log("[GroupCall] 🔁 Reconcile: nudging higher-id peer", r.user_id, "to offer");
+            channelRef.current?.send({
+              type: "broadcast",
+              event: "group-signal",
+              payload: { type: "peer-join", fromUserId: user.id, toUserId: r.user_id },
+            });
+          }
         }
       } catch { /* best-effort */ }
     };
     const i = setInterval(tick, 5_000);
-    // First tick after a brief delay so the initial peer-join has a chance.
-    const seed = setTimeout(tick, 2_000);
+    // Fire the first tick almost immediately so a fresh joiner picks up
+    // existing peers within ~500ms instead of waiting 2s.
+    const seed = setTimeout(tick, 500);
     return () => { cancelled = true; clearInterval(i); clearTimeout(seed); };
-  }, [activeCall?.conversationId, user]);
+  }, [activeCall?.conversationId, user, ensurePc, ensurePeerEntry]);
+
 
 
   return (
