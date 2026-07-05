@@ -65,6 +65,7 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
   const isMobile = useIsMobile();
   const { user, onlineUserIds } = useAuth();
   const { activeCall, toggleMute, toggleDeafen } = useVoice();
+  const { activeCall: groupCall, toggleMute: toggleGroupMute, toggleDeafen: toggleGroupDeafen } = useGroupCall();
   const { getActivity } = useActivity();
   const { pending } = useFriends();
   const { isMuted, mutedUntil, setMute } = useConversationMutes();
