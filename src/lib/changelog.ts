@@ -43,6 +43,8 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Server text channels now show a white unread indicator and message count when someone posts while you're not in that channel.",
       "Images in server text channels load much faster.",
       "Mute and deafen buttons at the bottom of the sidebar now work when you're in a server or group voice call, not just DMs.",
+      "Group calls now show a \"Calling…\" tile for friends who are being rung so the caller can tell everyone was reached.",
+      "Fixed peers sometimes not seeing each other after joining a server or group call — no more leave-and-rejoin dance.",
       "Sidebar call timer now shows hours for long calls instead of stopping at 59 minutes.",
       "Add-a-game modal now opens on top of the Settings window instead of being hidden behind it.",
       "Roblox now shows \"In Launcher\" on profiles when a friend is only in the launcher and not inside an experience.",
