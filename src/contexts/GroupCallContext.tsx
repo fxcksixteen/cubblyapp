@@ -75,10 +75,19 @@ interface GroupIncomingCall {
   callEventId?: string;
 }
 
+interface RingingMember {
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+}
+
 interface GroupCallContextType {
   activeCall: GroupActiveCall | null;
   incomingCall: GroupIncomingCall | null;
   peers: GroupPeer[];
+  /** Members who were invited when we started the call but haven't joined yet.
+   *  Empty for server voice channels — those don't ring anyone. */
+  ringingMembers: RingingMember[];
   /** Round-trip ping (ms) — averaged across active peer connections. */
   ping: number;
   startCall: (conversationId: string, conversationName: string, memberIds: string[], options?: { isServerChannel?: boolean }) => Promise<void>;
