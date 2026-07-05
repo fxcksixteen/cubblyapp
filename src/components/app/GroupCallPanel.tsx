@@ -160,6 +160,37 @@ const ScreenShareViewer = ({ peer, onMaximize }: { peer: GroupPeer; onMaximize: 
   );
 };
 
+/** Greyed-out "Calling…" tile for a friend who's being rung but hasn't joined yet. */
+const RingingTile = ({ userId, displayName, avatarUrl }: { userId: string; displayName: string; avatarUrl: string | null }) => {
+  const color = getProfileColor(userId);
+  return (
+    <div className="flex flex-col items-center gap-2 opacity-70">
+      <div className="relative">
+        <div
+          className="flex h-20 w-20 items-center justify-center rounded-full text-2xl font-bold text-white overflow-hidden animate-pulse"
+          style={{ backgroundColor: color.bg }}
+        >
+          {avatarUrl ? (
+            <img src={avatarUrl} alt={displayName} className="h-full w-full object-cover" />
+          ) : (
+            displayName.charAt(0).toUpperCase() || "?"
+          )}
+        </div>
+        <div
+          className="absolute -bottom-1 left-1/2 -translate-x-1/2 flex items-center gap-1 rounded-full px-2 py-0.5 border"
+          style={{ backgroundColor: "var(--app-bg-tertiary)", borderColor: "var(--app-border)" }}
+        >
+          <span className="h-1.5 w-1.5 rounded-full bg-[#3ba55c] animate-pulse" />
+          <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--app-text-secondary)" }}>Ringing</span>
+        </div>
+      </div>
+      <span className="text-xs font-semibold max-w-[100px] truncate" style={{ color: "var(--app-text-secondary)" }}>
+        {displayName} · Calling…
+      </span>
+    </div>
+  );
+};
+
 interface Props {
   conversationId: string;
 }
