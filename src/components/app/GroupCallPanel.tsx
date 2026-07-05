@@ -274,6 +274,9 @@ const GroupCallPanel = ({ conversationId }: Props) => {
             onContextMenu={(e) => { e.preventDefault(); setVolumeMenu({ userId: p.userId, name: p.displayName, x: e.clientX, y: e.clientY }); }}
           />
         ))}
+        {ringingMembers.map((r) => (
+          <RingingTile key={r.userId} userId={r.userId} displayName={r.displayName} avatarUrl={r.avatarUrl} />
+        ))}
       </div>
 
       <div className="flex items-center justify-center gap-3 px-6 pb-5 flex-wrap">
