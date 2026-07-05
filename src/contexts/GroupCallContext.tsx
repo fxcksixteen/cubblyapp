@@ -1571,7 +1571,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <GroupCallContext.Provider value={{
-      activeCall, incomingCall, peers, ping,
+      activeCall, incomingCall, peers, ringingMembers, ping,
       startCall, acceptCall, declineCall, leaveCall,
       toggleMute, toggleDeafen, toggleVideo, toggleScreenShare,
       localVideoStream, localScreenStream, selfAudioLevel,
