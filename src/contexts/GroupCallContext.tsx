@@ -613,9 +613,11 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     return pc;
   }, [user, startPeerMonitor, removePeer]);
 
-  /** Build a peer entry in `peers` (lazy — avoids duplicates). */
+  /** Build a peer entry in `peers` (lazy — avoids duplicates). Also removes
+   *  the peer from `ringingMembers` since they've now joined. */
   const ensurePeerEntry = useCallback(async (peerId: string) => {
     setPeers(prev => prev.some(p => p.userId === peerId) ? prev : [...prev, { userId: peerId, displayName: "…", isMuted: false, audioLevel: 0, isVideoOn: false, isScreenSharing: false, videoStream: null, screenStream: null }]);
+    setRingingMembers(prev => prev.some(r => r.userId === peerId) ? prev.filter(r => r.userId !== peerId) : prev);
     const profile = await loadProfile(peerId);
     setPeers(prev => prev.map(p => p.userId === peerId
       ? { ...p, displayName: profile.display_name, avatarUrl: profile.avatar_url }
