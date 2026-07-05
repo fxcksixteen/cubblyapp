@@ -183,9 +183,14 @@ const SidebarGroupCallCard = ({ fallbackServerInfo = null }: Props = {}) => {
       <ScreenSharePicker
         isOpen={showSharePicker}
         onClose={() => setShowSharePicker(false)}
-        onSelect={(_type: ScreenShareType, _options) => {
+        onSelect={(type: ScreenShareType, options) => {
           setShowSharePicker(false);
-          toggleScreenShare((_options as any)?.sourceId, { fps: (_options as any)?.fps, quality: (_options as any)?.quality });
+          toggleScreenShare(type, {
+            sourceId: (options as any)?.sourceId,
+            audio: (options as any)?.audio,
+            fps: (options as any)?.fps,
+            quality: (options as any)?.quality,
+          });
         }}
       />
     </div>
