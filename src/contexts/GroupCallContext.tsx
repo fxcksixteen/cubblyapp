@@ -1052,6 +1052,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     if (activeCall) playSound("leaveCall", { volume: 0.4 });
     setActiveCall(null);
     setPeers([]);
+    setRingingMembers([]);
     setPing(0);
     callEventIdRef.current = null;
     callConvIdRef.current = null;
