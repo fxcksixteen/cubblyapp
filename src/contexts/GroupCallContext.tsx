@@ -785,9 +785,13 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       const p = await loadProfile(mid);
       setRingingMembers(prev => prev.map(r => r.userId === mid ? { ...r, displayName: p.display_name, avatarUrl: p.avatar_url } : r));
     }));
-    // Auto-hide "Calling…" tiles for anyone who hasn't picked up in 30s.
+    // Auto-hide "Calling…" tiles for anyone who hasn't picked up in 30s —
+    // only if we're still in this same call (avoid clobbering a subsequent
+    // call started right after this one).
+    const ringTimeoutForConv = conversationId;
     window.setTimeout(() => {
-      setRingingMembers(prev => prev.filter(r => false && r.userId === "")); // clear all
+      if (callConvIdRef.current !== ringTimeoutForConv) return;
+      setRingingMembers([]);
     }, 30_000);
 
     for (const mid of memberIds) {
