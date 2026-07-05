@@ -246,6 +246,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
   const [activeCall, setActiveCall] = useState<GroupActiveCall | null>(null);
   const [incomingCall, setIncomingCall] = useState<GroupIncomingCall | null>(null);
   const [peers, setPeers] = useState<GroupPeer[]>([]);
+  const [ringingMembers, setRingingMembers] = useState<RingingMember[]>([]);
   const [selfAudioLevel, setSelfAudioLevel] = useState(0);
   const [ping, setPing] = useState(0);
   const [localVideoStream, setLocalVideoStream] = useState<MediaStream | null>(null);
