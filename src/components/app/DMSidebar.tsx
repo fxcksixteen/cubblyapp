@@ -563,48 +563,60 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
           <p className="truncate text-[11px] leading-snug" style={{ color: "var(--app-text-secondary, #949ba4)" }}>{username}</p>
         </div>
         <div className="flex items-center gap-0.5 shrink-0">
-          <button
-            onClick={() => {
-              if (activeCall) { toggleMute(); } else {
-                const next = !localMuted;
-                setLocalMuted(next);
-                playSound(next ? "mute" : "unmute", { volume: 0.4 });
-              }
-            }}
-            className="rounded p-1.5 transition-colors"
-            style={{ backgroundColor: (activeCall ? activeCall.isMuted : localMuted) ? "rgba(237,66,69,0.2)" : undefined }}
-            onMouseEnter={e => { if (!(activeCall ? activeCall.isMuted : localMuted)) e.currentTarget.style.backgroundColor = "var(--app-hover, #35373c)"; }}
-            onMouseLeave={e => { if (!(activeCall ? activeCall.isMuted : localMuted)) e.currentTarget.style.backgroundColor = ""; }}
-            title={(activeCall ? activeCall.isMuted : localMuted) ? "Unmute" : "Mute"}
-          >
-            <img
-              src={(activeCall ? activeCall.isMuted : localMuted) ? micMuteIcon : micIcon}
-              alt={(activeCall ? activeCall.isMuted : localMuted) ? "Muted" : "Microphone"}
-              className={`h-[18px] w-[18px] transition-opacity ${(activeCall ? activeCall.isMuted : localMuted) ? "opacity-100" : "invert opacity-70 hover:opacity-100"}`}
-              style={(activeCall ? activeCall.isMuted : localMuted) ? { filter: "invert(36%) sepia(93%) saturate(7471%) hue-rotate(348deg) brightness(101%) contrast(88%)" } : undefined}
-            />
-          </button>
-          <button
-            onClick={() => {
-              if (activeCall) { toggleDeafen(); } else {
-                const next = !localDeafened;
-                setLocalDeafened(next);
-                playSound(next ? "deafen" : "undeafen", { volume: 0.4 });
-              }
-            }}
-            className="rounded p-1.5 transition-colors"
-            style={{ backgroundColor: (activeCall ? activeCall.isDeafened : localDeafened) ? "rgba(237,66,69,0.2)" : undefined }}
-            onMouseEnter={e => { if (!(activeCall ? activeCall.isDeafened : localDeafened)) e.currentTarget.style.backgroundColor = "var(--app-hover, #35373c)"; }}
-            onMouseLeave={e => { if (!(activeCall ? activeCall.isDeafened : localDeafened)) e.currentTarget.style.backgroundColor = ""; }}
-            title={(activeCall ? activeCall.isDeafened : localDeafened) ? "Undeafen" : "Deafen"}
-          >
-            <img
-              src={(activeCall ? activeCall.isDeafened : localDeafened) ? headphoneDeafenIcon : headphoneIcon}
-              alt={(activeCall ? activeCall.isDeafened : localDeafened) ? "Deafened" : "Headphones"}
-              className={`h-[18px] w-[18px] transition-opacity ${(activeCall ? activeCall.isDeafened : localDeafened) ? "opacity-100" : "invert opacity-70 hover:opacity-100"}`}
-              style={(activeCall ? activeCall.isDeafened : localDeafened) ? { filter: "invert(36%) sepia(93%) saturate(7471%) hue-rotate(348deg) brightness(101%) contrast(88%)" } : undefined}
-            />
-          </button>
+          {(() => {
+            const muted = activeCall ? activeCall.isMuted : groupCall ? groupCall.isMuted : localMuted;
+            const deafened = activeCall ? activeCall.isDeafened : groupCall ? groupCall.isDeafened : localDeafened;
+            return (
+              <>
+                <button
+                  onClick={() => {
+                    if (activeCall) { toggleMute(); }
+                    else if (groupCall) { toggleGroupMute(); }
+                    else {
+                      const next = !localMuted;
+                      setLocalMuted(next);
+                      playSound(next ? "mute" : "unmute", { volume: 0.4 });
+                    }
+                  }}
+                  className="rounded p-1.5 transition-colors"
+                  style={{ backgroundColor: muted ? "rgba(237,66,69,0.2)" : undefined }}
+                  onMouseEnter={e => { if (!muted) e.currentTarget.style.backgroundColor = "var(--app-hover, #35373c)"; }}
+                  onMouseLeave={e => { if (!muted) e.currentTarget.style.backgroundColor = ""; }}
+                  title={muted ? "Unmute" : "Mute"}
+                >
+                  <img
+                    src={muted ? micMuteIcon : micIcon}
+                    alt={muted ? "Muted" : "Microphone"}
+                    className={`h-[18px] w-[18px] transition-opacity ${muted ? "opacity-100" : "invert opacity-70 hover:opacity-100"}`}
+                    style={muted ? { filter: "invert(36%) sepia(93%) saturate(7471%) hue-rotate(348deg) brightness(101%) contrast(88%)" } : undefined}
+                  />
+                </button>
+                <button
+                  onClick={() => {
+                    if (activeCall) { toggleDeafen(); }
+                    else if (groupCall) { toggleGroupDeafen(); }
+                    else {
+                      const next = !localDeafened;
+                      setLocalDeafened(next);
+                      playSound(next ? "deafen" : "undeafen", { volume: 0.4 });
+                    }
+                  }}
+                  className="rounded p-1.5 transition-colors"
+                  style={{ backgroundColor: deafened ? "rgba(237,66,69,0.2)" : undefined }}
+                  onMouseEnter={e => { if (!deafened) e.currentTarget.style.backgroundColor = "var(--app-hover, #35373c)"; }}
+                  onMouseLeave={e => { if (!deafened) e.currentTarget.style.backgroundColor = ""; }}
+                  title={deafened ? "Undeafen" : "Deafen"}
+                >
+                  <img
+                    src={deafened ? headphoneDeafenIcon : headphoneIcon}
+                    alt={deafened ? "Deafened" : "Headphones"}
+                    className={`h-[18px] w-[18px] transition-opacity ${deafened ? "opacity-100" : "invert opacity-70 hover:opacity-100"}`}
+                    style={deafened ? { filter: "invert(36%) sepia(93%) saturate(7471%) hue-rotate(348deg) brightness(101%) contrast(88%)" } : undefined}
+                  />
+                </button>
+              </>
+            );
+          })()}
           <button
             onClick={() => setSettingsOpen(true)}
             className="rounded p-1.5 transition-colors"
