@@ -1582,14 +1582,29 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
         if (payload.type === "ready-for-offer") {
           try {
+            // v0.4.6: don't hard-drop mismatched callEventIds. If the payload
+            // is for a DIFFERENT ongoing event in the same conversation,
+            // adopt it — this is the "caller and callee diverged on which
+            // call_event to use" case that used to leave the caller stuck
+            // on Ringing forever.
             if (payload.callEventId && callEventIdSnapshot && payload.callEventId !== callEventIdSnapshot) {
-              console.log(`[Voice] 🛑 Ignoring ready-for-offer for stale call ${payload.callEventId} (current=${callEventIdSnapshot})`);
-              return;
+              if (activeCallSnapshot?.conversationId === conversationId) {
+                console.warn(`[Voice] 🔀 ready-for-offer for different call_event ${payload.callEventId.substring(0,8)} (current=${callEventIdSnapshot.substring(0,8)}) — adopting`);
+                currentCallEventIdRef.current = payload.callEventId;
+                setCurrentCallEventId(payload.callEventId);
+                if (outgoingCallMetaRef.current) {
+                  outgoingCallMetaRef.current = { ...outgoingCallMetaRef.current, callEventId: payload.callEventId };
+                }
+                pendingOfferRef.current = null;
+              } else {
+                console.log(`[Voice] 🛑 Ignoring ready-for-offer for stale call ${payload.callEventId} (current=${callEventIdSnapshot})`);
+                return;
+              }
             }
             if (!outgoingCallMetaRef.current && activeCallSnapshot?.conversationId === conversationId && callEventIdSnapshot) {
               outgoingCallMetaRef.current = {
                 conversationId,
-                callEventId: callEventIdSnapshot,
+                callEventId: currentCallEventIdRef.current || callEventIdSnapshot,
               };
             }
             if (outgoingCallMetaRef.current && payload.callEventId && outgoingCallMetaRef.current.callEventId !== payload.callEventId) {
