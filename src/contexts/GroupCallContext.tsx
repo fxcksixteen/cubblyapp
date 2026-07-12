@@ -279,6 +279,31 @@ async function ringMemberWithRetry(mid: string, payload: Record<string, unknown>
   setTimeout(() => supabase.removeChannel(ch), 3000);
 }
 
+async function sendGroupSignalReliably(
+  channel: ReturnType<typeof supabase.channel> | null,
+  payload: Record<string, unknown>,
+  label: string,
+  attempts = 3,
+): Promise<void> {
+  if (!channel) return;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const res: any = await channel.send({ type: "broadcast", event: "group-signal", payload });
+      if (res === "ok") return;
+      if (attempt === attempts - 1) {
+        console.warn(`[GroupCall] group-signal ${label} returned ${res}`);
+        return;
+      }
+    } catch (e) {
+      if (attempt === attempts - 1) {
+        console.warn(`[GroupCall] group-signal ${label} failed:`, e);
+        return;
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 180 * (attempt + 1)));
+  }
+}
+
 
 
 export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
@@ -628,16 +653,12 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
 
     pc.onicecandidate = (event) => {
       if (!event.candidate || !channelRef.current || !user) return;
-      channelRef.current.send({
-        type: "broadcast",
-        event: "group-signal",
-        payload: {
+        void sendGroupSignalReliably(channelRef.current, {
           type: "ice-candidate",
           fromUserId: user.id,
           toUserId: peerId,
           candidate: event.candidate.toJSON(),
-        },
-      });
+        }, "ice-candidate", 2);
     };
 
     // Perfect-negotiation: triggered automatically when we add/remove tracks
@@ -651,16 +672,12 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         const offer = await pc.createOffer();
         offer.sdp = mungeGroupCallOpusSdp(offer.sdp);
         await pc.setLocalDescription(offer);
-        channelRef.current.send({
-          type: "broadcast",
-          event: "group-signal",
-          payload: {
-            type: "offer",
-            fromUserId: user.id,
-            toUserId: peerId,
-            sdp: pc.localDescription,
-          },
-        });
+        await sendGroupSignalReliably(channelRef.current, {
+          type: "offer",
+          fromUserId: user.id,
+          toUserId: peerId,
+          sdp: pc.localDescription,
+        }, "offer(negotiationneeded)");
       } catch (e) {
         console.error("[GroupCall] negotiationneeded failed:", e);
       } finally {
@@ -883,6 +900,10 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     if (!user) return;
     return new Promise((resolve, reject) => {
       const channelName = `group-call:${conversationId}`;
+      if (channelRef.current) {
+        try { supabase.removeChannel(channelRef.current); } catch {}
+        channelRef.current = null;
+      }
       const channel = supabase.channel(channelName);
 
       channel.on("broadcast", { event: "group-signal" }, async ({ payload }) => {
@@ -899,11 +920,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
               const offer = await pc.createOffer();
               offer.sdp = mungeGroupCallOpusSdp(offer.sdp);
               await pc.setLocalDescription(offer);
-              channel.send({
-                type: "broadcast",
-                event: "group-signal",
-                payload: { type: "offer", fromUserId: user.id, toUserId: payload.fromUserId, sdp: pc.localDescription },
-              });
+              await sendGroupSignalReliably(channel, { type: "offer", fromUserId: user.id, toUserId: payload.fromUserId, sdp: pc.localDescription }, "offer(peer-join)");
             } catch (e) {
               console.error("[GroupCall] Failed to create offer for new peer:", e);
             }
@@ -928,6 +945,9 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
           ignoreOfferRef.current.set(payload.fromUserId, ignore);
           if (ignore) return;
           try {
+            if (offerCollision && polite) {
+              try { await pc.setLocalDescription({ type: "rollback" } as RTCSessionDescriptionInit); } catch {}
+            }
             await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
             remoteDescSetRef.current.set(payload.fromUserId, true);
             const queued = queuedIceRef.current.get(payload.fromUserId) || [];
@@ -939,11 +959,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
             const answer = await pc.createAnswer();
             answer.sdp = mungeGroupCallOpusSdp(answer.sdp);
             await pc.setLocalDescription(answer);
-            channel.send({
-              type: "broadcast",
-              event: "group-signal",
-              payload: { type: "answer", fromUserId: user.id, toUserId: payload.fromUserId, sdp: pc.localDescription },
-            });
+            await sendGroupSignalReliably(channel, { type: "answer", fromUserId: user.id, toUserId: payload.fromUserId, sdp: pc.localDescription }, "answer(offer)");
           } catch (e) {
             console.error("[GroupCall] Failed to handle offer:", e);
           }
@@ -968,6 +984,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         }
 
         if (payload.type === "ice-candidate") {
+          if (ignoreOfferRef.current.get(payload.fromUserId)) return;
           const pc = pcsRef.current.get(payload.fromUserId);
           if (pc && remoteDescSetRef.current.get(payload.fromUserId)) {
             await pc.addIceCandidate(new RTCIceCandidate(payload.candidate)).catch(() => {});
@@ -1005,11 +1022,14 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         if (status === "SUBSCRIBED") {
           channelRef.current = channel;
           // Announce our presence so existing peers offer to us
-          channel.send({
-            type: "broadcast",
-            event: "group-signal",
-            payload: { type: "peer-join", fromUserId: user.id },
-          });
+          const sendJoin = (delay = 0) => {
+            window.setTimeout(() => {
+              void sendGroupSignalReliably(channel, { type: "peer-join", fromUserId: user.id }, "peer-join");
+            }, delay);
+          };
+          sendJoin(0);
+          sendJoin(700);
+          sendJoin(1800);
           resolve();
         } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
           reject(new Error(`Group channel subscribe failed: ${status}`));
