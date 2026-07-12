@@ -1304,6 +1304,54 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [user]);
 
+  /**
+   * v0.4.6: DM call reconciliation.
+   * Look up the newest ongoing call_event for this conversation whose live
+   * non-self participant is FRESH. Used by the caller-side pickup watchdog
+   * to detect the case where the callee joined a *different* call_event
+   * than the one the caller latched onto — that mismatch used to leave the
+   * caller stuck on "Ringing…" while the callee's UI showed "In call".
+   */
+  const resolveLiveCallEventIdForConversation = useCallback(async (
+    conversationId: string,
+    freshMs = 25_000,
+  ): Promise<{ callEventId: string; startedAt: string | null } | null> => {
+    if (!user) return null;
+    try {
+      const { data: events } = await (supabase as any)
+        .from("call_events")
+        .select("id, started_at")
+        .eq("conversation_id", conversationId)
+        .eq("state", "ongoing")
+        .order("started_at", { ascending: false })
+        .limit(4);
+      const rows = (events as any[]) || [];
+      if (rows.length === 0) return null;
+      const ids = rows.map((r: any) => r.id);
+      const { data: parts } = await (supabase as any)
+        .from("call_participants")
+        .select("call_event_id, user_id, last_seen_at, joined_at, left_at")
+        .in("call_event_id", ids)
+        .is("left_at", null);
+      const now = Date.now();
+      const liveFor = new Set<string>();
+      for (const p of (parts as any[]) || []) {
+        if (p.user_id === user.id) continue;
+        const baselineStr = p.last_seen_at ?? p.joined_at;
+        const baseline = baselineStr ? new Date(baselineStr).getTime() : 0;
+        if (baseline > 0 && now - baseline < freshMs) {
+          liveFor.add(p.call_event_id);
+        }
+      }
+      for (const r of rows) {
+        if (liveFor.has(r.id)) return { callEventId: r.id, startedAt: r.started_at ?? null };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }, [user]);
+
   const initializeOutgoingConnection = useCallback(async (channel: ReturnType<typeof supabase.channel>, conversationId: string, options?: { forceFreshOffer?: boolean }) => {
     if (!user) return;
     const outgoingCallMeta = outgoingCallMetaRef.current;
@@ -1435,17 +1483,52 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     const tryAutoRenegotiate = async (delay: number) => {
       await new Promise(r => setTimeout(r, delay));
       if (renegotiated) return;
-      // Guard: still on the same call?
-      if (currentCallEventIdRef.current !== watchedCallEventId) return;
+      // Guard: still on the same conversation? (call_event id can drift — see below)
       if (pcRef.current !== pc) return;
       const iceState = pc.iceConnectionState;
       if (iceState === "connected" || iceState === "completed") return;
-      // Only trigger if the callee looks alive on their end.
+
+      // v0.4.6: liveness must be resolved against ANY ongoing call_event in
+      // this conversation, not just the one we latched onto. A caller and
+      // callee can end up on different call_event ids after stale-ghost
+      // cleanup — the peer is live, just not on OUR id.
       let peerAlive = false;
       try {
         peerAlive = await peerLooksLiveInCall(watchedCallEventId, activeCallRef.current?.peerId, 25_000);
       } catch {}
+      let adoptedCallEventId: string | null = null;
+      let adoptedStartedAt: string | null = null;
+      if (!peerAlive) {
+        try {
+          const live = await resolveLiveCallEventIdForConversation(conversationId, 25_000);
+          if (live && live.callEventId !== watchedCallEventId) {
+            adoptedCallEventId = live.callEventId;
+            adoptedStartedAt = live.startedAt;
+            peerAlive = true;
+            console.warn(`[Voice] ⏱ pickup-watchdog: peer is live on a DIFFERENT call_event (${live.callEventId.substring(0,8)}) — adopting`);
+          }
+        } catch {}
+      }
       if (!peerAlive) return;
+      // If we're on a mismatched callEventId, adopt the DB truth so the
+      // fresh offer we're about to broadcast is tagged correctly.
+      if (adoptedCallEventId) {
+        currentCallEventIdRef.current = adoptedCallEventId;
+        setCurrentCallEventId(adoptedCallEventId);
+        if (outgoingCallMetaRef.current) {
+          outgoingCallMetaRef.current = { ...outgoingCallMetaRef.current, callEventId: adoptedCallEventId };
+        }
+        pendingOfferRef.current = null;
+        if (adoptedStartedAt) {
+          const t = Date.parse(adoptedStartedAt);
+          if (!Number.isNaN(t)) {
+            setActiveCall(prev => prev && prev.conversationId === conversationId ? { ...prev, startedAt: t } : prev);
+          }
+        }
+      } else if (currentCallEventIdRef.current !== watchedCallEventId) {
+        // We drifted off the watched call — someone else's handler already adopted.
+        return;
+      }
       renegotiated = true;
       console.warn(`[Voice] ⏱ pickup-watchdog: caller PC still ${iceState} at +${delay}ms but peer is live — auto-renegotiating`);
       try { pc.close(); } catch {}
@@ -1465,7 +1548,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     void tryAutoRenegotiate(6000);
     void tryAutoRenegotiate(10000);
 
-  }, [user, getUserMedia, createPeerConnection, startAudioLevelMonitor, stopAudioLevelMonitor, peerLooksLiveInCall]);
+  }, [user, getUserMedia, createPeerConnection, startAudioLevelMonitor, stopAudioLevelMonitor, peerLooksLiveInCall, resolveLiveCallEventIdForConversation]);
 
   const setupSignaling = useCallback((conversationId: string): Promise<ReturnType<typeof supabase.channel>> => {
     return new Promise((resolve, reject) => {
@@ -1499,14 +1582,29 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
         if (payload.type === "ready-for-offer") {
           try {
+            // v0.4.6: don't hard-drop mismatched callEventIds. If the payload
+            // is for a DIFFERENT ongoing event in the same conversation,
+            // adopt it — this is the "caller and callee diverged on which
+            // call_event to use" case that used to leave the caller stuck
+            // on Ringing forever.
             if (payload.callEventId && callEventIdSnapshot && payload.callEventId !== callEventIdSnapshot) {
-              console.log(`[Voice] 🛑 Ignoring ready-for-offer for stale call ${payload.callEventId} (current=${callEventIdSnapshot})`);
-              return;
+              if (activeCallSnapshot?.conversationId === conversationId) {
+                console.warn(`[Voice] 🔀 ready-for-offer for different call_event ${payload.callEventId.substring(0,8)} (current=${callEventIdSnapshot.substring(0,8)}) — adopting`);
+                currentCallEventIdRef.current = payload.callEventId;
+                setCurrentCallEventId(payload.callEventId);
+                if (outgoingCallMetaRef.current) {
+                  outgoingCallMetaRef.current = { ...outgoingCallMetaRef.current, callEventId: payload.callEventId };
+                }
+                pendingOfferRef.current = null;
+              } else {
+                console.log(`[Voice] 🛑 Ignoring ready-for-offer for stale call ${payload.callEventId} (current=${callEventIdSnapshot})`);
+                return;
+              }
             }
             if (!outgoingCallMetaRef.current && activeCallSnapshot?.conversationId === conversationId && callEventIdSnapshot) {
               outgoingCallMetaRef.current = {
                 conversationId,
-                callEventId: callEventIdSnapshot,
+                callEventId: currentCallEventIdRef.current || callEventIdSnapshot,
               };
             }
             if (outgoingCallMetaRef.current && payload.callEventId && outgoingCallMetaRef.current.callEventId !== payload.callEventId) {
@@ -1531,7 +1629,20 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
         if (payload.type === "peer-accepted") {
           if (payload.callEventId && callEventIdSnapshot && payload.callEventId !== callEventIdSnapshot) {
-            return;
+            // v0.4.6: same drift case as ready-for-offer — if we're actively
+            // ringing on this conversation, adopt the callee's call_event id.
+            if (activeCallSnapshot?.conversationId === conversationId
+              && (activeCallSnapshot.state === "calling" || activeCallSnapshot.state === "ringing")) {
+              console.warn(`[Voice] 🔀 peer-accepted for different call_event ${payload.callEventId.substring(0,8)} — adopting`);
+              currentCallEventIdRef.current = payload.callEventId;
+              setCurrentCallEventId(payload.callEventId);
+              if (outgoingCallMetaRef.current) {
+                outgoingCallMetaRef.current = { ...outgoingCallMetaRef.current, callEventId: payload.callEventId };
+              }
+              pendingOfferRef.current = null;
+            } else {
+              return;
+            }
           }
           console.log("[acceptDiag] peer.accepted ack received", payload.callEventId);
           stopLooping("outgoingRing");
@@ -1543,8 +1654,27 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
         if (payload.type === "offer") {
           if (payload.callEventId && callEventIdSnapshot && payload.callEventId !== callEventIdSnapshot) {
-            console.log(`[Voice] 🛑 Ignoring offer for stale call ${payload.callEventId} (current=${callEventIdSnapshot})`);
-            return;
+            // v0.4.6: if we're the CALLER still ringing/calling and the
+            // offer's for a live call_event in the same conversation, adopt
+            // it. If we're the CALLEE with acceptedIncomingCallRef pointing
+            // at another id, keep the strict drop — the wrong incoming call
+            // should not hijack us.
+            if (
+              activeCallSnapshot?.conversationId === conversationId
+              && (activeCallSnapshot.state === "calling" || activeCallSnapshot.state === "ringing")
+              && !acceptedIncomingCallRef.current
+            ) {
+              console.warn(`[Voice] 🔀 offer for different call_event ${payload.callEventId.substring(0,8)} — adopting`);
+              currentCallEventIdRef.current = payload.callEventId;
+              setCurrentCallEventId(payload.callEventId);
+              if (outgoingCallMetaRef.current) {
+                outgoingCallMetaRef.current = { ...outgoingCallMetaRef.current, callEventId: payload.callEventId };
+              }
+              pendingOfferRef.current = null;
+            } else {
+              console.log(`[Voice] 🛑 Ignoring offer for stale call ${payload.callEventId} (current=${callEventIdSnapshot})`);
+              return;
+            }
           }
           const acceptedCall = acceptedIncomingCallRef.current;
 
@@ -2161,6 +2291,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       // one participant briefly dropped out. The call only truly "ends" when
       // the last participant leaves (state flips to "ended").
       let existingStartedAtMs: number | undefined;
+      // v0.4.6: sweep dead ongoing events first so we don't join a ghost.
+      try { await (supabase as any).rpc("sweep_stale_call_events"); } catch { /* non-fatal */ }
       try {
         const { data: existing } = await supabase
           .from("call_events")

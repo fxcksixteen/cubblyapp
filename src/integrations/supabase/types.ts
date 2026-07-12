@@ -1745,6 +1745,7 @@ export type Database = {
         }
         Returns: number
       }
+      sweep_stale_call_events: { Args: never; Returns: number }
       sync_shared_note: {
         Args: { _body: string; _note_id: string; _title: string }
         Returns: number
