@@ -774,6 +774,13 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
 
       let reused = false;
       if (existing?.id) {
+        try {
+          const { data: canonicalId } = await (supabase as any).rpc("canonicalize_ongoing_call_event", {
+            _conversation_id: conversationId,
+            _preferred_call_event_id: existing.id,
+          });
+          if (canonicalId && canonicalId !== existing.id) existing.id = canonicalId;
+        } catch { /* older backend: continue with newest event */ }
         if (isServerChannel) {
           // Server voice channels: unconditionally reuse. One channel = one call.
           callEventId = existing.id;
@@ -1680,22 +1687,14 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
               const offer = await pc.createOffer();
               offer.sdp = mungeGroupCallOpusSdp(offer.sdp);
               await pc.setLocalDescription(offer);
-              channelRef.current?.send({
-                type: "broadcast",
-                event: "group-signal",
-                payload: { type: "offer", fromUserId: user.id, toUserId: r.user_id, sdp: pc.localDescription },
-              });
+              await sendGroupSignalReliably(channelRef.current, { type: "offer", fromUserId: user.id, toUserId: r.user_id, sdp: pc.localDescription }, "offer(reconcile)");
             } catch (e) {
               console.warn("[GroupCall] Reconcile offer failed:", e);
             }
           } else {
             // We're the lower-id side — poke the higher-id peer to re-offer.
             console.log("[GroupCall] 🔁 Reconcile: nudging higher-id peer", r.user_id, "to offer");
-            channelRef.current?.send({
-              type: "broadcast",
-              event: "group-signal",
-              payload: { type: "peer-join", fromUserId: user.id, toUserId: r.user_id },
-            });
+            await sendGroupSignalReliably(channelRef.current, { type: "peer-join", fromUserId: user.id, toUserId: r.user_id }, "peer-join(reconcile)");
           }
         }
       } catch { /* best-effort */ }
