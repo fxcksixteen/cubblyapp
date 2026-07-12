@@ -669,6 +669,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   // Cap pickup watchdog renegotiation per call_event. Without a global cap,
   // each new PC generation schedules another watchdog and can loop forever.
   const pickupRenegotiateCountRef = useRef<Record<string, number>>({});
+  // Deterministic WebRTC role for 1:1 calls. New caller / staying host offers;
+  // callee / rejoiner answers. This prevents offer glare from crossed
+  // ready-for-offer retries.
+  const shouldOfferForCallRef = useRef(false);
   // Forward-ref to startCall so acceptCall (declared above startCall in the
   // file) can delegate to the exact rejoin code path without circular
   // useCallback deps. Assigned in an effect after startCall is created.
@@ -1622,6 +1626,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               console.log("[Voice] 🛑 Ignoring ready-for-offer while waiting to answer accepted incoming call");
               return;
             }
+            if (!shouldOfferForCallRef.current && !activeCallSnapshot?.peerLeftAt) {
+              console.log("[Voice] 🛑 Ignoring ready-for-offer on answerer side");
+              return;
+            }
             // v0.4.6: don't hard-drop mismatched callEventIds. If the payload
             // is for a DIFFERENT ongoing event in the same conversation,
             // adopt it — this is the "caller and callee diverged on which
@@ -1642,6 +1650,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               }
             }
             if (!outgoingCallMetaRef.current && activeCallSnapshot?.conversationId === conversationId && callEventIdSnapshot) {
+              if (!shouldOfferForCallRef.current && !activeCallSnapshot.peerLeftAt) {
+                console.log("[Voice] 🛑 Not becoming offerer for this call role");
+                return;
+              }
               outgoingCallMetaRef.current = {
                 conversationId,
                 callEventId: currentCallEventIdRef.current || callEventIdSnapshot,
@@ -2032,6 +2044,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           acceptedIncomingCallRef.current = null;
           outgoingCallMetaRef.current = null;
           peerAcceptedCallEventRef.current = null;
+          shouldOfferForCallRef.current = true;
           outgoingCandidateBuffer.current = [];
           incomingCandidateQueue.current = [];
           remoteDescriptionSet.current = false;
@@ -2428,6 +2441,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       acceptedIncomingCallRef.current = null;
       peerAcceptedCallEventRef.current = null;
       pickupRenegotiateCountRef.current = {};
+      shouldOfferForCallRef.current = !isJoiningExisting;
 
       setActiveCall({
         conversationId,
@@ -2615,6 +2629,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     console.log("[Voice] ✅ Accepting call (direct path) from", acceptedCall.callerName);
 
     try {
+      shouldOfferForCallRef.current = false;
       stopLooping("incomingCall");
       try { void broadcastIncomingCallDismiss(acceptedCall.conversationId, acceptedCall.callEventId); } catch {}
 
@@ -3429,6 +3444,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     lastAnsweredOfferRef.current = null;
     peerAcceptedCallEventRef.current = null;
     pickupRenegotiateCountRef.current = {};
+    shouldOfferForCallRef.current = false;
 
 
     document.querySelectorAll("audio").forEach((el: any) => {
