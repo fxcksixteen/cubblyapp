@@ -27,6 +27,20 @@ export const CURRENT_VERSION = "0.4.5";
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.4.6",
+    title: "Call fixes and wishlist auto-clear",
+    date: "2026-07-12",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Fixed 1-on-1 DM calls sometimes staying stuck on \"Ringing\" for 30 seconds while the other person had already joined — the app now automatically syncs to the correct call instead of dropping.",
+      "Server voice-channel call timers now reset properly after everyone leaves instead of counting up forever.",
+      "Sidebar screen-share picker in server and group calls now shares the window you actually pick, not the first monitor.",
+      "Items are now automatically removed from your wishlist when you buy them with coins or gems.",
+      "Advanced Settings now clearly warns that turning off hardware acceleration will make animated Shop themes, name colors, and badges stutter or freeze.",
+    ],
+  },
+  {
     version: "0.4.5",
     title: "Group + server calls, live wishlists",
     date: "2026-07-04",
