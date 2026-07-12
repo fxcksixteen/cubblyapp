@@ -2389,6 +2389,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           .limit(1)
           .maybeSingle();
         if (existing?.id) {
+          try {
+            const { data: canonicalId } = await (supabase as any).rpc("canonicalize_ongoing_call_event", {
+              _conversation_id: conversationId,
+              _preferred_call_event_id: existing.id,
+            });
+            if (canonicalId && canonicalId !== existing.id) {
+              existing.id = canonicalId;
+            }
+          } catch { /* older backend: continue with newest event */ }
           // Liveness: another participant must be FRESHLY live (left_at NULL
           // AND last_seen_at within 30s). Stale ghosts no longer count, so
           // clicking voice/video starts a brand-new real call instead of
@@ -2656,6 +2665,16 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     try {
       shouldOfferForCallRef.current = false;
       stopLooping("incomingCall");
+      try {
+        const { data: canonicalId } = await (supabase as any).rpc("canonicalize_ongoing_call_event", {
+          _conversation_id: acceptedCall.conversationId,
+          _preferred_call_event_id: acceptedCall.callEventId,
+        });
+        if (canonicalId && canonicalId !== acceptedCall.callEventId) {
+          console.warn(`[Voice] 🔀 Accept adopting canonical call_event ${String(canonicalId).substring(0, 8)}`);
+          acceptedCall.callEventId = canonicalId;
+        }
+      } catch { /* older backend: use incoming call event id */ }
       try { void broadcastIncomingCallDismiss(acceptedCall.conversationId, acceptedCall.callEventId); } catch {}
 
       // Flip UI to "calling" immediately so the user gets feedback even before
