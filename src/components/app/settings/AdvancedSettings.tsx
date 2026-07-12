@@ -116,6 +116,11 @@ const AdvancedSettings = ({ cardStyle }: Props) => {
                 />
               </button>
             </div>
+            {!hwAccel && hwLoaded && (
+              <div className="mt-4 rounded-lg px-3 py-2 text-xs" style={{ backgroundColor: "rgba(250, 175, 50, 0.14)", color: "#f0b25a" }}>
+                Heads up: with hardware acceleration off, animated Shop themes, animated name colors, animated badges, and video/GIF playback will stutter or freeze. If your animations aren't playing, turn this back on.
+              </div>
+            )}
             {hwDirty && (
               <div className="mt-4 flex items-center justify-between gap-3 rounded-lg px-3 py-2" style={{ backgroundColor: "rgba(88,101,242,0.12)" }}>
                 <p className="text-xs" style={{ color: "var(--app-text-secondary)" }}>
