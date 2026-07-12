@@ -129,24 +129,64 @@ const GROUP_SCREEN_RESOLUTIONS: Record<string, { width: number; height: number; 
  * compared to 1:1 calls. v0.3.17: dropped `sampleSize: 24` (no consumer mic
  * supports it; it was the root cause of OverconstrainedError) and the caller
  * uses `getUserMediaSafe` below which retries with bare constraints on failure.
+ *
+ * v0.4.6: honour the user's Voice & Video settings (echo cancellation, noise
+ * suppression, auto gain control, input device) — previously these were
+ * hard-coded to true, which is why group/server-call mic audio sounded
+ * "underwater" / heavily processed compared to DM calls even when the user
+ * had disabled those toggles.
  */
 const isMobileGC = typeof navigator !== "undefined" && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || "");
-const GROUP_MIC_CONSTRAINTS: MediaTrackConstraints = isMobileGC
-  ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-  : { echoCancellation: true, noiseSuppression: true, autoGainControl: true, sampleRate: 48000, channelCount: 2 } as MediaTrackConstraints;
 
-const GROUP_MIC_FALLBACK: MediaTrackConstraints = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+interface StoredVoiceSettings {
+  inputDeviceId?: string;
+  echoCancellation?: boolean;
+  noiseSuppression?: boolean;
+  autoGainControl?: boolean;
+}
+
+function loadUserVoiceSettings(): StoredVoiceSettings {
+  try {
+    const raw = localStorage.getItem("cubbly-voice-settings");
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return {
+      inputDeviceId: typeof parsed?.inputDeviceId === "string" ? parsed.inputDeviceId : undefined,
+      echoCancellation: typeof parsed?.echoCancellation === "boolean" ? parsed.echoCancellation : undefined,
+      noiseSuppression: typeof parsed?.noiseSuppression === "boolean" ? parsed.noiseSuppression : undefined,
+      autoGainControl: typeof parsed?.autoGainControl === "boolean" ? parsed.autoGainControl : undefined,
+    };
+  } catch {
+    return {};
+  }
+}
+
+function buildGroupMicConstraints(hiFi: boolean): MediaTrackConstraints {
+  const s = loadUserVoiceSettings();
+  const base: MediaTrackConstraints = {
+    deviceId: s.inputDeviceId && s.inputDeviceId !== "default" ? { exact: s.inputDeviceId } : undefined,
+    echoCancellation: s.echoCancellation ?? true,
+    noiseSuppression: s.noiseSuppression ?? true,
+    autoGainControl: s.autoGainControl ?? true,
+  };
+  if (hiFi && !isMobileGC) {
+    (base as any).sampleRate = 48000;
+    (base as any).channelCount = 2;
+  }
+  return base;
+}
 
 async function getGroupMicSafe(): Promise<MediaStream> {
+  const hiFi = buildGroupMicConstraints(true);
   try {
-    const s = await navigator.mediaDevices.getUserMedia({ audio: GROUP_MIC_CONSTRAINTS, video: false });
+    const s = await navigator.mediaDevices.getUserMedia({ audio: hiFi, video: false });
     try { console.log("[GroupCall] 🎙️ mic settings:", s.getAudioTracks()[0]?.getSettings?.()); } catch {}
     return s;
   } catch (e: any) {
     const name = e?.name || "";
     if (name === "OverconstrainedError" || name === "NotReadableError" || name === "TypeError") {
       console.warn("[GroupCall] 🎙️ hi-fi constraints rejected (", name, ") — falling back");
-      const s = await navigator.mediaDevices.getUserMedia({ audio: GROUP_MIC_FALLBACK, video: false });
+      const s = await navigator.mediaDevices.getUserMedia({ audio: buildGroupMicConstraints(false), video: false });
       try { console.log("[GroupCall] 🎙️ mic settings (fallback):", s.getAudioTracks()[0]?.getSettings?.()); } catch {}
       return s;
     }
