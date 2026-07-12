@@ -1629,7 +1629,20 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
         if (payload.type === "peer-accepted") {
           if (payload.callEventId && callEventIdSnapshot && payload.callEventId !== callEventIdSnapshot) {
-            return;
+            // v0.4.6: same drift case as ready-for-offer — if we're actively
+            // ringing on this conversation, adopt the callee's call_event id.
+            if (activeCallSnapshot?.conversationId === conversationId
+              && (activeCallSnapshot.state === "calling" || activeCallSnapshot.state === "ringing")) {
+              console.warn(`[Voice] 🔀 peer-accepted for different call_event ${payload.callEventId.substring(0,8)} — adopting`);
+              currentCallEventIdRef.current = payload.callEventId;
+              setCurrentCallEventId(payload.callEventId);
+              if (outgoingCallMetaRef.current) {
+                outgoingCallMetaRef.current = { ...outgoingCallMetaRef.current, callEventId: payload.callEventId };
+              }
+              pendingOfferRef.current = null;
+            } else {
+              return;
+            }
           }
           console.log("[acceptDiag] peer.accepted ack received", payload.callEventId);
           stopLooping("outgoingRing");
@@ -1641,8 +1654,27 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
         if (payload.type === "offer") {
           if (payload.callEventId && callEventIdSnapshot && payload.callEventId !== callEventIdSnapshot) {
-            console.log(`[Voice] 🛑 Ignoring offer for stale call ${payload.callEventId} (current=${callEventIdSnapshot})`);
-            return;
+            // v0.4.6: if we're the CALLER still ringing/calling and the
+            // offer's for a live call_event in the same conversation, adopt
+            // it. If we're the CALLEE with acceptedIncomingCallRef pointing
+            // at another id, keep the strict drop — the wrong incoming call
+            // should not hijack us.
+            if (
+              activeCallSnapshot?.conversationId === conversationId
+              && (activeCallSnapshot.state === "calling" || activeCallSnapshot.state === "ringing")
+              && !acceptedIncomingCallRef.current
+            ) {
+              console.warn(`[Voice] 🔀 offer for different call_event ${payload.callEventId.substring(0,8)} — adopting`);
+              currentCallEventIdRef.current = payload.callEventId;
+              setCurrentCallEventId(payload.callEventId);
+              if (outgoingCallMetaRef.current) {
+                outgoingCallMetaRef.current = { ...outgoingCallMetaRef.current, callEventId: payload.callEventId };
+              }
+              pendingOfferRef.current = null;
+            } else {
+              console.log(`[Voice] 🛑 Ignoring offer for stale call ${payload.callEventId} (current=${callEventIdSnapshot})`);
+              return;
+            }
           }
           const acceptedCall = acceptedIncomingCallRef.current;
 
