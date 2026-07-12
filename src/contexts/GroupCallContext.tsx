@@ -338,6 +338,39 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     };
   }, [activeCall?.conversationId, activeCall?.isScreenSharing]);
 
+  // v0.4.6: keep group/server-call mic in sync with Voice & Video settings.
+  // Without this, the mic track keeps whatever processing it was created with
+  // and toggling noise-suppression / AGC / echo-cancellation in Settings has
+  // no effect until the user leaves and rejoins — which is what made server
+  // calls sound "underwater" for users who preferred those toggles off.
+  useEffect(() => {
+    if (!activeCall) return;
+    const reapply = () => {
+      const track = localStreamRef.current?.getAudioTracks()[0];
+      if (!track) return;
+      const s = loadUserVoiceSettings();
+      const constraints: MediaTrackConstraints = {
+        echoCancellation: s.echoCancellation ?? true,
+        noiseSuppression: s.noiseSuppression ?? true,
+        autoGainControl: s.autoGainControl ?? true,
+      };
+      track.applyConstraints(constraints).catch((e) => {
+        console.warn("[GroupCall] applyConstraints failed:", e);
+      });
+    };
+    const onCustom = () => reapply();
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === "cubbly-voice-settings") reapply();
+    };
+    window.addEventListener("cubbly:voice-settings-changed", onCustom);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener("cubbly:voice-settings-changed", onCustom);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [activeCall?.conversationId]);
+
+
   // Fetch ICE servers (same as 1-on-1)
   useEffect(() => {
     if (!user) return;
