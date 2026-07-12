@@ -1304,6 +1304,54 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [user]);
 
+  /**
+   * v0.4.6: DM call reconciliation.
+   * Look up the newest ongoing call_event for this conversation whose live
+   * non-self participant is FRESH. Used by the caller-side pickup watchdog
+   * to detect the case where the callee joined a *different* call_event
+   * than the one the caller latched onto — that mismatch used to leave the
+   * caller stuck on "Ringing…" while the callee's UI showed "In call".
+   */
+  const resolveLiveCallEventIdForConversation = useCallback(async (
+    conversationId: string,
+    freshMs = 25_000,
+  ): Promise<{ callEventId: string; startedAt: string | null } | null> => {
+    if (!user) return null;
+    try {
+      const { data: events } = await (supabase as any)
+        .from("call_events")
+        .select("id, started_at")
+        .eq("conversation_id", conversationId)
+        .eq("state", "ongoing")
+        .order("started_at", { ascending: false })
+        .limit(4);
+      const rows = (events as any[]) || [];
+      if (rows.length === 0) return null;
+      const ids = rows.map((r: any) => r.id);
+      const { data: parts } = await (supabase as any)
+        .from("call_participants")
+        .select("call_event_id, user_id, last_seen_at, joined_at, left_at")
+        .in("call_event_id", ids)
+        .is("left_at", null);
+      const now = Date.now();
+      const liveFor = new Set<string>();
+      for (const p of (parts as any[]) || []) {
+        if (p.user_id === user.id) continue;
+        const baselineStr = p.last_seen_at ?? p.joined_at;
+        const baseline = baselineStr ? new Date(baselineStr).getTime() : 0;
+        if (baseline > 0 && now - baseline < freshMs) {
+          liveFor.add(p.call_event_id);
+        }
+      }
+      for (const r of rows) {
+        if (liveFor.has(r.id)) return { callEventId: r.id, startedAt: r.started_at ?? null };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }, [user]);
+
   const initializeOutgoingConnection = useCallback(async (channel: ReturnType<typeof supabase.channel>, conversationId: string, options?: { forceFreshOffer?: boolean }) => {
     if (!user) return;
     const outgoingCallMeta = outgoingCallMetaRef.current;
