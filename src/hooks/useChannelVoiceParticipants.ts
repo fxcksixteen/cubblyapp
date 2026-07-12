@@ -22,6 +22,11 @@ export function useChannelVoiceParticipants(conversationId: string | null) {
 
   const fetchActive = useCallback(async () => {
     if (!conversationId) { setParticipants([]); setCallEventId(null); return; }
+    // v0.4.6: proactively end call_events whose participants have all left
+    // or gone silent (>=45s). Without this, a server voice channel's call
+    // timer counted up forever because ghost participant rows kept the
+    // event marked "ongoing".
+    try { await (supabase as any).rpc("sweep_stale_call_events"); } catch { /* non-fatal */ }
     const { data: ev } = await supabase
       .from("call_events")
       .select("id")
