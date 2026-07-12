@@ -1,77 +1,89 @@
-# v0.4.5 patch — 3 more server/group call fixes
 
-## Problems
+# v0.4.6 fixes
 
-### 1. DM sidebar mute doesn't reflect / control server or group call
-The DM sidebar (`DMSidebar.tsx`) has its **own** inlined bottom user panel (not the shared `UserPanel.tsx`). That inlined panel only checks `VoiceContext.activeCall` for the DM 1‑on‑1 call. It has no awareness of `GroupCallContext.activeCall`. Effect: while in a server voice channel, if I click mute in the DM sidebar it toggles a local dummy state (`localMuted`) instead of muting the server call, and the icon shows unmuted even though the server call is muted. The equivalent `UserPanel.tsx` was already fixed in the previous batch — `DMSidebar.tsx` was missed because it duplicates the panel inline.
+Four separate issues. Answering the last one up-front so you're not guessing: **yes, that's the hardware acceleration.** Chromium routes CSS transforms, filters, canvas, and `<video>` compositing through the GPU. When you toggle HW accel off, Chromium falls back to a much slower CPU compositor that skips or heavily throttles animation frames on complex layers — animated shop themes (Space, Sky Dusk, Snowy Drift, Moonlit Hills, Aurora, Synthwave, Lava, Borealis), animated name-color gradients, animated badges, and video/GIF playback all get hit. It's a Chromium/Electron platform limitation, not something we can code around. I'll surface that directly in the toggle so you don't have to keep asking.
 
-### 2. Group calls give the caller no "ringing" feedback
-When you start a group DM call, `startCall` pings every member via `ringMemberWithRetry`, but `GroupCallPanel` only renders `peers` (people whose `RTCPeerConnection` is established). Until a friend accepts, they appear nowhere in the UI. The caller sees an empty room and can't tell whether their friends are being rung, whether the ring failed, or whether they're already declining. Discord shows a "Calling…" tile per invited-but-not-joined member — we have nothing.
+---
 
-### 3. Peers can't see each other after (re)joining server/group calls
-Symptom: A joins first, B joins → B sees A but A doesn't see B, or vice versa. Repeatedly leaving/rejoining eventually works.
+## 1. DM 1:1 call stuck on "Ringing" (Geassbound repro)
 
-Root cause is in the DB reconcile loop in `GroupCallContext.tsx` (~line 1521). When it detects a live peer we have no `RTCPeerConnection` for, it only **re-broadcasts `peer-join` with `fromUserId: self`**. But the `peer-join` handler only makes an offer when `user.id > payload.fromUserId` (higher-id side offers, to avoid glare):
+**Diagnosis.** In `VoiceContext.tsx`, the caller latches onto its own `outgoingCallMeta.callEventId` at the moment it inserts the `call_events` row and ignores any signaling payload whose `callEventId` doesn't match (see the "🛑 Ignoring ... for stale call" guards). If the callee races and creates/joins a different `call_event` for the same conversation (which can happen after a stale-ghost cleanup on either side, or after the caller's row got soft-closed by `end_call_event_if_stale`), the two sides sit on two different callEventIds forever:
 
-- If **I am the higher id** and the lower-id peer is missing: I re-broadcast `peer-join` with my id → the lower-id peer sees it, computes `theirId > myId` = false → nobody offers. Stuck.
-- The loop also `break`s after one missing peer per 5-second tick, so 2+ missing peers take multiple ticks each.
-- The initial `peer-join` broadcast fires immediately when `SUBSCRIBED` resolves; existing peers on a Realtime channel that momentarily hiccuped miss it and there's no per-peer retry beyond the general reconcile.
+- caller broadcasts offer tagged with callEventId **A**
+- callee is on callEventId **B**, so its `offer` handler drops the offer as "stale"
+- callee's `ready-for-offer` is tagged **B**, caller drops it as "stale"
+- caller's pickup watchdog checks `peerLooksLiveInCall(A, peerId)` — peer is live on **B**, so it returns false and never renegotiates
+- 30s later the ring timeout fires and the UI flips to "not in call"
 
-## Fix
+Meanwhile the callee's UI shows "In call" because from *their* perspective they're happily in event B alone.
 
-### 1. `src/components/app/DMSidebar.tsx` — wire the sidebar mute/deafen to group calls
+**Fix.** Make the caller reconcile against the DB — the callEventId in the DB is the source of truth, not the one we stashed at insert time.
 
-Mirror the exact logic already in `UserPanel.tsx`:
+1. In `initializeOutgoingConnection` (caller side), before each retry and inside the pickup watchdog, re-query `call_events` for the newest `state='ongoing'` row in this conversation.
+   - If the DB row's id ≠ our `outgoingCallMeta.callEventId` AND there's a fresh non-self participant on the DB row, **adopt the DB callEventId**: update `outgoingCallMetaRef`, `currentCallEventIdRef`, `pendingOfferRef.callEventId`, and re-broadcast the offer under the adopted id.
+2. In the `voice-signal` handler, relax the "stale call" guards for `offer` / `ready-for-offer` / `peer-accepted`: instead of dropping, if we're actively ringing on this conversation and the payload's callEventId matches a live DB event with a fresh peer, adopt it (same swap as above) and proceed.
+3. `peerLooksLiveInCall` currently scopes to a single callEventId. Add an overload `peerLooksLiveInConversation(conversationId, excludeUserId)` that scans all ongoing events for the conversation. The pickup watchdog uses this so it renegotiates even when the caller is on the wrong callEventId.
+4. On join, broadcast a `peer-joined` message tagged with the callee's actual callEventId so the caller can pivot immediately without waiting for the 3s watchdog.
 
-- Import `useGroupCall` and destructure `activeCall: groupCall, toggleMute: toggleGroupMute, toggleDeafen: toggleGroupDeafen`.
-- Compute derived state:
+## 2. Server voice-channel timer never resets when everyone leaves
+
+**Diagnosis.** Server voice channels reuse a single `call_events` row and only mark it `ended` when someone explicitly hangs up through the UI. Refreshing, closing the tab, dropping connection, or Electron quitting all leave the row `ongoing` with the original `started_at`. The next person to click the channel joins the ghost event and the timer picks up from wherever the original started_at was (hours or days ago).
+
+**Fix.** Two-part, both in a single migration + a small UI change:
+
+1. **DB (migration):** add `sweep_stale_call_events()` — a security-definer function that:
+   - finds ongoing `call_events` where every `call_participants` row has `left_at IS NOT NULL` OR `last_seen_at < now() - interval '45 seconds'`,
+   - sets those events to `state='ended', ended_at=now()`,
+   - soft-closes their leftover participant rows.
+   Grant EXECUTE to `authenticated`.
+2. **Client:** in `useChannelVoiceParticipants` (the hook that powers the server voice channel display), call `sweep_stale_call_events()` on mount and on the 15s poll before re-querying. In `VoiceContext.tsx` at the "check for existing ongoing event" step, also call the sweep RPC before the `SELECT` so a fresh click on a voice channel with only ghost rows starts a brand-new event with a fresh `started_at`.
+3. Also fix the join-existing branch to require the *other* participant to be fresh (already checked via `FRESH_MS = 30_000`), but additionally require the event's own age vs. its newest heartbeat — if the newest heartbeat across all rows is older than 45s, treat the event as dead regardless of `left_at`, close it, and start fresh.
+
+## 3. Wishlist not clearing when the item is purchased
+
+**Diagnosis.** `purchase_shop_item(_item_id)` and `purchase_shop_item_gems(_item_id)` insert into `user_inventory` and debit coins/gems, but never touch `wishlist_items`. So the item stays on the wishlist forever until the user manually removes it.
+
+**Fix.** Migration only, no client change needed:
+
+- In both `purchase_shop_item` and `purchase_shop_item_gems`, after the successful `INSERT INTO user_inventory`, add:
+  ```sql
+  DELETE FROM public.wishlist_items
+  WHERE user_id = auth.uid() AND item_id = _item_id;
   ```
-  const muted = activeCall ? activeCall.isMuted : groupCall ? groupCall.isMuted : localMuted;
-  const deafened = activeCall ? activeCall.isDeafened : groupCall ? groupCall.isDeafened : localDeafened;
-  ```
-- Mute button `onClick`: `if (activeCall) toggleMute(); else if (groupCall) toggleGroupMute(); else { setLocalMuted…; playSound… }`. Deafen mirrors it.
-- Replace all inline `(activeCall ? activeCall.isMuted : localMuted)` ternaries with the new `muted`/`deafened` variables so the icon, background, and title all reflect the group-call state.
+- Also add the same delete to the "gift accepted" path if one exists (I'll check for it in build mode — if `honey_gifts` or `gift_transactions` has an RPC that inserts to `user_inventory`, it gets the same cleanup for the recipient).
 
-### 2. Ringing indicator for group calls
+Realtime is already on `wishlist_items` (`REPLICA IDENTITY FULL`), so the UI updates instantly with no client changes.
 
-Extend `GroupCallContext` to expose invited-but-not-joined members, and render them as "Calling…" tiles in `GroupCallPanel`.
+## 4. Hardware acceleration warning in Advanced Settings
 
-- `GroupCallContext.tsx`:
-  - New interface field on the context: `ringingMembers: { userId: string; displayName: string; avatarUrl: string | null }[]`.
-  - New state `ringingMembers` populated in `startCall` from the `memberIds` argument (skip `user.id`; hydrate names/avatars via existing `loadProfile`). Only populated when `options?.isServerChannel` is falsy (server voice channels don't "ring" anyone).
-  - When a `peer-join` arrives from a member, or when `ensurePeerEntry` promotes them to a real `GroupPeer`, remove them from `ringingMembers`.
-  - Clear `ringingMembers` on `leaveCall` and when the call ends.
-  - New effect: 30 seconds after `startCall`, drop any still-ringing member (they didn't pick up) and, if `peers.length === 0` and `ringingMembers.length === 0`, treat as unanswered (existing leaveCall path is fine — no auto-hang-up in this patch, just stop showing "Calling…" forever).
-- `GroupCallPanel.tsx`:
-  - Read `ringingMembers` from the context.
-  - Render a tile per ringing member alongside the peer tiles: greyed-out avatar, pulsing ring, subtitle "Calling…". Reuse the existing `PeerTile` styling but pass `isMuted={false}`, `audioLevel={0}`, and add a small "Ringing" badge overlay.
-- No changes to `ServerVoicePanel.tsx` — server voice channels don't ring users.
+Small UI-only change in `src/components/app/settings/AdvancedSettings.tsx`:
 
-### 3. Reliable peer discovery in `GroupCallContext.tsx`
+- When the HW-accel toggle is **off**, show a persistent amber note under the description: *"Animated shop themes, animated name colors, animated badges, and video/GIF playback rely on the GPU. Turning hardware acceleration off will make them stutter or freeze. Turn this back on if animations aren't playing."*
+- Also mention it once in the toggle's help copy while it's on, so you don't have to hunt for the connection.
 
-Rewrite the reconcile tick (~line 1521) so it does real recovery instead of only re-broadcasting `peer-join`:
+No behavioral change to the toggle itself.
 
-- Remove the `break` — iterate every missing live peer per tick.
-- For each missing peer `r`:
-  - `await ensurePeerEntry(r.user_id)` so the tile appears immediately.
-  - If `user.id > r.user_id` (we're the offering side): call `ensurePc(r.user_id)`, `createOffer`, `mungeGroupCallOpusSdp`, `setLocalDescription`, and send a directed `offer` payload with `toUserId: r.user_id` — same code path as the `peer-join` handler.
-  - Else (we're the lower-id side): send a **directed** `peer-join` with `toUserId: r.user_id` so it's not filtered by anyone else and the higher-id peer definitely re-offers. If we already offered them within the last 5s (track a small `Map<userId, number>` of last-attempt timestamps), skip to avoid glare storms.
-- Keep the 2s seed tick and 5s interval.
-- Also, on `SUBSCRIBED`, in addition to the current broadcast `peer-join`, immediately kick a reconcile tick so a rejoiner picks up existing peers within ~500 ms instead of waiting for the 2s seed.
+---
+
+## Changelog (v0.4.6)
+
+Short bullets per Core rules:
+
+- Fixed 1:1 DM calls sometimes staying stuck on "Ringing" for 30 seconds when the other person had already joined.
+- Server voice-channel call timers now reset properly after everyone leaves instead of counting up forever.
+- Items are now automatically removed from your wishlist when you buy them.
+- Advanced Settings now warns that turning off hardware acceleration will break animated shop themes, name colors, and badges.
+
+---
 
 ## Files touched
 
-- `src/components/app/DMSidebar.tsx` — hook up group-call mute/deafen in the inlined bottom panel.
-- `src/contexts/GroupCallContext.tsx` — add `ringingMembers` state + context field; rewrite reconcile loop to actively offer to missing lower-id peers and iterate all misses; kick a reconcile tick on `SUBSCRIBED`.
-- `src/components/app/GroupCallPanel.tsx` — render "Calling…" tiles for `ringingMembers`.
-- `src/lib/changelog.ts` — three one-line v0.4.5 bullets (no version bump):
-  - "DM sidebar mute/deafen now controls the active server or group call."
-  - "Group calls now show a 'Calling…' tile for friends who are being rung."
-  - "Fixed peers not seeing each other after joining a server or group call."
+- `src/contexts/VoiceContext.tsx` — DM callEventId reconciliation, adopt-on-signal, extended pickup watchdog.
+- `src/hooks/useChannelVoiceParticipants.ts` — call `sweep_stale_call_events` before fetches.
+- `src/components/app/settings/AdvancedSettings.tsx` — HW-accel warning copy.
+- `src/lib/changelog.ts` — v0.4.6 entry.
+- New migration:
+  - Rewrite `purchase_shop_item` + `purchase_shop_item_gems` to delete matching `wishlist_items` row.
+  - Add `sweep_stale_call_events()` SECURITY DEFINER function + grant to authenticated.
 
-## Out of scope
-
-- No version bump.
-- No changes to 1-on-1 DM call code.
-- No changes to the ring-out sound or the incoming-call modal.
-- No auto-hang-up when nobody answers a group ring (just hide the stale tiles after 30s).
+No app-version bump.
