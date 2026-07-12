@@ -1387,6 +1387,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       }, "offer(re-broadcast)");
       return;
     }
+    if (peerAlreadyAccepted && existingPc && !options?.forceFreshOffer) {
+      console.log("[Voice] 🛑 Ignoring ready-for-offer after peer accepted — keeping current PC");
+      return;
+    }
     if (existingPc) {
       const alreadyConnected =
         existingPc.connectionState === "connected" ||
