@@ -1101,11 +1101,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     console.log("[GroupCall] 👋 Leaving call");
     // Broadcast leave so peers can drop us
     if (channelRef.current && user) {
-      channelRef.current.send({
-        type: "broadcast",
-        event: "group-signal",
-        payload: { type: "peer-leave", fromUserId: user.id },
-      });
+      void sendGroupSignalReliably(channelRef.current, { type: "peer-leave", fromUserId: user.id }, "peer-leave", 2);
     }
     // Mark participant left
     if (callEventIdRef.current && user) {
@@ -1166,11 +1162,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       playSound(newMuted ? "mute" : "unmute", { volume: 0.4 });
       // Broadcast to peers
       if (channelRef.current && user) {
-        channelRef.current.send({
-          type: "broadcast",
-          event: "group-signal",
-          payload: { type: "peer-mute", fromUserId: user.id, isMuted: newMuted },
-        });
+        void sendGroupSignalReliably(channelRef.current, { type: "peer-mute", fromUserId: user.id, isMuted: newMuted }, "peer-mute", 2);
       }
       // DB sync
       if (callEventIdRef.current && user) {
@@ -1206,11 +1198,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         localStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = !nextMuted; });
       }
       if (channelRef.current && user) {
-        channelRef.current.send({
-          type: "broadcast",
-          event: "group-signal",
-          payload: { type: "peer-mute", fromUserId: user.id, isMuted: nextMuted },
-        });
+        void sendGroupSignalReliably(channelRef.current, { type: "peer-mute", fromUserId: user.id, isMuted: nextMuted }, "peer-mute(deafen)", 2);
       }
       if (callEventIdRef.current && user) {
         supabase.from("call_participants")
@@ -1258,11 +1246,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       track.onended = () => { toggleVideo(); }; // safety: hardware unplugged
 
       setActiveCall(prev => prev ? { ...prev, isVideoOn: true } : null);
-      channelRef.current?.send({
-        type: "broadcast",
-        event: "group-signal",
-        payload: { type: "peer-video", fromUserId: user.id, isVideoOn: true },
-      });
+      void sendGroupSignalReliably(channelRef.current, { type: "peer-video", fromUserId: user.id, isVideoOn: true }, "peer-video", 2);
     } else {
       // Turn OFF
       const track = localVideoTrackRef.current;
@@ -1280,11 +1264,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       }
       videoSendersRef.current.clear();
       setActiveCall(prev => prev ? { ...prev, isVideoOn: false } : null);
-      channelRef.current?.send({
-        type: "broadcast",
-        event: "group-signal",
-        payload: { type: "peer-video", fromUserId: user.id, isVideoOn: false },
-      });
+      void sendGroupSignalReliably(channelRef.current, { type: "peer-video", fromUserId: user.id, isVideoOn: false }, "peer-video", 2);
     }
   }, [activeCall, user]);
 
@@ -1512,11 +1492,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
 
       setActiveCall(prev => prev ? { ...prev, isScreenSharing: true } : null);
       playSound("screenshareStart", { volume: 0.4 });
-      channelRef.current?.send({
-        type: "broadcast",
-        event: "group-signal",
-        payload: { type: "peer-screen", fromUserId: user.id, isScreenSharing: true },
-      });
+      void sendGroupSignalReliably(channelRef.current, { type: "peer-screen", fromUserId: user.id, isScreenSharing: true }, "peer-screen", 2);
     } else {
       // ---- Stop share — mirrors DM stopScreenShare cleanup.
       const track = localScreenTrackRef.current;
@@ -1552,11 +1528,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
 
       setActiveCall(prev => prev ? { ...prev, isScreenSharing: false } : null);
       playSound("screenshareStop", { volume: 0.4 });
-      channelRef.current?.send({
-        type: "broadcast",
-        event: "group-signal",
-        payload: { type: "peer-screen", fromUserId: user.id, isScreenSharing: false },
-      });
+      void sendGroupSignalReliably(channelRef.current, { type: "peer-screen", fromUserId: user.id, isScreenSharing: false }, "peer-screen", 2);
     }
   }, [activeCall, user, localScreenStream]);
 
