@@ -1483,17 +1483,52 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     const tryAutoRenegotiate = async (delay: number) => {
       await new Promise(r => setTimeout(r, delay));
       if (renegotiated) return;
-      // Guard: still on the same call?
-      if (currentCallEventIdRef.current !== watchedCallEventId) return;
+      // Guard: still on the same conversation? (call_event id can drift — see below)
       if (pcRef.current !== pc) return;
       const iceState = pc.iceConnectionState;
       if (iceState === "connected" || iceState === "completed") return;
-      // Only trigger if the callee looks alive on their end.
+
+      // v0.4.6: liveness must be resolved against ANY ongoing call_event in
+      // this conversation, not just the one we latched onto. A caller and
+      // callee can end up on different call_event ids after stale-ghost
+      // cleanup — the peer is live, just not on OUR id.
       let peerAlive = false;
       try {
         peerAlive = await peerLooksLiveInCall(watchedCallEventId, activeCallRef.current?.peerId, 25_000);
       } catch {}
+      let adoptedCallEventId: string | null = null;
+      let adoptedStartedAt: string | null = null;
+      if (!peerAlive) {
+        try {
+          const live = await resolveLiveCallEventIdForConversation(conversationId, 25_000);
+          if (live && live.callEventId !== watchedCallEventId) {
+            adoptedCallEventId = live.callEventId;
+            adoptedStartedAt = live.startedAt;
+            peerAlive = true;
+            console.warn(`[Voice] ⏱ pickup-watchdog: peer is live on a DIFFERENT call_event (${live.callEventId.substring(0,8)}) — adopting`);
+          }
+        } catch {}
+      }
       if (!peerAlive) return;
+      // If we're on a mismatched callEventId, adopt the DB truth so the
+      // fresh offer we're about to broadcast is tagged correctly.
+      if (adoptedCallEventId) {
+        currentCallEventIdRef.current = adoptedCallEventId;
+        setCurrentCallEventId(adoptedCallEventId);
+        if (outgoingCallMetaRef.current) {
+          outgoingCallMetaRef.current = { ...outgoingCallMetaRef.current, callEventId: adoptedCallEventId };
+        }
+        pendingOfferRef.current = null;
+        if (adoptedStartedAt) {
+          const t = Date.parse(adoptedStartedAt);
+          if (!Number.isNaN(t)) {
+            setActiveCall(prev => prev && prev.conversationId === conversationId ? { ...prev, startedAt: t } : prev);
+          }
+        }
+      } else if (currentCallEventIdRef.current !== watchedCallEventId) {
+        // We drifted off the watched call — someone else's handler already adopted.
+        return;
+      }
       renegotiated = true;
       console.warn(`[Voice] ⏱ pickup-watchdog: caller PC still ${iceState} at +${delay}ms but peer is live — auto-renegotiating`);
       try { pc.close(); } catch {}
@@ -1513,7 +1548,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     void tryAutoRenegotiate(6000);
     void tryAutoRenegotiate(10000);
 
-  }, [user, getUserMedia, createPeerConnection, startAudioLevelMonitor, stopAudioLevelMonitor, peerLooksLiveInCall]);
+  }, [user, getUserMedia, createPeerConnection, startAudioLevelMonitor, stopAudioLevelMonitor, peerLooksLiveInCall, resolveLiveCallEventIdForConversation]);
 
   const setupSignaling = useCallback((conversationId: string): Promise<ReturnType<typeof supabase.channel>> => {
     return new Promise((resolve, reject) => {
