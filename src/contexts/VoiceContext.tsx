@@ -775,6 +775,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     setSettings(prev => {
       const next = { ...prev, ...partial };
       localStorage.setItem("cubbly-voice-settings", JSON.stringify(next));
+      // Notify other in-tab consumers (GroupCallContext) so they can re-apply
+      // mic constraints live without needing a call restart.
+      try { window.dispatchEvent(new CustomEvent("cubbly:voice-settings-changed")); } catch {}
       return next;
     });
   }, []);
