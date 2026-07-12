@@ -23,9 +23,19 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.4.6";
+export const CURRENT_VERSION = "0.4.7";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.4.7",
+    title: "DM call ringing fix",
+    date: "2026-07-12",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Fixed DM calls getting stuck on Ringing forever after the other person picked up.",
+    ],
+  },
   {
     version: "0.4.6",
     title: "Call fixes and wishlist auto-clear",
