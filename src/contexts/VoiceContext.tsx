@@ -2291,6 +2291,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       // one participant briefly dropped out. The call only truly "ends" when
       // the last participant leaves (state flips to "ended").
       let existingStartedAtMs: number | undefined;
+      // v0.4.6: sweep dead ongoing events first so we don't join a ghost.
+      try { await (supabase as any).rpc("sweep_stale_call_events"); } catch { /* non-fatal */ }
       try {
         const { data: existing } = await supabase
           .from("call_events")
