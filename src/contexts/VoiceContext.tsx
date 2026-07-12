@@ -663,6 +663,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   // callEventId we buffer the offer into pendingRetryOfferRef instead.
   const acceptInFlightRef = useRef<string | null>(null);
   const pendingRetryOfferRef = useRef<{ callEventId: string; sdp: RTCSessionDescriptionInit } | null>(null);
+  // Once the peer has clicked Accept, never let later ready-for-offer retries
+  // put the caller UI back into "Ringing" or keep tearing down the fresh PC.
+  const peerAcceptedCallEventRef = useRef<string | null>(null);
+  // Cap pickup watchdog renegotiation per call_event. Without a global cap,
+  // each new PC generation schedules another watchdog and can loop forever.
+  const pickupRenegotiateCountRef = useRef<Record<string, number>>({});
   // Forward-ref to startCall so acceptCall (declared above startCall in the
   // file) can delegate to the exact rejoin code path without circular
   // useCallback deps. Assigned in an effect after startCall is created.
@@ -1368,7 +1374,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     // of silently returning. This is what was making the second peer "never
     // get placed in the call" — their ready-for-offer was being dropped on
     // the caller side and no offer ever reached them.
-    if (!options?.forceFreshOffer && existingPc && pendingOfferRef.current && pendingOfferRef.current.conversationId === conversationId && pendingOfferRef.current.callEventId === outgoingCallMeta.callEventId) {
+    const peerAlreadyAccepted = peerAcceptedCallEventRef.current === outgoingCallMeta.callEventId;
+    if ((!options?.forceFreshOffer || peerAlreadyAccepted) && existingPc && pendingOfferRef.current && pendingOfferRef.current.conversationId === conversationId && pendingOfferRef.current.callEventId === outgoingCallMeta.callEventId) {
       console.log("[Voice] 🔁 PC already exists — re-broadcasting pending offer for late joiner");
       await sendSignalReliably(channel, {
         type: "offer",
@@ -1469,8 +1476,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     }, "offer");
     console.log("[Voice] 📡 Offer sent to callee via broadcast");
 
-
-    setActiveCall(prev => prev && prev.conversationId === conversationId ? { ...prev, state: "ringing" } : prev);
+    setActiveCall(prev => prev && prev.conversationId === conversationId
+      ? { ...prev, state: peerAlreadyAccepted ? "calling" : "ringing", ringTimedOut: false, peerLeftAt: undefined }
+      : prev);
 
     // v0.4.3: caller-side pickup-stuck watchdog.
     // Symptom: callee accepts (their heartbeat lands in the DB, their UI
@@ -1513,6 +1521,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         } catch {}
       }
       if (!peerAlive) return;
+      const priorRenegotiations = pickupRenegotiateCountRef.current[watchedCallEventId] || 0;
+      if (priorRenegotiations >= 1) {
+        console.warn(`[Voice] ⏱ pickup-watchdog: suppressing extra renegotiate for ${watchedCallEventId.substring(0,8)}`);
+        return;
+      }
       // If we're on a mismatched callEventId, adopt the DB truth so the
       // fresh offer we're about to broadcast is tagged correctly.
       if (adoptedCallEventId) {
@@ -1532,6 +1545,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         // We drifted off the watched call — someone else's handler already adopted.
         return;
       }
+      pickupRenegotiateCountRef.current[watchedCallEventId] = priorRenegotiations + 1;
       renegotiated = true;
       console.warn(`[Voice] ⏱ pickup-watchdog: caller PC still ${iceState} at +${delay}ms but peer is live — auto-renegotiating`);
       try { pc.close(); } catch {}
@@ -1585,6 +1599,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
         if (payload.type === "ready-for-offer") {
           try {
+            // If this device is the callee after pressing Accept, it must wait
+            // for the caller's offer and answer it. Responding to a stray
+            // ready-for-offer here creates offer glare: both sides sit in
+            // have-local-offer and the caller stays on Ringing forever.
+            const acceptedCall = acceptedIncomingCallRef.current;
+            if (acceptedCall?.conversationId === conversationId && !outgoingCallMetaRef.current) {
+              console.log("[Voice] 🛑 Ignoring ready-for-offer while waiting to answer accepted incoming call");
+              return;
+            }
             // v0.4.6: don't hard-drop mismatched callEventIds. If the payload
             // is for a DIFFERENT ongoing event in the same conversation,
             // adopt it — this is the "caller and callee diverged on which
@@ -1621,7 +1644,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
                 callEventId: payload.callEventId,
               };
             }
-            await initializeOutgoingConnection(channel, conversationId, { forceFreshOffer: !!payload.forceFreshOffer });
+            const payloadCallEventId = payload.callEventId || currentCallEventIdRef.current;
+            const shouldForceFresh = !!payload.forceFreshOffer
+              && !pendingOfferRef.current
+              && peerAcceptedCallEventRef.current !== payloadCallEventId;
+            await initializeOutgoingConnection(channel, conversationId, { forceFreshOffer: shouldForceFresh });
           } catch (e) {
             console.error("[Voice] Failed to initialize outgoing connection (keeping call alive):", e);
             // v0.3.8: do NOT endCall on signaling errors — they're often
@@ -1648,6 +1675,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             }
           }
           console.log("[acceptDiag] peer.accepted ack received", payload.callEventId);
+          peerAcceptedCallEventRef.current = payload.callEventId || callEventIdSnapshot || null;
           stopLooping("outgoingRing");
           setActiveCall(prev => prev && prev.conversationId === conversationId
             ? { ...prev, state: prev.state === "connected" ? "connected" : "calling", ringTimedOut: false, peerLeftAt: undefined }
@@ -1896,6 +1924,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           }
           console.log("[Voice] 📥 Answer received, setting remote description...");
           stopLooping("outgoingRing"); // peer picked up — stop ringing
+          setActiveCall(prev => prev && prev.conversationId === conversationId
+            ? { ...prev, state: prev.state === "connected" ? "connected" : "calling", ringTimedOut: false, peerLeftAt: undefined }
+            : prev);
           await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
           remoteDescriptionSet.current = true;
           pendingOfferRef.current = null;
@@ -1986,6 +2017,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           pendingOfferRef.current = null;
           acceptedIncomingCallRef.current = null;
           outgoingCallMetaRef.current = null;
+          peerAcceptedCallEventRef.current = null;
           outgoingCandidateBuffer.current = [];
           incomingCandidateQueue.current = [];
           remoteDescriptionSet.current = false;
@@ -2380,6 +2412,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       remoteDescriptionSet.current = false;
       pendingOfferRef.current = null;
       acceptedIncomingCallRef.current = null;
+      peerAcceptedCallEventRef.current = null;
+      pickupRenegotiateCountRef.current = {};
 
       setActiveCall({
         conversationId,
