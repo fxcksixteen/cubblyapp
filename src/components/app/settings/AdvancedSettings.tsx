@@ -99,7 +99,7 @@ const AdvancedSettings = ({ cardStyle }: Props) => {
                   Hardware acceleration
                 </p>
                 <p className="mt-1 text-xs" style={{ color: "var(--app-text-secondary)" }}>
-                  Uses your GPU for smoother rendering, video, and screensharing. Turn off only if you're seeing graphical glitches or driver crashes. Changes require a restart.
+                  Uses your GPU for smoother rendering, video, screensharing, and all animated Shop cosmetics (themes, name colors, badges). Turn off only if you're seeing graphical glitches or driver crashes. Changes require a restart.
                 </p>
               </div>
               <button
