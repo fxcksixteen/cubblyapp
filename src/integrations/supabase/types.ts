@@ -1558,6 +1558,10 @@ export type Database = {
       }
       burn_view_once_note: { Args: { _message_id: string }; Returns: undefined }
       can_access_message: { Args: { _message_id: string }; Returns: boolean }
+      canonicalize_ongoing_call_event: {
+        Args: { _conversation_id: string; _preferred_call_event_id?: string }
+        Returns: string
+      }
       claim_gift: { Args: { _gift_id: string }; Returns: Json }
       claim_honey_gift: { Args: { _gift_id: string }; Returns: Json }
       claim_honey_monthly_gems: { Args: never; Returns: Json }

@@ -23,9 +23,20 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.4.7";
+export const CURRENT_VERSION = "0.4.8";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.4.8",
+    title: "Call reliability fix",
+    date: "2026-07-12",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Fixed DM calls splitting into separate calls after pickup or Rejoin.",
+      "Fixed server voice channels sometimes not joining after clicking Join Voice.",
+    ],
+  },
   {
     version: "0.4.7",
     title: "DM call ringing fix",

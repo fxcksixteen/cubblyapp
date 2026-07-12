@@ -655,6 +655,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   // duplicate offer retries from the caller's retry loop cannot re-trigger
   // setRemoteDescription on an already-stable PC, which was wiping ICE state.
   const lastAnsweredOfferRef = useRef<string | null>(null);
+  const lastAnswerRef = useRef<{ offerKey: string; callEventId: string; answer: RTCSessionDescriptionInit } | null>(null);
   // v0.4.0: accept-in-flight guard. When the fast-path accept is between
   // "tear down stale pc" and "setLocalDescription(answer)", a late retry offer
   // from the caller's retry loop would land on a null pc, fall into the
@@ -1568,10 +1569,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         console.warn("[Voice] pickup-watchdog renegotiate failed:", e);
       }
     };
-    // Fire but don't await — these are background timers.
-    void tryAutoRenegotiate(3000);
-    void tryAutoRenegotiate(6000);
-    void tryAutoRenegotiate(10000);
+    // v0.4.8: keep the caller PC stable after pickup. If the answer was
+    // dropped, duplicate-offer retries now make the receiver re-send the
+    // cached answer instead of making the caller tear down and glare-loop.
+    void tryAutoRenegotiate;
 
   }, [user, getUserMedia, createPeerConnection, startAudioLevelMonitor, stopAudioLevelMonitor, peerLooksLiveInCall, resolveLiveCallEventIdForConversation]);
 
@@ -1741,7 +1742,18 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           // stable PC and silently wipes the just-established ICE pair.
           const offerDedupeKey = payload.callEventId ? `${payload.callEventId}:${payload.sdp?.sdp || ""}` : null;
           if (offerDedupeKey && lastAnsweredOfferRef.current === offerDedupeKey) {
-            console.log("[Voice] 🛑 Ignoring duplicate offer retry for already-answered call", payload.callEventId);
+            const cachedAnswer = lastAnswerRef.current;
+            if (cachedAnswer?.offerKey === offerDedupeKey) {
+              console.log("[Voice] 🔁 Duplicate offer retry received — re-sending cached answer", payload.callEventId);
+              await sendAnswerWithRetry(
+                channel,
+                { type: "answer", sdp: cachedAnswer.answer, senderId: user.id, callEventId: cachedAnswer.callEventId },
+                () => pcRef.current,
+                "answer(duplicate-offer)",
+              );
+            } else {
+              console.log("[Voice] 🛑 Ignoring duplicate offer retry for already-answered call", payload.callEventId);
+            }
             return;
           }
 
@@ -1793,6 +1805,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               answer.sdp = sdp;
               await pc.setLocalDescription(answer);
               await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id, callEventId: payload.callEventId || currentCallEventIdRef.current }, "answer(re-offer)");
+              if (offerDedupeKey) {
+                const evtId = payload.callEventId || currentCallEventIdRef.current;
+                if (evtId) lastAnswerRef.current = { offerKey: offerDedupeKey, callEventId: evtId, answer };
+              }
             } catch (e) {
               console.warn("[Voice] Mid-call re-offer handling failed:", e);
             }
@@ -1817,7 +1833,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
                 () => pcRef.current,
                 "answer(accepted-offer)",
               );
-              if (offerDedupeKey) lastAnsweredOfferRef.current = offerDedupeKey;
+              if (offerDedupeKey) {
+                lastAnsweredOfferRef.current = offerDedupeKey;
+                const evtId = payload.callEventId || currentCallEventIdRef.current;
+                if (evtId) lastAnswerRef.current = { offerKey: offerDedupeKey, callEventId: evtId, answer };
+              }
 
               setActiveCall(prev => prev && prev.conversationId === conversationId
                 ? {
@@ -1903,7 +1923,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
                 () => pcRef.current,
                 "answer(rejoin)",
               );
-              if (offerDedupeKey) lastAnsweredOfferRef.current = offerDedupeKey;
+              if (offerDedupeKey) {
+                lastAnsweredOfferRef.current = offerDedupeKey;
+                const evtId = payload.callEventId || currentCallEventIdRef.current;
+                if (evtId) lastAnswerRef.current = { offerKey: offerDedupeKey, callEventId: evtId, answer };
+              }
 
               setActiveCall(prev => prev ? {
                 ...prev,
@@ -2365,6 +2389,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           .limit(1)
           .maybeSingle();
         if (existing?.id) {
+          try {
+            const { data: canonicalId } = await (supabase as any).rpc("canonicalize_ongoing_call_event", {
+              _conversation_id: conversationId,
+              _preferred_call_event_id: existing.id,
+            });
+            if (canonicalId && canonicalId !== existing.id) {
+              existing.id = canonicalId;
+            }
+          } catch { /* older backend: continue with newest event */ }
           // Liveness: another participant must be FRESHLY live (left_at NULL
           // AND last_seen_at within 30s). Stale ghosts no longer count, so
           // clicking voice/video starts a brand-new real call instead of
@@ -2438,6 +2471,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       outgoingCandidateBuffer.current = [];
       remoteDescriptionSet.current = false;
       pendingOfferRef.current = null;
+      lastAnswerRef.current = null;
       acceptedIncomingCallRef.current = null;
       peerAcceptedCallEventRef.current = null;
       pickupRenegotiateCountRef.current = {};
@@ -2631,6 +2665,16 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     try {
       shouldOfferForCallRef.current = false;
       stopLooping("incomingCall");
+      try {
+        const { data: canonicalId } = await (supabase as any).rpc("canonicalize_ongoing_call_event", {
+          _conversation_id: acceptedCall.conversationId,
+          _preferred_call_event_id: acceptedCall.callEventId,
+        });
+        if (canonicalId && canonicalId !== acceptedCall.callEventId) {
+          console.warn(`[Voice] 🔀 Accept adopting canonical call_event ${String(canonicalId).substring(0, 8)}`);
+          acceptedCall.callEventId = canonicalId;
+        }
+      } catch { /* older backend: use incoming call event id */ }
       try { void broadcastIncomingCallDismiss(acceptedCall.conversationId, acceptedCall.callEventId); } catch {}
 
       // Flip UI to "calling" immediately so the user gets feedback even before
@@ -2732,7 +2776,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             () => pcRef.current,
             "answer(accept-direct)",
           );
-          if (acceptedCall.callEventId) lastAnsweredOfferRef.current = `${acceptedCall.callEventId}:${acceptedCall.offer?.sdp || ""}`;
+          if (acceptedCall.callEventId) {
+            const offerKey = `${acceptedCall.callEventId}:${acceptedCall.offer?.sdp || ""}`;
+            lastAnsweredOfferRef.current = offerKey;
+            lastAnswerRef.current = { offerKey, callEventId: acceptedCall.callEventId, answer };
+          }
 
           setIncomingCall(null);
           acceptedIncomingCallRef.current = null;
@@ -2775,6 +2823,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
                   "answer(accept-direct-retry)",
                 );
                 lastAnsweredOfferRef.current = bufferedKey;
+                lastAnswerRef.current = { offerKey: bufferedKey, callEventId: acceptedCall.callEventId, answer: ans2 };
               } catch (e) {
                 console.warn("[acceptDiag] buffered retry offer answer failed:", e);
               }
@@ -3439,6 +3488,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     remoteDescriptionSet.current = false;
     setPeerInstantState({});
     pendingOfferRef.current = null;
+    lastAnswerRef.current = null;
     acceptedIncomingCallRef.current = null;
     outgoingCallMetaRef.current = null;
     lastAnsweredOfferRef.current = null;

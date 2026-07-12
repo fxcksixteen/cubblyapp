@@ -279,6 +279,31 @@ async function ringMemberWithRetry(mid: string, payload: Record<string, unknown>
   setTimeout(() => supabase.removeChannel(ch), 3000);
 }
 
+async function sendGroupSignalReliably(
+  channel: ReturnType<typeof supabase.channel> | null,
+  payload: Record<string, unknown>,
+  label: string,
+  attempts = 3,
+): Promise<void> {
+  if (!channel) return;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const res: any = await channel.send({ type: "broadcast", event: "group-signal", payload });
+      if (res === "ok") return;
+      if (attempt === attempts - 1) {
+        console.warn(`[GroupCall] group-signal ${label} returned ${res}`);
+        return;
+      }
+    } catch (e) {
+      if (attempt === attempts - 1) {
+        console.warn(`[GroupCall] group-signal ${label} failed:`, e);
+        return;
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 180 * (attempt + 1)));
+  }
+}
+
 
 
 export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
@@ -628,16 +653,12 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
 
     pc.onicecandidate = (event) => {
       if (!event.candidate || !channelRef.current || !user) return;
-      channelRef.current.send({
-        type: "broadcast",
-        event: "group-signal",
-        payload: {
+        void sendGroupSignalReliably(channelRef.current, {
           type: "ice-candidate",
           fromUserId: user.id,
           toUserId: peerId,
           candidate: event.candidate.toJSON(),
-        },
-      });
+        }, "ice-candidate", 2);
     };
 
     // Perfect-negotiation: triggered automatically when we add/remove tracks
@@ -651,16 +672,12 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         const offer = await pc.createOffer();
         offer.sdp = mungeGroupCallOpusSdp(offer.sdp);
         await pc.setLocalDescription(offer);
-        channelRef.current.send({
-          type: "broadcast",
-          event: "group-signal",
-          payload: {
-            type: "offer",
-            fromUserId: user.id,
-            toUserId: peerId,
-            sdp: pc.localDescription,
-          },
-        });
+        await sendGroupSignalReliably(channelRef.current, {
+          type: "offer",
+          fromUserId: user.id,
+          toUserId: peerId,
+          sdp: pc.localDescription,
+        }, "offer(negotiationneeded)");
       } catch (e) {
         console.error("[GroupCall] negotiationneeded failed:", e);
       } finally {
@@ -757,6 +774,13 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
 
       let reused = false;
       if (existing?.id) {
+        try {
+          const { data: canonicalId } = await (supabase as any).rpc("canonicalize_ongoing_call_event", {
+            _conversation_id: conversationId,
+            _preferred_call_event_id: existing.id,
+          });
+          if (canonicalId && canonicalId !== existing.id) existing.id = canonicalId;
+        } catch { /* older backend: continue with newest event */ }
         if (isServerChannel) {
           // Server voice channels: unconditionally reuse. One channel = one call.
           callEventId = existing.id;
@@ -883,6 +907,10 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     if (!user) return;
     return new Promise((resolve, reject) => {
       const channelName = `group-call:${conversationId}`;
+      if (channelRef.current) {
+        try { supabase.removeChannel(channelRef.current); } catch {}
+        channelRef.current = null;
+      }
       const channel = supabase.channel(channelName);
 
       channel.on("broadcast", { event: "group-signal" }, async ({ payload }) => {
@@ -899,11 +927,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
               const offer = await pc.createOffer();
               offer.sdp = mungeGroupCallOpusSdp(offer.sdp);
               await pc.setLocalDescription(offer);
-              channel.send({
-                type: "broadcast",
-                event: "group-signal",
-                payload: { type: "offer", fromUserId: user.id, toUserId: payload.fromUserId, sdp: pc.localDescription },
-              });
+              await sendGroupSignalReliably(channel, { type: "offer", fromUserId: user.id, toUserId: payload.fromUserId, sdp: pc.localDescription }, "offer(peer-join)");
             } catch (e) {
               console.error("[GroupCall] Failed to create offer for new peer:", e);
             }
@@ -928,6 +952,9 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
           ignoreOfferRef.current.set(payload.fromUserId, ignore);
           if (ignore) return;
           try {
+            if (offerCollision && polite) {
+              try { await pc.setLocalDescription({ type: "rollback" } as RTCSessionDescriptionInit); } catch {}
+            }
             await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
             remoteDescSetRef.current.set(payload.fromUserId, true);
             const queued = queuedIceRef.current.get(payload.fromUserId) || [];
@@ -939,11 +966,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
             const answer = await pc.createAnswer();
             answer.sdp = mungeGroupCallOpusSdp(answer.sdp);
             await pc.setLocalDescription(answer);
-            channel.send({
-              type: "broadcast",
-              event: "group-signal",
-              payload: { type: "answer", fromUserId: user.id, toUserId: payload.fromUserId, sdp: pc.localDescription },
-            });
+            await sendGroupSignalReliably(channel, { type: "answer", fromUserId: user.id, toUserId: payload.fromUserId, sdp: pc.localDescription }, "answer(offer)");
           } catch (e) {
             console.error("[GroupCall] Failed to handle offer:", e);
           }
@@ -968,6 +991,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         }
 
         if (payload.type === "ice-candidate") {
+          if (ignoreOfferRef.current.get(payload.fromUserId)) return;
           const pc = pcsRef.current.get(payload.fromUserId);
           if (pc && remoteDescSetRef.current.get(payload.fromUserId)) {
             await pc.addIceCandidate(new RTCIceCandidate(payload.candidate)).catch(() => {});
@@ -1005,11 +1029,14 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         if (status === "SUBSCRIBED") {
           channelRef.current = channel;
           // Announce our presence so existing peers offer to us
-          channel.send({
-            type: "broadcast",
-            event: "group-signal",
-            payload: { type: "peer-join", fromUserId: user.id },
-          });
+          const sendJoin = (delay = 0) => {
+            window.setTimeout(() => {
+              void sendGroupSignalReliably(channel, { type: "peer-join", fromUserId: user.id }, "peer-join");
+            }, delay);
+          };
+          sendJoin(0);
+          sendJoin(700);
+          sendJoin(1800);
           resolve();
         } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
           reject(new Error(`Group channel subscribe failed: ${status}`));
@@ -1074,11 +1101,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     console.log("[GroupCall] 👋 Leaving call");
     // Broadcast leave so peers can drop us
     if (channelRef.current && user) {
-      channelRef.current.send({
-        type: "broadcast",
-        event: "group-signal",
-        payload: { type: "peer-leave", fromUserId: user.id },
-      });
+      void sendGroupSignalReliably(channelRef.current, { type: "peer-leave", fromUserId: user.id }, "peer-leave", 2);
     }
     // Mark participant left
     if (callEventIdRef.current && user) {
@@ -1139,11 +1162,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       playSound(newMuted ? "mute" : "unmute", { volume: 0.4 });
       // Broadcast to peers
       if (channelRef.current && user) {
-        channelRef.current.send({
-          type: "broadcast",
-          event: "group-signal",
-          payload: { type: "peer-mute", fromUserId: user.id, isMuted: newMuted },
-        });
+        void sendGroupSignalReliably(channelRef.current, { type: "peer-mute", fromUserId: user.id, isMuted: newMuted }, "peer-mute", 2);
       }
       // DB sync
       if (callEventIdRef.current && user) {
@@ -1179,11 +1198,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         localStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = !nextMuted; });
       }
       if (channelRef.current && user) {
-        channelRef.current.send({
-          type: "broadcast",
-          event: "group-signal",
-          payload: { type: "peer-mute", fromUserId: user.id, isMuted: nextMuted },
-        });
+        void sendGroupSignalReliably(channelRef.current, { type: "peer-mute", fromUserId: user.id, isMuted: nextMuted }, "peer-mute(deafen)", 2);
       }
       if (callEventIdRef.current && user) {
         supabase.from("call_participants")
@@ -1231,11 +1246,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       track.onended = () => { toggleVideo(); }; // safety: hardware unplugged
 
       setActiveCall(prev => prev ? { ...prev, isVideoOn: true } : null);
-      channelRef.current?.send({
-        type: "broadcast",
-        event: "group-signal",
-        payload: { type: "peer-video", fromUserId: user.id, isVideoOn: true },
-      });
+      void sendGroupSignalReliably(channelRef.current, { type: "peer-video", fromUserId: user.id, isVideoOn: true }, "peer-video", 2);
     } else {
       // Turn OFF
       const track = localVideoTrackRef.current;
@@ -1253,11 +1264,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       }
       videoSendersRef.current.clear();
       setActiveCall(prev => prev ? { ...prev, isVideoOn: false } : null);
-      channelRef.current?.send({
-        type: "broadcast",
-        event: "group-signal",
-        payload: { type: "peer-video", fromUserId: user.id, isVideoOn: false },
-      });
+      void sendGroupSignalReliably(channelRef.current, { type: "peer-video", fromUserId: user.id, isVideoOn: false }, "peer-video", 2);
     }
   }, [activeCall, user]);
 
@@ -1485,11 +1492,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
 
       setActiveCall(prev => prev ? { ...prev, isScreenSharing: true } : null);
       playSound("screenshareStart", { volume: 0.4 });
-      channelRef.current?.send({
-        type: "broadcast",
-        event: "group-signal",
-        payload: { type: "peer-screen", fromUserId: user.id, isScreenSharing: true },
-      });
+      void sendGroupSignalReliably(channelRef.current, { type: "peer-screen", fromUserId: user.id, isScreenSharing: true }, "peer-screen", 2);
     } else {
       // ---- Stop share — mirrors DM stopScreenShare cleanup.
       const track = localScreenTrackRef.current;
@@ -1525,11 +1528,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
 
       setActiveCall(prev => prev ? { ...prev, isScreenSharing: false } : null);
       playSound("screenshareStop", { volume: 0.4 });
-      channelRef.current?.send({
-        type: "broadcast",
-        event: "group-signal",
-        payload: { type: "peer-screen", fromUserId: user.id, isScreenSharing: false },
-      });
+      void sendGroupSignalReliably(channelRef.current, { type: "peer-screen", fromUserId: user.id, isScreenSharing: false }, "peer-screen", 2);
     }
   }, [activeCall, user, localScreenStream]);
 
@@ -1660,22 +1659,14 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
               const offer = await pc.createOffer();
               offer.sdp = mungeGroupCallOpusSdp(offer.sdp);
               await pc.setLocalDescription(offer);
-              channelRef.current?.send({
-                type: "broadcast",
-                event: "group-signal",
-                payload: { type: "offer", fromUserId: user.id, toUserId: r.user_id, sdp: pc.localDescription },
-              });
+              await sendGroupSignalReliably(channelRef.current, { type: "offer", fromUserId: user.id, toUserId: r.user_id, sdp: pc.localDescription }, "offer(reconcile)");
             } catch (e) {
               console.warn("[GroupCall] Reconcile offer failed:", e);
             }
           } else {
             // We're the lower-id side — poke the higher-id peer to re-offer.
             console.log("[GroupCall] 🔁 Reconcile: nudging higher-id peer", r.user_id, "to offer");
-            channelRef.current?.send({
-              type: "broadcast",
-              event: "group-signal",
-              payload: { type: "peer-join", fromUserId: user.id, toUserId: r.user_id },
-            });
+            await sendGroupSignalReliably(channelRef.current, { type: "peer-join", fromUserId: user.id, toUserId: r.user_id }, "peer-join(reconcile)");
           }
         }
       } catch { /* best-effort */ }
