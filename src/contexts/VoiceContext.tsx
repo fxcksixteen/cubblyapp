@@ -1604,7 +1604,17 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             // ready-for-offer here creates offer glare: both sides sit in
             // have-local-offer and the caller stays on Ringing forever.
             const acceptedCall = acceptedIncomingCallRef.current;
-            if (acceptedCall?.conversationId === conversationId && !outgoingCallMetaRef.current) {
+            const isCalleeAnswering = !outgoingCallMetaRef.current && (
+              acceptedCall?.conversationId === conversationId ||
+              acceptInFlightRef.current === payload.callEventId ||
+              (
+                activeCallSnapshot?.conversationId === conversationId &&
+                activeCallSnapshot.peerId === payload.senderId &&
+                !activeCallSnapshot.peerLeftAt &&
+                activeCallSnapshot.state !== "connected"
+              )
+            );
+            if (isCalleeAnswering) {
               console.log("[Voice] 🛑 Ignoring ready-for-offer while waiting to answer accepted incoming call");
               return;
             }
@@ -3413,6 +3423,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     acceptedIncomingCallRef.current = null;
     outgoingCallMetaRef.current = null;
     lastAnsweredOfferRef.current = null;
+    peerAcceptedCallEventRef.current = null;
+    pickupRenegotiateCountRef.current = {};
 
 
     document.querySelectorAll("audio").forEach((el: any) => {
