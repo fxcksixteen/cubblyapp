@@ -1,31 +1,45 @@
-## Plan
+## Plan: v0.4.8 call-system repair
 
-Fix the call handshake so pickup cannot devolve into both clients repeatedly creating offers and leaving the caller stuck on Ringing.
+Fix both call systems as one patch, and prep the desktop changelog/version only. No web publish/deploy.
 
 ## What I’ll change
 
-1. **Make the caller/callee roles deterministic**
-   - Only the original caller or the existing call host should respond to `ready-for-offer` by creating an offer.
-   - The receiver who clicked Accept must not auto-promote itself into an offerer just because it receives a stray `ready-for-offer`.
+1. **Stop DM calls from splitting into separate call events**
+   - Make 1:1 DM calls reuse one canonical ongoing `call_event` per conversation.
+   - When Accept/Rejoin sees a different live event, adopt the canonical event instead of creating or staying on a separate one.
+   - Prevent the caller and callee from ending up with different `callEventId`s after stale participant cleanup.
 
-2. **Stop the offer-reset loop shown in the logs**
-   - Remove/guard the path where `ready-for-offer` closes the current PC and creates a fresh offer repeatedly while the call is already being accepted.
-   - Deduplicate repeated `ready-for-offer` signals per call event + sender so retries re-send the same pending offer instead of tearing down the PC.
+2. **Replace the brittle DM pickup handshake with a deterministic one**
+   - Caller/staying peer is the offerer; callee/rejoiner is the answerer.
+   - Accept will never become an offerer because of crossed `ready-for-offer` retries.
+   - Remove the caller-side auto-renegotiate behavior that keeps rebuilding offers after the peer already accepted and causes stuck/fake states.
+   - Make `peer-accepted` immediately move the caller out of Ringing while waiting for the answer/ICE.
 
-3. **Make Accept answer reliably**
-   - If an offer arrives before Accept, keep it and answer it after Accept.
-   - If Accept happens before the offer arrives, keep `acceptedIncomingCallRef` active and answer the next offer instead of becoming the offerer.
+3. **Fix DM Rejoin when the other side says “Not in call”**
+   - When one user leaves and rejoins, keep the staying user as the offerer and force a clean offer for the same event.
+   - If the staying user is listening but has no PC/pending offer, rebuild exactly once instead of ignoring the joiner forever.
+   - Ensure heartbeats clear `left_at` and refresh before signaling so the call pill/UI sees both users in the same call.
 
-4. **Fix caller UI state after pickup**
-   - `peer-accepted` should move the caller out of visible “Ringing” immediately, while still waiting for actual ICE to mark the call fully connected.
-   - The outgoing ringing sound remains stopped on `peer-accepted` / `answer`.
+4. **Fix server voice-channel joins for everyone**
+   - Rework server/group call channel subscription so stale channels are removed before joining a new room.
+   - Broadcast `peer-join` reliably with short retries after subscription, because a single dropped join broadcast currently leaves existing peers unaware of the joiner.
+   - When a server-channel join receives no offers, retry `peer-join` so the joiner can still connect without leaving/reclicking.
+   - Keep one active server voice call event per channel and make participant heartbeat revive old rows correctly.
 
-5. **Patch release prep only**
-   - Add a short user-facing changelog bullet for the desktop patch.
-   - Do not publish/deploy the web app.
+5. **Harden group/server WebRTC negotiation**
+   - Await/retry critical `group-signal` sends (`peer-join`, `offer`, `answer`, ICE) enough to avoid silent broadcast drops.
+   - Make offer collision handling recover instead of permanently ignoring a peer.
+   - Preserve existing camera/screen-share behavior while fixing initial join reliability.
+
+6. **v0.4.8 desktop patch prep**
+   - Bump app/desktop version from `0.4.7` to `0.4.8`.
+   - Add a short changelog entry with user-facing bullets only.
+   - Do not publish or deploy the web version.
 
 ## Technical notes
 
-- Primary file: `src/contexts/VoiceContext.tsx`.
-- Likely no backend migration needed.
-- The root issue in your logs is offer glare: after pickup, both sides keep receiving `ready-for-offer`, both sides generate local offers, no clean `answer` lands, and ICE stays `new`, so the caller UI never reaches connected.
+- Primary files: `src/contexts/VoiceContext.tsx`, `src/contexts/GroupCallContext.tsx`, `src/lib/changelog.ts`, `package.json`.
+- Likely no backend schema migration unless existing RPC behavior is missing a required stale-event/heartbeat guarantee.
+- The logs point to two root causes:
+  - DM calls still drift across multiple ongoing `call_event`s and retry loops keep rebuilding/rebroadcasting offers without a clean answer.
+  - Server calls depend on a single best-effort `peer-join` broadcast; if that is dropped, the joiner enters the call locally but existing peers never connect to them.
