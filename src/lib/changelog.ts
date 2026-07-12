@@ -33,7 +33,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     hero: bearImage,
     newFeatures: [],
     bugFixes: [
-      "Fixed 1-on-1 DM calls sometimes staying stuck on \"Ringing\" for 30 seconds while the other person had already joined — the app now automatically syncs to the correct call instead of dropping.",
+      "Fixed DM calls getting stuck on Ringing after the other person picked up.",
       "Server voice-channel call timers now reset properly after everyone leaves instead of counting up forever.",
       "Sidebar screen-share picker in server and group calls now shares the window you actually pick, not the first monitor.",
       "Items are now automatically removed from your wishlist when you buy them with coins or gems.",
