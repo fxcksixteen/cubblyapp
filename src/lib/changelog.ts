@@ -38,6 +38,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Sidebar screen-share picker in server and group calls now shares the window you actually pick, not the first monitor.",
       "Items are now automatically removed from your wishlist when you buy them with coins or gems.",
       "Advanced Settings now clearly warns that turning off hardware acceleration will make animated Shop themes, name colors, and badges stutter or freeze.",
+      "Group and server-call microphones now respect your Voice & Video settings (echo cancellation, noise suppression, auto gain) instead of always sounding heavily processed.",
     ],
   },
   {
