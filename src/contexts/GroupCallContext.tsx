@@ -1716,6 +1716,29 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     return () => { cancelled = true; clearInterval(i); clearTimeout(seed); };
   }, [activeCall?.conversationId, user, ensurePc, ensurePeerEntry]);
 
+  // Recover if the group/server broadcast channel closes while the user is
+  // still in the room. Rejoin signaling and rebroadcast peer-join so peers can
+  // offer without forcing a manual leave/rejoin.
+  useEffect(() => {
+    if (!activeCall || !user) return;
+    let cancelled = false;
+    const tick = async () => {
+      if (cancelled) return;
+      const ch: any = channelRef.current;
+      const state = ch?.state || ch?._state;
+      if (ch && state !== "closed" && state !== "errored" && state !== "leaving") return;
+      groupTrace("channel.recover", { conversationId: activeCall.conversationId, state: state || "missing" });
+      try {
+        await joinCallChannel(activeCall.conversationId);
+      } catch (e) {
+        console.warn("[GroupVoiceTrace] channel.recover.failed", e);
+        void logGroupVoiceDiagnostic(activeCall.conversationId, "channel-recover-failed", callEventIdRef.current);
+      }
+    };
+    const i = window.setInterval(tick, 3000);
+    return () => { cancelled = true; window.clearInterval(i); };
+  }, [activeCall?.conversationId, user, joinCallChannel]);
+
 
 
   return (
