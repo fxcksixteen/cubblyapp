@@ -1312,6 +1312,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       // channel would leak forever. Force cleanup after 2s no matter what.
       const hardTimer = setTimeout(cleanup, 2000);
       channel.subscribe((status) => {
+        voiceTrace("dm.channel.status", { conversationId, status });
         if (status === "SUBSCRIBED") {
           channel.send({
             type: "broadcast",
@@ -2377,6 +2378,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     const isBotCall = peerId === BOT_ID;
 
     console.log(`[Voice] 📞 startCall — peer: ${peerName} (${peerId}), bot: ${isBotCall}`);
+    voiceTrace("dm.start", { conversationId, peerId, peerName, isBotCall });
 
     try {
       stopLooping("incomingCall");
@@ -2418,6 +2420,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           .limit(1)
           .maybeSingle();
         if (existing?.id) {
+          voiceTrace("dm.existingCall.found", { conversationId, callEventId: existing.id });
           try {
             const { data: canonicalId } = await (supabase as any).rpc("canonicalize_ongoing_call_event", {
               _conversation_id: conversationId,
@@ -2465,7 +2468,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               .filter((r: any) => r.user_id !== user.id && r.left_at === null)
               .map((r: any) => `${r.user_id}@${r.last_seen_at ?? `joined:${r.joined_at}`}`);
             console.log("[Voice] 🔁 Joining existing ongoing call_event:", callEventId, "live peers:", livePeers);
+            voiceTrace("dm.existingCall.join", { conversationId, callEventId, livePeers });
           } else {
+            voiceTrace("dm.existingCall.stale", { conversationId, callEventId: existing.id });
             // No real peer present. Ask the backend to close the event AND
             // soft-close any stale participant rows so a ghost can't poison
             // future call attempts in this conversation.
@@ -2486,6 +2491,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       }
 
       if (!callEventId) callEventId = crypto.randomUUID();
+      voiceTrace("dm.callEvent.selected", { conversationId, callEventId, isJoiningExisting });
 
       if (isJoiningExisting) {
         await ensureOwnParticipantRow(callEventId!, {
