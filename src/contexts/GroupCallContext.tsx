@@ -25,6 +25,7 @@ import { createContext, useContext, useState, useCallback, useRef, useEffect, Re
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { playSound, playLooping, stopLooping } from "@/lib/sounds";
+import { toast } from "sonner";
 import { startNativeWindowAudioStream } from "@/lib/nativeWindowAudio";
 import { usePeerGains } from "@/lib/peerGain";
 import { armRemoteAudio } from "@/lib/iosAudioUnlock";
@@ -324,6 +325,45 @@ async function logGroupVoiceDiagnostic(conversationId: string | null | undefined
   } catch (e) {
     console.warn(`[GroupVoiceTrace] diag.${tag}.threw`, e);
   }
+}
+
+async function heartbeatGroupParticipantWithRetry(
+  callEventId: string,
+  userId: string,
+  tag: string,
+  patch?: { is_muted?: boolean | null; is_deafened?: boolean | null; is_video_on?: boolean | null; is_screen_sharing?: boolean | null },
+): Promise<void> {
+  let lastError: unknown = null;
+  const delays = [0, 350, 900, 1800];
+  for (const delay of delays) {
+    if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+    try {
+      const res: any = await (supabase as any).rpc("heartbeat_call_participant", {
+        _call_event_id: callEventId,
+        _is_muted: patch?.is_muted ?? false,
+        _is_deafened: patch?.is_deafened ?? false,
+        _is_video_on: patch?.is_video_on ?? false,
+        _is_screen_sharing: patch?.is_screen_sharing ?? false,
+      });
+      if (res?.error) throw res.error;
+
+      const { data: row, error: verifyError } = await (supabase as any)
+        .from("call_participants")
+        .select("user_id, left_at")
+        .eq("call_event_id", callEventId)
+        .eq("user_id", userId)
+        .is("left_at", null)
+        .maybeSingle();
+      if (verifyError) throw verifyError;
+      if (!row) throw new Error("participant row was not visible after heartbeat");
+      groupTrace("participant.heartbeat.ok", { callEventId, userId, tag });
+      return;
+    } catch (e) {
+      lastError = e;
+      groupTrace("participant.heartbeat.retry", { callEventId, userId, tag, delay, error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(`Group heartbeat failed (${tag})`);
 }
 
 
@@ -745,8 +785,25 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
   const startCall = useCallback(async (conversationId: string, conversationName: string, memberIds: string[], options?: { isServerChannel?: boolean }) => {
     if (!user) return;
     if (activeCall) {
-      console.warn("[GroupCall] Already in a call");
-      return;
+      const channelState = (channelRef.current as any)?.state || (channelRef.current as any)?._state;
+      const staleActiveCall =
+        !localStreamRef.current &&
+        pcsRef.current.size === 0 &&
+        (!channelRef.current || channelState === "closed" || channelState === "errored" || channelState === "leaving");
+      if (!staleActiveCall) {
+        console.warn("[GroupCall] Already in a call");
+        return;
+      }
+      groupTrace("start.stale-active-reset", { conversationId: activeCall.conversationId, channelState: channelState || "missing" });
+      try { channelRef.current && supabase.removeChannel(channelRef.current); } catch {}
+      channelRef.current = null;
+      callEventIdRef.current = null;
+      callConvIdRef.current = null;
+      queuedIceRef.current.clear();
+      remoteDescSetRef.current.clear();
+      setPeers([]);
+      setRingingMembers([]);
+      setActiveCall(null);
     }
     const isServerChannel = !!options?.isServerChannel;
     console.log("[GroupCall] 📞 Starting group call in", conversationId, "with", memberIds.length, "members", isServerChannel ? "(server channel)" : "");
@@ -770,6 +827,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       stream = await getGroupMicSafe();
     } catch (e) {
       console.error("[GroupCall] Failed to get mic:", e);
+      toast.error("Couldn't join voice — check microphone access");
       return;
     }
     localStreamRef.current = stream;
@@ -857,22 +915,22 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     // Insert participant row for self via the heartbeat RPC so left_at is
     // cleared and last_seen_at is fresh (revives any prior row instead of
     // failing the unique constraint).
-    const heartbeatRes: any = await (supabase as any).rpc("heartbeat_call_participant", {
-      _call_event_id: callEventId,
-      _is_muted: false,
-      _is_deafened: false,
-      _is_video_on: false,
-      _is_screen_sharing: false,
-    });
-    if (heartbeatRes?.error) {
-      console.error("[GroupVoiceTrace] participant.heartbeat.failed", { conversationId, callEventId, error: heartbeatRes.error });
+    try {
+      await heartbeatGroupParticipantWithRetry(callEventId, user.id, "join", {
+        is_muted: false,
+        is_deafened: false,
+        is_video_on: false,
+        is_screen_sharing: false,
+      });
+    } catch (e) {
+      console.error("[GroupVoiceTrace] participant.heartbeat.failed", { conversationId, callEventId, error: e });
       void logGroupVoiceDiagnostic(conversationId, "join-heartbeat-failed", callEventId);
       localStreamRef.current?.getTracks().forEach(t => t.stop());
       localStreamRef.current = null;
       stopSelfMonitor();
+      toast.error("Couldn't join voice — try again");
       return;
     }
-    groupTrace("participant.heartbeat.ok", { conversationId, callEventId, userId: user.id });
     void logGroupVoiceDiagnostic(conversationId, isServerChannel ? "server-join" : "group-join", callEventId);
 
     setActiveCall({ conversationId, conversationName, joinedAt: callStartedAt, isMuted: false, isDeafened: false, isVideoOn: false, isScreenSharing: false });
@@ -1091,6 +1149,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       stream = await getGroupMicSafe();
     } catch (e) {
       console.error("[GroupCall] Mic permission denied:", e);
+      toast.error("Couldn't join voice — check microphone access");
       return;
     }
     localStreamRef.current = stream;
@@ -1114,23 +1173,23 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     // row is REVIVED (left_at cleared) instead of failing the unique
     // (call_event_id, user_id) constraint.
     if (inc.callEventId) {
-      const res: any = await (supabase as any).rpc("heartbeat_call_participant", {
-        _call_event_id: inc.callEventId,
-        _is_muted: false,
-        _is_deafened: false,
-        _is_video_on: false,
-        _is_screen_sharing: false,
-      });
-      if (res?.error) {
-        console.error("[GroupVoiceTrace] accept.heartbeat.failed", { conversationId: inc.conversationId, callEventId: inc.callEventId, error: res.error });
+      try {
+        await heartbeatGroupParticipantWithRetry(inc.callEventId, user.id, "accept", {
+          is_muted: false,
+          is_deafened: false,
+          is_video_on: false,
+          is_screen_sharing: false,
+        });
+      } catch (e) {
+        console.error("[GroupVoiceTrace] accept.heartbeat.failed", { conversationId: inc.conversationId, callEventId: inc.callEventId, error: e });
         void logGroupVoiceDiagnostic(inc.conversationId, "accept-heartbeat-failed", inc.callEventId);
         localStreamRef.current?.getTracks().forEach(t => t.stop());
         localStreamRef.current = null;
         stopSelfMonitor();
         setActiveCall(null);
+        toast.error("Couldn't join voice — try again");
         return;
       }
-      groupTrace("accept.heartbeat.ok", { conversationId: inc.conversationId, callEventId: inc.callEventId });
     }
 
     await joinCallChannel(inc.conversationId);
@@ -1646,12 +1705,11 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       // `.catch()` on it throws "rpc(...).catch is not a function". Wrap.
       void (async () => {
         try {
-          await (supabase as any).rpc("heartbeat_call_participant", {
-            _call_event_id: evtId,
-            _is_muted: activeCall.isMuted ?? null,
-            _is_deafened: activeCall.isDeafened ?? null,
-            _is_video_on: activeCall.isVideoOn ?? null,
-            _is_screen_sharing: activeCall.isScreenSharing ?? null,
+          await heartbeatGroupParticipantWithRetry(evtId, user.id, "interval", {
+            is_muted: activeCall.isMuted ?? null,
+            is_deafened: activeCall.isDeafened ?? null,
+            is_video_on: activeCall.isVideoOn ?? null,
+            is_screen_sharing: activeCall.isScreenSharing ?? null,
           });
         } catch { /* best-effort */ }
       })();
@@ -1737,6 +1795,9 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       groupTrace("channel.recover", { conversationId: activeCall.conversationId, state: state || "missing" });
       try {
         await joinCallChannel(activeCall.conversationId);
+        if (channelRef.current) {
+          void sendGroupSignalReliably(channelRef.current, { type: "peer-join", fromUserId: user.id }, "peer-join(channel-recover)");
+        }
       } catch (e) {
         console.warn("[GroupVoiceTrace] channel.recover.failed", e);
         void logGroupVoiceDiagnostic(activeCall.conversationId, "channel-recover-failed", callEventIdRef.current);
