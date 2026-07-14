@@ -1252,16 +1252,18 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     // path failed silently because of the UNIQUE constraint), and refreshes
     // last_seen_at so other devices know we're really live.
     try {
-      await (supabase as any).rpc("heartbeat_call_participant", {
+      const res: any = await (supabase as any).rpc("heartbeat_call_participant", {
         _call_event_id: callEventId,
         _is_muted: overrides?.is_muted ?? null,
         _is_deafened: overrides?.is_deafened ?? null,
         _is_video_on: overrides?.is_video_on ?? null,
         _is_screen_sharing: overrides?.is_screen_sharing ?? null,
       });
+      if (res?.error) throw res.error;
+      voiceTrace("participant.heartbeat.ok", { callEventId, userId: user.id, overrides: !!overrides });
       return;
     } catch (e) {
-      console.warn("[Voice] heartbeat_call_participant RPC failed, falling back to direct insert:", e);
+      console.warn("[VoiceTrace] participant.heartbeat.failed; falling back to direct insert", { callEventId, error: e });
     }
     // Fallback (older backend): emulate the old behaviour.
     const { data: existing } = await supabase
@@ -1279,7 +1281,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
 
-    await supabase.from("call_participants").insert({
+    const { error: insertError } = await supabase.from("call_participants").insert({
       call_event_id: callEventId,
       user_id: user.id,
       is_muted: false,
@@ -1288,6 +1290,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       is_screen_sharing: false,
       ...(overrides || {}),
     } as any);
+    if (insertError) {
+      console.error("[VoiceTrace] participant.insert.failed", { callEventId, userId: user.id, error: insertError });
+      throw insertError;
+    }
+    voiceTrace("participant.insert.ok", { callEventId, userId: user.id });
   }, [user]);
 
   const broadcastIncomingCallDismiss = useCallback(async (conversationId: string, callEventId?: string) => {
