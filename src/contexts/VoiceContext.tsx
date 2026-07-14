@@ -339,6 +339,28 @@ async function heartbeatWithRetry(callEventId: string, tag: string): Promise<voi
   console.error(`[acceptDiag] heartbeat gave up (${tag}) — peer may see "Not in call"`);
 }
 
+const voiceTrace = (phase: string, details?: Record<string, unknown>) => {
+  try {
+    console.log(`[VoiceTrace] ${phase}`, details || {});
+  } catch {
+    console.log(`[VoiceTrace] ${phase}`);
+  }
+};
+
+async function logVoiceDiagnostic(conversationId: string | null | undefined, tag: string, callEventId?: string | null) {
+  if (!conversationId) return;
+  try {
+    const { data, error } = await (supabase as any).rpc("debug_voice_snapshot", {
+      _conversation_id: conversationId,
+      _call_event_id: callEventId ?? null,
+    });
+    if (error) console.warn(`[VoiceTrace] diag.${tag}.error`, error);
+    else console.log(`[VoiceTrace] diag.${tag}`, data);
+  } catch (e) {
+    console.warn(`[VoiceTrace] diag.${tag}.threw`, e);
+  }
+}
+
 interface VoiceContextType {
   settings: VoiceSettings;
   updateSettings: (partial: Partial<VoiceSettings>) => void;
@@ -1230,16 +1252,18 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     // path failed silently because of the UNIQUE constraint), and refreshes
     // last_seen_at so other devices know we're really live.
     try {
-      await (supabase as any).rpc("heartbeat_call_participant", {
+      const res: any = await (supabase as any).rpc("heartbeat_call_participant", {
         _call_event_id: callEventId,
         _is_muted: overrides?.is_muted ?? null,
         _is_deafened: overrides?.is_deafened ?? null,
         _is_video_on: overrides?.is_video_on ?? null,
         _is_screen_sharing: overrides?.is_screen_sharing ?? null,
       });
+      if (res?.error) throw res.error;
+      voiceTrace("participant.heartbeat.ok", { callEventId, userId: user.id, overrides: !!overrides });
       return;
     } catch (e) {
-      console.warn("[Voice] heartbeat_call_participant RPC failed, falling back to direct insert:", e);
+      console.warn("[VoiceTrace] participant.heartbeat.failed; falling back to direct insert", { callEventId, error: e });
     }
     // Fallback (older backend): emulate the old behaviour.
     const { data: existing } = await supabase
@@ -1257,7 +1281,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
 
-    await supabase.from("call_participants").insert({
+    const { error: insertError } = await supabase.from("call_participants").insert({
       call_event_id: callEventId,
       user_id: user.id,
       is_muted: false,
@@ -1266,6 +1290,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       is_screen_sharing: false,
       ...(overrides || {}),
     } as any);
+    if (insertError) {
+      console.error("[VoiceTrace] participant.insert.failed", { callEventId, userId: user.id, error: insertError });
+      throw insertError;
+    }
+    voiceTrace("participant.insert.ok", { callEventId, userId: user.id });
   }, [user]);
 
   const broadcastIncomingCallDismiss = useCallback(async (conversationId: string, callEventId?: string) => {
@@ -1283,6 +1312,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       // channel would leak forever. Force cleanup after 2s no matter what.
       const hardTimer = setTimeout(cleanup, 2000);
       channel.subscribe((status) => {
+        voiceTrace("dm.channel.status", { conversationId, status });
         if (status === "SUBSCRIBED") {
           channel.send({
             type: "broadcast",
@@ -1685,6 +1715,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         }
 
         if (payload.type === "peer-accepted") {
+          voiceTrace("dm.peerAccepted", { conversationId, callEventId: payload.callEventId, from: payload.senderId });
           if (payload.callEventId && callEventIdSnapshot && payload.callEventId !== callEventIdSnapshot) {
             // v0.4.6: same drift case as ready-for-offer — if we're actively
             // ringing on this conversation, adopt the callee's call_event id.
@@ -1973,6 +2004,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             return;
           }
           console.log("[Voice] 📥 Answer received, setting remote description...");
+          voiceTrace("dm.answer.received", { conversationId, callEventId: payload.callEventId, signalingState: pc.signalingState });
           stopLooping("outgoingRing"); // peer picked up — stop ringing
           setActiveCall(prev => prev && prev.conversationId === conversationId
             ? { ...prev, state: prev.state === "connected" ? "connected" : "calling", ringTimedOut: false, peerLeftAt: undefined }
@@ -2022,6 +2054,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         // The call_event row is only marked ended once the last participant
         // leaves (see endCall).
         if (payload.type === "hangup" || payload.type === "peer-leave") {
+          voiceTrace("dm.peerLeft", { conversationId, callEventId: payload.callEventId, from: payload.senderId, current: callEventIdSnapshot });
           // v0.3.8: ignore stale peer-leaves from a *previous* call_event in
           // the same conversation. Without this scoping, a delayed broadcast
           // from a hung-up attempt could instantly kick us out of the brand-
@@ -2348,6 +2381,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     const isBotCall = peerId === BOT_ID;
 
     console.log(`[Voice] 📞 startCall — peer: ${peerName} (${peerId}), bot: ${isBotCall}`);
+    voiceTrace("dm.start", { conversationId, peerId, peerName, isBotCall });
 
     try {
       stopLooping("incomingCall");
@@ -2389,6 +2423,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           .limit(1)
           .maybeSingle();
         if (existing?.id) {
+          voiceTrace("dm.existingCall.found", { conversationId, callEventId: existing.id });
           try {
             const { data: canonicalId } = await (supabase as any).rpc("canonicalize_ongoing_call_event", {
               _conversation_id: conversationId,
@@ -2436,7 +2471,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               .filter((r: any) => r.user_id !== user.id && r.left_at === null)
               .map((r: any) => `${r.user_id}@${r.last_seen_at ?? `joined:${r.joined_at}`}`);
             console.log("[Voice] 🔁 Joining existing ongoing call_event:", callEventId, "live peers:", livePeers);
+            voiceTrace("dm.existingCall.join", { conversationId, callEventId, livePeers });
           } else {
+            voiceTrace("dm.existingCall.stale", { conversationId, callEventId: existing.id });
             // No real peer present. Ask the backend to close the event AND
             // soft-close any stale participant rows so a ghost can't poison
             // future call attempts in this conversation.
@@ -2457,6 +2494,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       }
 
       if (!callEventId) callEventId = crypto.randomUUID();
+      voiceTrace("dm.callEvent.selected", { conversationId, callEventId, isJoiningExisting });
 
       if (isJoiningExisting) {
         await ensureOwnParticipantRow(callEventId!, {
@@ -2661,6 +2699,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     if (!incomingCall || !user) return;
     const acceptedCall = incomingCall;
     console.log("[Voice] ✅ Accepting call (direct path) from", acceptedCall.callerName);
+    voiceTrace("dm.accept.start", { conversationId: acceptedCall.conversationId, callEventId: acceptedCall.callEventId, callerId: acceptedCall.callerId, hasOffer: !!acceptedCall.offer });
 
     try {
       shouldOfferForCallRef.current = false;
@@ -2704,7 +2743,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
       // Heartbeat now so caller's live-peer check flips us to "in call".
       console.log("[acceptDiag] accept.start", { callEventId: acceptedCall.callEventId, hasOffer: !!acceptedCall.offer });
-      void heartbeatWithRetry(acceptedCall.callEventId, "accept-init");
+      await heartbeatWithRetry(acceptedCall.callEventId, "accept-init");
+      void logVoiceDiagnostic(acceptedCall.conversationId, "accept-after-heartbeat", acceptedCall.callEventId);
 
       const channel = await setupSignaling(acceptedCall.conversationId);
 
@@ -2713,6 +2753,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         senderId: user.id,
         callEventId: acceptedCall.callEventId,
       }, "peer-accepted");
+      voiceTrace("dm.accept.peerAccepted.sent", { conversationId: acceptedCall.conversationId, callEventId: acceptedCall.callEventId });
 
       // FAST PATH — caller's offer was prefetched during the pre-accept
       // ready-for-offer. Just answer it.
@@ -2832,6 +2873,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           return;
         } catch (e) {
           console.error("[acceptDiag] Direct-answer accept failed, falling back to ready-for-offer:", e);
+          void logVoiceDiagnostic(acceptedCall.conversationId, "accept-direct-failed", acceptedCall.callEventId);
           acceptInFlightRef.current = null;
           pendingRetryOfferRef.current = null;
           // fall through
@@ -2874,6 +2916,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       }
 
       const sendReady = (forceFreshOffer = false) => {
+        voiceTrace("dm.accept.readyForOffer.send", { conversationId: acceptedCall.conversationId, callEventId: acceptedCall.callEventId, forceFreshOffer });
         void sendSignalReliably(channel, {
           type: "ready-for-offer",
           senderId: user.id,
@@ -3525,15 +3568,17 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       // Use the heartbeat RPC — it upserts on (call_event_id, user_id) AND
       // clears left_at, which is what makes rejoin/reaccept revive a stale
       // participant row instead of failing silently on the UNIQUE constraint.
-      await (supabase as any).rpc("heartbeat_call_participant", {
+      const res: any = await (supabase as any).rpc("heartbeat_call_participant", {
         _call_event_id: evtId,
         _is_muted: patch.is_muted ?? null,
         _is_deafened: patch.is_deafened ?? null,
         _is_video_on: patch.is_video_on ?? null,
         _is_screen_sharing: patch.is_screen_sharing ?? null,
       });
+      if (res?.error) throw res.error;
     } catch (e) {
       console.warn("[Voice] heartbeat_call_participant RPC failed:", e);
+      void logVoiceDiagnostic(activeCallRef.current?.conversationId, "state-heartbeat-failed", evtId);
     }
   }, [user, currentCallEventId]);
 
@@ -4118,6 +4163,44 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     const i = setInterval(tick, 10_000);
     return () => clearInterval(i);
   }, [activeCall, user, currentCallEventId, isScreenSharing]);
+
+  // If the peer has a fresh participant heartbeat but a signaling packet was
+  // missed, clear stale "Not in call" state and kick one deterministic offer.
+  useEffect(() => {
+    if (!activeCall || !user || !currentCallEventId) return;
+    if (!activeCall.peerLeftAt && !activeCall.ringTimedOut && pcRef.current) return;
+    let cancelled = false;
+    let kicked = false;
+    const tick = async () => {
+      try {
+        const { data } = await supabase
+          .from("call_participants")
+          .select("user_id, last_seen_at, joined_at, left_at")
+          .eq("call_event_id", currentCallEventId)
+          .eq("user_id", activeCall.peerId)
+          .is("left_at", null)
+          .maybeSingle();
+        if (cancelled || !data) return;
+        const baseline = Date.parse((data as any).last_seen_at ?? (data as any).joined_at ?? "");
+        if (!Number.isFinite(baseline) || Date.now() - baseline > 25_000) return;
+        voiceTrace("dm.peerHeartbeat.live", { callEventId: currentCallEventId, peerId: activeCall.peerId, state: activeCall.state });
+        setActiveCall(prev => prev && prev.conversationId === activeCall.conversationId
+          ? { ...prev, ringTimedOut: false, peerLeftAt: undefined, state: prev.state === "connected" ? "connected" : "calling" }
+          : prev);
+        if (!kicked && !pcRef.current && shouldOfferForCallRef.current && channelRef.current) {
+          kicked = true;
+          voiceTrace("dm.peerHeartbeat.forceOffer", { callEventId: currentCallEventId, peerId: activeCall.peerId });
+          outgoingCallMetaRef.current = { conversationId: activeCall.conversationId, callEventId: currentCallEventId };
+          await initializeOutgoingConnection(channelRef.current, activeCall.conversationId, { forceFreshOffer: true });
+        }
+      } catch (e) {
+        console.warn("[VoiceTrace] dm.peerHeartbeat.checkFailed", e);
+      }
+    };
+    const interval = window.setInterval(tick, 3000);
+    void tick();
+    return () => { cancelled = true; window.clearInterval(interval); };
+  }, [activeCall?.conversationId, activeCall?.peerId, activeCall?.peerLeftAt, activeCall?.ringTimedOut, activeCall?.state, user, currentCallEventId, initializeOutgoingConnection]);
 
   // v0.4.0: Synthetic pickup self-test. Two in-process peer connections play
   // caller + callee; we run the exact same answer-with-retry helper against

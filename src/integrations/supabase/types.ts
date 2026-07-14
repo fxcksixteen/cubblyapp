@@ -1602,6 +1602,10 @@ export type Database = {
         Args: { _color?: string; _name: string; _server_id: string }
         Returns: string
       }
+      debug_voice_snapshot: {
+        Args: { _call_event_id?: string; _conversation_id: string }
+        Returns: Json
+      }
       decline_message_request: {
         Args: { _request_id: string }
         Returns: undefined

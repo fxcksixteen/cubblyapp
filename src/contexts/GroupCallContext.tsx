@@ -304,6 +304,28 @@ async function sendGroupSignalReliably(
   }
 }
 
+const groupTrace = (phase: string, details?: Record<string, unknown>) => {
+  try {
+    console.log(`[GroupVoiceTrace] ${phase}`, details || {});
+  } catch {
+    console.log(`[GroupVoiceTrace] ${phase}`);
+  }
+};
+
+async function logGroupVoiceDiagnostic(conversationId: string | null | undefined, tag: string, callEventId?: string | null) {
+  if (!conversationId) return;
+  try {
+    const { data, error } = await (supabase as any).rpc("debug_voice_snapshot", {
+      _conversation_id: conversationId,
+      _call_event_id: callEventId ?? null,
+    });
+    if (error) console.warn(`[GroupVoiceTrace] diag.${tag}.error`, error);
+    else console.log(`[GroupVoiceTrace] diag.${tag}`, data);
+  } catch (e) {
+    console.warn(`[GroupVoiceTrace] diag.${tag}.threw`, e);
+  }
+}
+
 
 
 export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
@@ -728,6 +750,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     }
     const isServerChannel = !!options?.isServerChannel;
     console.log("[GroupCall] 📞 Starting group call in", conversationId, "with", memberIds.length, "members", isServerChannel ? "(server channel)" : "");
+    groupTrace("start", { conversationId, memberCount: memberIds.length, isServerChannel });
 
     // v0.3.17: defensively wipe any stale PCs/senders left over from a prior
     // call that didn't fully clean up. Reusing an existing PC from a prior
@@ -834,13 +857,23 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     // Insert participant row for self via the heartbeat RPC so left_at is
     // cleared and last_seen_at is fresh (revives any prior row instead of
     // failing the unique constraint).
-    await (supabase as any).rpc("heartbeat_call_participant", {
+    const heartbeatRes: any = await (supabase as any).rpc("heartbeat_call_participant", {
       _call_event_id: callEventId,
       _is_muted: false,
       _is_deafened: false,
       _is_video_on: false,
       _is_screen_sharing: false,
     });
+    if (heartbeatRes?.error) {
+      console.error("[GroupVoiceTrace] participant.heartbeat.failed", { conversationId, callEventId, error: heartbeatRes.error });
+      void logGroupVoiceDiagnostic(conversationId, "join-heartbeat-failed", callEventId);
+      localStreamRef.current?.getTracks().forEach(t => t.stop());
+      localStreamRef.current = null;
+      stopSelfMonitor();
+      return;
+    }
+    groupTrace("participant.heartbeat.ok", { conversationId, callEventId, userId: user.id });
+    void logGroupVoiceDiagnostic(conversationId, isServerChannel ? "server-join" : "group-join", callEventId);
 
     setActiveCall({ conversationId, conversationName, joinedAt: callStartedAt, isMuted: false, isDeafened: false, isVideoOn: false, isScreenSharing: false });
     playSound("joinCall", { volume: 0.4 });
@@ -1025,7 +1058,8 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         }
       });
 
-      channel.subscribe((status) => {
+      channel.subscribe((status, err) => {
+        groupTrace("channel.status", { conversationId, status, error: err instanceof Error ? err.message : undefined });
         if (status === "SUBSCRIBED") {
           channelRef.current = channel;
           // Announce our presence so existing peers offer to us
@@ -1039,6 +1073,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
           sendJoin(1800);
           resolve();
         } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          void logGroupVoiceDiagnostic(conversationId, `channel-${status.toLowerCase()}`, callEventIdRef.current);
           reject(new Error(`Group channel subscribe failed: ${status}`));
         }
       });
@@ -1079,13 +1114,23 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     // row is REVIVED (left_at cleared) instead of failing the unique
     // (call_event_id, user_id) constraint.
     if (inc.callEventId) {
-      await (supabase as any).rpc("heartbeat_call_participant", {
+      const res: any = await (supabase as any).rpc("heartbeat_call_participant", {
         _call_event_id: inc.callEventId,
         _is_muted: false,
         _is_deafened: false,
         _is_video_on: false,
         _is_screen_sharing: false,
       });
+      if (res?.error) {
+        console.error("[GroupVoiceTrace] accept.heartbeat.failed", { conversationId: inc.conversationId, callEventId: inc.callEventId, error: res.error });
+        void logGroupVoiceDiagnostic(inc.conversationId, "accept-heartbeat-failed", inc.callEventId);
+        localStreamRef.current?.getTracks().forEach(t => t.stop());
+        localStreamRef.current = null;
+        stopSelfMonitor();
+        setActiveCall(null);
+        return;
+      }
+      groupTrace("accept.heartbeat.ok", { conversationId: inc.conversationId, callEventId: inc.callEventId });
     }
 
     await joinCallChannel(inc.conversationId);
@@ -1677,6 +1722,29 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     const seed = setTimeout(tick, 500);
     return () => { cancelled = true; clearInterval(i); clearTimeout(seed); };
   }, [activeCall?.conversationId, user, ensurePc, ensurePeerEntry]);
+
+  // Recover if the group/server broadcast channel closes while the user is
+  // still in the room. Rejoin signaling and rebroadcast peer-join so peers can
+  // offer without forcing a manual leave/rejoin.
+  useEffect(() => {
+    if (!activeCall || !user) return;
+    let cancelled = false;
+    const tick = async () => {
+      if (cancelled) return;
+      const ch: any = channelRef.current;
+      const state = ch?.state || ch?._state;
+      if (ch && state !== "closed" && state !== "errored" && state !== "leaving") return;
+      groupTrace("channel.recover", { conversationId: activeCall.conversationId, state: state || "missing" });
+      try {
+        await joinCallChannel(activeCall.conversationId);
+      } catch (e) {
+        console.warn("[GroupVoiceTrace] channel.recover.failed", e);
+        void logGroupVoiceDiagnostic(activeCall.conversationId, "channel-recover-failed", callEventIdRef.current);
+      }
+    };
+    const i = window.setInterval(tick, 3000);
+    return () => { cancelled = true; window.clearInterval(i); };
+  }, [activeCall?.conversationId, user, joinCallChannel]);
 
 
 
