@@ -23,9 +23,19 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.4.8";
+export const CURRENT_VERSION = "0.4.9";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.4.9",
+    title: "Voice reconnect fix",
+    date: "2026-07-14",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Fixed voice calls and server voice joins breaking during realtime reconnect loops.",
+    ],
+  },
   {
     version: "0.4.8",
     title: "Call reliability fix",

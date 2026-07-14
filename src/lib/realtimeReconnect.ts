@@ -35,11 +35,22 @@ export function subscribeWithReconnect(
   let attempt = 0;
   let current: SupabaseChannel | null = null;
   let timer: number | null = null;
+  let intentionalCloseUntil = 0;
+  let lastStatusLog = "";
+
+  const logStatus = (status: string, err?: unknown) => {
+    const message = err instanceof Error ? err.message : typeof err === "string" ? err : "";
+    const key = `${status}:${message}`;
+    if (status === "CLOSED" && key === lastStatusLog) return;
+    lastStatusLog = key;
+    log(`channel "${topicForCleanup}" status=${status}${message ? ` (${message})` : ""}`);
+  };
 
   const teardownCurrent = () => {
     if (current) {
       const toRemove = current;
       current = null;
+      intentionalCloseUntil = Date.now() + 1200;
       try { supabase.removeChannel(toRemove); } catch { /* ignore */ }
     }
     // Also ensure no other instances of this topic are lingering in the client cache
@@ -48,12 +59,13 @@ export function subscribeWithReconnect(
 
   const scheduleReconnect = (reason: string) => {
     if (cancelled) return;
+    if (timer) return;
     attempt += 1;
     const base = Math.min(15_000, 500 * 2 ** Math.min(attempt, 6));
     const delay = Math.floor(base * (0.75 + Math.random() * 0.5));
     log(`channel "${topicForCleanup}" needs reconnect (${reason}) — retrying in ${delay}ms (attempt ${attempt})`);
-    if (timer) window.clearTimeout(timer);
     timer = window.setTimeout(() => {
+      timer = null;
       if (cancelled) return;
       teardownCurrent();
       start();
@@ -76,14 +88,18 @@ export function subscribeWithReconnect(
     let everSubscribed = false;
 
     try {
-      ch.subscribe((status) => {
+      ch.subscribe((status, err) => {
         if (cancelled || ch !== current) return;
+        logStatus(status, err);
         if (status === "SUBSCRIBED") {
           attempt = 0;
           everSubscribed = true;
           return;
         }
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+          if (status === "CLOSED" && Date.now() < intentionalCloseUntil) {
+            return;
+          }
           // Ignore the CLOSED that fires synchronously during the rebuild
           // itself. Only treat it as a real failure if we've been alive 
           // long enough OR already reached SUBSCRIBED before.
