@@ -1,0 +1,2 @@
+REVOKE EXECUTE ON FUNCTION public.clear_wishlist_item_when_owned() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.prevent_owned_item_on_wishlist() FROM PUBLIC, anon, authenticated;
