@@ -94,7 +94,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (!user) return;
     const topic = `my-profile-status:${user.id}`;
     const cleanup = subscribeWithReconnect(topic, () => {
-      removeChannelByTopic(topic);
       const channel = supabase.channel(topic);
       channel.on(
         "postgres_changes",
@@ -180,7 +179,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
     const profilesTopic = `presence-profiles:${user.id}`;
     const cleanupProfiles = subscribeWithReconnect(profilesTopic, () => {
-      removeChannelByTopic(profilesTopic);
       const ch = supabase.channel(profilesTopic);
       ch.on(
         "postgres_changes",

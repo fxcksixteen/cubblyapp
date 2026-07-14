@@ -1,32 +1,5 @@
 /**
  * Global realtime reconnect watchdog.
- *
- * Why this exists:
- *   Supabase Realtime channels can silently die in three ways that all
- *   produce "status indicators stuck offline / no live updates" reports:
- *     1. The WebSocket transport itself drops (network blip, sleep/resume,
- *        proxy idle-timeout). The client emits "CHANNEL_ERROR" or "CLOSED"
- *        on every channel.
- *     2. The tab gets backgrounded long enough that the browser kills
- *        timers; on visibilitychange we wake up but channels still think
- *        they're subscribed even though the socket is dead.
- *     3. supabase-js holds onto a cached channel after a callback throws,
- *        and any later .on() call errors with "cannot add ... callbacks
- *        after subscribe()".
- *
- * Strategy:
- *   - `installRealtimeWatchdog()` (called once from <App />) listens to
- *     window online/offline + visibilitychange + the realtime socket's own
- *     close/error events. When trouble is detected it calls
- *     `supabase.realtime.disconnect()` then `.connect()`. supabase-js will
- *     auto-rejoin every still-mounted channel.
- *   - `subscribeWithReconnect(channel, factory)` wraps `.subscribe()` and,
- *     on a non-SUBSCRIBED terminal status (CHANNEL_ERROR / TIMED_OUT /
- *     CLOSED), removes the channel and rebuilds it via `factory()` after
- *     an exponential backoff. This survives the case where the realtime
- *     socket is up but a single channel has gotten wedged.
- *   - `removeChannelByTopic(name)` clears any cached channel for a topic
- *     before recreating one — fixes the "callbacks after subscribe" throw.
  */
 
 import { supabase } from "@/integrations/supabase/client";
@@ -53,12 +26,6 @@ export function removeChannelByTopic(name: string) {
 
 /**
  * Subscribe with auto-reconnect on terminal errors.
- *
- * @param build  Factory that creates a brand new channel + attaches all
- *               .on() handlers. MUST NOT call .subscribe() itself.
- * @returns      A `cleanup()` you should call on unmount. It tears down
- *               whatever channel is currently live and cancels pending
- *               reconnect timers.
  */
 export function subscribeWithReconnect(
   topicForCleanup: string,
@@ -71,15 +38,17 @@ export function subscribeWithReconnect(
 
   const teardownCurrent = () => {
     if (current) {
-      try { supabase.removeChannel(current); } catch { /* ignore */ }
+      const toRemove = current;
       current = null;
+      try { supabase.removeChannel(toRemove); } catch { /* ignore */ }
     }
+    // Also ensure no other instances of this topic are lingering in the client cache
+    removeChannelByTopic(topicForCleanup);
   };
 
   const scheduleReconnect = (reason: string) => {
     if (cancelled) return;
     attempt += 1;
-    // Exponential backoff capped at 15s, with ±25% jitter.
     const base = Math.min(15_000, 500 * 2 ** Math.min(attempt, 6));
     const delay = Math.floor(base * (0.75 + Math.random() * 0.5));
     log(`channel "${topicForCleanup}" needs reconnect (${reason}) — retrying in ${delay}ms (attempt ${attempt})`);
@@ -87,8 +56,6 @@ export function subscribeWithReconnect(
     timer = window.setTimeout(() => {
       if (cancelled) return;
       teardownCurrent();
-      // Make sure no stale cached channel keeps us from re-attaching .on()s.
-      removeChannelByTopic(topicForCleanup);
       start();
     }, delay);
   };
@@ -107,9 +74,10 @@ export function subscribeWithReconnect(
     current = ch;
     const subscribedAt = Date.now();
     let everSubscribed = false;
+
     try {
       ch.subscribe((status) => {
-        if (cancelled) return;
+        if (cancelled || ch !== current) return;
         if (status === "SUBSCRIBED") {
           attempt = 0;
           everSubscribed = true;
@@ -117,10 +85,9 @@ export function subscribeWithReconnect(
         }
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
           // Ignore the CLOSED that fires synchronously during the rebuild
-          // itself — that's the previous channel tearing down, not a failure
-          // of the new one. Only treat it as a real failure if we've either
-          // been alive long enough OR already reached SUBSCRIBED before.
-          if (status === "CLOSED" && !everSubscribed && Date.now() - subscribedAt < 800) {
+          // itself. Only treat it as a real failure if we've been alive 
+          // long enough OR already reached SUBSCRIBED before.
+          if (status === "CLOSED" && !everSubscribed && Date.now() - subscribedAt < 2000) {
             return;
           }
           scheduleReconnect(status);
@@ -134,11 +101,8 @@ export function subscribeWithReconnect(
 
   start();
 
-  // Re-attempt immediately when a global wake-up fires.
   const onWake = () => {
     if (cancelled) return;
-    // Light retry — don't reset attempt counter, but kick a reconnect if
-    // we've been sitting in a backoff for a while.
     if (timer) {
       window.clearTimeout(timer);
       timer = null;
@@ -157,37 +121,24 @@ export function subscribeWithReconnect(
 
 let watchdogInstalled = false;
 
-/**
- * Install global hooks that detect when the realtime socket has gone
- * stale (network change, tab wake, OS sleep/resume) and force the client
- * to reconnect. supabase-js auto-rejoins all live channels after a
- * successful reconnect.
- *
- * Safe to call multiple times — only the first call wires anything up.
- */
 export function installRealtimeWatchdog() {
   if (watchdogInstalled || typeof window === "undefined") return;
   watchdogInstalled = true;
 
   let lastWakeAt = 0;
   const fireWake = (reason: string) => {
-    // Debounce — bursts of online/visible/focus shouldn't tear healthy
-    // channels down repeatedly.
     const now = Date.now();
     if (now - lastWakeAt < 10_000) return;
     lastWakeAt = now;
     log(`watchdog wake (${reason}) — pinging realtime`);
     try {
       const realtime: any = (supabase as any).realtime;
-      // Only force-cycle the socket if it's actually closed. Reconnecting a
-      // healthy socket is what was causing the global:online CLOSED loop.
       const isOpen = realtime?.isConnected?.() ?? realtime?.conn?.readyState === 1;
       if (!isOpen) {
         try { realtime?.disconnect?.(); } catch { /* ignore */ }
         try { realtime?.connect?.(); } catch { /* ignore */ }
       }
     } catch { /* ignore */ }
-    // Tell every wrapped subscription to reconsider its state.
     try { window.dispatchEvent(new Event("cubbly:realtime-wake")); } catch { /* ignore */ }
   };
 
@@ -197,9 +148,6 @@ export function installRealtimeWatchdog() {
   });
   window.addEventListener("focus", () => fireWake("focus"));
 
-  // Periodic safety net: every 30s, if the page is visible but the socket
-  // is closed, force a reconnect. Catches the rare case where the browser
-  // never fires online/visibility but the socket has died (proxy idle).
   window.setInterval(() => {
     if (document.visibilityState !== "visible") return;
     try {
@@ -208,13 +156,6 @@ export function installRealtimeWatchdog() {
       if (!isOpen) fireWake("interval-dead-socket");
     } catch { /* ignore */ }
   }, 30_000);
-
-  // NOTE: We deliberately do NOT hook realtime.onError / onClose here.
-  // Those events fire as part of normal channel lifecycle (including during
-  // a reconnect we triggered), and re-firing fireWake from inside a close
-  // event creates a tight reconnect loop that prevents any channel from
-  // ever reaching SUBSCRIBED — which is exactly the bug that caused every
-  // user's status indicator to flap online/offline forever.
 
   log("watchdog installed");
 }
