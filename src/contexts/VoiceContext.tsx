@@ -1715,6 +1715,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         }
 
         if (payload.type === "peer-accepted") {
+          voiceTrace("dm.peerAccepted", { conversationId, callEventId: payload.callEventId, from: payload.senderId });
           if (payload.callEventId && callEventIdSnapshot && payload.callEventId !== callEventIdSnapshot) {
             // v0.4.6: same drift case as ready-for-offer — if we're actively
             // ringing on this conversation, adopt the callee's call_event id.
@@ -2003,6 +2004,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             return;
           }
           console.log("[Voice] 📥 Answer received, setting remote description...");
+          voiceTrace("dm.answer.received", { conversationId, callEventId: payload.callEventId, signalingState: pc.signalingState });
           stopLooping("outgoingRing"); // peer picked up — stop ringing
           setActiveCall(prev => prev && prev.conversationId === conversationId
             ? { ...prev, state: prev.state === "connected" ? "connected" : "calling", ringTimedOut: false, peerLeftAt: undefined }
@@ -2052,6 +2054,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         // The call_event row is only marked ended once the last participant
         // leaves (see endCall).
         if (payload.type === "hangup" || payload.type === "peer-leave") {
+          voiceTrace("dm.peerLeft", { conversationId, callEventId: payload.callEventId, from: payload.senderId, current: callEventIdSnapshot });
           // v0.3.8: ignore stale peer-leaves from a *previous* call_event in
           // the same conversation. Without this scoping, a delayed broadcast
           // from a hung-up attempt could instantly kick us out of the brand-
