@@ -162,10 +162,10 @@ function loadUserVoiceSettings(): StoredVoiceSettings {
   }
 }
 
-function buildGroupMicConstraints(hiFi: boolean): MediaTrackConstraints {
+function buildGroupMicConstraints(hiFi: boolean, keepDeviceId: boolean): MediaTrackConstraints {
   const s = loadUserVoiceSettings();
   const base: MediaTrackConstraints = {
-    deviceId: s.inputDeviceId && s.inputDeviceId !== "default" ? { exact: s.inputDeviceId } : undefined,
+    deviceId: keepDeviceId && s.inputDeviceId && s.inputDeviceId !== "default" ? { exact: s.inputDeviceId } : undefined,
     echoCancellation: s.echoCancellation ?? true,
     noiseSuppression: s.noiseSuppression ?? true,
     autoGainControl: s.autoGainControl ?? true,
@@ -177,20 +177,75 @@ function buildGroupMicConstraints(hiFi: boolean): MediaTrackConstraints {
   return base;
 }
 
-async function getGroupMicSafe(): Promise<MediaStream> {
-  const hiFi = buildGroupMicConstraints(true);
+function clearStoredGroupInputDevice(reason: string) {
   try {
-    const s = await navigator.mediaDevices.getUserMedia({ audio: hiFi, video: false });
+    const raw = localStorage.getItem("cubbly-voice-settings");
+    const parsed = raw ? JSON.parse(raw) : {};
+    if (parsed.inputDeviceId && parsed.inputDeviceId !== "default") {
+      parsed.inputDeviceId = "default";
+      localStorage.setItem("cubbly-voice-settings", JSON.stringify(parsed));
+      window.dispatchEvent(new CustomEvent("cubbly:voice-settings-changed"));
+      console.warn(`[GroupCall] 🎙️ stale inputDeviceId cleared (${reason})`);
+    }
+  } catch {}
+}
+
+async function getGroupMicSafe(): Promise<MediaStream> {
+  const isConstraintErr = (e: any) => {
+    const n = e?.name || "";
+    return n === "OverconstrainedError" || n === "NotReadableError" || n === "NotFoundError" || n === "TypeError";
+  };
+  const tryGet = (audio: MediaTrackConstraints | true) =>
+    navigator.mediaDevices.getUserMedia({ audio, video: false });
+
+  // Tier A: hi-fi + deviceId
+  try {
+    const s = await tryGet(buildGroupMicConstraints(true, true));
     try { console.log("[GroupCall] 🎙️ mic settings:", s.getAudioTracks()[0]?.getSettings?.()); } catch {}
     return s;
   } catch (e: any) {
-    const name = e?.name || "";
-    if (name === "OverconstrainedError" || name === "NotReadableError" || name === "TypeError") {
-      console.warn("[GroupCall] 🎙️ hi-fi constraints rejected (", name, ") — falling back");
-      const s = await navigator.mediaDevices.getUserMedia({ audio: buildGroupMicConstraints(false), video: false });
-      try { console.log("[GroupCall] 🎙️ mic settings (fallback):", s.getAudioTracks()[0]?.getSettings?.()); } catch {}
-      return s;
-    }
+    if (!isConstraintErr(e)) throw e;
+    console.warn("[GroupCall] 🎙️ hi-fi constraints rejected (", e?.name, ")");
+  }
+
+  // Tier B: base + deviceId
+  try {
+    const s = await tryGet(buildGroupMicConstraints(false, true));
+    try { console.log("[GroupCall] 🎙️ mic settings (base):", s.getAudioTracks()[0]?.getSettings?.()); } catch {}
+    return s;
+  } catch (e: any) {
+    if (!isConstraintErr(e)) throw e;
+    console.warn("[GroupCall] 🎙️ base constraints rejected (", e?.name, ")");
+    try {
+      const devs = await navigator.mediaDevices.enumerateDevices();
+      console.warn("[GroupVoiceTrace] mic.devices", devs.filter(d => d.kind === "audioinput").map(d => ({ id: d.deviceId, label: d.label })));
+    } catch {}
+  }
+
+  // Tier C: drop deviceId
+  try {
+    const s = await tryGet(buildGroupMicConstraints(false, false));
+    try { console.log("[GroupCall] 🎙️ mic settings (no-device):", s.getAudioTracks()[0]?.getSettings?.()); } catch {}
+    clearStoredGroupInputDevice("tier-c");
+    return s;
+  } catch (e: any) {
+    if (!isConstraintErr(e)) throw e;
+    console.warn("[GroupCall] 🎙️ no-device constraints rejected (", e?.name, ")");
+  }
+
+  // Tier D: bare
+  try {
+    const s = await tryGet(true);
+    try { console.log("[GroupCall] 🎙️ mic settings (bare):", s.getAudioTracks()[0]?.getSettings?.()); } catch {}
+    clearStoredGroupInputDevice("tier-d");
+    return s;
+  } catch (e: any) {
+    console.error("[GroupCall] 🎙️ mic acquisition failed on all tiers:", e);
+    try {
+      toast.error("Couldn't open your microphone", {
+        description: "Check that a mic is connected and Cubbly has mic permission, then rejoin the call.",
+      });
+    } catch {}
     throw e;
   }
 }
