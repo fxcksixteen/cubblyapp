@@ -2699,6 +2699,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     if (!incomingCall || !user) return;
     const acceptedCall = incomingCall;
     console.log("[Voice] ✅ Accepting call (direct path) from", acceptedCall.callerName);
+    voiceTrace("dm.accept.start", { conversationId: acceptedCall.conversationId, callEventId: acceptedCall.callEventId, callerId: acceptedCall.callerId, hasOffer: !!acceptedCall.offer });
 
     try {
       shouldOfferForCallRef.current = false;
@@ -2742,7 +2743,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
       // Heartbeat now so caller's live-peer check flips us to "in call".
       console.log("[acceptDiag] accept.start", { callEventId: acceptedCall.callEventId, hasOffer: !!acceptedCall.offer });
-      void heartbeatWithRetry(acceptedCall.callEventId, "accept-init");
+      await heartbeatWithRetry(acceptedCall.callEventId, "accept-init");
+      void logVoiceDiagnostic(acceptedCall.conversationId, "accept-after-heartbeat", acceptedCall.callEventId);
 
       const channel = await setupSignaling(acceptedCall.conversationId);
 
@@ -2751,6 +2753,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         senderId: user.id,
         callEventId: acceptedCall.callEventId,
       }, "peer-accepted");
+      voiceTrace("dm.accept.peerAccepted.sent", { conversationId: acceptedCall.conversationId, callEventId: acceptedCall.callEventId });
 
       // FAST PATH — caller's offer was prefetched during the pre-accept
       // ready-for-offer. Just answer it.
@@ -2870,6 +2873,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           return;
         } catch (e) {
           console.error("[acceptDiag] Direct-answer accept failed, falling back to ready-for-offer:", e);
+          void logVoiceDiagnostic(acceptedCall.conversationId, "accept-direct-failed", acceptedCall.callEventId);
           acceptInFlightRef.current = null;
           pendingRetryOfferRef.current = null;
           // fall through
@@ -2912,6 +2916,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       }
 
       const sendReady = (forceFreshOffer = false) => {
+        voiceTrace("dm.accept.readyForOffer.send", { conversationId: acceptedCall.conversationId, callEventId: acceptedCall.callEventId, forceFreshOffer });
         void sendSignalReliably(channel, {
           type: "ready-for-offer",
           senderId: user.id,
