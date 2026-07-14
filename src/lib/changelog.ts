@@ -23,9 +23,20 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.4.9";
+export const CURRENT_VERSION = "0.4.10";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.4.10",
+    title: "Microphone fallback fix",
+    date: "2026-07-14",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Fixed calls failing to connect when your saved mic device wasn't available.",
+      "You now get a clear notice when Cubbly can't open your microphone.",
+    ],
+  },
   {
     version: "0.4.9",
     title: "Voice reconnect fix",
