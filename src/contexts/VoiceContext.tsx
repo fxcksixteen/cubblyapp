@@ -926,40 +926,103 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
 
   const getUserMedia = useCallback(async () => {
-    // v0.3.17: `sampleSize: 24` paired with `deviceId: { exact: ... }` made
-    // Chrome throw OverconstrainedError on a subset of consumer mics (most
-    // famously the kaszy ↔ geassbound pair) — no consumer mic actually does
-    // 24-bit. The throw killed every offer attempt and the call silently died
-    // after the 30s ring timeout. We now drop sampleSize entirely and retry
-    // without sampleRate/channelCount if the strict path still throws.
-    // iOS Safari is even pickier so it gets only the universally-supported
-    // booleans up-front.
-    const audioBase: MediaTrackConstraints = {
-      deviceId: settings.inputDeviceId !== "default" ? { exact: settings.inputDeviceId } : undefined,
+    // v0.4.10: The previous fallback still carried `deviceId: { exact: ... }`
+    // so if the user's stored input device is no longer present (unplugged
+    // headset, driver reset, Electron device-id rotation) EVERY tier threw
+    // OverconstrainedError and the user could not join any call. Real tiered
+    // fallback: hi-fi → base w/ deviceId → drop deviceId → bare `audio: true`.
+    // If we succeed only after dropping the deviceId, persist inputDeviceId
+    // back to "default" so future acquisitions don't hit the same wall.
+    const wantDeviceId = settings.inputDeviceId && settings.inputDeviceId !== "default";
+    const withDevice: MediaTrackConstraints = {
+      deviceId: wantDeviceId ? { exact: settings.inputDeviceId } : undefined,
       echoCancellation: settings.echoCancellation,
       noiseSuppression: settings.noiseSuppression,
       autoGainControl: settings.autoGainControl,
     };
-    const tryGet = async (audio: MediaTrackConstraints) =>
+    const noDevice: MediaTrackConstraints = {
+      echoCancellation: settings.echoCancellation,
+      noiseSuppression: settings.noiseSuppression,
+      autoGainControl: settings.autoGainControl,
+    };
+    const tryGet = (audio: MediaTrackConstraints | true) =>
       navigator.mediaDevices.getUserMedia({ audio, video: false });
 
-    if (isMobile) {
-      const s = await tryGet(audioBase);
+    const clearStaleDevice = (reason: string) => {
+      if (!wantDeviceId) return;
+      try {
+        const raw = localStorage.getItem("cubbly-voice-settings");
+        const parsed = raw ? JSON.parse(raw) : {};
+        parsed.inputDeviceId = "default";
+        localStorage.setItem("cubbly-voice-settings", JSON.stringify(parsed));
+        window.dispatchEvent(new CustomEvent("cubbly:voice-settings-changed"));
+      } catch {}
+      setSettings(prev => ({ ...prev, inputDeviceId: "default" }));
+      console.warn(`[Voice] 🎙️ stale inputDeviceId cleared (${reason})`);
+    };
+
+    const isConstraintErr = (e: any) => {
+      const n = e?.name || "";
+      return n === "OverconstrainedError" || n === "NotReadableError" || n === "NotFoundError" || n === "TypeError";
+    };
+
+    const logDevices = async () => {
+      try {
+        const devs = await navigator.mediaDevices.enumerateDevices();
+        const inputs = devs.filter(d => d.kind === "audioinput").map(d => ({ id: d.deviceId, label: d.label }));
+        console.warn("[VoiceTrace] mic.devices", { stored: settings.inputDeviceId, inputs });
+      } catch {}
+    };
+
+    // Tier A: hi-fi (desktop only)
+    if (!isMobile) {
+      try {
+        const s = await tryGet({ ...withDevice, sampleRate: 48000, channelCount: 2 } as MediaTrackConstraints);
+        try { console.log("[Voice] 🎙️ mic settings (hi-fi):", s.getAudioTracks()[0]?.getSettings?.()); } catch {}
+        return s;
+      } catch (e: any) {
+        if (!isConstraintErr(e)) throw e;
+        console.warn("[Voice] 🎙️ hi-fi constraints rejected (", e?.name, ") — falling back");
+      }
+    }
+
+    // Tier B: base w/ deviceId
+    try {
+      const s = await tryGet(isMobile ? withDevice : withDevice);
       try { console.log("[Voice] 🎙️ mic settings:", s.getAudioTracks()[0]?.getSettings?.()); } catch {}
       return s;
+    } catch (e: any) {
+      if (!isConstraintErr(e)) throw e;
+      console.warn("[Voice] 🎙️ base constraints rejected (", e?.name, ")");
+      await logDevices();
     }
+
+    // Tier C: drop deviceId
     try {
-      const s = await tryGet({ ...audioBase, sampleRate: 48000, channelCount: 2 } as MediaTrackConstraints);
-      try { console.log("[Voice] 🎙️ mic settings (hi-fi):", s.getAudioTracks()[0]?.getSettings?.()); } catch {}
+      const s = await tryGet(noDevice);
+      try { console.log("[Voice] 🎙️ mic settings (no-device):", s.getAudioTracks()[0]?.getSettings?.()); } catch {}
+      clearStaleDevice("tier-c");
       return s;
     } catch (e: any) {
-      const name = e?.name || "";
-      if (name === "OverconstrainedError" || name === "NotReadableError" || name === "TypeError") {
-        console.warn("[Voice] 🎙️ hi-fi constraints rejected (", name, ") — falling back to basic constraints");
-        const s = await tryGet(audioBase);
-        try { console.log("[Voice] 🎙️ mic settings (fallback):", s.getAudioTracks()[0]?.getSettings?.()); } catch {}
-        return s;
-      }
+      if (!isConstraintErr(e)) throw e;
+      console.warn("[Voice] 🎙️ no-device constraints rejected (", e?.name, ")");
+    }
+
+    // Tier D: bare
+    try {
+      const s = await tryGet(true);
+      try { console.log("[Voice] 🎙️ mic settings (bare):", s.getAudioTracks()[0]?.getSettings?.()); } catch {}
+      clearStaleDevice("tier-d");
+      return s;
+    } catch (e: any) {
+      console.error("[Voice] 🎙️ mic acquisition failed on all tiers:", e);
+      try {
+        toast({
+          title: "Couldn't open your microphone",
+          description: "Check that a mic is connected and Cubbly has mic permission, then reopen the call.",
+          variant: "destructive",
+        });
+      } catch {}
       throw e;
     }
   }, [settings.inputDeviceId, settings.echoCancellation, settings.noiseSuppression, settings.autoGainControl]);
