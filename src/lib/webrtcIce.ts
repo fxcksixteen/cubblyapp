@@ -54,6 +54,8 @@ export async function relayCandidateAppears(servers: RTCIceServer[], timeoutMs =
   });
 }
 
+let warnedTurnFallbackThisSession = false;
+
 export async function sanitizeIceServersForSession(servers: RTCIceServer[] | null | undefined): Promise<RTCIceServer[]> {
   const next = Array.isArray(servers) && servers.length > 0 ? servers : STUN_FALLBACK_SERVERS;
   if (!hasTurnServers(next)) return next;
@@ -61,6 +63,9 @@ export async function sanitizeIceServersForSession(servers: RTCIceServer[] | nul
   const relayOk = await relayCandidateAppears(next);
   if (relayOk) return next;
 
-  console.warn("[WebRTC] TURN relay did not produce candidates quickly; using direct/STUN candidates for this session");
+  if (!warnedTurnFallbackThisSession) {
+    warnedTurnFallbackThisSession = true;
+    console.warn("[WebRTC] TURN relay did not produce candidates quickly; using direct/STUN candidates for this session");
+  }
   return withoutTurnServers(next);
 }
