@@ -1,45 +1,35 @@
-## Plan: v0.4.8 call-system repair
+## v0.4.9 plan
 
-Fix both call systems as one patch, and prep the desktop changelog/version only. No web publish/deploy.
+**Do I know what the issue is?** Yes for the reconnect storm: the realtime reconnect helper is treating intentional channel removals as real `CLOSED` failures, causing repeated reconnects on `my-profile-status` and `presence-profiles`. That can drop broadcast signaling, which explains both DM pickup/rejoin and server voice joins failing at the same time.
 
-## What I’ll change
+### 1. Stop the realtime reconnect storm
+- Patch the global realtime reconnect helper so `CLOSED` events caused by our own cleanup/rebuild are ignored.
+- Prevent overlapping reconnect timers for the same topic.
+- Move stale-topic cleanup into the helper itself, instead of removing channels from inside the factory callbacks.
+- Add concise status logs that show `SUBSCRIBED`, `CLOSED`, `CHANNEL_ERROR`, `TIMED_OUT`, and any error reason without spamming every second.
 
-1. **Stop DM calls from splitting into separate call events**
-   - Make 1:1 DM calls reuse one canonical ongoing `call_event` per conversation.
-   - When Accept/Rejoin sees a different live event, adopt the canonical event instead of creating or staying on a separate one.
-   - Prevent the caller and callee from ending up with different `callEventId`s after stale participant cleanup.
+### 2. Fix DM pickup and rejoin state recovery
+- Add crystal-clear `[VoiceTrace]` logs for every DM phase: start, existing call lookup, participant heartbeat, channel subscribe, incoming ring, accept, ready-for-offer, offer, answer, ICE, peer-left, timeout, and rejoin.
+- On accept/rejoin, verify the current user’s participant row was actually revived; if not, retry and log the exact backend failure.
+- Clear stale `ringTimedOut` / `peerLeftAt` immediately when `peer-accepted`, `answer`, or a fresh peer heartbeat proves the other person is in the call.
+- If both users are live in the same call row but no peer connection appears after a short timeout, force one deterministic renegotiation from the correct offerer instead of leaving the UI at “Not in call.”
 
-2. **Replace the brittle DM pickup handshake with a deterministic one**
-   - Caller/staying peer is the offerer; callee/rejoiner is the answerer.
-   - Accept will never become an offerer because of crossed `ready-for-offer` retries.
-   - Remove the caller-side auto-renegotiate behavior that keeps rebuilding offers after the peer already accepted and causes stuck/fake states.
-   - Make `peer-accepted` immediately move the caller out of Ringing while waiting for the answer/ICE.
+### 3. Fix server voice join reliability
+- Make the group/server voice channel recover if its realtime channel closes while the user is in a call: resubscribe, then rebroadcast `peer-join`.
+- Wrap the join heartbeat in explicit error handling so clicking Join cannot silently fail.
+- After joining a server voice call, verify the participant row exists and log the current live participant list.
+- Keep the existing participant reconciliation, but add clearer logs for “no channel,” “no participant row,” “no offer received,” and “directed peer-join sent.”
 
-3. **Fix DM Rejoin when the other side says “Not in call”**
-   - When one user leaves and rejoins, keep the staying user as the offerer and force a clean offer for the same event.
-   - If the staying user is listening but has no PC/pending offer, rebuild exactly once instead of ignoring the joiner forever.
-   - Ensure heartbeats clear `left_at` and refresh before signaling so the call pill/UI sees both users in the same call.
+### 4. Add backend diagnostics for account-specific failures
+- Add a protected diagnostic function that returns a compact voice snapshot for the current user/conversation: membership result, server membership result when relevant, ongoing call rows, and live participant rows.
+- Call it from failed DM accept/rejoin and failed server join paths so the next logs immediately show whether this is a specific account/membership/call-row issue.
 
-4. **Fix server voice-channel joins for everyone**
-   - Rework server/group call channel subscription so stale channels are removed before joining a new room.
-   - Broadcast `peer-join` reliably with short retries after subscription, because a single dropped join broadcast currently leaves existing peers unaware of the joiner.
-   - When a server-channel join receives no offers, retry `peer-join` so the joiner can still connect without leaving/reclicking.
-   - Keep one active server voice call event per channel and make participant heartbeat revive old rows correctly.
+### 5. Prepare desktop patch metadata only
+- Bump the desktop app version to `0.4.9`.
+- Add a short v0.4.9 changelog entry only.
+- Do not publish the web app.
 
-5. **Harden group/server WebRTC negotiation**
-   - Await/retry critical `group-signal` sends (`peer-join`, `offer`, `answer`, ICE) enough to avoid silent broadcast drops.
-   - Make offer collision handling recover instead of permanently ignoring a peer.
-   - Preserve existing camera/screen-share behavior while fixing initial join reliability.
-
-6. **v0.4.8 desktop patch prep**
-   - Bump app/desktop version from `0.4.7` to `0.4.8`.
-   - Add a short changelog entry with user-facing bullets only.
-   - Do not publish or deploy the web version.
-
-## Technical notes
-
-- Primary files: `src/contexts/VoiceContext.tsx`, `src/contexts/GroupCallContext.tsx`, `src/lib/changelog.ts`, `package.json`.
-- Likely no backend schema migration unless existing RPC behavior is missing a required stale-event/heartbeat guarantee.
-- The logs point to two root causes:
-  - DM calls still drift across multiple ongoing `call_event`s and retry loops keep rebuilding/rebroadcasting offers without a clean answer.
-  - Server calls depend on a single best-effort `peer-join` broadcast; if that is dropped, the joiner enters the call locally but existing peers never connect to them.
+<presentation-actions>
+  <presentation-open-history>View History</presentation-open-history>
+  <presentation-link url="https://docs.lovable.dev/tips-tricks/troubleshooting">Troubleshooting docs</presentation-link>
+</presentation-actions>
