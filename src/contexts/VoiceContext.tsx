@@ -3568,15 +3568,17 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       // Use the heartbeat RPC — it upserts on (call_event_id, user_id) AND
       // clears left_at, which is what makes rejoin/reaccept revive a stale
       // participant row instead of failing silently on the UNIQUE constraint.
-      await (supabase as any).rpc("heartbeat_call_participant", {
+      const res: any = await (supabase as any).rpc("heartbeat_call_participant", {
         _call_event_id: evtId,
         _is_muted: patch.is_muted ?? null,
         _is_deafened: patch.is_deafened ?? null,
         _is_video_on: patch.is_video_on ?? null,
         _is_screen_sharing: patch.is_screen_sharing ?? null,
       });
+      if (res?.error) throw res.error;
     } catch (e) {
       console.warn("[Voice] heartbeat_call_participant RPC failed:", e);
+      void logVoiceDiagnostic(activeCallRef.current?.conversationId, "state-heartbeat-failed", evtId);
     }
   }, [user, currentCallEventId]);
 
@@ -4161,6 +4163,44 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     const i = setInterval(tick, 10_000);
     return () => clearInterval(i);
   }, [activeCall, user, currentCallEventId, isScreenSharing]);
+
+  // If the peer has a fresh participant heartbeat but a signaling packet was
+  // missed, clear stale "Not in call" state and kick one deterministic offer.
+  useEffect(() => {
+    if (!activeCall || !user || !currentCallEventId) return;
+    if (!activeCall.peerLeftAt && !activeCall.ringTimedOut && pcRef.current) return;
+    let cancelled = false;
+    let kicked = false;
+    const tick = async () => {
+      try {
+        const { data } = await supabase
+          .from("call_participants")
+          .select("user_id, last_seen_at, joined_at, left_at")
+          .eq("call_event_id", currentCallEventId)
+          .eq("user_id", activeCall.peerId)
+          .is("left_at", null)
+          .maybeSingle();
+        if (cancelled || !data) return;
+        const baseline = Date.parse((data as any).last_seen_at ?? (data as any).joined_at ?? "");
+        if (!Number.isFinite(baseline) || Date.now() - baseline > 25_000) return;
+        voiceTrace("dm.peerHeartbeat.live", { callEventId: currentCallEventId, peerId: activeCall.peerId, state: activeCall.state });
+        setActiveCall(prev => prev && prev.conversationId === activeCall.conversationId
+          ? { ...prev, ringTimedOut: false, peerLeftAt: undefined, state: prev.state === "connected" ? "connected" : "calling" }
+          : prev);
+        if (!kicked && !pcRef.current && shouldOfferForCallRef.current && channelRef.current) {
+          kicked = true;
+          voiceTrace("dm.peerHeartbeat.forceOffer", { callEventId: currentCallEventId, peerId: activeCall.peerId });
+          outgoingCallMetaRef.current = { conversationId: activeCall.conversationId, callEventId: currentCallEventId };
+          await initializeOutgoingConnection(channelRef.current, activeCall.conversationId, { forceFreshOffer: true });
+        }
+      } catch (e) {
+        console.warn("[VoiceTrace] dm.peerHeartbeat.checkFailed", e);
+      }
+    };
+    const interval = window.setInterval(tick, 3000);
+    void tick();
+    return () => { cancelled = true; window.clearInterval(interval); };
+  }, [activeCall?.conversationId, activeCall?.peerId, activeCall?.peerLeftAt, activeCall?.ringTimedOut, activeCall?.state, user, currentCallEventId, initializeOutgoingConnection]);
 
   // v0.4.0: Synthetic pickup self-test. Two in-process peer connections play
   // caller + callee; we run the exact same answer-with-retry helper against
