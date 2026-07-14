@@ -1608,10 +1608,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           }
         } catch {}
       }
-      if (!peerAlive) return;
+      if (!peerAlive) {
+        voiceTrace("dm.pickupWatchdog.no-live-peer", { conversationId, watchedCallEventId, delay, iceState });
+        return;
+      }
       const priorRenegotiations = pickupRenegotiateCountRef.current[watchedCallEventId] || 0;
       if (priorRenegotiations >= 1) {
-        console.warn(`[Voice] ⏱ pickup-watchdog: suppressing extra renegotiate for ${watchedCallEventId.substring(0,8)}`);
+        voiceTrace("dm.pickupWatchdog.no-answer.suppressed", { conversationId, watchedCallEventId, delay, iceState });
         return;
       }
       // If we're on a mismatched callEventId, adopt the DB truth so the
@@ -1623,10 +1626,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         });
       } else if (currentCallEventIdRef.current !== watchedCallEventId) {
         // We drifted off the watched call — someone else's handler already adopted.
+        voiceTrace("dm.pickupWatchdog.stale-call-event", { conversationId, watchedCallEventId, current: currentCallEventIdRef.current, delay });
         return;
       }
       pickupRenegotiateCountRef.current[watchedCallEventId] = priorRenegotiations + 1;
       renegotiated = true;
+      voiceTrace("dm.pickupWatchdog.no-answer.renegotiate", { conversationId, watchedCallEventId, delay, iceState });
       console.warn(`[Voice] ⏱ pickup-watchdog: caller PC still ${iceState} at +${delay}ms but peer is live — auto-renegotiating`);
       try { pc.close(); } catch {}
       if (pcRef.current === pc) pcRef.current = null;
