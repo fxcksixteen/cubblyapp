@@ -867,7 +867,10 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     if (heartbeatRes?.error) {
       console.error("[GroupVoiceTrace] participant.heartbeat.failed", { conversationId, callEventId, error: heartbeatRes.error });
       void logGroupVoiceDiagnostic(conversationId, "join-heartbeat-failed", callEventId);
-      throw heartbeatRes.error;
+      localStreamRef.current?.getTracks().forEach(t => t.stop());
+      localStreamRef.current = null;
+      stopSelfMonitor();
+      return;
     }
     groupTrace("participant.heartbeat.ok", { conversationId, callEventId, userId: user.id });
     void logGroupVoiceDiagnostic(conversationId, isServerChannel ? "server-join" : "group-join", callEventId);
@@ -1121,6 +1124,10 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       if (res?.error) {
         console.error("[GroupVoiceTrace] accept.heartbeat.failed", { conversationId: inc.conversationId, callEventId: inc.callEventId, error: res.error });
         void logGroupVoiceDiagnostic(inc.conversationId, "accept-heartbeat-failed", inc.callEventId);
+        localStreamRef.current?.getTracks().forEach(t => t.stop());
+        localStreamRef.current = null;
+        stopSelfMonitor();
+        setActiveCall(null);
         return;
       }
       groupTrace("accept.heartbeat.ok", { conversationId: inc.conversationId, callEventId: inc.callEventId });
