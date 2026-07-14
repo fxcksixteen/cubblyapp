@@ -499,30 +499,18 @@ export function loadScreenShareSettings(): ScreenShareSettings {
 }
 
 async function detectBestRegion(): Promise<string> {
-  const endpoints: Record<string, string> = {
-    "us-east": "https://dynamodb.us-east-1.amazonaws.com/ping",
-    "us-west": "https://dynamodb.us-west-2.amazonaws.com/ping",
-    "eu-west": "https://dynamodb.eu-west-1.amazonaws.com/ping",
-    "eu-central": "https://dynamodb.eu-central-1.amazonaws.com/ping",
-    "asia-east": "https://dynamodb.ap-northeast-1.amazonaws.com/ping",
-    "asia-south": "https://dynamodb.ap-southeast-1.amazonaws.com/ping",
-    "south-america": "https://dynamodb.sa-east-1.amazonaws.com/ping",
-    "australia": "https://dynamodb.ap-southeast-2.amazonaws.com/ping",
-  };
-
-  const results: { region: string; latency: number }[] = [];
-  await Promise.allSettled(
-    Object.entries(endpoints).map(async ([region, url]) => {
-      const start = performance.now();
-      try {
-        await fetch(url, { method: "HEAD", mode: "no-cors", signal: AbortSignal.timeout(3000) });
-        results.push({ region, latency: performance.now() - start });
-      } catch {}
-    })
-  );
-  if (results.length === 0) return "us-east";
-  results.sort((a, b) => a.latency - b.latency);
-  return results[0].region;
+  // Avoid noisy external /ping probes in Electron/Chromium devtools. The TURN
+  // credential function can still choose the final relay, and this timezone
+  // hint keeps "auto" stable without console 404 spam.
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+  if (/Australia|Pacific\//i.test(tz)) return "australia";
+  if (/Asia\/(Tokyo|Seoul|Shanghai|Hong_Kong|Taipei)/i.test(tz)) return "asia-east";
+  if (/Asia\/(Singapore|Kuala_Lumpur|Bangkok|Jakarta|Manila)/i.test(tz)) return "asia-south";
+  if (/Europe\/(Berlin|Paris|Rome|Madrid|Vienna|Prague|Warsaw|Budapest|Zurich|Stockholm)/i.test(tz)) return "eu-central";
+  if (/Europe\//i.test(tz)) return "eu-west";
+  if (/America\/(Los_Angeles|Vancouver|Denver|Phoenix|Tijuana)/i.test(tz)) return "us-west";
+  if (/America\/(Sao_Paulo|Buenos_Aires|Santiago|Montevideo)/i.test(tz)) return "south-america";
+  return "us-east";
 }
 
 // Detect if running in Electron
@@ -1396,6 +1384,59 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [user]);
 
+  const adoptCallEventForConversation = useCallback((
+    conversationId: string,
+    nextCallEventId: string,
+    options?: { startedAt?: string | null; reason?: string; clearPendingOffer?: boolean },
+  ) => {
+    const previous = currentCallEventIdRef.current;
+    if (!nextCallEventId || previous === nextCallEventId) return;
+    voiceTrace("dm.callEvent.adopt", {
+      conversationId,
+      previous,
+      next: nextCallEventId,
+      reason: options?.reason,
+    });
+
+    currentCallEventIdRef.current = nextCallEventId;
+    setCurrentCallEventId(nextCallEventId);
+
+    if (outgoingCallMetaRef.current?.conversationId === conversationId) {
+      outgoingCallMetaRef.current = { ...outgoingCallMetaRef.current, callEventId: nextCallEventId };
+    }
+    if (acceptedIncomingCallRef.current?.conversationId === conversationId) {
+      acceptedIncomingCallRef.current = { ...acceptedIncomingCallRef.current, callEventId: nextCallEventId };
+    }
+    if (incomingCallRef.current?.conversationId === conversationId) {
+      setIncomingCall(prev => prev?.conversationId === conversationId ? { ...prev, callEventId: nextCallEventId } : prev);
+    }
+
+    if (options?.clearPendingOffer !== false && pendingOfferRef.current?.conversationId === conversationId) {
+      pendingOfferRef.current = null;
+    }
+
+    let startedAtMs: number | undefined;
+    if (options?.startedAt) {
+      const parsed = Date.parse(options.startedAt);
+      if (!Number.isNaN(parsed)) startedAtMs = parsed;
+    }
+    const currentActive = activeCallRef.current;
+    if (currentActive?.conversationId === conversationId) {
+      activeCallRef.current = {
+        ...currentActive,
+        startedAt: startedAtMs ?? currentActive.startedAt,
+        ringTimedOut: false,
+        peerLeftAt: undefined,
+      };
+    }
+    setActiveCall(prev => prev?.conversationId === conversationId ? {
+      ...prev,
+      startedAt: startedAtMs ?? prev.startedAt,
+      ringTimedOut: false,
+      peerLeftAt: undefined,
+    } : prev);
+  }, [setIncomingCall]);
+
   const initializeOutgoingConnection = useCallback(async (channel: ReturnType<typeof supabase.channel>, conversationId: string, options?: { forceFreshOffer?: boolean }) => {
     if (!user) return;
     const outgoingCallMeta = outgoingCallMetaRef.current;
@@ -1409,8 +1450,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     // of silently returning. This is what was making the second peer "never
     // get placed in the call" — their ready-for-offer was being dropped on
     // the caller side and no offer ever reached them.
-    const peerAlreadyAccepted = peerAcceptedCallEventRef.current === outgoingCallMeta.callEventId;
-    if ((!options?.forceFreshOffer || peerAlreadyAccepted) && existingPc && pendingOfferRef.current && pendingOfferRef.current.conversationId === conversationId && pendingOfferRef.current.callEventId === outgoingCallMeta.callEventId) {
+    const pendingOfferMatchesActiveCall = !!pendingOfferRef.current
+      && pendingOfferRef.current.conversationId === conversationId
+      && pendingOfferRef.current.callEventId === outgoingCallMeta.callEventId
+      && pendingOfferRef.current.callEventId === currentCallEventIdRef.current;
+    if (!options?.forceFreshOffer && existingPc && pendingOfferMatchesActiveCall) {
       console.log("[Voice] 🔁 PC already exists — re-broadcasting pending offer for late joiner");
       await sendSignalReliably(channel, {
         type: "offer",
@@ -1422,9 +1466,14 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       }, "offer(re-broadcast)");
       return;
     }
-    if (peerAlreadyAccepted && existingPc && !options?.forceFreshOffer) {
-      console.log("[Voice] 🛑 Ignoring ready-for-offer after peer accepted — keeping current PC");
-      return;
+    if (existingPc && pendingOfferRef.current && !pendingOfferMatchesActiveCall) {
+      voiceTrace("dm.offer.pending.stale", {
+        conversationId,
+        pending: pendingOfferRef.current.callEventId,
+        meta: outgoingCallMeta.callEventId,
+        current: currentCallEventIdRef.current,
+      });
+      pendingOfferRef.current = null;
     }
     if (existingPc) {
       const alreadyConnected =
@@ -1516,7 +1565,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     console.log("[Voice] 📡 Offer sent to callee via broadcast");
 
     setActiveCall(prev => prev && prev.conversationId === conversationId
-      ? { ...prev, state: peerAlreadyAccepted ? "calling" : "ringing", ringTimedOut: false, peerLeftAt: undefined }
+      ? { ...prev, state: peerAcceptedCallEventRef.current === outgoingCallMeta.callEventId ? "calling" : "ringing", ringTimedOut: false, peerLeftAt: undefined }
       : prev);
 
     // v0.4.3: caller-side pickup-stuck watchdog.
@@ -1568,18 +1617,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       // If we're on a mismatched callEventId, adopt the DB truth so the
       // fresh offer we're about to broadcast is tagged correctly.
       if (adoptedCallEventId) {
-        currentCallEventIdRef.current = adoptedCallEventId;
-        setCurrentCallEventId(adoptedCallEventId);
-        if (outgoingCallMetaRef.current) {
-          outgoingCallMetaRef.current = { ...outgoingCallMetaRef.current, callEventId: adoptedCallEventId };
-        }
-        pendingOfferRef.current = null;
-        if (adoptedStartedAt) {
-          const t = Date.parse(adoptedStartedAt);
-          if (!Number.isNaN(t)) {
-            setActiveCall(prev => prev && prev.conversationId === conversationId ? { ...prev, startedAt: t } : prev);
-          }
-        }
+        adoptCallEventForConversation(conversationId, adoptedCallEventId, {
+          startedAt: adoptedStartedAt,
+          reason: "pickup-watchdog",
+        });
       } else if (currentCallEventIdRef.current !== watchedCallEventId) {
         // We drifted off the watched call — someone else's handler already adopted.
         return;
@@ -1599,12 +1640,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         console.warn("[Voice] pickup-watchdog renegotiate failed:", e);
       }
     };
-    // v0.4.8: keep the caller PC stable after pickup. If the answer was
-    // dropped, duplicate-offer retries now make the receiver re-send the
-    // cached answer instead of making the caller tear down and glare-loop.
-    void tryAutoRenegotiate;
+    [3000, 6000, 10000].forEach((ms) => {
+      void tryAutoRenegotiate(ms);
+    });
 
-  }, [user, getUserMedia, createPeerConnection, startAudioLevelMonitor, stopAudioLevelMonitor, peerLooksLiveInCall, resolveLiveCallEventIdForConversation]);
+  }, [user, getUserMedia, createPeerConnection, startAudioLevelMonitor, stopAudioLevelMonitor, peerLooksLiveInCall, resolveLiveCallEventIdForConversation, adoptCallEventForConversation]);
 
   const setupSignaling = useCallback((conversationId: string): Promise<ReturnType<typeof supabase.channel>> => {
     return new Promise((resolve, reject) => {
@@ -1669,12 +1709,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             if (payload.callEventId && callEventIdSnapshot && payload.callEventId !== callEventIdSnapshot) {
               if (activeCallSnapshot?.conversationId === conversationId) {
                 console.warn(`[Voice] 🔀 ready-for-offer for different call_event ${payload.callEventId.substring(0,8)} (current=${callEventIdSnapshot.substring(0,8)}) — adopting`);
-                currentCallEventIdRef.current = payload.callEventId;
-                setCurrentCallEventId(payload.callEventId);
-                if (outgoingCallMetaRef.current) {
-                  outgoingCallMetaRef.current = { ...outgoingCallMetaRef.current, callEventId: payload.callEventId };
-                }
-                pendingOfferRef.current = null;
+                adoptCallEventForConversation(conversationId, payload.callEventId, {
+                  reason: "ready-for-offer",
+                });
               } else {
                 console.log(`[Voice] 🛑 Ignoring ready-for-offer for stale call ${payload.callEventId} (current=${callEventIdSnapshot})`);
                 return;
@@ -1722,12 +1759,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             if (activeCallSnapshot?.conversationId === conversationId
               && (activeCallSnapshot.state === "calling" || activeCallSnapshot.state === "ringing")) {
               console.warn(`[Voice] 🔀 peer-accepted for different call_event ${payload.callEventId.substring(0,8)} — adopting`);
-              currentCallEventIdRef.current = payload.callEventId;
-              setCurrentCallEventId(payload.callEventId);
-              if (outgoingCallMetaRef.current) {
-                outgoingCallMetaRef.current = { ...outgoingCallMetaRef.current, callEventId: payload.callEventId };
-              }
-              pendingOfferRef.current = null;
+              adoptCallEventForConversation(conversationId, payload.callEventId, {
+                reason: "peer-accepted",
+              });
             } else {
               return;
             }
@@ -1754,12 +1788,21 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               && !acceptedIncomingCallRef.current
             ) {
               console.warn(`[Voice] 🔀 offer for different call_event ${payload.callEventId.substring(0,8)} — adopting`);
-              currentCallEventIdRef.current = payload.callEventId;
-              setCurrentCallEventId(payload.callEventId);
-              if (outgoingCallMetaRef.current) {
-                outgoingCallMetaRef.current = { ...outgoingCallMetaRef.current, callEventId: payload.callEventId };
+              adoptCallEventForConversation(conversationId, payload.callEventId, {
+                reason: "offer",
+              });
+            } else if (
+              activeCallSnapshot?.conversationId === conversationId ||
+              acceptedIncomingCallRef.current?.conversationId === conversationId ||
+              incomingCallRef.current?.conversationId === conversationId
+            ) {
+              console.warn(`[Voice] 🔀 offer for different call_event ${payload.callEventId.substring(0,8)} while active in conversation — adopting`);
+              adoptCallEventForConversation(conversationId, payload.callEventId, {
+                reason: "offer-active-conversation",
+              });
+              if (acceptedIncomingCallRef.current?.conversationId === conversationId) {
+                acceptedIncomingCallRef.current = { ...acceptedIncomingCallRef.current, callEventId: payload.callEventId };
               }
-              pendingOfferRef.current = null;
             } else {
               console.log(`[Voice] 🛑 Ignoring offer for stale call ${payload.callEventId} (current=${callEventIdSnapshot})`);
               return;
@@ -1996,8 +2039,16 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
         if (payload.type === "answer" && pc) {
           if (payload.callEventId && callEventIdSnapshot && payload.callEventId !== callEventIdSnapshot) {
-            console.log(`[Voice] 🛑 Ignoring answer for stale call ${payload.callEventId} (current=${callEventIdSnapshot})`);
-            return;
+            if (activeCallSnapshot?.conversationId === conversationId) {
+              console.warn(`[Voice] 🔀 answer for different call_event ${payload.callEventId.substring(0,8)} — adopting before setRemoteDescription`);
+              adoptCallEventForConversation(conversationId, payload.callEventId, {
+                reason: "answer",
+                clearPendingOffer: false,
+              });
+            } else {
+              console.log(`[Voice] 🛑 Ignoring answer for stale call ${payload.callEventId} (current=${callEventIdSnapshot})`);
+              return;
+            }
           }
           if (pc.signalingState !== "have-local-offer") {
             console.log(`[Voice] 🛑 Ignoring answer while signalingState=${pc.signalingState}`);
@@ -2740,6 +2791,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       currentCallEventIdRef.current = acceptedCall.callEventId;
       setCurrentCallEventId(acceptedCall.callEventId);
       isRemoteHangup.current = false;
+      pendingOfferRef.current = null;
+      lastAnsweredOfferRef.current = null;
+      lastAnswerRef.current = null;
+      incomingCandidateQueue.current = [];
+      outgoingCandidateBuffer.current = [];
+      remoteDescriptionSet.current = false;
 
       // Heartbeat now so caller's live-peer check flips us to "in call".
       console.log("[acceptDiag] accept.start", { callEventId: acceptedCall.callEventId, hasOffer: !!acceptedCall.offer });
