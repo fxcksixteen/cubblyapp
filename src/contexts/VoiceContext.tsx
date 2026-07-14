@@ -339,6 +339,28 @@ async function heartbeatWithRetry(callEventId: string, tag: string): Promise<voi
   console.error(`[acceptDiag] heartbeat gave up (${tag}) — peer may see "Not in call"`);
 }
 
+const voiceTrace = (phase: string, details?: Record<string, unknown>) => {
+  try {
+    console.log(`[VoiceTrace] ${phase}`, details || {});
+  } catch {
+    console.log(`[VoiceTrace] ${phase}`);
+  }
+};
+
+async function logVoiceDiagnostic(conversationId: string | null | undefined, tag: string, callEventId?: string | null) {
+  if (!conversationId) return;
+  try {
+    const { data, error } = await (supabase as any).rpc("debug_voice_snapshot", {
+      _conversation_id: conversationId,
+      _call_event_id: callEventId ?? null,
+    });
+    if (error) console.warn(`[VoiceTrace] diag.${tag}.error`, error);
+    else console.log(`[VoiceTrace] diag.${tag}`, data);
+  } catch (e) {
+    console.warn(`[VoiceTrace] diag.${tag}.threw`, e);
+  }
+}
+
 interface VoiceContextType {
   settings: VoiceSettings;
   updateSettings: (partial: Partial<VoiceSettings>) => void;
