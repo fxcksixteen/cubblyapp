@@ -35,6 +35,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     bugFixes: [
       "Fixed calls failing to connect when your saved mic device wasn't available.",
       "You now get a clear notice when Cubbly can't open your microphone.",
+      "Fixed public wishlists keeping items you already own.",
     ],
   },
   {
