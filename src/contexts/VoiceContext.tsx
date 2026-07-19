@@ -128,12 +128,16 @@ export function preferScreenShareCodec(transceiver: RTCRtpTransceiver | null | u
   try {
     const caps = (RTCRtpSender as any).getCapabilities?.("video");
     if (!caps?.codecs?.length) return null;
+    // v0.4.11: VP9 first (Discord default, universally HW-decoded). AV1
+    // demoted to LAST — AV1 software encode/decode is catastrophic when
+    // hardware acceleration is off, which is the exact configuration the
+    // user hits screenshare lag in.
     const rank = (mime: string): number => {
       const m = mime.toLowerCase();
-      if (m === "video/av1") return 0;      // best quality/bit, if the peer decodes it
-      if (m === "video/vp9") return 1;      // Discord's default
-      if (m === "video/vp8") return 2;
-      if (m === "video/h264") return 3;
+      if (m === "video/vp9") return 0;
+      if (m === "video/vp8") return 1;
+      if (m === "video/h264") return 2;
+      if (m === "video/av1") return 3;
       return 9;
     };
     const codecs = [...caps.codecs].sort((a: any, b: any) => rank(a.mimeType) - rank(b.mimeType));
@@ -182,18 +186,13 @@ export async function applyScreenBitrate(
     // v0.4.4: Ultra uses VP9/AV1 temporal scalability so a lost frame drops
     // the enhancement layer instead of the whole picture — framerate stays
     // stable under packet loss without the picture turning to mush.
-    if (opts?.ultra) {
-      (params.encodings[0] as any).scalabilityMode = "L1T3";
-    }
-    // v0.4.4: respect Optimize-For preset.
-    // Ultra    → balanced (trade res + fps proportionally).
-    // Motion   → keep fps, drop res.
-    // Clarity  → keep res sharp, drop fps under pressure.
-    (params as any).degradationPreference = opts?.ultra
-      ? "balanced"
-      : opts?.preferMotion
-        ? "maintain-framerate"
-        : "maintain-resolution";
+    // v0.4.11: screenshare should almost always prefer keeping FPS smooth
+    // over holding pixel-perfect resolution — the previous "balanced" /
+    // "maintain-resolution" defaults were the direct cause of choppy,
+    // delayed output on every preset. Discord ships maintain-framerate.
+    // We also drop VP9 L1T3 SVC on Ultra — with software encode it adds
+    // 20–30% CPU cost for no viewer-side win when peers decode in SW.
+    (params as any).degradationPreference = "maintain-framerate";
     await sender.setParameters(params);
   } catch (e) {
     console.warn("[Voice] Could not set screen encoding bitrate:", e);
@@ -3231,31 +3230,47 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       // and pairs those with VP9 (see preferScreenShareCodec above), which is
       // why their picture looks noticeably sharper than an equivalent VP8
       // stream at the same bandwidth. We match, and slightly beat, those caps.
-      const isHighFps = effectiveFps >= 50;
+      // v0.4.11: low-power clamp. If hardware acceleration is off (Electron
+      // setting) or the app already flagged itself into cubbly-low-power,
+      // the software encoder cannot sustain 1080p60 @ multi-Mbps VP9 — the
+      // output becomes a slideshow. Hard-cap resolution/fps/bitrate before
+      // building the ladder so every downstream calc sees the clamped values.
+      let clampedFps = effectiveFps;
+      let clampedQuality = effectiveQuality;
+      let clampedRes = res;
+      let lowPowerCap: number | null = null;
+      const lowPower =
+        typeof document !== "undefined" &&
+        document.documentElement.classList.contains("cubbly-low-power");
+      if (lowPower) {
+        if (clampedQuality === "1440p") { clampedQuality = "1080p"; clampedRes = resolutionMap["1080p"]; }
+        clampedFps = Math.min(clampedFps, 30);
+        lowPowerCap = 2_500_000;
+        console.log(`[Voice] 🔻 low-power screenshare clamp → ${clampedQuality}@${clampedFps}fps, ≤2.5 Mbps`);
+      }
+
+      const isHighFps = clampedFps >= 50;
       const isUltra = opt === "ultra";
-      // v0.4.4: Ultra gets its own ladder (~30% above Discord-parity) so the
-      // default preset for every user is genuinely the sharpest option we can
-      // push. Clarity/Motion stay at parity for specialised needs.
+      // v0.4.11: Ultra rebalanced back to Discord-parity. The prior +30%
+      // ladder (10–16 Mbps) exceeded typical home upload and swamped the
+      // software encoder, which made Ultra feel *worse* than lower presets.
       const resBitrateBase: Record<string, number> = isUltra ? {
-        "480p":  1_500_000,
-        "720p":  isHighFps ? 4_500_000 : 3_500_000,
-        "1080p": isHighFps ? 10_000_000 : 6_000_000,
-        "1440p": isHighFps ? 16_000_000 : 11_000_000,
+        "480p":  1_200_000,
+        "720p":  isHighFps ? 3_000_000 : 2_500_000,
+        "1080p": isHighFps ? 6_000_000 : 4_500_000,
+        "1440p": isHighFps ? 8_000_000 : 6_000_000,
       } : {
         "480p":  1_000_000,
         "720p":  isHighFps ? 3_000_000 : 2_500_000,
         "1080p": isHighFps ? 7_500_000 : 4_500_000,
         "1440p": isHighFps ? 12_000_000 : 8_000_000,
       };
-      const baseFor = resBitrateBase[effectiveQuality] ?? 2_500_000;
-      const maxBitrate = baseFor;
-      // v0.4.3 pass 2: honor the user's chosen fps at 720p and above. Only
-      // clamp aggressively at ≤480p (and even there raise the floor to 20)
-      // so "30 fps" actually means 30 fps at typical stream resolutions.
-      const targetHeight = res?.height ?? 1080;
+      const baseFor = resBitrateBase[clampedQuality] ?? 2_500_000;
+      const maxBitrate = lowPowerCap ? Math.min(baseFor, lowPowerCap) : baseFor;
+      const targetHeight = clampedRes?.height ?? 1080;
       const fpsCap =
-        targetHeight <= 480 ? Math.max(20, Math.min(effectiveFps, 24)) :
-        effectiveFps;
+        targetHeight <= 480 ? Math.max(20, Math.min(clampedFps, 24)) :
+        clampedFps;
       console.log(`[Voice] 🖥️ screenshare requested ${effectiveFps}fps @ ${targetHeight}p → negotiating ${fpsCap}fps`);
 
       // applyConstraints is a no-op on most desktop capture sources — kept
@@ -3266,7 +3281,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         try { (t as any).contentHint = hint; } catch {}
         try {
           await (t as any).applyConstraints?.({
-            ...(res ? { width: res.width, height: res.height } : {}),
+            ...(clampedRes ? { width: clampedRes.width, height: clampedRes.height } : {}),
             frameRate: fpsCap,
           });
         } catch (e) {
@@ -3434,7 +3449,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             }
           });
 
-          if (fractionLost > 0.08) {
+          // v0.4.11: react faster — 5% loss trips immediately, 2s stats
+          // interval means first cut lands ~2s in instead of ~6s.
+          if (fractionLost > 0.05) {
             lossyStreak += 1;
             cleanStreak = 0;
           } else if (fractionLost < 0.02) {
@@ -3445,7 +3462,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             cleanStreak = 0;
           }
 
-          if (videoSenderRef && lossyStreak >= 2 && currentBitrate > minBitrate) {
+          if (videoSenderRef && lossyStreak >= 1 && currentBitrate > minBitrate) {
             const next = Math.max(minBitrate, Math.round(currentBitrate * 0.75));
             if (next !== currentBitrate) {
               currentBitrate = next;
@@ -3467,7 +3484,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             console.log(`[Voice] 🖥️ outbound — ${outboundInfo} (loss ${(fractionLost * 100).toFixed(1)}%, cap ${(currentBitrate / 1000) | 0}kbps)`);
           }
         } catch {}
-      }, 3_000);
+      }, 2_000);
 
       channelRef.current.send({
         type: "broadcast",

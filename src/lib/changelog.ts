@@ -23,9 +23,21 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.4.10";
+export const CURRENT_VERSION = "0.4.11";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.4.11",
+    title: "Smoother screenshare",
+    date: "2026-07-19",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Fixed screenshare being laggy, delayed, and choppy across all presets and sources.",
+      "Screenshare now stays smooth under network or CPU pressure instead of dropping frames.",
+      "Screenshare is auto-tuned for smoother playback when hardware acceleration is off.",
+    ],
+  },
   {
     version: "0.4.10",
     title: "Microphone fallback fix",
