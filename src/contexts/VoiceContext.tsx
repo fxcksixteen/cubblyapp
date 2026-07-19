@@ -3484,7 +3484,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             console.log(`[Voice] 🖥️ outbound — ${outboundInfo} (loss ${(fractionLost * 100).toFixed(1)}%, cap ${(currentBitrate / 1000) | 0}kbps)`);
           }
         } catch {}
-      }, 3_000);
+      }, 2_000);
 
       channelRef.current.send({
         type: "broadcast",
