@@ -3449,7 +3449,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             }
           });
 
-          if (fractionLost > 0.08) {
+          // v0.4.11: react faster — 5% loss trips immediately, 2s stats
+          // interval means first cut lands ~2s in instead of ~6s.
+          if (fractionLost > 0.05) {
             lossyStreak += 1;
             cleanStreak = 0;
           } else if (fractionLost < 0.02) {
@@ -3460,7 +3462,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             cleanStreak = 0;
           }
 
-          if (videoSenderRef && lossyStreak >= 2 && currentBitrate > minBitrate) {
+          if (videoSenderRef && lossyStreak >= 1 && currentBitrate > minBitrate) {
             const next = Math.max(minBitrate, Math.round(currentBitrate * 0.75));
             if (next !== currentBitrate) {
               currentBitrate = next;
