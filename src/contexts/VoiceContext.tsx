@@ -186,18 +186,13 @@ export async function applyScreenBitrate(
     // v0.4.4: Ultra uses VP9/AV1 temporal scalability so a lost frame drops
     // the enhancement layer instead of the whole picture — framerate stays
     // stable under packet loss without the picture turning to mush.
-    if (opts?.ultra) {
-      (params.encodings[0] as any).scalabilityMode = "L1T3";
-    }
-    // v0.4.4: respect Optimize-For preset.
-    // Ultra    → balanced (trade res + fps proportionally).
-    // Motion   → keep fps, drop res.
-    // Clarity  → keep res sharp, drop fps under pressure.
-    (params as any).degradationPreference = opts?.ultra
-      ? "balanced"
-      : opts?.preferMotion
-        ? "maintain-framerate"
-        : "maintain-resolution";
+    // v0.4.11: screenshare should almost always prefer keeping FPS smooth
+    // over holding pixel-perfect resolution — the previous "balanced" /
+    // "maintain-resolution" defaults were the direct cause of choppy,
+    // delayed output on every preset. Discord ships maintain-framerate.
+    // We also drop VP9 L1T3 SVC on Ultra — with software encode it adds
+    // 20–30% CPU cost for no viewer-side win when peers decode in SW.
+    (params as any).degradationPreference = "maintain-framerate";
     await sender.setParameters(params);
   } catch (e) {
     console.warn("[Voice] Could not set screen encoding bitrate:", e);
