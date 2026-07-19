@@ -1563,31 +1563,50 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       // ---- Encoding params — identical ladder & degradation prefs to DM.
       const opt = shareSettings.optimizeFor;
       const hint = opt === "ultra" ? "" : opt === "motion" ? "motion" : "detail";
-      const isHighFps = effectiveFps >= 50;
+
+      // v0.4.11: low-power clamp mirrored from DM path — HW-accel-off
+      // machines cannot sustain 1080p60 @ multi-Mbps VP9 in software.
+      let clampedFps = effectiveFps;
+      let clampedQuality = effectiveQuality;
+      let clampedRes = res;
+      let lowPowerCap: number | null = null;
+      const lowPower =
+        typeof document !== "undefined" &&
+        document.documentElement.classList.contains("cubbly-low-power");
+      if (lowPower) {
+        if (clampedQuality === "1440p") { clampedQuality = "1080p"; clampedRes = resolutionMap["1080p"]; }
+        clampedFps = Math.min(clampedFps, 30);
+        lowPowerCap = 2_500_000;
+        console.log(`[GroupCall] 🔻 low-power screenshare clamp → ${clampedQuality}@${clampedFps}fps, ≤2.5 Mbps`);
+      }
+
+      const isHighFps = clampedFps >= 50;
       const isUltra = opt === "ultra";
+      // v0.4.11: Ultra rebalanced back to Discord-parity (see VoiceContext).
       const resBitrateBase: Record<string, number> = isUltra ? {
-        "480p":  1_500_000,
-        "720p":  isHighFps ? 4_500_000 : 3_500_000,
-        "1080p": isHighFps ? 10_000_000 : 6_000_000,
-        "1440p": isHighFps ? 16_000_000 : 11_000_000,
+        "480p":  1_200_000,
+        "720p":  isHighFps ? 3_000_000 : 2_500_000,
+        "1080p": isHighFps ? 6_000_000 : 4_500_000,
+        "1440p": isHighFps ? 8_000_000 : 6_000_000,
       } : {
         "480p":  1_000_000,
         "720p":  isHighFps ? 3_000_000 : 2_500_000,
         "1080p": isHighFps ? 7_500_000 : 4_500_000,
         "1440p": isHighFps ? 12_000_000 : 8_000_000,
       };
-      const maxBitrate = resBitrateBase[effectiveQuality] ?? 2_500_000;
-      const targetHeight = res?.height ?? 1080;
+      const baseFor = resBitrateBase[clampedQuality] ?? 2_500_000;
+      const maxBitrate = lowPowerCap ? Math.min(baseFor, lowPowerCap) : baseFor;
+      const targetHeight = clampedRes?.height ?? 1080;
       const fpsCap =
-        targetHeight <= 480 ? Math.max(20, Math.min(effectiveFps, 24)) :
-        effectiveFps;
+        targetHeight <= 480 ? Math.max(20, Math.min(clampedFps, 24)) :
+        clampedFps;
 
       let capturedHeight = 0;
       for (const t of stream.getVideoTracks()) {
         try { (t as any).contentHint = hint; } catch {}
         try {
           await (t as any).applyConstraints?.({
-            ...(res ? { width: res.width, height: res.height } : {}),
+            ...(clampedRes ? { width: clampedRes.width, height: clampedRes.height } : {}),
             frameRate: fpsCap,
           });
         } catch {}
