@@ -3240,8 +3240,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       let clampedRes = res;
       let lowPowerCap: number | null = null;
       const lowPower =
-        (typeof document !== "undefined" && document.documentElement.classList.contains("cubbly-low-power")) ||
-        (isElectron && (window as any).electronAPI?.__hwAccelOff === true);
+        typeof document !== "undefined" &&
+        document.documentElement.classList.contains("cubbly-low-power");
       if (lowPower) {
         if (clampedQuality === "1440p") { clampedQuality = "1080p"; clampedRes = resolutionMap["1080p"]; }
         clampedFps = Math.min(clampedFps, 30);
