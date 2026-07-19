@@ -128,12 +128,16 @@ export function preferScreenShareCodec(transceiver: RTCRtpTransceiver | null | u
   try {
     const caps = (RTCRtpSender as any).getCapabilities?.("video");
     if (!caps?.codecs?.length) return null;
+    // v0.4.11: VP9 first (Discord default, universally HW-decoded). AV1
+    // demoted to LAST — AV1 software encode/decode is catastrophic when
+    // hardware acceleration is off, which is the exact configuration the
+    // user hits screenshare lag in.
     const rank = (mime: string): number => {
       const m = mime.toLowerCase();
-      if (m === "video/av1") return 0;      // best quality/bit, if the peer decodes it
-      if (m === "video/vp9") return 1;      // Discord's default
-      if (m === "video/vp8") return 2;
-      if (m === "video/h264") return 3;
+      if (m === "video/vp9") return 0;
+      if (m === "video/vp8") return 1;
+      if (m === "video/h264") return 2;
+      if (m === "video/av1") return 3;
       return 9;
     };
     const codecs = [...caps.codecs].sort((a: any, b: any) => rank(a.mimeType) - rank(b.mimeType));
