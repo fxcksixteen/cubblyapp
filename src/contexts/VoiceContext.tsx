@@ -3281,7 +3281,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         try { (t as any).contentHint = hint; } catch {}
         try {
           await (t as any).applyConstraints?.({
-            ...(res ? { width: res.width, height: res.height } : {}),
+            ...(clampedRes ? { width: clampedRes.width, height: clampedRes.height } : {}),
             frameRate: fpsCap,
           });
         } catch (e) {
