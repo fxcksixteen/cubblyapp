@@ -3217,24 +3217,16 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       // (encoder/decoder CPU + jitter buffer underruns) and "low quality"
       // didn't actually lower bitrate. Discord-style caps used here.
       const opt = screenShareSettings.optimizeFor;
-      // Ultra = no contentHint bias (let the encoder do its best across text
-      // AND motion given the very high bitrate headroom). Motion = "motion"
-      // hint. Clarity = "detail" hint.
-      const hint = opt === "ultra" ? "" : opt === "motion" ? "motion" : "detail";
-      // v0.4.3: much stricter per-preset caps. Previous ceilings were letting
-      // "low quality" negotiate 1.35 Mbps at 30 fps of native 4K frames on
-      // Electron (Chromium desktopCapturer ignores getDisplayMedia size
-      // constraints), which is why viewers saw a slideshow.
-      // v0.4.4: Discord-parity ladder. Discord's desktop client caps around
-      // 2.5 Mbps @720p, 4.5 Mbps @1080p30, 7.5 Mbps @1080p60, 9 Mbps @1440p —
-      // and pairs those with VP9 (see preferScreenShareCodec above), which is
-      // why their picture looks noticeably sharper than an equivalent VP8
-      // stream at the same bandwidth. We match, and slightly beat, those caps.
-      // v0.4.11: low-power clamp. If hardware acceleration is off (Electron
-      // setting) or the app already flagged itself into cubbly-low-power,
-      // the software encoder cannot sustain 1080p60 @ multi-Mbps VP9 — the
-      // output becomes a slideshow. Hard-cap resolution/fps/bitrate before
-      // building the ladder so every downstream calc sees the clamped values.
+      // v0.4.12: Ultra now uses "motion" contentHint. Almost everyone who
+      // picks Ultra is streaming a game/video (motion-dominant) — the neutral
+      // "" hint was letting the encoder guess and mis-optimizing for text,
+      // which is a big part of why Ultra streams felt choppy on games.
+      // Clarity is still the only "detail" preset (text/code sharing).
+      const hint = opt === "clarity" ? "detail" : "motion";
+
+      // Low-power clamp: if hardware acceleration is off (Electron setting)
+      // or the app has flagged itself into cubbly-low-power, cap resolution/
+      // fps/bitrate so the software encoder can actually keep up.
       let clampedFps = effectiveFps;
       let clampedQuality = effectiveQuality;
       let clampedRes = res;
@@ -3251,9 +3243,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
       const isHighFps = clampedFps >= 50;
       const isUltra = opt === "ultra";
-      // v0.4.11: Ultra rebalanced back to Discord-parity. The prior +30%
-      // ladder (10–16 Mbps) exceeded typical home upload and swamped the
-      // software encoder, which made Ultra feel *worse* than lower presets.
+      // v0.4.12: rebalanced non-Ultra ladder DOWN — the 7.5/12 Mbps caps at
+      // 1080p60/1440p60 were exceeding typical home upload and swamping the
+      // software encoder, causing queue buildup that showed up as constant
+      // lag and delay. New caps match Discord parity and stay smooth.
       const resBitrateBase: Record<string, number> = isUltra ? {
         "480p":  1_200_000,
         "720p":  isHighFps ? 3_000_000 : 2_500_000,
@@ -3261,9 +3254,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         "1440p": isHighFps ? 8_000_000 : 6_000_000,
       } : {
         "480p":  1_000_000,
-        "720p":  isHighFps ? 3_000_000 : 2_500_000,
-        "1080p": isHighFps ? 7_500_000 : 4_500_000,
-        "1440p": isHighFps ? 12_000_000 : 8_000_000,
+        "720p":  isHighFps ? 2_500_000 : 2_000_000,
+        "1080p": isHighFps ? 4_500_000 : 3_500_000,
+        "1440p": isHighFps ? 8_000_000 : 6_000_000,
       };
       const baseFor = resBitrateBase[clampedQuality] ?? 2_500_000;
       const maxBitrate = lowPowerCap ? Math.min(baseFor, lowPowerCap) : baseFor;
@@ -3427,6 +3420,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           const stats = await screenPc.getStats();
           let fractionLost = 0;
           let outboundInfo = "";
+          let cpuLimited = false;
           stats.forEach((report: any) => {
             if (report.type === "outbound-rtp" && report.kind === "video") {
               const now = performance.now();
@@ -3435,6 +3429,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               lastBytes = bytes;
               lastStatsAt = now;
               outboundInfo = `${report.frameWidth}x${report.frameHeight}@${report.framesPerSecond}fps, ${kbps}kbps`;
+              // v0.4.12: if the encoder itself says it's CPU-limited, the
+              // bitrate cap can't help — we need to lower the target below.
+              if (report.qualityLimitationReason === "cpu") cpuLimited = true;
             }
             if (report.type === "remote-inbound-rtp" && report.kind === "video") {
               const lost = report.packetsLost ?? 0;
@@ -3461,6 +3458,18 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             lossyStreak = 0;
             cleanStreak = 0;
           }
+
+          // v0.4.12: sustained encoder CPU limitation → drop the target
+          // bitrate aggressively (encoder can't keep up at current settings).
+          if (cpuLimited && videoSenderRef && currentBitrate > minBitrate) {
+            const next = Math.max(minBitrate, Math.round(currentBitrate * 0.7));
+            if (next !== currentBitrate) {
+              currentBitrate = next;
+              await applyScreenBitrate(videoSenderRef, currentBitrate, encodingOpts);
+              console.log(`[Voice] 🔻 adaptive: encoder CPU-limited → cap ${(currentBitrate / 1000) | 0}kbps`);
+            }
+          }
+
 
           if (videoSenderRef && lossyStreak >= 1 && currentBitrate > minBitrate) {
             const next = Math.max(minBitrate, Math.round(currentBitrate * 0.75));

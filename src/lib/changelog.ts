@@ -23,9 +23,21 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.4.11";
+export const CURRENT_VERSION = "0.4.12";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.4.12",
+    title: "Smoother streams & better activity detection",
+    date: "2026-07-23",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Fixed screenshare being laggy and delayed when streaming games, browsers, and videos.",
+      "Roblox activity now shows the actual experience you're playing instead of always saying \"In Launcher\".",
+      "Updated the Fortnite activity icon.",
+    ],
+  },
   {
     version: "0.4.11",
     title: "Smoother screenshare",

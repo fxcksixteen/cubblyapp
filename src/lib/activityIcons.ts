@@ -11,6 +11,7 @@
  * cdn.jsdelivr.net (for github raw), etc.
  */
 import marvelRivalsIcon from "@/assets/marvel-rivals.png";
+import fortniteIconAsset from "@/assets/fortnite.png.asset.json";
 
 /** Direct image URLs for popular games & software. Keyed by lowercased name OR process name. */
 export const CURATED_ICONS: Record<string, string> = {
@@ -35,8 +36,8 @@ export const CURATED_ICONS: Record<string, string> = {
   "hl2": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/220/capsule_184x69.jpg",
 
   // --- Epic / Fortnite ---
-  "fortnite": "https://cdn.simpleicons.org/epicgames/313131",
-  "fortniteclient-win64-shipping": "https://cdn.simpleicons.org/epicgames/313131",
+  "fortnite": fortniteIconAsset.url,
+  "fortniteclient-win64-shipping": fortniteIconAsset.url,
   "epic games launcher": "https://cdn.simpleicons.org/epicgames/313131",
   "epicgameslauncher": "https://cdn.simpleicons.org/epicgames/313131",
   "rocket league": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/252950/capsule_184x69.jpg",

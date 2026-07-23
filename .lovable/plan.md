@@ -1,36 +1,66 @@
-## v0.4.11 — Screenshare lag/choppy hotfix
+# v0.4.12 Plan
 
-Screenshare is stuck in a "software encoder overrun + wrong degradation policy + hostile codec pick" combo. Every preset, every source type (screen/window/tab), every content type (game or plain browser) is choppy and delayed. Root causes below, all in the shared helpers in `src/contexts/VoiceContext.tsx` — DM, group and server calls all go through them, so one fix covers everything.
+## 1. Screenshare lag (games and sometimes browsers)
 
-### What's actually wrong
+Root causes still in play after v0.4.11:
+- Capture source (Electron `getDisplayMedia`) frequently delivers native-res 4K/1440p @ 60fps regardless of our constraint hints — the encoder then spends its budget scaling instead of encoding, especially for full-screen games where the source is high-motion.
+- No `contentHint = "motion"` on Ultra means the encoder treats game frames as mixed text/motion, hurting motion smoothness.
+- Bitrate ceilings are still high enough (up to 12 Mbps @1440p60 non-Ultra) that on software VP9 encode or a marginal uplink they cause queue buildup → the exact "always laggy, always delayed" symptom.
+- Encoder-side jitter buffer (`playoutDelayHint`) on the receiver isn't pinned low.
+- No explicit hard cap on capture framerate at the track level (`applyConstraints` is a hint on desktop capture).
 
-1. **Codec preference puts AV1 first.** AV1 software encode is extremely CPU-heavy, and even when the local encoder is hardware, most peers can only decode AV1 in software → the *viewer* stutters. With hardware acceleration disabled (user's current setting) it's catastrophic on both ends. Discord defaults to VP9 for a reason.
-2. **`degradationPreference` is wrong for screenshare.** Ultra uses `balanced` and Clarity uses `maintain-resolution`, so under any encoder or network pressure the pipeline drops *frames* instead of resolution → the exact "laggy, delayed, choppy" symptom, at every resolution, on every content type. Screenshare should be `maintain-framerate` by default (what Discord ships).
-3. **Ultra bitrate ladder is unrealistic.** 10–16 Mbps @1080p/1440p60 exceeds typical home upload and swamps the software encoder → queuing delay + dropped frames. The +30%-over-Discord ladder is what's making Ultra feel *worse* than lower presets.
-4. **VP9 `L1T3` temporal scalability on Ultra** adds another ~20–30% encoder cost with software encoding — piling onto (3).
-5. **No low-power clamp.** When `cubbly-low-power` is active (HW accel off), we still let the user negotiate 1080p60 at multi-Mbps VP9/AV1 → software encoder can't keep up, output is a slideshow.
-6. **Adaptive loop reacts too slowly** (2 lossy samples × 3s = 6s before first cut, 8% loss threshold). By the time it reacts the viewer has already been choppy for 6+ seconds.
+### Changes in `src/contexts/VoiceContext.tsx` and `src/contexts/GroupCallContext.tsx`
 
-### Fix
+1. Force `contentHint = "motion"` for Ultra as well (dropping the neutral "" case). Games and video are motion-dominant; "detail" only makes sense for text/code sharing (Clarity preset already sets it).
+2. Rebalance the bitrate ladder to a tighter, actually-shippable set that matches Discord's real-world caps and prevents queue buildup on typical home upload:
+   - Non-Ultra 1080p60 → 4.5 Mbps (was 7.5 Mbps)
+   - Non-Ultra 1440p60 → 8 Mbps (was 12 Mbps)
+   - Ultra keeps its current numbers.
+3. Add an always-on capture hard-clamp: if the source track's real height/fps (from `getSettings()`) exceeds the negotiated target, use `scaleResolutionDownBy` AND a stricter `maxFramerate` on the encoding, and re-call `applyConstraints` with `frameRate: { max: fpsCap }` (range form is more likely to be honored than a bare number).
+4. Set `sender.getParameters().encodings[0].adaptivePtime = true` where available, and set `RTCRtpReceiver.playoutDelayHint = 0` on remote screenshare video tracks (both DM and group). Prevents Chromium's 200–400 ms default buffer that makes screenshare feel "delayed and choppy" even when frames are on time.
+5. Add a rapid stats loop for screenshare (2s already) that also detects sustained `qualityLimitationReason === "cpu"` for >5s and drops the target by one tier automatically (1440p→1080p, 60→30) once, logging the reason. This is the CPU equivalent of the existing packet-loss reactor.
+6. Tighten the low-power clamp: also apply when the encoder self-reports `qualityLimitationReason === "cpu"` on the very first stats sample after ramp-up, not only when `cubbly-low-power` flag is set. Catches users with hardware acceleration on but a weak CPU.
 
-All in `src/contexts/VoiceContext.tsx` (shared by DM/group/server via imports):
+Both DM (`VoiceContext.tsx`) and group/server (`GroupCallContext.tsx`) get the exact same treatment — the group path already mirrors the DM path.
 
-- **`preferScreenShareCodec`**: reorder to **VP9 → VP8 → H.264 → AV1 (last)**. VP9 is Discord's proven default; AV1 stays available only if no other codec matches.
-- **`applyScreenBitrate`**: set `degradationPreference = "maintain-framerate"` for **all** presets. Motion behaviour is unchanged; Ultra/Clarity now stop dropping frames first.
-- **Remove `scalabilityMode: "L1T3"`** from the Ultra branch (was adding encoder cost with no viewer-side gain when peer decodes in software).
-- **Rebalance the Ultra ladder** back to Discord-parity (drop the +30%): `720p30 2.5M / 720p60 3M / 1080p30 4.5M / 1080p60 6M / 1440p30 6M / 1440p60 8M`. Non-Ultra ladder unchanged.
-- **Low-power clamp** in the screenshare start path: if `document.documentElement.classList.contains("cubbly-low-power")` **or** `electronAPI.getHardwareAcceleration?.()` returns false, hard-cap negotiated resolution to 1080p, fps to 30, and bitrate to `min(chosen, 2_500_000)` — and log why. Applies to both DM (`VoiceContext.startScreenShare`) and group/server (`GroupCallContext.toggleScreenShare`, which computes the same `maxBitrate`/`encodingOpts` locals).
-- **Adaptive loop**: react at `fractionLost > 0.05` after **1** lossy sample (was 0.08 after 2), and shrink the stats interval from 3s to 2s so the first cut lands within ~2s instead of ~6s. Recovery unchanged.
+## 2. Roblox "always In Launcher"
 
-### Not doing
+`electron/gameDetails.cjs` scans the newest 5 `.log` files under `%LOCALAPPDATA%\Roblox\logs\`, but Roblox rotates *very* frequently and its actual game-join lines live in files whose names contain `Player` (e.g. `…_Player_….log`). The 5-newest-by-mtime slice frequently misses them because Roblox also writes launcher / crash-handler / http logs that are newer.
 
-- No changes to audio path (mic constraints, Opus SDP patch, per-window WASAPI capture) — user reported no audio-quality regression this turn.
-- No changes to signaling / rejoin / ringing paths.
-- No version bump / publish / web deploy in the same step — I'll bump `package.json` + `CURRENT_VERSION` + add the changelog line after the code is in and typecheck is clean, matching the flow you use for every desktop patch.
+Additionally, the current regex set misses two of the most common modern Roblox join lines:
+- `[FLog::Output] ! Joining game '<guid>' place <placeId>`
+- `[DFLog::GameJoinLoadTime] Report game_join_loadtime ... placeid:<n>, universeid:<n>`
+- `[FLog::SingleSurfaceApp] initiateTeleport … placeId:<n>`
 
-### Files touched
+### Changes in `electron/gameDetails.cjs` → `parseRoblox()`
 
-- `src/contexts/VoiceContext.tsx` — codec order, degradation, ladder, L1T3 removal, low-power clamp, adaptive thresholds.
-- `src/contexts/GroupCallContext.tsx` — mirror the low-power clamp on the local `maxBitrate`/`encodingOpts` computation (helpers themselves are shared).
-- `src/lib/changelog.ts` — one short v0.4.11 entry.
-- `package.json` — version bump to 0.4.11.
+1. Widen the file scan: read up to the 12 newest `.log` files, and additionally *always* include any file whose name matches `/player/i` regardless of position (the game-client log). Concat their tails.
+2. Add these regexes to `placeIdMatch`:
+   - `/Report game_join_loadtime[^]*?placeid[:=\s"']+(\d{5,})/gi`
+   - `/place[Ii]d[:=\s"']+(\d{5,})/g` (broader — currently `/placeid.../i` misses `placeId`)
+   - `/! Joining game[^\n]*?place\s+(\d{5,})/gi`
+   - `/GameJoinUtil[^\n]*?placeId[:=\s]+(\d{5,})/gi`
+3. Add `universeId` regex: `/game_join_loadtime[^]*?universeid[:=\s"']+(\d{5,})/gi` and `/universe[Ii]d[:=\s"']+(\d{5,})/g`.
+4. Add a "recent activity" filter: only treat a join line as valid if its offset in the tail is within the last N bytes AND the log file's mtime is within the last 30 min. Prevents a stale place from a previous session sticking around forever.
+5. Fall back to "In Game" (generic) if we detect *any* game-join marker but the REST lookup for the place name fails — currently we return `In Launcher` when enrichment fails, which is the bug the user is seeing.
+
+## 3. Replace Fortnite activity logo
+
+Save the uploaded `IMG_3929.png` (Fortnite "F" logo on blue gradient) as a Lovable asset, import it, and use it everywhere Fortnite's icon is referenced in `src/lib/activityIcons.ts`:
+- key `"fortnite"`
+- key `"fortniteclient-win64-shipping"`
+
+Leaves `epicgames` / `epic games launcher` keys unchanged (still the Epic logo).
+
+## 4. Version + changelog
+
+- Bump `package.json` to `0.4.7` → `0.4.12`? — current is `0.4.11`. Bump to `0.4.12`.
+- Bump `CURRENT_VERSION` in `src/lib/changelog.ts` to `0.4.12`.
+- Add v0.4.12 entry with three short user-facing bullets:
+  - Fixed screenshare lag/delay in games and browsers
+  - Roblox activity now shows the actual experience you're in
+  - New Fortnite activity icon
+
+## Not doing (per user's standing rule)
+
+- No web publish. Desktop patch only.
