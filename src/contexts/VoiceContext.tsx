@@ -3459,6 +3459,18 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             cleanStreak = 0;
           }
 
+          // v0.4.12: sustained encoder CPU limitation → drop the target
+          // bitrate aggressively (encoder can't keep up at current settings).
+          if (cpuLimited && videoSenderRef && currentBitrate > minBitrate) {
+            const next = Math.max(minBitrate, Math.round(currentBitrate * 0.7));
+            if (next !== currentBitrate) {
+              currentBitrate = next;
+              await applyScreenBitrate(videoSenderRef, currentBitrate, encodingOpts);
+              console.log(`[Voice] 🔻 adaptive: encoder CPU-limited → cap ${(currentBitrate / 1000) | 0}kbps`);
+            }
+          }
+
+
           if (videoSenderRef && lossyStreak >= 1 && currentBitrate > minBitrate) {
             const next = Math.max(minBitrate, Math.round(currentBitrate * 0.75));
             if (next !== currentBitrate) {
