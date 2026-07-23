@@ -11,6 +11,7 @@
  * cdn.jsdelivr.net (for github raw), etc.
  */
 import marvelRivalsIcon from "@/assets/marvel-rivals.png";
+import fortniteIconAsset from "@/assets/fortnite.png.asset.json";
 
 /** Direct image URLs for popular games & software. Keyed by lowercased name OR process name. */
 export const CURATED_ICONS: Record<string, string> = {
