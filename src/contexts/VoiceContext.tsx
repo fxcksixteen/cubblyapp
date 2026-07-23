@@ -3217,43 +3217,18 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       // (encoder/decoder CPU + jitter buffer underruns) and "low quality"
       // didn't actually lower bitrate. Discord-style caps used here.
       const opt = screenShareSettings.optimizeFor;
-      // Ultra = no contentHint bias (let the encoder do its best across text
-      // AND motion given the very high bitrate headroom). Motion = "motion"
-      // hint. Clarity = "detail" hint.
-      const hint = opt === "ultra" ? "" : opt === "motion" ? "motion" : "detail";
-      // v0.4.3: much stricter per-preset caps. Previous ceilings were letting
-      // "low quality" negotiate 1.35 Mbps at 30 fps of native 4K frames on
-      // Electron (Chromium desktopCapturer ignores getDisplayMedia size
-      // constraints), which is why viewers saw a slideshow.
-      // v0.4.4: Discord-parity ladder. Discord's desktop client caps around
-      // 2.5 Mbps @720p, 4.5 Mbps @1080p30, 7.5 Mbps @1080p60, 9 Mbps @1440p —
-      // and pairs those with VP9 (see preferScreenShareCodec above), which is
-      // why their picture looks noticeably sharper than an equivalent VP8
-      // stream at the same bandwidth. We match, and slightly beat, those caps.
-      // v0.4.11: low-power clamp. If hardware acceleration is off (Electron
-      // setting) or the app already flagged itself into cubbly-low-power,
-      // the software encoder cannot sustain 1080p60 @ multi-Mbps VP9 — the
-      // output becomes a slideshow. Hard-cap resolution/fps/bitrate before
-      // building the ladder so every downstream calc sees the clamped values.
-      let clampedFps = effectiveFps;
-      let clampedQuality = effectiveQuality;
-      let clampedRes = res;
-      let lowPowerCap: number | null = null;
-      const lowPower =
-        typeof document !== "undefined" &&
-        document.documentElement.classList.contains("cubbly-low-power");
-      if (lowPower) {
-        if (clampedQuality === "1440p") { clampedQuality = "1080p"; clampedRes = resolutionMap["1080p"]; }
-        clampedFps = Math.min(clampedFps, 30);
-        lowPowerCap = 2_500_000;
-        console.log(`[Voice] 🔻 low-power screenshare clamp → ${clampedQuality}@${clampedFps}fps, ≤2.5 Mbps`);
-      }
-
+      // v0.4.12: Ultra now uses "motion" contentHint. Almost everyone who
+      // picks Ultra is streaming a game/video (motion-dominant) — the neutral
+      // "" hint was letting the encoder guess and mis-optimizing for text,
+      // which is a big part of why Ultra streams felt choppy on games.
+      // Clarity is still the only "detail" preset (text/code sharing).
+      const hint = opt === "clarity" ? "detail" : "motion";
       const isHighFps = clampedFps >= 50;
       const isUltra = opt === "ultra";
-      // v0.4.11: Ultra rebalanced back to Discord-parity. The prior +30%
-      // ladder (10–16 Mbps) exceeded typical home upload and swamped the
-      // software encoder, which made Ultra feel *worse* than lower presets.
+      // v0.4.12: rebalanced non-Ultra ladder DOWN — the 7.5/12 Mbps caps at
+      // 1080p60/1440p60 were exceeding typical home upload and swamping the
+      // software encoder, causing queue buildup that showed up as constant
+      // lag and delay. New caps match Discord parity and stay smooth.
       const resBitrateBase: Record<string, number> = isUltra ? {
         "480p":  1_200_000,
         "720p":  isHighFps ? 3_000_000 : 2_500_000,
@@ -3261,9 +3236,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         "1440p": isHighFps ? 8_000_000 : 6_000_000,
       } : {
         "480p":  1_000_000,
-        "720p":  isHighFps ? 3_000_000 : 2_500_000,
-        "1080p": isHighFps ? 7_500_000 : 4_500_000,
-        "1440p": isHighFps ? 12_000_000 : 8_000_000,
+        "720p":  isHighFps ? 2_500_000 : 2_000_000,
+        "1080p": isHighFps ? 4_500_000 : 3_500_000,
+        "1440p": isHighFps ? 8_000_000 : 6_000_000,
       };
       const baseFor = resBitrateBase[clampedQuality] ?? 2_500_000;
       const maxBitrate = lowPowerCap ? Math.min(baseFor, lowPowerCap) : baseFor;
