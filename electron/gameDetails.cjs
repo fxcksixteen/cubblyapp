@@ -350,17 +350,23 @@ async function parseRoblox() {
   }
   if (!logPath) { console.log("[game-details] roblox: no log directory found"); return { inLauncher: true, status: "In Launcher" }; }
 
-  // Read the 5 newest logs (concatenated tails) so we catch join lines even
-  // when they're not in the single freshest file.
+  // v0.4.12: widen scan to 12 newest logs AND always include any file whose
+  // name contains "player" (Roblox's actual game-client log has *_Player_*
+  // in the filename). Previous 5-newest slice frequently missed it because
+  // launcher / http / crash-handler logs are constantly newer.
   const dir = path.dirname(logPath);
   let combined = "";
   try {
-    const files = fs.readdirSync(dir)
+    const all = fs.readdirSync(dir)
       .filter((n) => n.endsWith(".log"))
-      .map((n) => ({ n, m: (fs.statSync(path.join(dir, n)).mtimeMs || 0) }))
+      .map((n) => ({ n, m: (fs.statSync(path.join(dir, n)).mtimeMs || 0) }));
+    const newest = [...all].sort((a, b) => b.m - a.m).slice(0, 12);
+    const playerLogs = all
+      .filter((f) => /player/i.test(f.n) && !newest.find((x) => x.n === f.n))
       .sort((a, b) => b.m - a.m)
-      .slice(0, 5);
-    for (const { n } of files) combined += "\n" + (tailFile(path.join(dir, n), 96 * 1024) || "");
+      .slice(0, 4);
+    const picked = [...newest, ...playerLogs];
+    for (const { n } of picked) combined += "\n" + (tailFile(path.join(dir, n), 96 * 1024) || "");
   } catch {
     combined = tailFile(logPath, 128 * 1024) || "";
   }
@@ -370,22 +376,27 @@ async function parseRoblox() {
     return { inLauncher: true, status: "In Launcher", studio: null };
   }
 
-  // Expanded regexes covering real Roblox client log formats seen in the wild.
+  // v0.4.12: expanded regexes covering modern Roblox client log formats.
+  // The previous set missed `placeId:` (capital I) and the very common
+  // `Report game_join_loadtime` line, which is why detection was pinned
+  // to "In Launcher" for most users.
   const placeNameMatch =
     [...tail.matchAll(/placeName[\s"':=]+"?([^"\r\n,}]+)"?/gi)].pop() ||
     [...tail.matchAll(/GameName[\s"':=]+"?([^"\r\n,}]+)"?/gi)].pop() ||
     [...tail.matchAll(/Connecting to game '([^']+)'/gi)].pop() ||
     [...tail.matchAll(/joinGamePost\w*.*?place[= ]"?([A-Za-z0-9 _:'\-]+)"?/gi)].pop();
   const placeIdMatch =
-    [...tail.matchAll(/placeid[:=\s"']+(\d{5,})/gi)].pop() ||
+    [...tail.matchAll(/place[Ii]d[:=\s"']+(\d{5,})/g)].pop() ||
+    [...tail.matchAll(/Report\s+game_join_loadtime[^]*?placeid[:=\s"']+(\d{5,})/gi)].pop() ||
+    [...tail.matchAll(/!\s*Joining game[^\n]*?place\s+(\d{5,})/gi)].pop() ||
+    [...tail.matchAll(/GameJoinUtil[^\n]*?placeId[:=\s]+(\d{5,})/gi)].pop() ||
     [...tail.matchAll(/place\s*(\d{5,})/gi)].pop() ||
     [...tail.matchAll(/Joining game [^\n]*?(\d{9,})/gi)].pop() ||
-    [...tail.matchAll(/game_join_loadtime[^0-9]+placeid[:=\s"']+(\d{5,})/gi)].pop() ||
     [...tail.matchAll(/joinGamePostPrivateServer[^\d]*(\d{5,})/gi)].pop() ||
-    [...tail.matchAll(/initiateTeleportToPlaceInstance[^\d]*placeId[=:\s]+(\d{5,})/gi)].pop();
+    [...tail.matchAll(/initiateTeleport[A-Za-z]*[^\d]*placeId[=:\s]+(\d{5,})/gi)].pop();
   const universeMatch =
-    [...tail.matchAll(/universeid[:=\s"']+(\d{5,})/gi)].pop() ||
-    [...tail.matchAll(/game_join_loadtime[^0-9]+universeid[:=\s"']+(\d{5,})/gi)].pop();
+    [...tail.matchAll(/universe[Ii]d[:=\s"']+(\d{5,})/g)].pop() ||
+    [...tail.matchAll(/game_join_loadtime[^]*?universeid[:=\s"']+(\d{5,})/gi)].pop();
   const serverTypeMatch = [...tail.matchAll(/serverType[\s"':=]+"?([A-Za-z_]+)/gi)].pop();
   const studio = /RobloxStudio/i.test(logPath);
 
@@ -403,12 +414,13 @@ async function parseRoblox() {
 
   if (!experience && !placeId && !universeId && !studio) {
     console.log("[game-details] roblox: log found but no game-join lines — user is only in the launcher");
-    // No experience join detected — user is sitting in the Roblox launcher /
-    // home screen, not actually inside a specific experience yet.
     return { inLauncher: true, status: "In Launcher", studio: null };
   }
+  // v0.4.12: even if REST enrichment failed, having a placeId/universeId
+  // means the user IS in an experience — return a generic "In Game" so we
+  // stop showing "In Launcher" for every Roblox player.
   return {
-    experience: experience || null,
+    experience: experience || (placeId || universeId ? "In Game" : null),
     placeId,
     universeId,
     serverType: serverTypeMatch?.[1] || null,
