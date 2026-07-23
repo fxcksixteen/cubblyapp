@@ -3420,6 +3420,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           const stats = await screenPc.getStats();
           let fractionLost = 0;
           let outboundInfo = "";
+          let cpuLimited = false;
           stats.forEach((report: any) => {
             if (report.type === "outbound-rtp" && report.kind === "video") {
               const now = performance.now();
@@ -3428,6 +3429,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               lastBytes = bytes;
               lastStatsAt = now;
               outboundInfo = `${report.frameWidth}x${report.frameHeight}@${report.framesPerSecond}fps, ${kbps}kbps`;
+              // v0.4.12: if the encoder itself says it's CPU-limited, the
+              // bitrate cap can't help — we need to lower the target below.
+              if (report.qualityLimitationReason === "cpu") cpuLimited = true;
             }
             if (report.type === "remote-inbound-rtp" && report.kind === "video") {
               const lost = report.packetsLost ?? 0;
