@@ -1562,7 +1562,8 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
 
       // ---- Encoding params — identical ladder & degradation prefs to DM.
       const opt = shareSettings.optimizeFor;
-      const hint = opt === "ultra" ? "" : opt === "motion" ? "motion" : "detail";
+      // v0.4.12: "motion" hint for Ultra/Motion, "detail" only for Clarity.
+      const hint = opt === "clarity" ? "detail" : "motion";
 
       // v0.4.11: low-power clamp mirrored from DM path — HW-accel-off
       // machines cannot sustain 1080p60 @ multi-Mbps VP9 in software.
@@ -1582,7 +1583,9 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
 
       const isHighFps = clampedFps >= 50;
       const isUltra = opt === "ultra";
-      // v0.4.11: Ultra rebalanced back to Discord-parity (see VoiceContext).
+      // v0.4.12: non-Ultra ladder rebalanced DOWN to Discord parity — the
+      // previous 7.5/12 Mbps caps swamped software encoders and caused the
+      // "always laggy" symptom in server voice screenshares.
       const resBitrateBase: Record<string, number> = isUltra ? {
         "480p":  1_200_000,
         "720p":  isHighFps ? 3_000_000 : 2_500_000,
@@ -1590,9 +1593,9 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         "1440p": isHighFps ? 8_000_000 : 6_000_000,
       } : {
         "480p":  1_000_000,
-        "720p":  isHighFps ? 3_000_000 : 2_500_000,
-        "1080p": isHighFps ? 7_500_000 : 4_500_000,
-        "1440p": isHighFps ? 12_000_000 : 8_000_000,
+        "720p":  isHighFps ? 2_500_000 : 2_000_000,
+        "1080p": isHighFps ? 4_500_000 : 3_500_000,
+        "1440p": isHighFps ? 8_000_000 : 6_000_000,
       };
       const baseFor = resBitrateBase[clampedQuality] ?? 2_500_000;
       const maxBitrate = lowPowerCap ? Math.min(baseFor, lowPowerCap) : baseFor;
