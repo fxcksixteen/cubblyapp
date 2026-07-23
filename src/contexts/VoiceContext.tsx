@@ -3223,6 +3223,24 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       // which is a big part of why Ultra streams felt choppy on games.
       // Clarity is still the only "detail" preset (text/code sharing).
       const hint = opt === "clarity" ? "detail" : "motion";
+
+      // Low-power clamp: if hardware acceleration is off (Electron setting)
+      // or the app has flagged itself into cubbly-low-power, cap resolution/
+      // fps/bitrate so the software encoder can actually keep up.
+      let clampedFps = effectiveFps;
+      let clampedQuality = effectiveQuality;
+      let clampedRes = res;
+      let lowPowerCap: number | null = null;
+      const lowPower =
+        typeof document !== "undefined" &&
+        document.documentElement.classList.contains("cubbly-low-power");
+      if (lowPower) {
+        if (clampedQuality === "1440p") { clampedQuality = "1080p"; clampedRes = resolutionMap["1080p"]; }
+        clampedFps = Math.min(clampedFps, 30);
+        lowPowerCap = 2_500_000;
+        console.log(`[Voice] 🔻 low-power screenshare clamp → ${clampedQuality}@${clampedFps}fps, ≤2.5 Mbps`);
+      }
+
       const isHighFps = clampedFps >= 50;
       const isUltra = opt === "ultra";
       // v0.4.12: rebalanced non-Ultra ladder DOWN — the 7.5/12 Mbps caps at
