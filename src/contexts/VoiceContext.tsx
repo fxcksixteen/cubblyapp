@@ -7,7 +7,7 @@ import { usePeerGains } from "@/lib/peerGain";
 import { armRemoteAudio } from "@/lib/iosAudioUnlock";
 import { STUN_FALLBACK_SERVERS, sanitizeIceServersForSession } from "@/lib/webrtcIce";
 import { toast } from "@/hooks/use-toast";
-import { startAutomaticScreenEncoding, patchScreenShareVideoSdp } from "@/lib/screenShareEncoding";
+import { startAutomaticScreenEncoding } from "@/lib/screenShareEncoding";
 
 type ParticipantStatePatch = {
   is_muted?: boolean;
@@ -3246,20 +3246,16 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           track.onended = () => { stopScreenShare(); };
         });
 
-        const videoSdpOpts = {
-          startKbps: Math.round(maxBitrate * 0.7 / 1000),
-          minKbps: 800,
-          maxKbps: Math.round(maxBitrate / 1000),
-        };
         const offer = await localPc.createOffer();
-        offer.sdp = patchScreenShareVideoSdp(patchScreenShareOpusSdp(offer.sdp || ""), videoSdpOpts);
+        offer.sdp = patchScreenShareOpusSdp(offer.sdp || "");
         await localPc.setLocalDescription(offer);
         const remoteOffer = { type: offer.type, sdp: offer.sdp };
         await remotePc.setRemoteDescription(remoteOffer as RTCSessionDescriptionInit);
         const answer = await remotePc.createAnswer();
-        answer.sdp = patchScreenShareVideoSdp(patchScreenShareOpusSdp(answer.sdp || ""), videoSdpOpts);
+        answer.sdp = patchScreenShareOpusSdp(answer.sdp || "");
         await remotePc.setLocalDescription(answer);
         await localPc.setRemoteDescription({ type: answer.type, sdp: answer.sdp } as RTCSessionDescriptionInit);
+
 
 
         screenLoopbackPcRef.current = { local: localPc, remote: remotePc };
@@ -3310,17 +3306,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       };
 
       const offer = await screenPc.createOffer();
-      // v0.4.14 — patch video m-line so the encoder starts at ~70% of ceiling
-      // instead of libwebrtc's ~300 kbps cold-start default (Discord parity).
-      offer.sdp = patchScreenShareVideoSdp(
-        patchScreenShareOpusSdp(offer.sdp || ""),
-        {
-          startKbps: Math.round(maxBitrate * 0.7 / 1000),
-          minKbps: 800,
-          maxKbps: Math.round(maxBitrate / 1000),
-        },
-      );
+      offer.sdp = patchScreenShareOpusSdp(offer.sdp || "");
       await screenPc.setLocalDescription(offer);
+
 
 
       if (videoSenderRef) {
