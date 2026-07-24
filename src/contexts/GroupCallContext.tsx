@@ -1370,8 +1370,8 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
 
   /**
    * Toggle screen share. Unified with DM 1-on-1 pipeline (v0.4.5): honors the
-   * user's `screenShareSettings` (resolution/fps/audio/optimizeFor), applies
-   * the same Ultra vs Discord-parity bitrate ladder, prefers VP9/AV1, patches
+   * user's `screenShareSettings` (resolution/fps/audio), applies the unified
+   * automatic bitrate/scale controller, prefers VP9/AV1, patches
    * Opus SDP for stereo high-bitrate share audio, and re-asserts the mic mute
    * state after renegotiation so starting a share never auto-unmutes/mutes.
    * Same per-source audio strategy on Electron (Chromium loopback only for
