@@ -1547,9 +1547,9 @@ export type Database = {
           _reuse_without_live_peer?: boolean
         }
         Returns: {
-          call_event_id: string
-          is_creator: boolean
-          started_at: string
+          out_call_event_id: string
+          out_is_creator: boolean
+          out_started_at: string
         }[]
       }
       apply_recipient_note_edit: {
