@@ -25,7 +25,7 @@ const isIOSLike = (() => {
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
-import { Mic, Globe, Monitor, MousePointer2, Zap, Film, MicOff, Video, VideoOff, Camera } from "lucide-react";
+import { Mic, Globe, Monitor, MousePointer2, Film, MicOff, Video, VideoOff, Camera } from "lucide-react";
 
 interface Props {
   panelStyle: Record<string, string>;
@@ -871,66 +871,6 @@ function VideoTab({ settings, updateSettings, availableDevices, screenShareSetti
           <p className="mt-2 text-[11px]" style={{ color: "var(--app-text-secondary)" }}>
             Higher frame rates use more bandwidth. 60 FPS is recommended for gaming or fast content.
           </p>
-        </div>
-      </div>
-
-      {/* Optimize For */}
-      <div className="rounded-[24px] border p-5 space-y-4" style={cardStyle}>
-        <div className="flex items-center gap-2">
-          <Zap className="h-4 w-4" style={{ color: "var(--app-text-secondary)" }} />
-          <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: "var(--app-text-secondary)" }}>
-            Optimization
-          </p>
-        </div>
-
-        <div className="grid grid-cols-3 gap-3">
-          <button
-            onClick={() => updateScreenShareSettings({ optimizeFor: "ultra" })}
-            className="rounded-xl border p-4 text-left transition-all relative"
-            style={{
-              backgroundColor: screenShareSettings.optimizeFor === "ultra" ? "var(--app-active)" : "var(--app-input)",
-              borderColor: screenShareSettings.optimizeFor === "ultra" ? "#5865f2" : "var(--app-border)",
-            }}
-          >
-            <div className="flex items-center gap-2">
-              <p className="text-sm font-semibold" style={{ color: "var(--app-text-primary)" }}>Ultra</p>
-              <span
-                className="rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white"
-                style={{ background: "linear-gradient(135deg, hsl(265 80% 60%), hsl(220 80% 55%))" }}
-              >
-                Rec.
-              </span>
-            </div>
-            <p className="text-[11px] mt-1 leading-4" style={{ color: "var(--app-text-secondary)" }}>
-              Maximum quality — higher bitrate ceiling and VP9 temporal layers. Recommended for everyone.
-            </p>
-          </button>
-          <button
-            onClick={() => updateScreenShareSettings({ optimizeFor: "clarity" })}
-            className="rounded-xl border p-4 text-left transition-all"
-            style={{
-              backgroundColor: screenShareSettings.optimizeFor === "clarity" ? "var(--app-active)" : "var(--app-input)",
-              borderColor: screenShareSettings.optimizeFor === "clarity" ? "#5865f2" : "var(--app-border)",
-            }}
-          >
-            <p className="text-sm font-semibold" style={{ color: "var(--app-text-primary)" }}>Clarity</p>
-            <p className="text-[11px] mt-1 leading-4" style={{ color: "var(--app-text-secondary)" }}>
-              Best for text, code, and documents. Prioritizes sharpness over smoothness.
-            </p>
-          </button>
-          <button
-            onClick={() => updateScreenShareSettings({ optimizeFor: "motion" })}
-            className="rounded-xl border p-4 text-left transition-all"
-            style={{
-              backgroundColor: screenShareSettings.optimizeFor === "motion" ? "var(--app-active)" : "var(--app-input)",
-              borderColor: screenShareSettings.optimizeFor === "motion" ? "#5865f2" : "var(--app-border)",
-            }}
-          >
-            <p className="text-sm font-semibold" style={{ color: "var(--app-text-primary)" }}>Motion</p>
-            <p className="text-[11px] mt-1 leading-4" style={{ color: "var(--app-text-secondary)" }}>
-              Best for gaming, video, and animations. Prioritizes smooth motion over sharpness.
-            </p>
-          </button>
         </div>
       </div>
 

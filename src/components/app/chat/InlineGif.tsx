@@ -12,6 +12,7 @@ import { toast } from "sonner";
 
 interface InlineGifProps {
   url: string;
+  onLoad?: () => void;
 }
 
 /**
@@ -19,7 +20,7 @@ interface InlineGifProps {
  * via the shared ImageLightbox. Right-click opens an image-style context
  * menu (copy link, copy image, save, open in new tab).
  */
-const InlineGif = ({ url }: InlineGifProps) => {
+const InlineGif = ({ url, onLoad }: InlineGifProps) => {
   const [open, setOpen] = useState(false);
 
   const handleCopyLink = async () => {
@@ -87,6 +88,7 @@ const InlineGif = ({ url }: InlineGifProps) => {
               alt="GIF"
               className="max-h-[200px] rounded-lg group-hover/gif:brightness-90 transition-[filter]"
               loading="lazy"
+              onLoad={onLoad}
             />
             <span
               className="pointer-events-none absolute bottom-1.5 left-1.5 rounded px-1.5 py-0.5 text-[10px] font-bold text-white opacity-0 group-hover/gif:opacity-100 transition-opacity"

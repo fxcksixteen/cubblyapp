@@ -30,6 +30,7 @@ import { startNativeWindowAudioStream } from "@/lib/nativeWindowAudio";
 import { usePeerGains } from "@/lib/peerGain";
 import { armRemoteAudio } from "@/lib/iosAudioUnlock";
 import { STUN_FALLBACK_SERVERS, sanitizeIceServersForSession } from "@/lib/webrtcIce";
+import { AutomaticScreenEncoding, startAutomaticScreenEncoding } from "@/lib/screenShareEncoding";
 import {
   applyScreenBitrate,
   applyScreenAudioBitrate,
@@ -451,12 +452,13 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
   const videoSendersRef = useRef<Map<string, RTCRtpSender>>(new Map());
   const screenSendersRef = useRef<Map<string, RTCRtpSender>>(new Map());
   const screenAudioSendersRef = useRef<Map<string, RTCRtpSender[]>>(new Map());
+  const screenEncodingCleanupRef = useRef<Map<string, () => void>>(new Map());
 
   const localStreamRef = useRef<MediaStream | null>(null);
   // Local camera + screenshare track refs
   const localVideoTrackRef = useRef<MediaStreamTrack | null>(null);
   const localScreenTrackRef = useRef<MediaStreamTrack | null>(null);
-  const localScreenEncodingRef = useRef<{ bitrate: number; maxFramerate: number; scaleResolutionDownBy: number } | null>(null);
+  const localScreenEncodingRef = useRef<AutomaticScreenEncoding | null>(null);
   /** Cleanup fn for an active native (WASAPI) per-window audio capture, if any. */
   const nativeWindowAudioStopRef = useRef<(() => void) | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
@@ -623,6 +625,8 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     ignoreOfferRef.current.delete(peerId);
     videoSendersRef.current.delete(peerId);
     screenSendersRef.current.delete(peerId);
+    screenEncodingCleanupRef.current.get(peerId)?.();
+    screenEncodingCleanupRef.current.delete(peerId);
     setPeers(prev => prev.filter(p => p.userId !== peerId));
     // Remove that peer's <audio> element
     document.querySelectorAll<HTMLAudioElement>(`audio[data-group-peer="${peerId}"]`).forEach(el => {
@@ -676,7 +680,9 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       Object.defineProperty(screenStream, "id", { value: `cubbly-screen-${user.id}` });
       const sender = pc.addTrack(localScreenTrackRef.current, screenStream);
       screenSendersRef.current.set(peerId, sender);
-      if (localScreenEncodingRef.current) void applyGroupScreenVideoParams(sender, localScreenEncodingRef.current);
+      if (localScreenEncodingRef.current) {
+        screenEncodingCleanupRef.current.set(peerId, startAutomaticScreenEncoding(sender, pc, localScreenEncodingRef.current));
+      }
     }
 
     pc.ontrack = (event) => {
@@ -1560,10 +1566,8 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
 
-      // ---- Encoding params — identical ladder & degradation prefs to DM.
-      const opt = shareSettings.optimizeFor;
-      // v0.4.12: "motion" hint for Ultra/Motion, "detail" only for Clarity.
-      const hint = opt === "clarity" ? "detail" : "motion";
+      // One automatic mixed-content mode for games, video, and text.
+      const hint = "motion";
 
       // v0.4.11: low-power clamp mirrored from DM path — HW-accel-off
       // machines cannot sustain 1080p60 @ multi-Mbps VP9 in software.
@@ -1582,19 +1586,10 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       }
 
       const isHighFps = clampedFps >= 50;
-      const isUltra = opt === "ultra";
-      // v0.4.12: non-Ultra ladder rebalanced DOWN to Discord parity — the
-      // previous 7.5/12 Mbps caps swamped software encoders and caused the
-      // "always laggy" symptom in server voice screenshares.
-      const resBitrateBase: Record<string, number> = isUltra ? {
+      const resBitrateBase: Record<string, number> = {
         "480p":  1_200_000,
         "720p":  isHighFps ? 3_000_000 : 2_500_000,
         "1080p": isHighFps ? 6_000_000 : 4_500_000,
-        "1440p": isHighFps ? 8_000_000 : 6_000_000,
-      } : {
-        "480p":  1_000_000,
-        "720p":  isHighFps ? 2_500_000 : 2_000_000,
-        "1080p": isHighFps ? 4_500_000 : 3_500_000,
         "1440p": isHighFps ? 8_000_000 : 6_000_000,
       };
       const baseFor = resBitrateBase[clampedQuality] ?? 2_500_000;
@@ -1621,18 +1616,12 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       const scaleResolutionDownBy = capturedHeight > targetHeight
         ? +(capturedHeight / targetHeight).toFixed(2)
         : 1;
-      const encodingOpts = {
-        scaleResolutionDownBy,
-        maxFramerate: fpsCap,
-        preferMotion: opt === "motion",
-        ultra: isUltra,
-      };
-
       const videoTrack = stream.getVideoTracks()[0];
       localScreenEncodingRef.current = {
-        bitrate: maxBitrate,
-        maxFramerate: fpsCap,
-        scaleResolutionDownBy,
+        targetBitrate: maxBitrate,
+        targetFps: fpsCap,
+        targetHeight,
+        baseScale: scaleResolutionDownBy,
       };
       localScreenTrackRef.current = videoTrack;
       setLocalScreenStream(stream);
@@ -1646,7 +1635,8 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         Object.defineProperty(labeledStream, "id", { value: `cubbly-screen-${user.id}` });
         const vSender = pc.addTrack(videoTrack, labeledStream);
         screenSendersRef.current.set(peerId, vSender);
-        void applyScreenBitrate(vSender, maxBitrate, encodingOpts);
+        screenEncodingCleanupRef.current.get(peerId)?.();
+        screenEncodingCleanupRef.current.set(peerId, startAutomaticScreenEncoding(vSender, pc, localScreenEncodingRef.current));
         const tx = pc.getTransceivers().find((t) => t.sender === vSender);
         preferScreenShareCodec(tx || null);
 
@@ -1680,6 +1670,8 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       if (track) track.stop();
       localScreenTrackRef.current = null;
       localScreenEncodingRef.current = null;
+      screenEncodingCleanupRef.current.forEach((cleanup) => cleanup());
+      screenEncodingCleanupRef.current.clear();
       if (localScreenStream) {
         try { localScreenStream.getTracks().forEach((t) => t.stop()); } catch {}
       }
