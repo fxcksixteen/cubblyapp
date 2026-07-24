@@ -797,7 +797,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         // Opus before publishing it; without this, server-call audio defaults
         // to mono ~32kbps and sounds underwater compared to DM calls.
         const offer = await pc.createOffer();
-        offer.sdp = mungeGroupCallOpusSdp(offer.sdp);
+        offer.sdp = mungeLocalSdp(offer.sdp);
         await pc.setLocalDescription(offer);
         await sendGroupSignalReliably(channelRef.current, {
           type: "offer",
@@ -1031,7 +1031,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
             const pc = ensurePc(payload.fromUserId);
             try {
               const offer = await pc.createOffer();
-              offer.sdp = mungeGroupCallOpusSdp(offer.sdp);
+              offer.sdp = mungeLocalSdp(offer.sdp);
               await pc.setLocalDescription(offer);
               await sendGroupSignalReliably(channel, { type: "offer", fromUserId: user.id, toUserId: payload.fromUserId, sdp: pc.localDescription }, "offer(peer-join)");
             } catch (e) {
@@ -1070,7 +1070,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
             queuedIceRef.current.delete(payload.fromUserId);
 
             const answer = await pc.createAnswer();
-            answer.sdp = mungeGroupCallOpusSdp(answer.sdp);
+            answer.sdp = mungeLocalSdp(answer.sdp);
             await pc.setLocalDescription(answer);
             await sendGroupSignalReliably(channel, { type: "answer", fromUserId: user.id, toUserId: payload.fromUserId, sdp: pc.localDescription }, "answer(offer)");
           } catch (e) {
@@ -1785,7 +1785,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
             try {
               const pc = ensurePc(r.user_id);
               const offer = await pc.createOffer();
-              offer.sdp = mungeGroupCallOpusSdp(offer.sdp);
+              offer.sdp = mungeLocalSdp(offer.sdp);
               await pc.setLocalDescription(offer);
               await sendGroupSignalReliably(channelRef.current, { type: "offer", fromUserId: user.id, toUserId: r.user_id, sdp: pc.localDescription }, "offer(reconcile)");
             } catch (e) {
