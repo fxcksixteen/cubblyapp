@@ -7,6 +7,7 @@ import { usePeerGains } from "@/lib/peerGain";
 import { armRemoteAudio } from "@/lib/iosAudioUnlock";
 import { STUN_FALLBACK_SERVERS, sanitizeIceServersForSession } from "@/lib/webrtcIce";
 import { toast } from "@/hooks/use-toast";
+import { startAutomaticScreenEncoding } from "@/lib/screenShareEncoding";
 
 type ParticipantStatePatch = {
   is_muted?: boolean;
@@ -37,7 +38,6 @@ export interface ScreenShareSettings {
   resolution: string;
   frameRate: number;
   audioShare: boolean;
-  optimizeFor: string;
   showCursor: boolean;
 }
 
@@ -62,7 +62,6 @@ const DEFAULT_SCREEN_SHARE_SETTINGS: ScreenShareSettings = {
   resolution: "auto",
   frameRate: 30,
   audioShare: true,
-  optimizeFor: "ultra",
   showCursor: true,
 };
 
@@ -1807,9 +1806,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               };
             }
             const payloadCallEventId = payload.callEventId || currentCallEventIdRef.current;
-            const shouldForceFresh = !!payload.forceFreshOffer
-              && !pendingOfferRef.current
-              && peerAcceptedCallEventRef.current !== payloadCallEventId;
+            const shouldForceFresh = !!payload.forceFreshOffer && !pendingOfferRef.current;
+            if (shouldForceFresh && peerAcceptedCallEventRef.current === payloadCallEventId) {
+              peerAcceptedCallEventRef.current = null;
+              try { pcRef.current?.close(); } catch {}
+              pcRef.current = null;
+            }
             await initializeOutgoingConnection(channel, conversationId, { forceFreshOffer: shouldForceFresh });
           } catch (e) {
             console.error("[Voice] Failed to initialize outgoing connection (keeping call alive):", e);
@@ -2518,11 +2520,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         channelConversationRef.current = null;
       }
 
-      // ─── Hardcoded invariant: only ONE call can ever be ongoing per chat. ───
-      // Before starting a fresh one, check the DB for an existing ongoing
-      // call_event in this conversation. If it exists, REUSE its id (we're
-      // joining the live call) instead of inserting a second event — that
-      // was the source of "two Ongoing Call pills" after a restart.
       let callEventId: string | null = null;
       let isJoiningExisting = false;
       // When rejoining, preserve the ORIGINAL call start time from the DB so
@@ -2530,99 +2527,32 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       // one participant briefly dropped out. The call only truly "ends" when
       // the last participant leaves (state flips to "ended").
       let existingStartedAtMs: number | undefined;
-      // v0.4.6: sweep dead ongoing events first so we don't join a ghost.
-      try { await (supabase as any).rpc("sweep_stale_call_events"); } catch { /* non-fatal */ }
       try {
-        const { data: existing } = await supabase
-          .from("call_events")
-          .select("id, started_at")
-          .eq("conversation_id", conversationId)
-          .eq("state", "ongoing")
-          .order("started_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (existing?.id) {
-          voiceTrace("dm.existingCall.found", { conversationId, callEventId: existing.id });
-          try {
-            const { data: canonicalId } = await (supabase as any).rpc("canonicalize_ongoing_call_event", {
-              _conversation_id: conversationId,
-              _preferred_call_event_id: existing.id,
-            });
-            if (canonicalId && canonicalId !== existing.id) {
-              existing.id = canonicalId;
-            }
-          } catch { /* older backend: continue with newest event */ }
-          // Liveness: another participant must be FRESHLY live (left_at NULL
-          // AND last_seen_at within 30s). Stale ghosts no longer count, so
-          // clicking voice/video starts a brand-new real call instead of
-          // dropping you into a fake "calling..." with no one on the other end.
-          const { data: liveRows } = await supabase
-            .from("call_participants")
-            .select("user_id, last_seen_at, left_at, joined_at")
-            .eq("call_event_id", existing.id);
-
-          const FRESH_MS = 30_000;
-          const now = Date.now();
-          const otherActive = (liveRows || []).some((r: any) => {
-            if (r.user_id === user.id) return false;
-            if (r.left_at !== null) return false;
-            // A row with NO heartbeat is NOT automatically fresh — a crash/
-            // force-quit/older client could have left a "ghost" row with
-            // last_seen_at=NULL that would otherwise permanently poison this
-            // DM (every call attempt silently hijacked into a rejoin against
-            // nobody). Fall back to joined_at (NOT NULL DEFAULT now()) so
-            // ghosts time out after FRESH_MS like any other stale row.
-            const baselineStr = r.last_seen_at ?? r.joined_at;
-            if (!baselineStr) return false;
-            const baseline = new Date(baselineStr).getTime();
-            if (Number.isNaN(baseline)) return false;
-            return now - baseline < FRESH_MS;
-          });
-
-          if (otherActive) {
-            callEventId = existing.id;
-            isJoiningExisting = true;
-            if (existing.started_at) {
-              const t = Date.parse(existing.started_at);
-              if (!Number.isNaN(t)) existingStartedAtMs = t;
-            }
-            const livePeers = (liveRows || [])
-              .filter((r: any) => r.user_id !== user.id && r.left_at === null)
-              .map((r: any) => `${r.user_id}@${r.last_seen_at ?? `joined:${r.joined_at}`}`);
-            console.log("[Voice] 🔁 Joining existing ongoing call_event:", callEventId, "live peers:", livePeers);
-            voiceTrace("dm.existingCall.join", { conversationId, callEventId, livePeers });
-          } else {
-            voiceTrace("dm.existingCall.stale", { conversationId, callEventId: existing.id });
-            // No real peer present. Ask the backend to close the event AND
-            // soft-close any stale participant rows so a ghost can't poison
-            // future call attempts in this conversation.
-            try { await (supabase as any).rpc("end_call_event_if_stale", { _call_event_id: existing.id }); } catch {}
-            try {
-              await supabase
-                .from("call_participants")
-                .update({ left_at: new Date().toISOString() })
-                .eq("call_event_id", existing.id)
-                .is("left_at", null);
-            } catch (e) {
-              console.warn("[Voice] could not soft-close stale participant rows:", e);
-            }
-          }
-        }
-      } catch (e) {
-        console.warn("[Voice] could not check for existing call_event:", e);
-      }
-
-      if (!callEventId) callEventId = crypto.randomUUID();
-      voiceTrace("dm.callEvent.selected", { conversationId, callEventId, isJoiningExisting });
-
-      if (isJoiningExisting) {
-        await ensureOwnParticipantRow(callEventId!, {
-          is_muted: activeCallRef.current?.isMuted ?? false,
-          is_deafened: activeCallRef.current?.isDeafened ?? false,
-          is_video_on: activeCallRef.current?.isVideoOn ?? false,
-          is_screen_sharing: false,
+        const { data, error } = await (supabase as any).rpc("acquire_call_session", {
+          _conversation_id: conversationId,
+          _reuse_without_live_peer: false,
+          _is_muted: activeCallRef.current?.isMuted ?? false,
+          _is_deafened: activeCallRef.current?.isDeafened ?? false,
+          _is_video_on: activeCallRef.current?.isVideoOn ?? false,
+          _is_screen_sharing: false,
         });
+        if (error) throw error;
+        const acquired = Array.isArray(data) ? data[0] : data;
+        if (!acquired?.call_event_id) throw new Error("Call session acquisition returned no event");
+        callEventId = acquired.call_event_id;
+        isJoiningExisting = !acquired.is_creator;
+        if (acquired.started_at) {
+          const t = Date.parse(acquired.started_at);
+          if (!Number.isNaN(t)) existingStartedAtMs = t;
+        }
+        voiceTrace("dm.callSession.acquired", { conversationId, callEventId, isJoiningExisting });
+      } catch (e) {
+        console.error("[Voice] could not atomically acquire call session:", e);
+        throw e;
       }
+
+      if (!callEventId) throw new Error("Call session unavailable");
+      voiceTrace("dm.callEvent.selected", { conversationId, callEventId, isJoiningExisting });
 
       incomingCandidateQueue.current = [];
       outgoingCandidateBuffer.current = [];
@@ -2673,13 +2603,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           state: "ongoing",
           startedAt: new Date().toISOString(),
         }]);
-        await supabase.from("call_events").insert({
-          id: callEventId,
-          conversation_id: conversationId,
-          caller_id: user.id,
-          state: "ongoing",
-        } as any);
-        await ensureOwnParticipantRow(callEventId!);
       }
       currentCallEventIdRef.current = callEventId;
       setCurrentCallEventId(callEventId);
@@ -3211,18 +3134,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       setIsScreenSharing(true);
       playSound("screenshareStart", { volume: 0.4 });
 
-      // Apply Optimization preset to the actual video track. Bitrates are
-      // now scaled BY the user's chosen resolution AND optimization mode —
-      // the previous "ultra=12 Mbps" cap was tanking both clients' calls
-      // (encoder/decoder CPU + jitter buffer underruns) and "low quality"
-      // didn't actually lower bitrate. Discord-style caps used here.
-      const opt = screenShareSettings.optimizeFor;
-      // v0.4.12: Ultra now uses "motion" contentHint. Almost everyone who
-      // picks Ultra is streaming a game/video (motion-dominant) — the neutral
-      // "" hint was letting the encoder guess and mis-optimizing for text,
-      // which is a big part of why Ultra streams felt choppy on games.
-      // Clarity is still the only "detail" preset (text/code sharing).
-      const hint = opt === "clarity" ? "detail" : "motion";
+      const hint = "motion";
 
       // Low-power clamp: if hardware acceleration is off (Electron setting)
       // or the app has flagged itself into cubbly-low-power, cap resolution/
@@ -3242,20 +3154,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       }
 
       const isHighFps = clampedFps >= 50;
-      const isUltra = opt === "ultra";
-      // v0.4.12: rebalanced non-Ultra ladder DOWN — the 7.5/12 Mbps caps at
-      // 1080p60/1440p60 were exceeding typical home upload and swamping the
-      // software encoder, causing queue buildup that showed up as constant
-      // lag and delay. New caps match Discord parity and stay smooth.
-      const resBitrateBase: Record<string, number> = isUltra ? {
+      const resBitrateBase: Record<string, number> = {
         "480p":  1_200_000,
         "720p":  isHighFps ? 3_000_000 : 2_500_000,
         "1080p": isHighFps ? 6_000_000 : 4_500_000,
-        "1440p": isHighFps ? 8_000_000 : 6_000_000,
-      } : {
-        "480p":  1_000_000,
-        "720p":  isHighFps ? 2_500_000 : 2_000_000,
-        "1080p": isHighFps ? 4_500_000 : 3_500_000,
         "1440p": isHighFps ? 8_000_000 : 6_000_000,
       };
       const baseFor = resBitrateBase[clampedQuality] ?? 2_500_000;
@@ -3292,8 +3194,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       const encodingOpts = {
         scaleResolutionDownBy,
         maxFramerate: fpsCap,
-        preferMotion: opt === "motion",
-        ultra: isUltra,
+        preferMotion: true,
+        ultra: true,
       };
 
 
@@ -3390,110 +3292,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       offer.sdp = patchScreenShareOpusSdp(offer.sdp || "");
       await screenPc.setLocalDescription(offer);
 
-      // v0.4.4: adaptive bitrate loop, Discord-style.
-      // Every 3s we sample outbound-rtp + remote-inbound-rtp:
-      //  • if sustained packet loss >8% over TWO consecutive samples → drop
-      //    maxBitrate 25% (floor 40% of the user's chosen target).
-      //  • if loss stays <2% for 4 consecutive samples AND we've throttled →
-      //    step back up 15% toward target.
-      // This is the piece that lets the stream stay smooth on flaky wifi
-      // without permanently sacrificing quality on good networks.
-      const targetBitrate = maxBitrate;
-      // v0.4.4: Ultra never falls below 60% of its ceiling (so even under
-      // sustained loss it stays above Clarity/Motion bandwidth). Other
-      // presets keep the original 40% floor.
-      const minBitrate = Math.max(300_000, Math.round(targetBitrate * (isUltra ? 0.6 : 0.4)));
-      const recoveryStep = isUltra ? 1.20 : 1.15;
-      let currentBitrate = targetBitrate;
-      let lossyStreak = 0;
-      let cleanStreak = 0;
-      let lastBytes = 0;
-      let lastStatsAt = performance.now();
-      let lastRemoteLost = 0;
-      let lastRemotePkts = 0;
-      const statsInterval = setInterval(async () => {
-        if (!screenPcOutRef.current || screenPcOutRef.current !== screenPc) {
-          clearInterval(statsInterval);
-          return;
-        }
-        try {
-          const stats = await screenPc.getStats();
-          let fractionLost = 0;
-          let outboundInfo = "";
-          let cpuLimited = false;
-          stats.forEach((report: any) => {
-            if (report.type === "outbound-rtp" && report.kind === "video") {
-              const now = performance.now();
-              const bytes = report.bytesSent || 0;
-              const kbps = lastBytes > 0 ? Math.round(((bytes - lastBytes) * 8) / Math.max(1, now - lastStatsAt)) : 0;
-              lastBytes = bytes;
-              lastStatsAt = now;
-              outboundInfo = `${report.frameWidth}x${report.frameHeight}@${report.framesPerSecond}fps, ${kbps}kbps`;
-              // v0.4.12: if the encoder itself says it's CPU-limited, the
-              // bitrate cap can't help — we need to lower the target below.
-              if (report.qualityLimitationReason === "cpu") cpuLimited = true;
-            }
-            if (report.type === "remote-inbound-rtp" && report.kind === "video") {
-              const lost = report.packetsLost ?? 0;
-              const pkts = (report as any).packetsReceived ?? 0;
-              const dLost = Math.max(0, lost - lastRemoteLost);
-              const dPkts = Math.max(0, pkts - lastRemotePkts);
-              lastRemoteLost = lost;
-              lastRemotePkts = pkts;
-              const denom = dLost + dPkts;
-              if (denom > 0) fractionLost = dLost / denom;
-              else if (typeof report.fractionLost === "number") fractionLost = report.fractionLost;
-            }
-          });
-
-          // v0.4.11: react faster — 5% loss trips immediately, 2s stats
-          // interval means first cut lands ~2s in instead of ~6s.
-          if (fractionLost > 0.05) {
-            lossyStreak += 1;
-            cleanStreak = 0;
-          } else if (fractionLost < 0.02) {
-            cleanStreak += 1;
-            lossyStreak = 0;
-          } else {
-            lossyStreak = 0;
-            cleanStreak = 0;
-          }
-
-          // v0.4.12: sustained encoder CPU limitation → drop the target
-          // bitrate aggressively (encoder can't keep up at current settings).
-          if (cpuLimited && videoSenderRef && currentBitrate > minBitrate) {
-            const next = Math.max(minBitrate, Math.round(currentBitrate * 0.7));
-            if (next !== currentBitrate) {
-              currentBitrate = next;
-              await applyScreenBitrate(videoSenderRef, currentBitrate, encodingOpts);
-              console.log(`[Voice] 🔻 adaptive: encoder CPU-limited → cap ${(currentBitrate / 1000) | 0}kbps`);
-            }
-          }
-
-
-          if (videoSenderRef && lossyStreak >= 1 && currentBitrate > minBitrate) {
-            const next = Math.max(minBitrate, Math.round(currentBitrate * 0.75));
-            if (next !== currentBitrate) {
-              currentBitrate = next;
-              lossyStreak = 0;
-              await applyScreenBitrate(videoSenderRef, currentBitrate, encodingOpts);
-              console.log(`[Voice] 🔻 adaptive: loss ${(fractionLost * 100).toFixed(1)}% → cap ${(currentBitrate / 1000) | 0}kbps`);
-            }
-          } else if (videoSenderRef && cleanStreak >= 4 && currentBitrate < targetBitrate) {
-            const next = Math.min(targetBitrate, Math.round(currentBitrate * recoveryStep));
-            if (next !== currentBitrate) {
-              currentBitrate = next;
-              cleanStreak = 0;
-              await applyScreenBitrate(videoSenderRef, currentBitrate, encodingOpts);
-              console.log(`[Voice] 🔺 adaptive: clean → cap ${(currentBitrate / 1000) | 0}kbps`);
-            }
-          }
-
-          if (outboundInfo) {
-            console.log(`[Voice] 🖥️ outbound — ${outboundInfo} (loss ${(fractionLost * 100).toFixed(1)}%, cap ${(currentBitrate / 1000) | 0}kbps)`);
-          }
-        } catch {}
-      }, 2_000);
+      if (videoSenderRef) {
+        screenEncodingCleanupRef.current?.();
+        screenEncodingCleanupRef.current = startAutomaticScreenEncoding(videoSenderRef, screenPc, {
+          targetBitrate: maxBitrate,
+          targetFps: fpsCap,
+          targetHeight,
+          baseScale: scaleResolutionDownBy,
+        });
+      }
 
       channelRef.current.send({
         type: "broadcast",
@@ -3511,6 +3318,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
 
   const stopScreenShare = useCallback(() => {
+    screenEncodingCleanupRef.current?.();
+    screenEncodingCleanupRef.current = null;
     // v0.3.21: only play the stop SFX if we were ACTUALLY sharing. Previously
     // endCall() always invoked stopScreenShare() during teardown, so users
     // heard "stream end" + "leave call" stacked even when they were never
