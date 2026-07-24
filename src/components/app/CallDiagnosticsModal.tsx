@@ -60,13 +60,35 @@ const SparklineRtt = ({ history }: { history: number[] }) => {
   );
 };
 
+interface GpuInfo {
+  ok: boolean;
+  gpuProcessOn?: boolean;
+  vendor?: string | null;
+  likelyEncoder?: string;
+  videoEncode?: string;
+  videoDecode?: string;
+  rasterization?: string;
+  platform?: string;
+  error?: string;
+}
+
 const CallDiagnosticsModal = ({ open, onClose }: Props) => {
   const { getCallDiagnostics, activeCall, ping, runPickupSelfTest } = useVoice();
   const [diag, setDiag] = useState<CallDiagnostics | null>(null);
   const [rttHistory, setRttHistory] = useState<number[]>([]);
   const [selfTestRunning, setSelfTestRunning] = useState(false);
   const [selfTestResult, setSelfTestResult] = useState<PickupSelfTestResult | null>(null);
+  const [gpuInfo, setGpuInfo] = useState<GpuInfo | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const api = (window as any).electronAPI;
+    if (api?.getGpuInfo) {
+      api.getGpuInfo().then((info: GpuInfo) => setGpuInfo(info)).catch(() => setGpuInfo({ ok: false, error: "unavailable" }));
+    }
+  }, [open]);
+
 
   const handleRunSelfTest = async () => {
     setSelfTestRunning(true);
