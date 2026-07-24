@@ -1537,6 +1537,21 @@ export type Database = {
         Args: { _gaming_seconds?: number; _voice_seconds?: number }
         Returns: Json
       }
+      acquire_call_session: {
+        Args: {
+          _conversation_id: string
+          _is_deafened?: boolean
+          _is_muted?: boolean
+          _is_screen_sharing?: boolean
+          _is_video_on?: boolean
+          _reuse_without_live_peer?: boolean
+        }
+        Returns: {
+          call_event_id: string
+          is_creator: boolean
+          started_at: string
+        }[]
+      }
       apply_recipient_note_edit: {
         Args: { _body: string; _message_id: string; _title: string }
         Returns: undefined
