@@ -3246,20 +3246,16 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           track.onended = () => { stopScreenShare(); };
         });
 
-        const videoSdpOpts = {
-          startKbps: Math.round(maxBitrate * 0.7 / 1000),
-          minKbps: 800,
-          maxKbps: Math.round(maxBitrate / 1000),
-        };
         const offer = await localPc.createOffer();
-        offer.sdp = patchScreenShareVideoSdp(patchScreenShareOpusSdp(offer.sdp || ""), videoSdpOpts);
+        offer.sdp = patchScreenShareOpusSdp(offer.sdp || "");
         await localPc.setLocalDescription(offer);
         const remoteOffer = { type: offer.type, sdp: offer.sdp };
         await remotePc.setRemoteDescription(remoteOffer as RTCSessionDescriptionInit);
         const answer = await remotePc.createAnswer();
-        answer.sdp = patchScreenShareVideoSdp(patchScreenShareOpusSdp(answer.sdp || ""), videoSdpOpts);
+        answer.sdp = patchScreenShareOpusSdp(answer.sdp || "");
         await remotePc.setLocalDescription(answer);
         await localPc.setRemoteDescription({ type: answer.type, sdp: answer.sdp } as RTCSessionDescriptionInit);
+
 
 
         screenLoopbackPcRef.current = { local: localPc, remote: remotePc };
