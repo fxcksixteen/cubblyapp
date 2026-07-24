@@ -114,35 +114,50 @@ export const SERVER_REGIONS = [
 ];
 
 /**
- * v0.4.4 — Prefer VP9 (then VP8, then H.264) for a screenshare video
- * transceiver. VP9 delivers ~30–40% better quality per bit than VP8/H.264
- * for screen content — matching what Discord's desktop client picks — and
- * Chromium/Electron both support hardware/software VP9 encode.
+ * v0.4.13 — Discord-parity screenshare codec selection.
  *
- * Safe no-op if `RTCRtpSender.getCapabilities` or `setCodecPreferences` are
- * unavailable, or if VP9 isn't offered by the current build.
+ * On the Electron desktop app we force-enable Chromium's hardware video
+ * encoder path (Media Foundation on Windows / VideoToolbox on macOS / VAAPI
+ * on Linux) via GPU flags in `electron/main.cjs`. In that environment
+ * **H.264 is the only codec with hardware encode on essentially every
+ * consumer GPU from the last decade** (NVENC, QuickSync, VideoToolbox, AMF).
+ * VP9 HW encode is limited to very new NVIDIA silicon; AV1 HW encode is
+ * even rarer. So on desktop we rank H.264 first (matches what Discord ships).
+ *
+ * In a plain browser we keep the previous VP9-first order — browsers don't
+ * expose the same MF/VideoToolbox pipeline, and VP9 gives better quality per
+ * bit for screen content on the software path.
+ *
+ * AV1 stays last everywhere: Chromium AV1 encode is still SVT-AV1 in
+ * software, and it tanks framerate on any machine without a very recent GPU.
  */
 export function preferScreenShareCodec(transceiver: RTCRtpTransceiver | null | undefined): string | null {
   if (!transceiver || typeof (transceiver as any).setCodecPreferences !== "function") return null;
   try {
     const caps = (RTCRtpSender as any).getCapabilities?.("video");
     if (!caps?.codecs?.length) return null;
-    // v0.4.11: VP9 first (Discord default, universally HW-decoded). AV1
-    // demoted to LAST — AV1 software encode/decode is catastrophic when
-    // hardware acceleration is off, which is the exact configuration the
-    // user hits screenshare lag in.
+    const isElectron = !!(window as any).electronAPI?.isElectron;
     const rank = (mime: string): number => {
       const m = mime.toLowerCase();
-      if (m === "video/vp9") return 0;
-      if (m === "video/vp8") return 1;
-      if (m === "video/h264") return 2;
-      if (m === "video/av1") return 3;
+      if (isElectron) {
+        // Desktop app: HW H.264 first, then VP9, then VP8, AV1 last.
+        if (m === "video/h264") return 0;
+        if (m === "video/vp9") return 1;
+        if (m === "video/vp8") return 2;
+        if (m === "video/av1") return 3;
+      } else {
+        // Browser: VP9 first (best SW quality), then VP8, then H.264, AV1 last.
+        if (m === "video/vp9") return 0;
+        if (m === "video/vp8") return 1;
+        if (m === "video/h264") return 2;
+        if (m === "video/av1") return 3;
+      }
       return 9;
     };
     const codecs = [...caps.codecs].sort((a: any, b: any) => rank(a.mimeType) - rank(b.mimeType));
     (transceiver as any).setCodecPreferences(codecs);
     const chosen = codecs[0]?.mimeType || null;
-    console.log(`[Voice] 🎞️ screenshare codec preference:`, codecs.slice(0, 3).map((c: any) => c.mimeType).join(" → "));
+    console.log(`[Voice] 🎞️ screenshare codec preference (${isElectron ? "electron/HW" : "browser/SW"}):`, codecs.slice(0, 3).map((c: any) => c.mimeType).join(" → "));
     return chosen;
   } catch (e) {
     console.warn("[Voice] setCodecPreferences failed:", e);

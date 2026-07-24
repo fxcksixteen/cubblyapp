@@ -32,7 +32,9 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: "2026-07-24",
     hero: bearImage,
     newFeatures: [
+      "Screenshare now uses your GPU for hardware-accelerated encoding (Discord-style) — even if you have hardware acceleration turned off in settings.",
       "Screenshare now automatically adapts to games, video, text, and changing connection conditions.",
+      "Call diagnostics now shows your active GPU, video encoder, and negotiated codec.",
     ],
     bugFixes: [
       "Fixed DM, group, and server calls splitting users between separate sessions or missing participants.",

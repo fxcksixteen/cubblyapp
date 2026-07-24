@@ -72,6 +72,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   setHardwareAcceleration: (value) => ipcRenderer.invoke("hwaccel-set", value),
   relaunchApp: () => ipcRenderer.invoke("relaunch-app"),
 
+  // v0.4.13: GPU pipeline diagnostics — returns { gpuProcessOn, vendor, likelyEncoder, videoEncode, ... }
+  getGpuInfo: () => ipcRenderer.invoke("gpu-info-get"),
+
   // Native per-window audio capture (Windows WASAPI process loopback)
   isWindowAudioCaptureAvailable: () => ipcRenderer.invoke("is-window-audio-capture-available"),
   startWindowAudioCapture: (sourceId) => ipcRenderer.invoke("start-window-audio-capture", sourceId),

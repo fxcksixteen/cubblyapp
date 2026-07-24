@@ -116,17 +116,52 @@ try {
   applyLoginItem(true);
 }
 
-// ----- Hardware acceleration toggle (Settings → Advanced) -----
-// MUST be called before app `ready` for `app.disableHardwareAcceleration()`
-// to take effect. Default ON; user must restart for changes to apply
-// (Chromium limitation).
+// ----- v0.4.13 "GPU Unlock" — Discord-parity screenshare/video -----
+// The GPU process is ALWAYS enabled. The user-facing "Hardware acceleration"
+// toggle in Settings → Advanced no longer calls `app.disableHardwareAcceleration()`
+// — that switch kills the entire GPU process, which in turn kills hardware
+// H.264/VP9 encode used by screenshare. Discord keeps its GPU process on
+// unconditionally for the same reason. The setting is now purely a renderer-
+// side hint (used by CSS `cubbly-low-power` mode to skip heavy blurs/animations).
 try {
-  if (settingsStore && settingsStore.get("hardwareAcceleration") === false) {
-    app.disableHardwareAcceleration();
-    log.info("[hwaccel] disabled per user setting");
+  // Force GPU-backed rasterization and zero-copy texture uploads. These
+  // together are what let Chromium hand a captured frame straight to the
+  // hardware encoder without a CPU round-trip.
+  app.commandLine.appendSwitch("enable-gpu-rasterization");
+  app.commandLine.appendSwitch("enable-zero-copy");
+  app.commandLine.appendSwitch("enable-accelerated-video-decode");
+  app.commandLine.appendSwitch("enable-accelerated-video-encode");
+  // Bypass Chromium's conservative driver blocklist so older/less common
+  // GPUs still get HW encode. Discord ships with this on.
+  app.commandLine.appendSwitch("ignore-gpu-blocklist");
+  // Enable the OS-native hardware encoder path for each platform.
+  const enableFeatures = [
+    "CanvasOopRasterization",
+    ...(process.platform === "win32"
+      ? [
+          // Routes libwebrtc through Media Foundation → NVENC / QuickSync / AMF
+          "MediaFoundationH264Encoding",
+          "MediaFoundationVP9Encoding",
+          "PlatformHEVCEncoderSupport",
+          "D3D11VideoDecoder",
+        ]
+      : []),
+    ...(process.platform === "linux"
+      ? ["VaapiVideoEncoder", "VaapiVideoDecoder", "VaapiIgnoreDriverChecks"]
+      : []),
+    ...(process.platform === "darwin"
+      ? ["PlatformHEVCEncoderSupport"]
+      : []),
+  ];
+  const disableFeatures = ["UseChromeOSDirectVideoDecoder"];
+  app.commandLine.appendSwitch("enable-features", enableFeatures.join(","));
+  app.commandLine.appendSwitch("disable-features", disableFeatures.join(","));
+  if (process.platform === "win32") {
+    app.commandLine.appendSwitch("use-angle", "d3d11");
   }
+  log.info("[gpu] Discord-parity flags applied — platform:", process.platform);
 } catch (e) {
-  log.warn("[hwaccel] init failed:", e?.message || e);
+  log.warn("[gpu] failed to apply GPU flags:", e?.message || e);
 }
 
 // ----- v0.3.19: cap Chromium's disk cache so it can't grow to 500+ MB -----
@@ -490,6 +525,56 @@ ipcMain.handle("hwaccel-set", (_evt, value) => {
 });
 ipcMain.handle("relaunch-app", () => {
   try { app.relaunch(); app.exit(0); } catch (e) { log.warn("[relaunch] failed:", e?.message || e); }
+});
+
+// ----- v0.4.13: GPU pipeline diagnostics -----
+// Reports whether Chromium's GPU process actually came up and which video
+// encoder path is active — surfaced in CallDiagnosticsModal so users can
+// confirm HW encoding is really on instead of guessing.
+ipcMain.handle("gpu-info-get", async () => {
+  try {
+    const feat = await app.getGPUFeatureStatus();
+    const info = await app.getGPUInfo("basic").catch(() => ({}));
+    // getGPUInfo("basic") returns { auxAttributes, gpuDevice: [{vendorId, deviceId, ...}] }
+    const gpu = Array.isArray(info?.gpuDevice) ? info.gpuDevice[0] : null;
+    const vendorId = gpu?.vendorId ?? null;
+    // PCI vendor IDs
+    const vendorMap = { 0x10de: "NVIDIA", 0x1002: "AMD", 0x8086: "Intel", 0x106b: "Apple" };
+    const vendor = vendorId != null ? (vendorMap[vendorId] || `0x${vendorId.toString(16)}`) : null;
+    // Guess likely HW encoder based on vendor + platform
+    let likelyEncoder = "Software";
+    if (vendorId === 0x10de) likelyEncoder = "NVENC";
+    else if (vendorId === 0x8086) likelyEncoder = "QuickSync";
+    else if (vendorId === 0x1002) likelyEncoder = "AMF";
+    else if (process.platform === "darwin") likelyEncoder = "VideoToolbox";
+    else if (process.platform === "linux") likelyEncoder = "VAAPI";
+    const gpuProcessOn = feat && feat.gpu_compositing !== "disabled" && feat.gpu_compositing !== "disabled_software";
+    return {
+      ok: true,
+      gpuProcessOn: !!gpuProcessOn,
+      vendor,
+      vendorId,
+      likelyEncoder,
+      videoEncode: feat?.video_encode || "unknown",
+      videoDecode: feat?.video_decode || "unknown",
+      rasterization: feat?.rasterization || "unknown",
+      platform: process.platform,
+    };
+  } catch (e) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+// Log GPU pipeline once GPU info is ready (fires after app ready).
+app.whenReady().then(async () => {
+  try {
+    const info = await app.getGPUInfo("basic").catch(() => null);
+    const feat = app.getGPUFeatureStatus();
+    log.info("[gpu] pipeline status:", JSON.stringify(feat));
+    if (info?.gpuDevice) log.info("[gpu] devices:", JSON.stringify(info.gpuDevice));
+  } catch (e) {
+    log.warn("[gpu] pipeline log failed:", e?.message || e);
+  }
 });
 
 // ----- Process scanner (for activity detection) -----

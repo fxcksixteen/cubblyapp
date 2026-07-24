@@ -60,13 +60,35 @@ const SparklineRtt = ({ history }: { history: number[] }) => {
   );
 };
 
+interface GpuInfo {
+  ok: boolean;
+  gpuProcessOn?: boolean;
+  vendor?: string | null;
+  likelyEncoder?: string;
+  videoEncode?: string;
+  videoDecode?: string;
+  rasterization?: string;
+  platform?: string;
+  error?: string;
+}
+
 const CallDiagnosticsModal = ({ open, onClose }: Props) => {
   const { getCallDiagnostics, activeCall, ping, runPickupSelfTest } = useVoice();
   const [diag, setDiag] = useState<CallDiagnostics | null>(null);
   const [rttHistory, setRttHistory] = useState<number[]>([]);
   const [selfTestRunning, setSelfTestRunning] = useState(false);
   const [selfTestResult, setSelfTestResult] = useState<PickupSelfTestResult | null>(null);
+  const [gpuInfo, setGpuInfo] = useState<GpuInfo | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const api = (window as any).electronAPI;
+    if (api?.getGpuInfo) {
+      api.getGpuInfo().then((info: GpuInfo) => setGpuInfo(info)).catch(() => setGpuInfo({ ok: false, error: "unavailable" }));
+    }
+  }, [open]);
+
 
   const handleRunSelfTest = async () => {
     setSelfTestRunning(true);
@@ -152,6 +174,29 @@ const CallDiagnosticsModal = ({ open, onClose }: Props) => {
             </div>
             <SparklineRtt history={rttHistory} />
           </div>
+
+          {/* v0.4.13: GPU pipeline — proves HW encode is really active */}
+          {gpuInfo && gpuInfo.ok && (
+            <section>
+              <h3 className="text-[11px] uppercase tracking-wide font-bold mb-1.5 flex items-center gap-1.5"
+                  style={{ color: "var(--app-text-secondary, #949ba4)" }}>
+                <Activity className="h-3 w-3" /> GPU pipeline
+              </h3>
+              <div className="rounded-md px-3" style={{ backgroundColor: "var(--app-bg-tertiary, #1e1f22)" }}>
+                <Row label="GPU process" value={
+                  <span style={{ color: gpuInfo.gpuProcessOn ? "#3ba55c" : "#ed4245" }}>
+                    {gpuInfo.gpuProcessOn ? "on" : "off"}
+                  </span>
+                } />
+                <Row label="GPU vendor" value={gpuInfo.vendor || "—"} mono />
+                <Row label="Likely encoder" value={gpuInfo.likelyEncoder || "—"} mono />
+                <Row label="Video encode" value={gpuInfo.videoEncode || "—"} mono />
+                <Row label="Video decode" value={gpuInfo.videoDecode || "—"} mono />
+                <Row label="Rasterization" value={gpuInfo.rasterization || "—"} mono />
+              </div>
+            </section>
+          )}
+
 
           {/* Server / region */}
           <section>
