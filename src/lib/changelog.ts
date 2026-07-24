@@ -23,9 +23,19 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.4.14";
+export const CURRENT_VERSION = "0.4.15";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.4.15",
+    title: "Call hotfix",
+    date: "2026-07-24",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Fixed a bug that prevented calls from starting.",
+    ],
+  },
   {
     version: "0.4.14",
     title: "DM call & notification hotfix",
