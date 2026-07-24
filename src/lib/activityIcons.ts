@@ -46,8 +46,8 @@ export const CURATED_ICONS: Record<string, string> = {
   "hl2": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/220/capsule_184x69.jpg",
 
   // --- Epic / Fortnite ---
-  "fortnite": fortniteIconAsset.url,
-  "fortniteclient-win64-shipping": fortniteIconAsset.url,
+  "fortnite": fortniteIconUrl,
+  "fortniteclient-win64-shipping": fortniteIconUrl,
   "epic games launcher": "https://cdn.simpleicons.org/epicgames/313131",
   "epicgameslauncher": "https://cdn.simpleicons.org/epicgames/313131",
   "rocket league": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/252950/capsule_184x69.jpg",
