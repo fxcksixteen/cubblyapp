@@ -9,18 +9,6 @@ import { Activity, Globe, Shield, Wifi, ArrowDownToLine, ArrowUpToLine, Phone, C
  * Polls every 1s.
  */
 
-const REGION_LABEL: Record<string, string> = {
-  "auto": "Automatic",
-  "us-east": "US East (N. Virginia)",
-  "us-west": "US West (Oregon)",
-  "eu-west": "EU West (Ireland)",
-  "eu-central": "EU Central (Frankfurt)",
-  "asia-east": "Asia East (Tokyo)",
-  "asia-south": "Asia South (Singapore)",
-  "south-america": "South America (São Paulo)",
-  "australia": "Australia (Sydney)",
-};
-
 const fmtBytes = (n?: number) => {
   if (n == null) return "—";
   if (n < 1024) return `${n} B`;
@@ -172,7 +160,6 @@ const CallDiagnosticsModal = ({ open, onClose }: Props) => {
               <Globe className="h-3 w-3" /> Server
             </h3>
             <div className="rounded-md px-3" style={{ backgroundColor: "var(--app-bg-tertiary, #1e1f22)" }}>
-              <Row label="Region" value={REGION_LABEL[diag?.serverRegion || "auto"] || diag?.serverRegion || "—"} />
               <Row
                 label="Transport"
                 value={

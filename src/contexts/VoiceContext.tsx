@@ -452,7 +452,6 @@ export interface CallDiagnostics {
   outboundBytesSent?: number;
   outboundPacketsSent?: number;
   // Server / region
-  serverRegion: string;
   turnServerHost?: string;
 }
 
@@ -4055,13 +4054,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         outboundCodec: outboundCodec?.mimeType,
         outboundBytesSent: outbound?.bytesSent,
         outboundPacketsSent: outbound?.packetsSent,
-        serverRegion: detectedRegion || settings.serverRegion || "auto",
         turnServerHost,
       };
     } catch {
       return null;
     }
-  }, [detectedRegion, settings.serverRegion]);
+  }, []);
 
 
   // When the app/tab closes mid-call, mark our own participant row as left.

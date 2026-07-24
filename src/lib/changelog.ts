@@ -23,9 +23,25 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.4.12";
+export const CURRENT_VERSION = "0.4.13";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.4.13",
+    title: "Call, stream & chat reliability",
+    date: "2026-07-24",
+    hero: bearImage,
+    newFeatures: [
+      "Screenshare now automatically adapts to games, video, text, and changing connection conditions.",
+    ],
+    bugFixes: [
+      "Fixed DM, group, and server calls splitting users between separate sessions or missing participants.",
+      "Fixed screenshare starting blurry and becoming choppy during fast-moving games.",
+      "Fixed GIFs and call activity moving chat away from the newest message.",
+      "Fixed read conversations sometimes keeping a stale unread badge.",
+      "Call diagnostics now shows the real connection route instead of a guessed region.",
+    ],
+  },
   {
     version: "0.4.12",
     title: "Smoother streams & better activity detection",

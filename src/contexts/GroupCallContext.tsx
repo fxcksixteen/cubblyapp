@@ -32,7 +32,6 @@ import { armRemoteAudio } from "@/lib/iosAudioUnlock";
 import { STUN_FALLBACK_SERVERS, sanitizeIceServersForSession } from "@/lib/webrtcIce";
 import { AutomaticScreenEncoding, startAutomaticScreenEncoding } from "@/lib/screenShareEncoding";
 import {
-  applyScreenBitrate,
   applyScreenAudioBitrate,
   preferScreenShareCodec,
   patchScreenShareOpusSdp,
@@ -266,22 +265,6 @@ function mungeGroupCallOpusSdp(sdp: string | undefined | null): string {
     filtered.push("stereo=1", "sprop-stereo=1", "maxaveragebitrate=256000", "useinbandfec=1", "maxplaybackrate=48000");
     return `a=fmtp:111 ${filtered.join(";")}`;
   });
-}
-
-async function applyGroupScreenVideoParams(sender: RTCRtpSender, opts: { bitrate: number; maxFramerate: number; scaleResolutionDownBy: number }) {
-  try {
-    const params = sender.getParameters();
-    if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
-    params.encodings[0].maxBitrate = opts.bitrate;
-    (params.encodings[0] as any).maxFramerate = opts.maxFramerate;
-    if (opts.scaleResolutionDownBy > 1) {
-      (params.encodings[0] as any).scaleResolutionDownBy = opts.scaleResolutionDownBy;
-    }
-    (params.encodings[0] as any).networkPriority = "medium";
-    (params.encodings[0] as any).priority = "medium";
-    (params as any).degradationPreference = "maintain-framerate";
-    await sender.setParameters(params);
-  } catch {}
 }
 
 async function applyRealtimeAudioParams(sender: RTCRtpSender, bitrate = 128_000) {
@@ -879,6 +862,8 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     pcsRef.current.clear();
     videoSendersRef.current.clear();
     screenSendersRef.current.clear();
+    screenEncodingCleanupRef.current.forEach((cleanup) => cleanup());
+    screenEncodingCleanupRef.current.clear();
     queuedIceRef.current.clear();
     remoteDescSetRef.current.clear();
 
@@ -894,81 +879,29 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     localStreamRef.current = stream;
     startSelfMonitor(stream);
 
-    // Reuse an existing ongoing call_event for this conversation if one
-    // exists — that's how "rejoin" works after everyone left or after a
-    // user dropped out and wants to come back. For SERVER voice channels we
-    // ALWAYS reuse any ongoing event (the channel is a persistent room, so a
-    // fresh joiner must land in the same call as anyone already there — even
-    // if their heartbeat is stale from a brief network hiccup). For group DMs
-    // we only reuse when at least one OTHER participant is genuinely fresh,
-    // otherwise the elapsed timer would jump to hours-old on a ghost event.
     let callEventId: string;
     let callStartedAt: number = Date.now();
     try {
-      const { data: existing } = await supabase
-        .from("call_events")
-        .select("id, started_at")
-        .eq("conversation_id", conversationId)
-        .eq("state", "ongoing")
-        .order("started_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      let reused = false;
-      if (existing?.id) {
-        try {
-          const { data: canonicalId } = await (supabase as any).rpc("canonicalize_ongoing_call_event", {
-            _conversation_id: conversationId,
-            _preferred_call_event_id: existing.id,
-          });
-          if (canonicalId && canonicalId !== existing.id) existing.id = canonicalId;
-        } catch { /* older backend: continue with newest event */ }
-        if (isServerChannel) {
-          // Server voice channels: unconditionally reuse. One channel = one call.
-          callEventId = existing.id;
-          if (existing.started_at) callStartedAt = new Date(existing.started_at).getTime();
-          reused = true;
-        } else {
-          const { data: liveRows } = await supabase
-            .from("call_participants")
-            .select("user_id, last_seen_at, left_at")
-            .eq("call_event_id", existing.id);
-          const FRESH_MS = 30_000;
-          const now = Date.now();
-          const otherActive = (liveRows || []).some((r: any) =>
-            r.user_id !== user.id &&
-            r.left_at === null &&
-            (!r.last_seen_at || now - new Date(r.last_seen_at).getTime() < FRESH_MS)
-          );
-          if (otherActive) {
-            callEventId = existing.id;
-            if (existing.started_at) callStartedAt = new Date(existing.started_at).getTime();
-            reused = true;
-          } else {
-            // Close the stale ghost so it doesn't keep haunting future joins.
-            try { await (supabase as any).rpc("end_call_event_if_stale", { _call_event_id: existing.id }); } catch {}
-          }
-        }
-      }
-      if (!reused) {
-        callEventId = crypto.randomUUID();
-        callStartedAt = Date.now();
-        await supabase.from("call_events").insert({
-          id: callEventId,
-          conversation_id: conversationId,
-          caller_id: user.id,
-          state: "ongoing",
-        } as any);
-      }
-    } catch {
-      callEventId = crypto.randomUUID();
-      callStartedAt = Date.now();
-      await supabase.from("call_events").insert({
-        id: callEventId,
-        conversation_id: conversationId,
-        caller_id: user.id,
-        state: "ongoing",
-      } as any);
+      const { data, error } = await (supabase as any).rpc("acquire_call_session", {
+        _conversation_id: conversationId,
+        _reuse_without_live_peer: false,
+        _is_muted: false,
+        _is_deafened: false,
+        _is_video_on: false,
+        _is_screen_sharing: false,
+      });
+      if (error) throw error;
+      const acquired = Array.isArray(data) ? data[0] : data;
+      if (!acquired?.call_event_id) throw new Error("Call session acquisition returned no event");
+      callEventId = acquired.call_event_id;
+      if (acquired.started_at) callStartedAt = new Date(acquired.started_at).getTime();
+    } catch (e) {
+      console.error("[GroupCall] Could not acquire call session:", e);
+      localStreamRef.current?.getTracks().forEach(t => t.stop());
+      localStreamRef.current = null;
+      stopSelfMonitor();
+      toast.error("Couldn't join voice — try again");
+      return;
     }
     callEventIdRef.current = callEventId;
     callConvIdRef.current = conversationId;
@@ -1302,6 +1235,8 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     }
     videoSendersRef.current.clear();
     screenSendersRef.current.clear();
+    screenEncodingCleanupRef.current.forEach((cleanup) => cleanup());
+    screenEncodingCleanupRef.current.clear();
     clearAllPeerGains();
     stopSelfMonitor();
 
