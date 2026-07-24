@@ -442,6 +442,14 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
   const localVideoTrackRef = useRef<MediaStreamTrack | null>(null);
   const localScreenTrackRef = useRef<MediaStreamTrack | null>(null);
   const localScreenEncodingRef = useRef<AutomaticScreenEncoding | null>(null);
+  /**
+   * v0.4.14 — Compose local SDP munging: stereo Opus for mic + Discord-style
+   * high initial video bitrate ONLY when a share is currently active. Applied
+   * to every offer/answer this peer generates so renegotiation triggered by
+   * `addTrack(screen)` immediately starts the encoder at ~70% of ceiling.
+   */
+  const mungeLocalSdpRef = useRef<(sdp: string | null | undefined) => string>((sdp) => sdp || "");
+
   /** Cleanup fn for an active native (WASAPI) per-window audio capture, if any. */
   const nativeWindowAudioStopRef = useRef<(() => void) | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
