@@ -126,7 +126,11 @@ export function startAutomaticScreenEncoding(
   target: AutomaticScreenEncoding,
 ): () => void {
   let stopped = false;
-  let bitrate = Math.min(target.targetBitrate, Math.max(750_000, target.targetBitrate * 0.55));
+  // v0.4.14 — Discord-style instant-start: SDP munging (patchScreenShareVideoSdp)
+  // has already told libwebrtc to skip the slow-start probe, so the encoder can
+  // safely open at the full user-selected ceiling. No more 10-15 s of
+  // artifact-ridden low-bitrate frames at the start of every share.
+  let bitrate = target.targetBitrate;
   let scale = Math.max(1, target.baseScale);
   let cleanSamples = 0;
   let cpuSamples = 0;
@@ -138,21 +142,16 @@ export function startAutomaticScreenEncoding(
   const update = () => applyEncoding(sender, bitrate, target.targetFps, scale).catch(() => {});
   void update();
 
-  // Fast, controlled startup ramp: avoid a blocky full-ceiling first keyframe,
-  // but do not wait for Chromium's much slower default bandwidth convergence.
-  const ramps = [
+  // Force an immediate keyframe so the very first frame the peer decodes is
+  // full quality instead of a smeared low-bitrate I-frame from the encoder's
+  // cold start.
+  const ramps: number[] = [
     window.setTimeout(() => {
       if (stopped) return;
-      bitrate = Math.min(target.targetBitrate, Math.max(bitrate, target.targetBitrate * 0.78));
-      void update();
-    }, 900),
-    window.setTimeout(() => {
-      if (stopped) return;
-      bitrate = target.targetBitrate;
-      void update();
       try { (sender as any).generateKeyFrame?.(); } catch {}
-    }, 2_200),
+    }, 250),
   ];
+
 
   const interval = window.setInterval(async () => {
     if (stopped || pc.connectionState === "closed") return;
