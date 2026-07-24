@@ -2553,11 +2553,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         });
         if (error) throw error;
         const acquired = Array.isArray(data) ? data[0] : data;
-        if (!acquired?.call_event_id) throw new Error("Call session acquisition returned no event");
-        callEventId = acquired.call_event_id;
-        isJoiningExisting = !acquired.is_creator;
-        if (acquired.started_at) {
-          const t = Date.parse(acquired.started_at);
+        if (!acquired?.out_call_event_id) throw new Error("Call session acquisition returned no event");
+        callEventId = acquired.out_call_event_id;
+        isJoiningExisting = !acquired.out_is_creator;
+        if (acquired.out_started_at) {
+          const t = Date.parse(acquired.out_started_at);
           if (!Number.isNaN(t)) existingStartedAtMs = t;
         }
         voiceTrace("dm.callSession.acquired", { conversationId, callEventId, isJoiningExisting });
