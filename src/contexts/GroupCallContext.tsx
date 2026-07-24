@@ -913,9 +913,9 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       });
       if (error) throw error;
       const acquired = Array.isArray(data) ? data[0] : data;
-      if (!acquired?.call_event_id) throw new Error("Call session acquisition returned no event");
-      callEventId = acquired.call_event_id;
-      if (acquired.started_at) callStartedAt = new Date(acquired.started_at).getTime();
+      if (!acquired?.out_call_event_id) throw new Error("Call session acquisition returned no event");
+      callEventId = acquired.out_call_event_id;
+      if (acquired.out_started_at) callStartedAt = new Date(acquired.out_started_at).getTime();
     } catch (e) {
       console.error("[GroupCall] Could not acquire call session:", e);
       localStreamRef.current?.getTracks().forEach(t => t.stop());
