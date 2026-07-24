@@ -527,6 +527,56 @@ ipcMain.handle("relaunch-app", () => {
   try { app.relaunch(); app.exit(0); } catch (e) { log.warn("[relaunch] failed:", e?.message || e); }
 });
 
+// ----- v0.4.13: GPU pipeline diagnostics -----
+// Reports whether Chromium's GPU process actually came up and which video
+// encoder path is active — surfaced in CallDiagnosticsModal so users can
+// confirm HW encoding is really on instead of guessing.
+ipcMain.handle("gpu-info-get", async () => {
+  try {
+    const feat = await app.getGPUFeatureStatus();
+    const info = await app.getGPUInfo("basic").catch(() => ({}));
+    // getGPUInfo("basic") returns { auxAttributes, gpuDevice: [{vendorId, deviceId, ...}] }
+    const gpu = Array.isArray(info?.gpuDevice) ? info.gpuDevice[0] : null;
+    const vendorId = gpu?.vendorId ?? null;
+    // PCI vendor IDs
+    const vendorMap = { 0x10de: "NVIDIA", 0x1002: "AMD", 0x8086: "Intel", 0x106b: "Apple" };
+    const vendor = vendorId != null ? (vendorMap[vendorId] || `0x${vendorId.toString(16)}`) : null;
+    // Guess likely HW encoder based on vendor + platform
+    let likelyEncoder = "Software";
+    if (vendorId === 0x10de) likelyEncoder = "NVENC";
+    else if (vendorId === 0x8086) likelyEncoder = "QuickSync";
+    else if (vendorId === 0x1002) likelyEncoder = "AMF";
+    else if (process.platform === "darwin") likelyEncoder = "VideoToolbox";
+    else if (process.platform === "linux") likelyEncoder = "VAAPI";
+    const gpuProcessOn = feat && feat.gpu_compositing !== "disabled" && feat.gpu_compositing !== "disabled_software";
+    return {
+      ok: true,
+      gpuProcessOn: !!gpuProcessOn,
+      vendor,
+      vendorId,
+      likelyEncoder,
+      videoEncode: feat?.video_encode || "unknown",
+      videoDecode: feat?.video_decode || "unknown",
+      rasterization: feat?.rasterization || "unknown",
+      platform: process.platform,
+    };
+  } catch (e) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+// Log GPU pipeline once GPU info is ready (fires after app ready).
+app.whenReady().then(async () => {
+  try {
+    const info = await app.getGPUInfo("basic").catch(() => null);
+    const feat = app.getGPUFeatureStatus();
+    log.info("[gpu] pipeline status:", JSON.stringify(feat));
+    if (info?.gpuDevice) log.info("[gpu] devices:", JSON.stringify(info.gpuDevice));
+  } catch (e) {
+    log.warn("[gpu] pipeline log failed:", e?.message || e);
+  }
+});
+
 // ----- Process scanner (for activity detection) -----
 // Cache the result aggressively. The renderer polls every 60s in the best
 // case, but if it bugs out and asks more often, we'd block the main thread
