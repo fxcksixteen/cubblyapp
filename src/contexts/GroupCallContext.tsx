@@ -30,8 +30,8 @@ import { startNativeWindowAudioStream } from "@/lib/nativeWindowAudio";
 import { usePeerGains } from "@/lib/peerGain";
 import { armRemoteAudio } from "@/lib/iosAudioUnlock";
 import { STUN_FALLBACK_SERVERS, sanitizeIceServersForSession } from "@/lib/webrtcIce";
+import { AutomaticScreenEncoding, startAutomaticScreenEncoding } from "@/lib/screenShareEncoding";
 import {
-  applyScreenBitrate,
   applyScreenAudioBitrate,
   preferScreenShareCodec,
   patchScreenShareOpusSdp,
@@ -267,22 +267,6 @@ function mungeGroupCallOpusSdp(sdp: string | undefined | null): string {
   });
 }
 
-async function applyGroupScreenVideoParams(sender: RTCRtpSender, opts: { bitrate: number; maxFramerate: number; scaleResolutionDownBy: number }) {
-  try {
-    const params = sender.getParameters();
-    if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
-    params.encodings[0].maxBitrate = opts.bitrate;
-    (params.encodings[0] as any).maxFramerate = opts.maxFramerate;
-    if (opts.scaleResolutionDownBy > 1) {
-      (params.encodings[0] as any).scaleResolutionDownBy = opts.scaleResolutionDownBy;
-    }
-    (params.encodings[0] as any).networkPriority = "medium";
-    (params.encodings[0] as any).priority = "medium";
-    (params as any).degradationPreference = "maintain-framerate";
-    await sender.setParameters(params);
-  } catch {}
-}
-
 async function applyRealtimeAudioParams(sender: RTCRtpSender, bitrate = 128_000) {
   try {
     const params = sender.getParameters();
@@ -451,12 +435,13 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
   const videoSendersRef = useRef<Map<string, RTCRtpSender>>(new Map());
   const screenSendersRef = useRef<Map<string, RTCRtpSender>>(new Map());
   const screenAudioSendersRef = useRef<Map<string, RTCRtpSender[]>>(new Map());
+  const screenEncodingCleanupRef = useRef<Map<string, () => void>>(new Map());
 
   const localStreamRef = useRef<MediaStream | null>(null);
   // Local camera + screenshare track refs
   const localVideoTrackRef = useRef<MediaStreamTrack | null>(null);
   const localScreenTrackRef = useRef<MediaStreamTrack | null>(null);
-  const localScreenEncodingRef = useRef<{ bitrate: number; maxFramerate: number; scaleResolutionDownBy: number } | null>(null);
+  const localScreenEncodingRef = useRef<AutomaticScreenEncoding | null>(null);
   /** Cleanup fn for an active native (WASAPI) per-window audio capture, if any. */
   const nativeWindowAudioStopRef = useRef<(() => void) | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
@@ -623,6 +608,8 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     ignoreOfferRef.current.delete(peerId);
     videoSendersRef.current.delete(peerId);
     screenSendersRef.current.delete(peerId);
+    screenEncodingCleanupRef.current.get(peerId)?.();
+    screenEncodingCleanupRef.current.delete(peerId);
     setPeers(prev => prev.filter(p => p.userId !== peerId));
     // Remove that peer's <audio> element
     document.querySelectorAll<HTMLAudioElement>(`audio[data-group-peer="${peerId}"]`).forEach(el => {
@@ -676,7 +663,9 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       Object.defineProperty(screenStream, "id", { value: `cubbly-screen-${user.id}` });
       const sender = pc.addTrack(localScreenTrackRef.current, screenStream);
       screenSendersRef.current.set(peerId, sender);
-      if (localScreenEncodingRef.current) void applyGroupScreenVideoParams(sender, localScreenEncodingRef.current);
+      if (localScreenEncodingRef.current) {
+        screenEncodingCleanupRef.current.set(peerId, startAutomaticScreenEncoding(sender, pc, localScreenEncodingRef.current));
+      }
     }
 
     pc.ontrack = (event) => {
@@ -873,6 +862,8 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     pcsRef.current.clear();
     videoSendersRef.current.clear();
     screenSendersRef.current.clear();
+    screenEncodingCleanupRef.current.forEach((cleanup) => cleanup());
+    screenEncodingCleanupRef.current.clear();
     queuedIceRef.current.clear();
     remoteDescSetRef.current.clear();
 
@@ -888,81 +879,29 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     localStreamRef.current = stream;
     startSelfMonitor(stream);
 
-    // Reuse an existing ongoing call_event for this conversation if one
-    // exists — that's how "rejoin" works after everyone left or after a
-    // user dropped out and wants to come back. For SERVER voice channels we
-    // ALWAYS reuse any ongoing event (the channel is a persistent room, so a
-    // fresh joiner must land in the same call as anyone already there — even
-    // if their heartbeat is stale from a brief network hiccup). For group DMs
-    // we only reuse when at least one OTHER participant is genuinely fresh,
-    // otherwise the elapsed timer would jump to hours-old on a ghost event.
     let callEventId: string;
     let callStartedAt: number = Date.now();
     try {
-      const { data: existing } = await supabase
-        .from("call_events")
-        .select("id, started_at")
-        .eq("conversation_id", conversationId)
-        .eq("state", "ongoing")
-        .order("started_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      let reused = false;
-      if (existing?.id) {
-        try {
-          const { data: canonicalId } = await (supabase as any).rpc("canonicalize_ongoing_call_event", {
-            _conversation_id: conversationId,
-            _preferred_call_event_id: existing.id,
-          });
-          if (canonicalId && canonicalId !== existing.id) existing.id = canonicalId;
-        } catch { /* older backend: continue with newest event */ }
-        if (isServerChannel) {
-          // Server voice channels: unconditionally reuse. One channel = one call.
-          callEventId = existing.id;
-          if (existing.started_at) callStartedAt = new Date(existing.started_at).getTime();
-          reused = true;
-        } else {
-          const { data: liveRows } = await supabase
-            .from("call_participants")
-            .select("user_id, last_seen_at, left_at")
-            .eq("call_event_id", existing.id);
-          const FRESH_MS = 30_000;
-          const now = Date.now();
-          const otherActive = (liveRows || []).some((r: any) =>
-            r.user_id !== user.id &&
-            r.left_at === null &&
-            (!r.last_seen_at || now - new Date(r.last_seen_at).getTime() < FRESH_MS)
-          );
-          if (otherActive) {
-            callEventId = existing.id;
-            if (existing.started_at) callStartedAt = new Date(existing.started_at).getTime();
-            reused = true;
-          } else {
-            // Close the stale ghost so it doesn't keep haunting future joins.
-            try { await (supabase as any).rpc("end_call_event_if_stale", { _call_event_id: existing.id }); } catch {}
-          }
-        }
-      }
-      if (!reused) {
-        callEventId = crypto.randomUUID();
-        callStartedAt = Date.now();
-        await supabase.from("call_events").insert({
-          id: callEventId,
-          conversation_id: conversationId,
-          caller_id: user.id,
-          state: "ongoing",
-        } as any);
-      }
-    } catch {
-      callEventId = crypto.randomUUID();
-      callStartedAt = Date.now();
-      await supabase.from("call_events").insert({
-        id: callEventId,
-        conversation_id: conversationId,
-        caller_id: user.id,
-        state: "ongoing",
-      } as any);
+      const { data, error } = await (supabase as any).rpc("acquire_call_session", {
+        _conversation_id: conversationId,
+        _reuse_without_live_peer: false,
+        _is_muted: false,
+        _is_deafened: false,
+        _is_video_on: false,
+        _is_screen_sharing: false,
+      });
+      if (error) throw error;
+      const acquired = Array.isArray(data) ? data[0] : data;
+      if (!acquired?.call_event_id) throw new Error("Call session acquisition returned no event");
+      callEventId = acquired.call_event_id;
+      if (acquired.started_at) callStartedAt = new Date(acquired.started_at).getTime();
+    } catch (e) {
+      console.error("[GroupCall] Could not acquire call session:", e);
+      localStreamRef.current?.getTracks().forEach(t => t.stop());
+      localStreamRef.current = null;
+      stopSelfMonitor();
+      toast.error("Couldn't join voice — try again");
+      return;
     }
     callEventIdRef.current = callEventId;
     callConvIdRef.current = conversationId;
@@ -1296,6 +1235,8 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     }
     videoSendersRef.current.clear();
     screenSendersRef.current.clear();
+    screenEncodingCleanupRef.current.forEach((cleanup) => cleanup());
+    screenEncodingCleanupRef.current.clear();
     clearAllPeerGains();
     stopSelfMonitor();
 
@@ -1560,10 +1501,8 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
 
-      // ---- Encoding params — identical ladder & degradation prefs to DM.
-      const opt = shareSettings.optimizeFor;
-      // v0.4.12: "motion" hint for Ultra/Motion, "detail" only for Clarity.
-      const hint = opt === "clarity" ? "detail" : "motion";
+      // One automatic mixed-content mode for games, video, and text.
+      const hint = "motion";
 
       // v0.4.11: low-power clamp mirrored from DM path — HW-accel-off
       // machines cannot sustain 1080p60 @ multi-Mbps VP9 in software.
@@ -1582,19 +1521,10 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       }
 
       const isHighFps = clampedFps >= 50;
-      const isUltra = opt === "ultra";
-      // v0.4.12: non-Ultra ladder rebalanced DOWN to Discord parity — the
-      // previous 7.5/12 Mbps caps swamped software encoders and caused the
-      // "always laggy" symptom in server voice screenshares.
-      const resBitrateBase: Record<string, number> = isUltra ? {
+      const resBitrateBase: Record<string, number> = {
         "480p":  1_200_000,
         "720p":  isHighFps ? 3_000_000 : 2_500_000,
         "1080p": isHighFps ? 6_000_000 : 4_500_000,
-        "1440p": isHighFps ? 8_000_000 : 6_000_000,
-      } : {
-        "480p":  1_000_000,
-        "720p":  isHighFps ? 2_500_000 : 2_000_000,
-        "1080p": isHighFps ? 4_500_000 : 3_500_000,
         "1440p": isHighFps ? 8_000_000 : 6_000_000,
       };
       const baseFor = resBitrateBase[clampedQuality] ?? 2_500_000;
@@ -1621,18 +1551,12 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       const scaleResolutionDownBy = capturedHeight > targetHeight
         ? +(capturedHeight / targetHeight).toFixed(2)
         : 1;
-      const encodingOpts = {
-        scaleResolutionDownBy,
-        maxFramerate: fpsCap,
-        preferMotion: opt === "motion",
-        ultra: isUltra,
-      };
-
       const videoTrack = stream.getVideoTracks()[0];
       localScreenEncodingRef.current = {
-        bitrate: maxBitrate,
-        maxFramerate: fpsCap,
-        scaleResolutionDownBy,
+        targetBitrate: maxBitrate,
+        targetFps: fpsCap,
+        targetHeight,
+        baseScale: scaleResolutionDownBy,
       };
       localScreenTrackRef.current = videoTrack;
       setLocalScreenStream(stream);
@@ -1646,7 +1570,8 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         Object.defineProperty(labeledStream, "id", { value: `cubbly-screen-${user.id}` });
         const vSender = pc.addTrack(videoTrack, labeledStream);
         screenSendersRef.current.set(peerId, vSender);
-        void applyScreenBitrate(vSender, maxBitrate, encodingOpts);
+        screenEncodingCleanupRef.current.get(peerId)?.();
+        screenEncodingCleanupRef.current.set(peerId, startAutomaticScreenEncoding(vSender, pc, localScreenEncodingRef.current));
         const tx = pc.getTransceivers().find((t) => t.sender === vSender);
         preferScreenShareCodec(tx || null);
 
@@ -1680,6 +1605,8 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       if (track) track.stop();
       localScreenTrackRef.current = null;
       localScreenEncodingRef.current = null;
+      screenEncodingCleanupRef.current.forEach((cleanup) => cleanup());
+      screenEncodingCleanupRef.current.clear();
       if (localScreenStream) {
         try { localScreenStream.getTracks().forEach((t) => t.stop()); } catch {}
       }

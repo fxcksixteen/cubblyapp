@@ -345,6 +345,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
   const markAsReadNow = useCallback(async () => {
     if (!conversationId) return;
     try { await supabase.rpc("mark_conversation_read", { _conversation_id: conversationId }); } catch {}
+    window.dispatchEvent(new CustomEvent("cubbly:conversation-marked-read", { detail: { conversationId } }));
     setShowNewBar(false);
     setUnreadOnEntry(0);
   }, [conversationId]);
@@ -380,6 +381,13 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
     }
     prevMessageCountRef.current = n;
   }, [messages.length, messages, user?.id, scrollToBottom]);
+
+  const callTimelineKey = conversationCallEvents
+    .map((event) => `${event.id}:${event.state}:${event.endedAt || ""}`)
+    .join("|");
+  useEffect(() => {
+    if (!userHasScrolledUpRef.current) scrollToBottom();
+  }, [callTimelineKey, scrollToBottom]);
 
   // Reset unread tracking when switching conversations
   useEffect(() => {
@@ -1039,7 +1047,9 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                                 );
                               }
                               if (/^https?:\/\/.*\.(gif|giphy)/i.test(text)) {
-                                return <InlineGif url={text} />;
+                                return <InlineGif url={text} onLoad={() => {
+                                  if (!userHasScrolledUpRef.current || msg.sender_id === user?.id) scrollToBottom();
+                                }} />;
                               }
                               const firstUrl = extractFirstUrl(text);
                               return (

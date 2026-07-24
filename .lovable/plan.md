@@ -1,66 +1,93 @@
-# v0.4.12 Plan
+# v0.4.13 hotfix plan
 
-## 1. Screenshare lag (games and sometimes browsers)
+## Confirmed current-state findings
 
-Root causes still in play after v0.4.11:
-- Capture source (Electron `getDisplayMedia`) frequently delivers native-res 4K/1440p @ 60fps regardless of our constraint hints — the encoder then spends its budget scaling instead of encoding, especially for full-screen games where the source is high-motion.
-- No `contentHint = "motion"` on Ultra means the encoder treats game frames as mixed text/motion, hurting motion smoothness.
-- Bitrate ceilings are still high enough (up to 12 Mbps @1440p60 non-Ultra) that on software VP9 encode or a marginal uplink they cause queue buildup → the exact "always laggy, always delayed" symptom.
-- Encoder-side jitter buffer (`playoutDelayHint`) on the receiver isn't pinned low.
-- No explicit hard cap on capture framerate at the track level (`applyConstraints` is a hint on desktop capture).
+- The affected DM has 4,724 messages, but chat fetches only the latest page and call state/signaling uses separate tables and realtime channels; message volume is not the direct call failure mechanism.
+- Recent database rows show heavy call-event churn and split/rapidly replaced live events. The client still performs separate “find, canonicalize, join/create” operations, so two devices can race before signaling begins.
+- DM signaling currently contains several competing accept/rejoin/retry paths, permissively adopts mismatched call-event IDs, and can process stale offer/answer/ICE retries from an earlier negotiation.
+- Screenshare starts at its full bitrate ceiling, reacts to CPU pressure only after delayed stats arrive, lowers bitrate even when resolution/encode load is the actual bottleneck, and group/server sharing lacks equivalent adaptive control.
+- The diagnostics region label comes from a timezone/preference guess, not the selected ICE route. A 70 ms direct peer connection can therefore be mislabeled “US East.”
+- GIF height changes after the existing double-animation-frame scroll measurement, call pills do not participate in the message-count auto-scroll effect, and `ChatView` does not send the synchronous read-cleared event used by the unread watcher.
 
-### Changes in `src/contexts/VoiceContext.tsx` and `src/contexts/GroupCallContext.tsx`
+## 1. Make one DM call session authoritative
 
-1. Force `contentHint = "motion"` for Ultra as well (dropping the neutral "" case). Games and video are motion-dominant; "detail" only makes sense for text/code sharing (Clarity preset already sets it).
-2. Rebalance the bitrate ladder to a tighter, actually-shippable set that matches Discord's real-world caps and prevents queue buildup on typical home upload:
-   - Non-Ultra 1080p60 → 4.5 Mbps (was 7.5 Mbps)
-   - Non-Ultra 1440p60 → 8 Mbps (was 12 Mbps)
-   - Ultra keeps its current numbers.
-3. Add an always-on capture hard-clamp: if the source track's real height/fps (from `getSettings()`) exceeds the negotiated target, use `scaleResolutionDownBy` AND a stricter `maxFramerate` on the encoding, and re-call `applyConstraints` with `frameRate: { max: fpsCap }` (range form is more likely to be honored than a bare number).
-4. Set `sender.getParameters().encodings[0].adaptivePtime = true` where available, and set `RTCRtpReceiver.playoutDelayHint = 0` on remote screenshare video tracks (both DM and group). Prevents Chromium's 200–400 ms default buffer that makes screenshare feel "delayed and choppy" even when frames are on time.
-5. Add a rapid stats loop for screenshare (2s already) that also detects sustained `qualityLimitationReason === "cpu"` for >5s and drops the target by one tier automatically (1440p→1080p, 60→30) once, logging the reason. This is the CPU equivalent of the existing packet-loss reactor.
-6. Tighten the low-power clamp: also apply when the encoder self-reports `qualityLimitationReason === "cpu"` on the very first stats sample after ramp-up, not only when `cubbly-low-power` flag is set. Catches users with hardware acceleration on but a weak CPU.
+- Add an atomic backend RPC for DM call acquisition, protected by a conversation-scoped transaction/advisory lock. It will:
+  - close stale events,
+  - collapse any existing duplicate ongoing events,
+  - create or return exactly one canonical live event,
+  - heartbeat the joining user in that same transaction,
+  - return whether the client is the new caller or a joining/rejoining participant.
+- Add database enforcement preventing two ongoing call events for the same DM after existing duplicates are reconciled. Include required authenticated/service grants and keep existing access policies intact.
+- Route new calls, Accept, and Rejoin through this single RPC instead of separate client-side select/canonicalize/insert/heartbeat sequences.
+- Preserve the original event start time when a participant restarts or rejoins.
 
-Both DM (`VoiceContext.tsx`) and group/server (`GroupCallContext.tsx`) get the exact same treatment — the group path already mirrors the DM path.
+## 2. Replace the fragile DM negotiation race
 
-## 2. Roblox "always In Launcher"
+- Scope signaling to the canonical call event rather than only the conversation, isolating stale signals from prior calls.
+- Use one deterministic rule: the incumbent participant creates the offer; the newly accepting/rejoining participant answers.
+- Add a negotiation generation ID to offer, answer, and ICE payloads. Ignore signals from an older generation instead of adopting their call-event ID.
+- Collapse the current duplicated fast/slow accept and rejoin branches into one negotiation routine with:
+  - one peer connection per generation,
+  - ICE buffering tied to that generation,
+  - cached-answer replay only for an identical offer,
+  - bounded retries,
+  - an automatic ICE restart/fresh generation when both participants are live but media is not connected.
+- Only show “Connected” after ICE is connected and remote media is attached; participant heartbeat alone will no longer produce a false in-call UI.
+- Keep mute/deafen/camera state and microphone settings intact across an automatic recovery or app restart.
+- Retain focused diagnostics for canonical event ID, negotiation generation, ICE state, and inbound audio packets so the two requested follow-up inspections can verify the actual media path.
 
-`electron/gameDetails.cjs` scans the newest 5 `.log` files under `%LOCALAPPDATA%\Roblox\logs\`, but Roblox rotates *very* frequently and its actual game-join lines live in files whose names contain `Player` (e.g. `…_Player_….log`). The 5-newest-by-mtime slice frequently misses them because Roblox also writes launcher / crash-handler / http logs that are newer.
+## 3. Build one automatic screenshare mode
 
-Additionally, the current regex set misses two of the most common modern Roblox join lines:
-- `[FLog::Output] ! Joining game '<guid>' place <placeId>`
-- `[DFLog::GameJoinLoadTime] Report game_join_loadtime ... placeid:<n>, universeid:<n>`
-- `[FLog::SingleSurfaceApp] initiateTeleport … placeId:<n>`
+- Remove `optimizeFor` from persisted settings, types, DM/group encoding branches, and the Voice & Video settings UI. Existing saved values become harmless legacy data.
+- Keep source, resolution, frame-rate, and audio choices; users will no longer choose Text/Clarity/Motion/Ultra behavior.
+- Use one mixed-content policy for every share:
+  - motion-safe capture hint,
+  - maintain-framerate degradation,
+  - automatic codec ordering based on desktop runtime/hardware-acceleration state rather than a user preset,
+  - high sender/network priority,
+  - the same policy in DM, group, and server calls.
+- Improve startup quality by setting a realistic initial encoder bitrate in negotiation, beginning from a sustainable target, requesting the first usable keyframe where supported, and ramping quickly toward the selected quality ceiling instead of waiting roughly 15 seconds for an uncontrolled bandwidth probe to settle.
+- Replace bitrate-only adaptation with separate CPU and network responses:
+  - network loss/RTT pressure lowers bitrate,
+  - encoder CPU pressure lowers encoded resolution and, only when necessary, frame rate,
+  - clean sustained stats restore resolution/bitrate gradually,
+  - actual outbound FPS and encode-time deltas participate in decisions.
+- Recalculate downscaling if the captured game/window resolution changes mid-stream.
+- Apply the same adaptive controller to every group/server screenshare sender rather than leaving mesh peers on fixed parameters.
+- Set a low-latency receiver jitter-buffer target when supported, with safe fallback for browsers that do not expose it.
+- When hardware acceleration is disabled, automatically select a sustainable software path and clamp dynamically rather than attempting an unsustainable game stream.
 
-### Changes in `electron/gameDetails.cjs` → `parseRoblox()`
+## 4. Report the real connection route
 
-1. Widen the file scan: read up to the 12 newest `.log` files, and additionally *always* include any file whose name matches `/player/i` regardless of position (the game-client log). Concat their tails.
-2. Add these regexes to `placeIdMatch`:
-   - `/Report game_join_loadtime[^]*?placeid[:=\s"']+(\d{5,})/gi`
-   - `/place[Ii]d[:=\s"']+(\d{5,})/g` (broader — currently `/placeid.../i` misses `placeId`)
-   - `/! Joining game[^\n]*?place\s+(\d{5,})/gi`
-   - `/GameJoinUtil[^\n]*?placeId[:=\s]+(\d{5,})/gi`
-3. Add `universeId` regex: `/game_join_loadtime[^]*?universeid[:=\s"']+(\d{5,})/gi` and `/universe[Ii]d[:=\s"']+(\d{5,})/g`.
-4. Add a "recent activity" filter: only treat a join line as valid if its offset in the tail is within the last N bytes AND the log file's mtime is within the last 30 min. Prevents a stale place from a previous session sticking around forever.
-5. Fall back to "In Game" (generic) if we detect *any* game-join marker but the REST lookup for the place name fails — currently we return `In Launcher` when enrichment fails, which is the bug the user is seeing.
+- Stop presenting timezone-derived `detectedRegion` as the active call route.
+- Derive diagnostics from the nominated ICE candidate pair:
+  - show “Direct peer-to-peer” when no relay is selected,
+  - show the actual relay region/host only when the selected candidate is TURN,
+  - keep measured RTT separate from route labeling.
+- Keep the region preference in settings as a relay preference, but label it accordingly so it cannot be mistaken for the current connection.
 
-## 3. Replace Fortnite activity logo
+## 5. Fix chat bottom-follow behavior
 
-Save the uploaded `IMG_3929.png` (Fortnite "F" logo on blue gradient) as a Lovable asset, import it, and use it everywhere Fortnite's icon is referenced in `src/lib/activityIcons.ts`:
-- key `"fortnite"`
-- key `"fortniteclient-win64-shipping"`
+- Trigger bottom-follow when a live call pill is inserted or changes state, while respecting users who intentionally scrolled upward.
+- Propagate a media-layout callback from GIF rendering so image decode/load growth performs a final bottom scroll for the sender or a viewer already following the bottom.
+- Preserve the existing older-message pagination anchor and new-message divider behavior.
 
-Leaves `epicgames` / `epic games launcher` keys unchanged (still the Epic logo).
+## 6. Make unread indicators clear reliably
 
-## 4. Version + changelog
+- After `ChatView` successfully marks a conversation read, dispatch the same `cubbly:conversation-marked-read` event already used by the sidebar action.
+- Make late unread fetch/realtime completions refuse to re-add a focused conversation that has since been acknowledged.
+- Continue notifying for genuinely unread background chats, mentions, and muted/DND rules without changing notification behavior.
 
-- Bump `package.json` to `0.4.7` → `0.4.12`? — current is `0.4.11`. Bump to `0.4.12`.
-- Bump `CURRENT_VERSION` in `src/lib/changelog.ts` to `0.4.12`.
-- Add v0.4.12 entry with three short user-facing bullets:
-  - Fixed screenshare lag/delay in games and browsers
-  - Roblox activity now shows the actual experience you're in
-  - New Fortnite activity icon
+## 7. Release and verification
 
-## Not doing (per user's standing rule)
-
-- No web publish. Desktop patch only.
+- Bump desktop version to `0.4.13` only after the fixes are in place.
+- Add a short user-facing changelog entry covering call reliability, automatic smoother sharing, accurate connection info, chat bottom-follow, and unread clearing.
+- Add focused tests for canonical session acquisition, negotiation-generation filtering, stream adaptation decisions, call-event/GIF bottom-follow, and read-event clearing.
+- Validate the Electron build and run desktop-focused checks for:
+  - new DM call, Accept, restart/Rejoin, and either participant joining first,
+  - repeated recovery without a second live event,
+  - browser/video/game/window/full-screen sharing at 30 and 60 FPS,
+  - group/server screenshare adaptation,
+  - direct versus relayed diagnostics,
+  - GIF and call-pill scrolling,
+  - focused-chat unread badge removal.
