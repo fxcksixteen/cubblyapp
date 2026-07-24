@@ -158,10 +158,16 @@ export function useUnreadCounts(activeConversationId: string | null) {
           return;
         }
 
-        // Only treat the chat as "open" when the window is ACTUALLY focused.
+        // v0.4.14: treat the chat as "open" when the tab is VISIBLE and the
+        // active conversation matches. `document.hasFocus()` returns false in
+        // Electron whenever DevTools or any other window steals focus, which
+        // was causing notification sounds to fire even though the user was
+        // literally looking at the chat. Visibility is the correct signal —
+        // matches Discord's behaviour.
+        const windowVisible = typeof document !== "undefined" && document.visibilityState === "visible";
         const windowFocused = typeof document !== "undefined" && document.hasFocus();
-        const isViewingAndFocused = activeConvRef.current === msg.conversation_id && windowFocused;
-        if (isViewingAndFocused) {
+        const isViewingAndOpen = activeConvRef.current === msg.conversation_id && (windowVisible || windowFocused);
+        if (isViewingAndOpen) {
           await supabase.rpc("mark_conversation_read", { _conversation_id: msg.conversation_id });
           lastReadByConvRef.current.set(msg.conversation_id, new Date().toISOString());
           return;
