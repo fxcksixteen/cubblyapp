@@ -99,7 +99,10 @@ const AdvancedSettings = ({ cardStyle }: Props) => {
                   Hardware acceleration
                 </p>
                 <p className="mt-1 text-xs" style={{ color: "var(--app-text-secondary)" }}>
-                  Uses your GPU for smoother rendering, video, screensharing, and all animated Shop cosmetics (themes, name colors, badges). Turn off only if you're seeing graphical glitches or driver crashes. Changes require a restart.
+                  Uses your GPU to render UI, animations, and animated Shop cosmetics (themes, name colors, badges). Turn off only if you're seeing graphical glitches or driver crashes. Changes require a restart.
+                </p>
+                <p className="mt-2 text-[11px]" style={{ color: "var(--app-text-secondary)", opacity: 0.75 }}>
+                  Screensharing and video calls always use your GPU for hardware-accelerated encoding (Discord-style), regardless of this setting.
                 </p>
               </div>
               <button
@@ -118,7 +121,7 @@ const AdvancedSettings = ({ cardStyle }: Props) => {
             </div>
             {!hwAccel && hwLoaded && (
               <div className="mt-4 rounded-lg px-3 py-2 text-xs" style={{ backgroundColor: "rgba(250, 175, 50, 0.14)", color: "#f0b25a" }}>
-                Heads up: with hardware acceleration off, animated Shop themes, animated name colors, animated badges, and video/GIF playback will stutter or freeze. If your animations aren't playing, turn this back on.
+                Heads up: with hardware acceleration off, animated Shop themes, animated name colors, animated badges, and video/GIF playback in chat will stutter or freeze. Screenshares and video calls are unaffected — they always use your GPU.
               </div>
             )}
             {hwDirty && (
