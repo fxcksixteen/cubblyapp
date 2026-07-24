@@ -7,7 +7,7 @@ import { usePeerGains } from "@/lib/peerGain";
 import { armRemoteAudio } from "@/lib/iosAudioUnlock";
 import { STUN_FALLBACK_SERVERS, sanitizeIceServersForSession } from "@/lib/webrtcIce";
 import { toast } from "@/hooks/use-toast";
-import { startAutomaticScreenEncoding, patchScreenShareVideoSdp } from "@/lib/screenShareEncoding";
+import { startAutomaticScreenEncoding } from "@/lib/screenShareEncoding";
 
 type ParticipantStatePatch = {
   is_muted?: boolean;
