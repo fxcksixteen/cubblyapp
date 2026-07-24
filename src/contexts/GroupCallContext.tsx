@@ -443,23 +443,13 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
   const localScreenTrackRef = useRef<MediaStreamTrack | null>(null);
   const localScreenEncodingRef = useRef<AutomaticScreenEncoding | null>(null);
   /**
-   * v0.4.14 — Local SDP munger applied to every offer/answer this peer sends.
-   * Layers stereo high-bitrate Opus for the mic and, when a share is active,
-   * Discord-style high `x-google-start-bitrate` on the video m-line so the
-   * encoder skips libwebrtc's slow-start and opens near the target ceiling.
+   * Local SDP munger applied to every offer/answer this peer sends.
+   * Only touches Opus fmtp params for stereo high-bitrate mic audio.
    */
   const mungeLocalSdp = (sdp: string | null | undefined): string => {
-    let out = mungeGroupCallOpusSdp(sdp);
-    const enc = localScreenEncodingRef.current;
-    if (enc) {
-      out = patchScreenShareVideoSdp(out, {
-        startKbps: Math.round((enc.targetBitrate * 0.7) / 1000),
-        minKbps: 800,
-        maxKbps: Math.round(enc.targetBitrate / 1000),
-      });
-    }
-    return out;
+    return mungeGroupCallOpusSdp(sdp);
   };
+
 
 
 
