@@ -13,6 +13,16 @@
 import marvelRivalsIcon from "@/assets/marvel-rivals.png";
 import fortniteIconAsset from "@/assets/fortnite.png.asset.json";
 
+// Electron loads pages via file:// so root-relative /__l5e/ CDN paths can't
+// resolve. Prepend the deployed origin when running in the desktop app so
+// asset-pointer icons still load on friend cards / Active Now / chips.
+const isElectronRuntime =
+  typeof window !== "undefined" && !!(window as any).electronAPI;
+const fortniteIconUrl =
+  isElectronRuntime && fortniteIconAsset.url.startsWith("/")
+    ? `https://web.cubbly.app${fortniteIconAsset.url}`
+    : fortniteIconAsset.url;
+
 /** Direct image URLs for popular games & software. Keyed by lowercased name OR process name. */
 export const CURATED_ICONS: Record<string, string> = {
 
@@ -36,8 +46,8 @@ export const CURATED_ICONS: Record<string, string> = {
   "hl2": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/220/capsule_184x69.jpg",
 
   // --- Epic / Fortnite ---
-  "fortnite": fortniteIconAsset.url,
-  "fortniteclient-win64-shipping": fortniteIconAsset.url,
+  "fortnite": fortniteIconUrl,
+  "fortniteclient-win64-shipping": fortniteIconUrl,
   "epic games launcher": "https://cdn.simpleicons.org/epicgames/313131",
   "epicgameslauncher": "https://cdn.simpleicons.org/epicgames/313131",
   "rocket league": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/252950/capsule_184x69.jpg",
