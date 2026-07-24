@@ -30,7 +30,7 @@ import { startNativeWindowAudioStream } from "@/lib/nativeWindowAudio";
 import { usePeerGains } from "@/lib/peerGain";
 import { armRemoteAudio } from "@/lib/iosAudioUnlock";
 import { STUN_FALLBACK_SERVERS, sanitizeIceServersForSession } from "@/lib/webrtcIce";
-import { AutomaticScreenEncoding, startAutomaticScreenEncoding } from "@/lib/screenShareEncoding";
+import { AutomaticScreenEncoding, startAutomaticScreenEncoding, patchScreenShareVideoSdp } from "@/lib/screenShareEncoding";
 import {
   applyScreenAudioBitrate,
   preferScreenShareCodec,
@@ -442,6 +442,27 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
   const localVideoTrackRef = useRef<MediaStreamTrack | null>(null);
   const localScreenTrackRef = useRef<MediaStreamTrack | null>(null);
   const localScreenEncodingRef = useRef<AutomaticScreenEncoding | null>(null);
+  /**
+   * v0.4.14 — Local SDP munger applied to every offer/answer this peer sends.
+   * Layers stereo high-bitrate Opus for the mic and, when a share is active,
+   * Discord-style high `x-google-start-bitrate` on the video m-line so the
+   * encoder skips libwebrtc's slow-start and opens near the target ceiling.
+   */
+  const mungeLocalSdp = (sdp: string | null | undefined): string => {
+    let out = mungeGroupCallOpusSdp(sdp);
+    const enc = localScreenEncodingRef.current;
+    if (enc) {
+      out = patchScreenShareVideoSdp(out, {
+        startKbps: Math.round((enc.targetBitrate * 0.7) / 1000),
+        minKbps: 800,
+        maxKbps: Math.round(enc.targetBitrate / 1000),
+      });
+    }
+    return out;
+  };
+
+
+
   /** Cleanup fn for an active native (WASAPI) per-window audio capture, if any. */
   const nativeWindowAudioStopRef = useRef<(() => void) | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
@@ -776,7 +797,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         // Opus before publishing it; without this, server-call audio defaults
         // to mono ~32kbps and sounds underwater compared to DM calls.
         const offer = await pc.createOffer();
-        offer.sdp = mungeGroupCallOpusSdp(offer.sdp);
+        offer.sdp = mungeLocalSdp(offer.sdp);
         await pc.setLocalDescription(offer);
         await sendGroupSignalReliably(channelRef.current, {
           type: "offer",
@@ -1010,7 +1031,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
             const pc = ensurePc(payload.fromUserId);
             try {
               const offer = await pc.createOffer();
-              offer.sdp = mungeGroupCallOpusSdp(offer.sdp);
+              offer.sdp = mungeLocalSdp(offer.sdp);
               await pc.setLocalDescription(offer);
               await sendGroupSignalReliably(channel, { type: "offer", fromUserId: user.id, toUserId: payload.fromUserId, sdp: pc.localDescription }, "offer(peer-join)");
             } catch (e) {
@@ -1049,7 +1070,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
             queuedIceRef.current.delete(payload.fromUserId);
 
             const answer = await pc.createAnswer();
-            answer.sdp = mungeGroupCallOpusSdp(answer.sdp);
+            answer.sdp = mungeLocalSdp(answer.sdp);
             await pc.setLocalDescription(answer);
             await sendGroupSignalReliably(channel, { type: "answer", fromUserId: user.id, toUserId: payload.fromUserId, sdp: pc.localDescription }, "answer(offer)");
           } catch (e) {
@@ -1764,7 +1785,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
             try {
               const pc = ensurePc(r.user_id);
               const offer = await pc.createOffer();
-              offer.sdp = mungeGroupCallOpusSdp(offer.sdp);
+              offer.sdp = mungeLocalSdp(offer.sdp);
               await pc.setLocalDescription(offer);
               await sendGroupSignalReliably(channelRef.current, { type: "offer", fromUserId: user.id, toUserId: r.user_id, sdp: pc.localDescription }, "offer(reconcile)");
             } catch (e) {

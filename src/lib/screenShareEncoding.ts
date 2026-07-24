@@ -5,6 +5,98 @@ export interface AutomaticScreenEncoding {
   baseScale: number;
 }
 
+/**
+ * Discord-style SDP munging for the video m-line(s): raises the encoder's
+ * initial bitrate + max ceiling so Chromium's Google Congestion Control does
+ * NOT cold-start at ~300 kbps and slowly ramp for 10-15 s (the exact reason
+ * every screenshare starts blurry then "stabilizes" after ~15 s).
+ *
+ *  - `b=AS:` sets the SDP-advertised max for the video m-section.
+ *  - `x-google-start-bitrate` / `-min-bitrate` / `-max-bitrate` are honored by
+ *    libwebrtc's VP8/VP9/H.264/AV1 encoders and short-circuit the slow-start.
+ *
+ * Safe to run on any local SDP — no-ops when there's no video m-line and
+ * ignored by remote endpoints that don't recognize the fmtp params.
+ */
+export function patchScreenShareVideoSdp(
+  sdp: string | undefined | null,
+  opts: { startKbps: number; minKbps: number; maxKbps: number },
+): string {
+  if (!sdp) return sdp || "";
+  const startKbps = Math.max(300, Math.round(opts.startKbps));
+  const minKbps = Math.max(150, Math.round(opts.minKbps));
+  const maxKbps = Math.max(startKbps, Math.round(opts.maxKbps));
+
+  const eol = sdp.includes("\r\n") ? "\r\n" : "\n";
+  const lines = sdp.split(/\r?\n/);
+
+  // Pass 1: insert b=AS/TIAS after the c= line of each video section, and
+  // record video payload types for fmtp patching.
+  let inVideo = false;
+  const videoPayloads = new Set<string>();
+  const out: string[] = [];
+  for (const line of lines) {
+    if (line.startsWith("m=")) {
+      inVideo = line.startsWith("m=video");
+      out.push(line);
+      if (inVideo) {
+        const parts = line.split(" ");
+        parts.slice(3).forEach((p) => videoPayloads.add(p));
+      }
+      continue;
+    }
+    if (inVideo && line.startsWith("c=")) {
+      out.push(line);
+      out.push(`b=AS:${maxKbps}`);
+      out.push(`b=TIAS:${maxKbps * 1000}`);
+      continue;
+    }
+    out.push(line);
+  }
+
+  // Pass 2: patch existing a=fmtp lines for video PTs.
+  const seenFmtp = new Set<string>();
+  const patched = out.map((line) => {
+    const m = line.match(/^a=fmtp:(\d+) (.*)$/);
+    if (!m || !videoPayloads.has(m[1])) return line;
+    const existing = m[2]
+      .split(";")
+      .map((s) => s.trim())
+      .filter((s) => s && !/^x-google-(start|min|max)-bitrate=/i.test(s));
+    existing.push(
+      `x-google-start-bitrate=${startKbps}`,
+      `x-google-min-bitrate=${minKbps}`,
+      `x-google-max-bitrate=${maxKbps}`,
+    );
+    seenFmtp.add(m[1]);
+    return `a=fmtp:${m[1]} ${existing.join(";")}`;
+  });
+
+  // Pass 3: for any video PT without an fmtp line, append one at the end of
+  // the video m-section.
+  const paramStr = `x-google-start-bitrate=${startKbps};x-google-min-bitrate=${minKbps};x-google-max-bitrate=${maxKbps}`;
+  const finalOut: string[] = [];
+  let bufSectionVideo = false;
+  let buffer: string[] = [];
+  const flush = () => {
+    if (bufSectionVideo) {
+      videoPayloads.forEach((pt) => {
+        if (!seenFmtp.has(pt)) buffer.push(`a=fmtp:${pt} ${paramStr}`);
+      });
+    }
+    finalOut.push(...buffer);
+    buffer = [];
+  };
+  for (const line of patched) {
+    if (line.startsWith("m=")) { flush(); bufSectionVideo = line.startsWith("m=video"); }
+    buffer.push(line);
+  }
+  flush();
+
+  return finalOut.join(eol);
+}
+
+
 async function applyEncoding(
   sender: RTCRtpSender,
   bitrate: number,
@@ -34,7 +126,11 @@ export function startAutomaticScreenEncoding(
   target: AutomaticScreenEncoding,
 ): () => void {
   let stopped = false;
-  let bitrate = Math.min(target.targetBitrate, Math.max(750_000, target.targetBitrate * 0.55));
+  // v0.4.14 — Discord-style instant-start: SDP munging (patchScreenShareVideoSdp)
+  // has already told libwebrtc to skip the slow-start probe, so the encoder can
+  // safely open at the full user-selected ceiling. No more 10-15 s of
+  // artifact-ridden low-bitrate frames at the start of every share.
+  let bitrate = target.targetBitrate;
   let scale = Math.max(1, target.baseScale);
   let cleanSamples = 0;
   let cpuSamples = 0;
@@ -46,21 +142,16 @@ export function startAutomaticScreenEncoding(
   const update = () => applyEncoding(sender, bitrate, target.targetFps, scale).catch(() => {});
   void update();
 
-  // Fast, controlled startup ramp: avoid a blocky full-ceiling first keyframe,
-  // but do not wait for Chromium's much slower default bandwidth convergence.
-  const ramps = [
+  // Force an immediate keyframe so the very first frame the peer decodes is
+  // full quality instead of a smeared low-bitrate I-frame from the encoder's
+  // cold start.
+  const ramps: number[] = [
     window.setTimeout(() => {
       if (stopped) return;
-      bitrate = Math.min(target.targetBitrate, Math.max(bitrate, target.targetBitrate * 0.78));
-      void update();
-    }, 900),
-    window.setTimeout(() => {
-      if (stopped) return;
-      bitrate = target.targetBitrate;
-      void update();
       try { (sender as any).generateKeyFrame?.(); } catch {}
-    }, 2_200),
+    }, 250),
   ];
+
 
   const interval = window.setInterval(async () => {
     if (stopped || pc.connectionState === "closed") return;
