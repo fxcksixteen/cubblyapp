@@ -23,9 +23,20 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.4.13";
+export const CURRENT_VERSION = "0.4.14";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.4.14",
+    title: "DM call & notification hotfix",
+    date: "2026-07-24",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Fixed DM calls failing to start with a database error.",
+      "Fixed notification sound playing for messages in a chat you're actively looking at.",
+    ],
+  },
   {
     version: "0.4.13",
     title: "Call, stream & chat reliability",
