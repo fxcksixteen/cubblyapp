@@ -3289,8 +3289,18 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       };
 
       const offer = await screenPc.createOffer();
-      offer.sdp = patchScreenShareOpusSdp(offer.sdp || "");
+      // v0.4.14 — patch video m-line so the encoder starts at ~70% of ceiling
+      // instead of libwebrtc's ~300 kbps cold-start default (Discord parity).
+      offer.sdp = patchScreenShareVideoSdp(
+        patchScreenShareOpusSdp(offer.sdp || ""),
+        {
+          startKbps: Math.round(maxBitrate * 0.7 / 1000),
+          minKbps: 800,
+          maxKbps: Math.round(maxBitrate / 1000),
+        },
+      );
       await screenPc.setLocalDescription(offer);
+
 
       if (videoSenderRef) {
         screenEncodingCleanupRef.current?.();
