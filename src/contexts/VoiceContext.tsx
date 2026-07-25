@@ -3331,6 +3331,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       const offer = await screenPc.createOffer();
       offer.sdp = patchScreenShareOpusSdp(offer.sdp || "");
       await screenPc.setLocalDescription(offer);
+      // v0.4.17 — tag every offer with a monotonic share id so late/duplicate
+      // answers from prior share attempts (Supabase realtime re-delivers, or
+      // the peer answered an offer we already replaced) can be ignored on
+      // arrival instead of throwing InvalidStateError and killing the share.
+      const shareId = `${user.id}:${Date.now()}`;
+      (screenPc as any).__cubblyShareId = shareId;
+
 
 
 
