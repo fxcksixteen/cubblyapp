@@ -3354,7 +3354,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       channelRef.current.send({
         type: "broadcast",
         event: "voice-signal",
-        payload: { type: "screen-offer", sdp: offer, senderId: user.id },
+        payload: { type: "screen-offer", sdp: offer, senderId: user.id, shareId },
       });
     } catch (e) {
       console.error("Failed to start screen share:", e);
