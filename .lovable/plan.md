@@ -1,59 +1,64 @@
-# v0.4.16 — Hotfix: screenshare + DM first-join
 
-Two regressions to fix. Both confirmed in the v0.4.15 logs pasted in this thread.
+## v0.4.17 desktop hotfix
 
-## 1. Screenshare completely broken
+Two screenshare bugs. Both diagnosed from the console screenshot on her side and the game-lag / ping-spike behavior on yours.
 
-**What the logs show:** every share attempt (any resolution, any FPS) fails at the same place, immediately after codec preference:
+---
 
+### 1. Her screenshare never starts
+
+**Root cause (from her console):**
 ```
-[Voice] 🎞️ screenshare codec preference (electron/HW): video/H264 → video/H264 → video/H264
-Failed to start screen share: OperationError: Failed to execute 'setLocalDescription' on 'RTCPeerConnection':
-  Failed to parse SessionDescription. Invalid SDP line.
+Uncaught (in promise) InvalidStateError: Failed to execute 'setRemoteDescription'
+on 'RTCPeerConnection': Failed to set remote answer sdp: Called in wrong state: stable
 ```
+Her `screenPcOutRef` receives multiple `screen-answer` broadcasts (she retried the share several times, and old in-flight answers from previous attempts land after her new PC has already been set stable by the first valid answer). The second `setRemoteDescription` throws — the promise is uncaught, and Chromium tears the whole share intent down before any track is ever announced to you. That's why you never see her in the call UI.
 
-**Cause (unconfirmed, needs a 1-line verification during fix):** the `patchScreenShareVideoSdp` munge added in v0.4.13 (`src/lib/screenShareEncoding.ts`) is emitting an SDP line Chromium's parser rejects. Native window audio starts fine; codec preference runs fine; failure is at `setLocalDescription` on the munged offer/answer. The munge is the only thing touching SDP text between those two log lines.
+The `screen-offer` handler in `VoiceContext.tsx` has the same shape and can fail the same way if a stray offer arrives after her PC is stable.
 
-**Fix:** stop shipping the munge in its current form. Two options, in order of preference:
+**Fix in `src/contexts/VoiceContext.tsx`** (mirror the same guards in `GroupCallContext.tsx` for server/group shares):
+- In the `screen-answer` branch (~line 2351): only apply when `screenPcOutRef.current.signalingState === "have-local-offer"`; otherwise log-and-drop. Wrap `setRemoteDescription` in try/catch so a stale/duplicate answer never becomes an uncaught promise rejection.
+- Only apply the answer when `payload.senderId === activeCall.peerId` (or the current expected peer in group), so an answer from a prior peer/session can't corrupt the new PC.
+- In the `screen-offer` branch (~line 2282): same try/catch + signaling-state guard around `setRemoteDescription`/`createAnswer`.
+- On `startScreenShare`, tag the offer with a monotonically-increasing `shareId` (senderId + counter) and record it on `screenPcOutRef`. Ignore any `screen-answer` whose `shareId` doesn't match the current one. This kills the "old attempt's answer clobbers new attempt" race even when Supabase re-delivers.
 
-1. Remove the SDP munge entirely from `VoiceContext.tsx` (all 3 call sites: 3255, 3260, 3315) and rely solely on `startAutomaticScreenEncoding`'s `setParameters` path (which already sets `maxBitrate` per-encoding). That path is what actually drives libwebrtc's rate controller in practice; the SDP `b=AS`/`x-google-*` was a belt-and-suspenders addition. Removing it restores exactly the v0.4.12 behavior for the SDP itself, plus we keep the newer per-sender bitrate ceiling and force-keyframe from v0.4.13.
-2. If we later want the instant-start back, reintroduce it behind a try/catch around `setLocalDescription` that falls back to the un-munged SDP.
+**Also — her hardware acceleration is off.** With HW-accel off, preferring VP9/AV1/H.264-HW on the transceiver forces a slow SW encoder path that can stall createOffer under load. When `document.documentElement.classList.contains("cubbly-low-power")` is true, `preferScreenShareCodec` should prefer **VP8** first (fastest, most reliable SW encoder in Chromium), then VP9. This keeps the "GPU Unlock" path fully intact for everyone else.
 
-Going with option 1 for v0.4.16 — the goal is "screenshare works again this patch", not "screenshare starts 2 s faster".
+---
 
-**Verification during fix:**
-- After removing the munge, confirm no other caller imports `patchScreenShareVideoSdp` (`rg patchScreenShareVideoSdp src/`).
-- Typecheck.
-- Leave `startAutomaticScreenEncoding` and `patchScreenShareOpusSdp` (Opus munge) untouched — Opus munge is unrelated and has been stable.
+### 2. Your game streams lag and spike wifi ping
 
-## 2. DM first-join needs manual leave + rejoin
+Your RTX 4060 Ti is fine — the problem is upload bandwidth. Current default for 1080p60 is a **6 Mbps** ceiling (`resBitrateBase` in `VoiceContext.tsx` line ~3172 and the identical table in `GroupCallContext.tsx`). Sustaining 6 Mbps upload while a competitive game is also uploading is what's spiking your ping in Valorant and in the call itself. Videos/browsers don't hit this because their content is low-motion and the encoder never needs the full ceiling.
 
-**What the logs show (single call session, 3 attempts):**
+The `startAutomaticScreenEncoding` controller in `src/lib/screenShareEncoding.ts` also only backs off on **packet loss**. Home routers usually don't drop packets under bufferbloat — they just queue them, which shows up as RTT growth, not loss. So the current controller happily sits at 6 Mbps while your ping climbs.
 
-- Attempt 1 & 2: caller acquires session → subscribes → sends `incoming-call` → receives `ready-for-offer` → sends offer → gathers ICE → *never receives an answer*. User hangs up.
-- Attempt 3: same session, `dm.peerHeartbeat.live` fires, code takes the **rejoin** branch (`📡 Rejoin requested — asking active peer for an offer`) — callee immediately sends an offer, connection completes in ~1 s.
+**Fix in `src/lib/screenShareEncoding.ts`:**
+- In the stats poll, also read `remote-inbound-rtp.roundTripTime`. Track a rolling baseline (min over the last ~20 s). If current RTT > baseline + 60 ms for 2 consecutive samples, treat it as bufferbloat and cut bitrate by 25 % (floor 600 kbps). This is the same signal Discord/Meet use to detect a saturated uplink.
+- Read `outbound-rtp.qualityLimitationReason`. When it's `"bandwidth"` or `"network"`, apply the same backoff instead of waiting for loss.
+- Only ramp back up (`bitrate * 1.16`) when RTT is within +20 ms of baseline **and** loss < 1.5 %.
 
-So the first two joins aren't offer-glare (v0.4.7 fixed that). They're the callee-side answerer path failing to produce an answer, while the rejoin path (which asks the *peer* to be the offerer) works every time.
+**Fix in `src/contexts/VoiceContext.tsx` and `src/contexts/GroupCallContext.tsx`:**
+- Lower `resBitrateBase` to match what Discord actually uses (Discord's "Source" 1080p60 tops out at ~4.5 Mbps, and its default is ~2.5):
+  ```
+  480p:  800_000
+  720p:  isHighFps ? 2_000_000 : 1_500_000
+  1080p: isHighFps ? 4_000_000 : 3_000_000
+  1440p: isHighFps ? 6_000_000 : 4_500_000
+  ```
+  The RTT-aware controller can now safely open at the full ceiling (SDP munge is already gone from v0.4.16), and back down within seconds if the link can't sustain it.
 
-**Diagnosis is unconfirmed** — I have not yet read the callee-side handler for the case "peer is already in the DB as a participant of this call_event when the incoming ring arrives". The rejoin path succeeding while the accept path fails strongly suggests the callee, on the first join, is treating the ring as a *new* call while she's already sitting in the call event (adopted from the DB via v0.4.6 changes), which puts both sides in offerer state and neither sends an answer — but I need to confirm by reading the accept handler + the "adopt active DB call event" effect before writing the fix.
+Net effect for you: the stream opens at the same visual quality it does today, and the instant your uplink starts queueing it drops bitrate before your ping goes to hell. Net effect for her: the share actually starts, and on the software encoder it doesn't try to negotiate a codec her CPU can't feed.
 
-**Plan for the fix, once diagnosis is confirmed:**
-- Step 1 (verification, first thing in build mode): read `VoiceContext.tsx` around the accept path (~2753-2989) and the DB-adoption effect, plus the `dm.pickupWatchdog.no-live-peer` trace path, to confirm the exact state the callee is in when the first ring arrives.
-- Step 2 (fix, shape depends on step 1): most likely — when the callee is already the "active peer" for this call_event at ring time, skip the accept-as-answerer path and immediately go through the same rejoin-style flow that we know works (ask the caller for an offer, or send our own offer if we hold the role). Effectively: unify first-join and rejoin so the working path runs every time.
-- If step 1 reveals something else (e.g. answer being sent but dropped by the signaling channel before it's fully SUBSCRIBED), the fix moves to the signaling side instead — but this is the less likely branch given `[Voice] ✅ Signaling channel SUBSCRIBED` fires before the offer is sent.
+---
 
-I'll present the concrete code change as part of the build, after the diagnostic read confirms which branch we're in — I'm not going to guess the fix in the plan and then implement something different.
+### Ship
 
-## 3. Ship
+- Bump `package.json` and `src/lib/changelog.ts` to **0.4.15 → 0.4.17** (skipping wasn't done — 0.4.16 is the current version).
+- Changelog (short, per project rule):
+  - Fixed screensharing sometimes never starting for the viewer.
+  - Screenshares now back off automatically when they'd hurt your ping.
+- **Do not publish to web.** Desktop patch only.
 
-- Bump `package.json` and `src/lib/changelog.ts` to `0.4.15` → `0.4.16`.
-- Changelog: two short user-facing bullets:
-  - `Fixed screensharing not starting.`
-  - `Fixed calls sometimes needing you to hang up and rejoin before audio worked.`
-- Desktop-only patch, no web publish (project convention).
-
-## Technical details
-
-- Files touched: `src/lib/screenShareEncoding.ts` (remove/gate `patchScreenShareVideoSdp` export if unused), `src/contexts/VoiceContext.tsx` (remove 3 munge call sites; fix confirmed accept-vs-rejoin branch), `package.json`, `src/lib/changelog.ts`.
-- `GroupCallContext.tsx` does NOT call `patchScreenShareVideoSdp` per the grep — server/group screenshare should already be unaffected, but I'll re-grep during build to be certain.
-- No DB migration this patch.
+### Not in this patch
+- Native DXGI capture module still deferred (as agreed).
+- DM rejoin bug still needs her console log during a failing session before I touch it again.
