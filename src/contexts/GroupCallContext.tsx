@@ -672,12 +672,37 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     if (localScreenTrackRef.current && user) {
       const screenStream = new MediaStream([localScreenTrackRef.current]);
       Object.defineProperty(screenStream, "id", { value: `cubbly-screen-${user.id}` });
-      const sender = pc.addTrack(localScreenTrackRef.current, screenStream);
+      // v0.4.18 — simulcast for late joiners too. See addScreenShare() for
+      // the primary path; this branch fires when a NEW peer joins after we
+      // already started sharing.
+      const lowPower = typeof document !== "undefined"
+        && document.documentElement.classList.contains("cubbly-low-power");
+      const enc = buildScreenSendEncodings(
+        localScreenEncodingRef.current?.targetBitrate ?? 4_000_000,
+        localScreenEncodingRef.current?.targetFps ?? 30,
+        localScreenEncodingRef.current?.baseScale ?? 1,
+        { lowPower },
+      );
+      const tx = pc.addTransceiver(localScreenTrackRef.current, {
+        direction: "sendonly",
+        streams: [screenStream],
+        sendEncodings: enc,
+      } as any);
+      const sender = tx.sender;
       screenSendersRef.current.set(peerId, sender);
+      const chosen = preferScreenShareCodec(tx);
+      if (chosen && /vp9/i.test(chosen)) {
+        try {
+          const p = sender.getParameters();
+          if (p.encodings?.length) { (p.encodings[0] as any).scalabilityMode = "L1T3"; await sender.setParameters(p); }
+        } catch {}
+      }
+      logScreenEncoderImplementation(pc, "GroupCall");
       if (localScreenEncodingRef.current) {
         screenEncodingCleanupRef.current.set(peerId, startAutomaticScreenEncoding(sender, pc, localScreenEncodingRef.current));
       }
     }
+
 
     pc.ontrack = (event) => {
       const stream = event.streams[0];
