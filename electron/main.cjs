@@ -137,6 +137,9 @@ try {
   // Enable the OS-native hardware encoder path for each platform.
   const enableFeatures = [
     "CanvasOopRasterization",
+    // v0.4.18 — WebRTC dependency descriptor lets receivers pick VP9/AV1
+    // temporal layers correctly, so our L1T3 SVC actually helps under loss.
+    "WebRTC-Vp9DependencyDescriptor",
     ...(process.platform === "win32"
       ? [
           // Routes libwebrtc through Media Foundation → NVENC / QuickSync / AMF
@@ -156,6 +159,7 @@ try {
   const disableFeatures = ["UseChromeOSDirectVideoDecoder"];
   app.commandLine.appendSwitch("enable-features", enableFeatures.join(","));
   app.commandLine.appendSwitch("disable-features", disableFeatures.join(","));
+
   if (process.platform === "win32") {
     app.commandLine.appendSwitch("use-angle", "d3d11");
   }
