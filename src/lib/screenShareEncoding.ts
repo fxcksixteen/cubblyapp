@@ -126,14 +126,17 @@ export function startAutomaticScreenEncoding(
   target: AutomaticScreenEncoding,
 ): () => void {
   let stopped = false;
-  // v0.4.17 — open at the full user-selected ceiling, but back off fast on
-  // ANY of: packet loss, RTT growth (bufferbloat = saturated uplink), or
-  // Chromium reporting bandwidth/network qualityLimitationReason. The old
-  // controller only reacted to loss, which home routers rarely produce —
-  // they queue instead, so the stream sat at 6 Mbps while the user's ping
-  // climbed in-game.
+  // v0.4.18 — the previous controller treated any RTT wiggle or momentary
+  // fps dip (perfectly normal during a fast game scene) as "network
+  // saturated" and slashed bitrate 25 % per tick, then floored at 600 kbps.
+  // Result: the peer saw a 6 Mbps stream collapse to ~800 kbps within a few
+  // seconds of any real motion and never recovered. This one holds the
+  // user-selected ceiling, uses a strict floor of 60 % of target, and only
+  // reacts to *sustained* pressure (loss > 8 %, bandwidth-limited by
+  // Chromium, or RTT sitting > 150 ms above baseline for 4+ samples).
   let bitrate = target.targetBitrate;
   let scale = Math.max(1, target.baseScale);
+  const bitrateFloor = Math.round(target.targetBitrate * 0.6);
   let cleanSamples = 0;
   let cpuSamples = 0;
   let bloatSamples = 0;
@@ -141,7 +144,8 @@ export function startAutomaticScreenEncoding(
   let lastReceived = 0;
   let lastFrames = 0;
   let lastEncodeTime = 0;
-  // Rolling min-RTT baseline over the last ~20 s (10 samples @ 2 s).
+  // Rolling min-RTT baseline over the last ~40 s (20 samples @ 2 s) so a
+  // brief spike doesn't dominate.
   const rttWindow: number[] = [];
 
   const update = () => applyEncoding(sender, bitrate, target.targetFps, scale).catch(() => {});
@@ -165,7 +169,7 @@ export function startAutomaticScreenEncoding(
       let loss = 0;
       let fps = target.targetFps;
       let cpuLimited = false;
-      let networkLimited = false;
+      let bandwidthLimited = false;
       let rttMs = 0;
       stats.forEach((report: any) => {
         if (report.type === "remote-inbound-rtp" && report.kind === "video") {
@@ -188,41 +192,44 @@ export function startAutomaticScreenEncoding(
           lastFrames = frames;
           lastEncodeTime = encodeTime;
           const encodeMsPerFrame = deltaFrames > 0 ? (deltaEncode * 1000) / deltaFrames : 0;
+          // CPU limit only when Chromium explicitly says so or the encoder
+          // is spending nearly a whole frame budget encoding — not on brief
+          // fps dips (games render bursty frames).
           cpuLimited = report.qualityLimitationReason === "cpu"
-            || fps < target.targetFps * 0.65
-            || encodeMsPerFrame > (1000 / target.targetFps) * 0.9;
-          if (report.qualityLimitationReason === "bandwidth"
-            || report.qualityLimitationReason === "network") networkLimited = true;
+            || encodeMsPerFrame > (1000 / target.targetFps) * 1.1;
+          if (report.qualityLimitationReason === "bandwidth") bandwidthLimited = true;
         }
       });
 
-      // Track a rolling RTT baseline. Bufferbloat = current RTT much higher
-      // than the recent floor.
       if (rttMs > 0) {
         rttWindow.push(rttMs);
-        if (rttWindow.length > 10) rttWindow.shift();
+        if (rttWindow.length > 20) rttWindow.shift();
       }
       const baselineRtt = rttWindow.length ? Math.min(...rttWindow) : 0;
-      const bloated = baselineRtt > 0 && rttMs > baselineRtt + 60;
-      bloatSamples = bloated ? bloatSamples + 1 : 0;
+      // Only count as "bloated" if RTT sits well above baseline. 60 ms was
+      // way too tight for gaming — a Valorant round routinely swings 40 ms.
+      const bloated = baselineRtt > 0 && rttMs > baselineRtt + 150;
+      bloatSamples = bloated ? bloatSamples + 1 : Math.max(0, bloatSamples - 1);
 
-      const bandwidthPressure = loss > 0.05 || networkLimited || bloatSamples >= 2;
-      const clearlyClean = loss < 0.015 && !networkLimited && (baselineRtt === 0 || rttMs <= baselineRtt + 20);
+      const bandwidthPressure = loss > 0.08 || bandwidthLimited || bloatSamples >= 4;
+      const clearlyClean = loss < 0.02 && !bandwidthLimited && (baselineRtt === 0 || rttMs <= baselineRtt + 40);
 
       if (bandwidthPressure) {
         cleanSamples = 0;
-        bitrate = Math.max(600_000, bitrate * 0.75);
-        if (bloatSamples >= 2) bloatSamples = 0;
+        // Gentler backoff (15 %) with a high floor so a burst of loss can't
+        // knock the stream down to a blur.
+        bitrate = Math.max(bitrateFloor, bitrate * 0.85);
+        if (bloatSamples >= 4) bloatSamples = 2;
       } else if (clearlyClean) {
         cleanSamples += 1;
-        if (cleanSamples >= 3) bitrate = Math.min(target.targetBitrate, bitrate * 1.16);
+        if (cleanSamples >= 2) bitrate = Math.min(target.targetBitrate, bitrate * 1.25);
       } else {
         cleanSamples = 0;
       }
 
       cpuSamples = cpuLimited ? cpuSamples + 1 : 0;
-      if (cpuSamples >= 2) {
-        scale = Math.min(Math.max(target.baseScale, 3), scale * 1.25);
+      if (cpuSamples >= 3) {
+        scale = Math.min(Math.max(target.baseScale, 2), scale * 1.15);
         cpuSamples = 0;
       } else if (!cpuLimited && cleanSamples >= 4 && scale > target.baseScale) {
         scale = Math.max(target.baseScale, scale / 1.15);
@@ -230,6 +237,7 @@ export function startAutomaticScreenEncoding(
       await update();
     } catch {}
   }, 2_000);
+
 
   return () => {
     stopped = true;

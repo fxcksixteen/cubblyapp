@@ -23,9 +23,19 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.4.17";
+export const CURRENT_VERSION = "0.4.18";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.4.18",
+    title: "Screenshare hotfix",
+    date: "2026-07-25",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Game screenshares now stay sharp and smooth instead of turning blurry and choppy.",
+    ],
+  },
   {
     version: "0.4.17",
     title: "Screenshare hotfix",
@@ -37,6 +47,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Screenshares now back off automatically when they'd hurt your ping.",
     ],
   },
+
   {
     version: "0.4.16",
     title: "Screenshare hotfix",
