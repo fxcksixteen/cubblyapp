@@ -1532,16 +1532,16 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       }
 
       const isHighFps = clampedFps >= 50;
-      // v0.4.17 — matches DM ceilings (see VoiceContext). Discord-parity so
-      // sharing while gaming doesn't saturate residential upload.
+      // v0.4.18 — matches DM ceilings (see VoiceContext). Game-friendly.
       const resBitrateBase: Record<string, number> = {
-        "480p":  800_000,
-        "720p":  isHighFps ? 2_000_000 : 1_500_000,
-        "1080p": isHighFps ? 4_000_000 : 3_000_000,
-        "1440p": isHighFps ? 6_000_000 : 4_500_000,
+        "480p":  1_200_000,
+        "720p":  isHighFps ? 3_000_000 : 2_500_000,
+        "1080p": isHighFps ? 6_000_000 : 4_500_000,
+        "1440p": isHighFps ? 9_000_000 : 7_000_000,
       };
-      const baseFor = resBitrateBase[clampedQuality] ?? 2_500_000;
+      const baseFor = resBitrateBase[clampedQuality] ?? 4_000_000;
       const maxBitrate = lowPowerCap ? Math.min(baseFor, lowPowerCap) : baseFor;
+
       const targetHeight = clampedRes?.height ?? 1080;
       const fpsCap =
         targetHeight <= 480 ? Math.max(20, Math.min(clampedFps, 24)) :
