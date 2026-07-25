@@ -126,18 +126,23 @@ export function startAutomaticScreenEncoding(
   target: AutomaticScreenEncoding,
 ): () => void {
   let stopped = false;
-  // v0.4.14 — Discord-style instant-start: SDP munging (patchScreenShareVideoSdp)
-  // has already told libwebrtc to skip the slow-start probe, so the encoder can
-  // safely open at the full user-selected ceiling. No more 10-15 s of
-  // artifact-ridden low-bitrate frames at the start of every share.
+  // v0.4.17 — open at the full user-selected ceiling, but back off fast on
+  // ANY of: packet loss, RTT growth (bufferbloat = saturated uplink), or
+  // Chromium reporting bandwidth/network qualityLimitationReason. The old
+  // controller only reacted to loss, which home routers rarely produce —
+  // they queue instead, so the stream sat at 6 Mbps while the user's ping
+  // climbed in-game.
   let bitrate = target.targetBitrate;
   let scale = Math.max(1, target.baseScale);
   let cleanSamples = 0;
   let cpuSamples = 0;
+  let bloatSamples = 0;
   let lastLost = 0;
   let lastReceived = 0;
   let lastFrames = 0;
   let lastEncodeTime = 0;
+  // Rolling min-RTT baseline over the last ~20 s (10 samples @ 2 s).
+  const rttWindow: number[] = [];
 
   const update = () => applyEncoding(sender, bitrate, target.targetFps, scale).catch(() => {});
   void update();
@@ -160,6 +165,8 @@ export function startAutomaticScreenEncoding(
       let loss = 0;
       let fps = target.targetFps;
       let cpuLimited = false;
+      let networkLimited = false;
+      let rttMs = 0;
       stats.forEach((report: any) => {
         if (report.type === "remote-inbound-rtp" && report.kind === "video") {
           const lost = report.packetsLost ?? 0;
@@ -170,6 +177,7 @@ export function startAutomaticScreenEncoding(
           lastReceived = received;
           const total = deltaLost + deltaReceived;
           if (total > 0) loss = deltaLost / total;
+          if (typeof report.roundTripTime === "number") rttMs = report.roundTripTime * 1000;
         }
         if (report.type === "outbound-rtp" && report.kind === "video") {
           fps = report.framesPerSecond ?? fps;
@@ -183,13 +191,29 @@ export function startAutomaticScreenEncoding(
           cpuLimited = report.qualityLimitationReason === "cpu"
             || fps < target.targetFps * 0.65
             || encodeMsPerFrame > (1000 / target.targetFps) * 0.9;
+          if (report.qualityLimitationReason === "bandwidth"
+            || report.qualityLimitationReason === "network") networkLimited = true;
         }
       });
 
-      if (loss > 0.05) {
+      // Track a rolling RTT baseline. Bufferbloat = current RTT much higher
+      // than the recent floor.
+      if (rttMs > 0) {
+        rttWindow.push(rttMs);
+        if (rttWindow.length > 10) rttWindow.shift();
+      }
+      const baselineRtt = rttWindow.length ? Math.min(...rttWindow) : 0;
+      const bloated = baselineRtt > 0 && rttMs > baselineRtt + 60;
+      bloatSamples = bloated ? bloatSamples + 1 : 0;
+
+      const bandwidthPressure = loss > 0.05 || networkLimited || bloatSamples >= 2;
+      const clearlyClean = loss < 0.015 && !networkLimited && (baselineRtt === 0 || rttMs <= baselineRtt + 20);
+
+      if (bandwidthPressure) {
         cleanSamples = 0;
-        bitrate = Math.max(450_000, bitrate * 0.78);
-      } else if (loss < 0.015) {
+        bitrate = Math.max(600_000, bitrate * 0.75);
+        if (bloatSamples >= 2) bloatSamples = 0;
+      } else if (clearlyClean) {
         cleanSamples += 1;
         if (cleanSamples >= 3) bitrate = Math.min(target.targetBitrate, bitrate * 1.16);
       } else {

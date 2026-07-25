@@ -137,9 +137,20 @@ export function preferScreenShareCodec(transceiver: RTCRtpTransceiver | null | u
     const caps = (RTCRtpSender as any).getCapabilities?.("video");
     if (!caps?.codecs?.length) return null;
     const isElectron = !!(window as any).electronAPI?.isElectron;
+    // v0.4.17 — when the user has HW acceleration off (or we've flagged
+    // low-power mode), prefer VP8. It's the fastest, most reliable software
+    // encoder in Chromium; VP9/AV1 in SW can stall createOffer under load
+    // and never produce a startable share.
+    const lowPower = typeof document !== "undefined"
+      && document.documentElement.classList.contains("cubbly-low-power");
     const rank = (mime: string): number => {
       const m = mime.toLowerCase();
-      if (isElectron) {
+      if (lowPower) {
+        if (m === "video/vp8") return 0;
+        if (m === "video/h264") return 1;
+        if (m === "video/vp9") return 2;
+        if (m === "video/av1") return 3;
+      } else if (isElectron) {
         // Desktop app: HW H.264 first, then VP9, then VP8, AV1 last.
         if (m === "video/h264") return 0;
         if (m === "video/vp9") return 1;
@@ -157,7 +168,7 @@ export function preferScreenShareCodec(transceiver: RTCRtpTransceiver | null | u
     const codecs = [...caps.codecs].sort((a: any, b: any) => rank(a.mimeType) - rank(b.mimeType));
     (transceiver as any).setCodecPreferences(codecs);
     const chosen = codecs[0]?.mimeType || null;
-    console.log(`[Voice] 🎞️ screenshare codec preference (${isElectron ? "electron/HW" : "browser/SW"}):`, codecs.slice(0, 3).map((c: any) => c.mimeType).join(" → "));
+    console.log(`[Voice] 🎞️ screenshare codec preference (${lowPower ? "low-power/SW" : isElectron ? "electron/HW" : "browser/SW"}):`, codecs.slice(0, 3).map((c: any) => c.mimeType).join(" → "));
     return chosen;
   } catch (e) {
     console.warn("[Voice] setCodecPreferences failed:", e);
@@ -2294,21 +2305,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           const screenPc = new RTCPeerConnection({ iceServers: iceServersRef.current });
           screenPc.ontrack = (event) => {
             const remoteScreen = event.streams[0];
-            // Lower the inbound video jitter buffer so game streaming feels
-            // real-time instead of delayed/laggy. Without this hint Chromium
-            // happily buffers 200-400ms which makes screenshares feel like
-            // they're running underwater.
             try { (event.receiver as any).playoutDelayHint = 0.05; } catch {}
             try { (event.receiver as any).jitterBufferTarget = 50; } catch {}
             setRemoteScreenStream(remoteScreen);
-            // If this stream carries an audio track, route it through the
-            // per-peer GainNode so the right-click "User Volume" slider AND
-            // the fullscreen viewer's volume slider both control the
-            // screen-share audio (not just the mic).
             const peerUserId = peerIdRef.current;
             if (peerUserId && event.track.kind === "audio") {
-              // Use a dedicated hidden <audio> element so we don't fight the
-              // <video> element's autoplay/render path.
               let el = document.querySelector<HTMLAudioElement>(`audio[data-cubbly-peer="${peerUserId}"][data-cubbly-kind="screen"]`);
               const isNew = !el;
               if (!el) {
@@ -2330,28 +2331,61 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               channel.send({
                 type: "broadcast",
                 event: "voice-signal",
-                // role:"in" → this candidate was gathered on OUR incoming PC,
-                // so the peer must apply it to THEIR outgoing PC.
                 payload: { type: "screen-ice-candidate", role: "in", candidate: event.candidate, senderId: user.id },
               });
             }
           };
           screenPcInRef.current = screenPc;
-          await screenPc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
-          const answer = await screenPc.createAnswer();
-          await screenPc.setLocalDescription(answer);
-          channel.send({
-            type: "broadcast",
-            event: "voice-signal",
-            payload: { type: "screen-answer", sdp: answer, senderId: user.id },
-          });
+          // v0.4.17 — echo the sender's shareId back on the answer so the
+          // sharer can drop late/duplicate answers from prior attempts. Also
+          // wrap in try/catch so a stray offer (state-mismatch) never becomes
+          // an uncaught rejection that kills the whole signaling pipeline.
+          try {
+            await screenPc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+            const answer = await screenPc.createAnswer();
+            await screenPc.setLocalDescription(answer);
+            channel.send({
+              type: "broadcast",
+              event: "voice-signal",
+              payload: {
+                type: "screen-answer",
+                sdp: answer,
+                senderId: user.id,
+                shareId: payload.shareId,
+              },
+            });
+          } catch (e) {
+            console.warn("[Voice] screen-offer handling failed (ignored):", e);
+          }
           return;
         }
 
         if (payload.type === "screen-answer" && screenPcOutRef.current) {
-          await screenPcOutRef.current.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+          const pcOut = screenPcOutRef.current;
+          const expectedShareId = (pcOut as any).__cubblyShareId;
+          const expectedPeer = peerIdRef.current;
+          // v0.4.17 — drop late/duplicate answers from prior share attempts.
+          // The offerer had already reached "stable" on the first valid answer,
+          // and a second setRemoteDescription there throws InvalidStateError
+          // (which as an uncaught promise tore the whole share down before
+          // any tracks were announced).
+          if (expectedShareId && payload.shareId && payload.shareId !== expectedShareId) {
+            return;
+          }
+          if (expectedPeer && payload.senderId && payload.senderId !== expectedPeer) {
+            return;
+          }
+          if (pcOut.signalingState !== "have-local-offer") {
+            return;
+          }
+          try {
+            await pcOut.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+          } catch (e) {
+            console.warn("[Voice] screen-answer setRemoteDescription failed (ignored):", e);
+          }
           return;
         }
+
 
         if (payload.type === "screen-ice-candidate") {
           // role "in" came from peer's incoming PC → goes to our OUT PC.
@@ -3169,11 +3203,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       }
 
       const isHighFps = clampedFps >= 50;
+      // v0.4.17 — Discord-parity ceilings. Old defaults (up to 8 Mbps for
+      // 1440p60) saturated typical residential upload and spiked in-game
+      // ping. The automatic controller now opens at these ceilings and
+      // backs off within ~4s if the uplink can't sustain them.
       const resBitrateBase: Record<string, number> = {
-        "480p":  1_200_000,
-        "720p":  isHighFps ? 3_000_000 : 2_500_000,
-        "1080p": isHighFps ? 6_000_000 : 4_500_000,
-        "1440p": isHighFps ? 8_000_000 : 6_000_000,
+        "480p":  800_000,
+        "720p":  isHighFps ? 2_000_000 : 1_500_000,
+        "1080p": isHighFps ? 4_000_000 : 3_000_000,
+        "1440p": isHighFps ? 6_000_000 : 4_500_000,
       };
       const baseFor = resBitrateBase[clampedQuality] ?? 2_500_000;
       const maxBitrate = lowPowerCap ? Math.min(baseFor, lowPowerCap) : baseFor;
@@ -3308,6 +3346,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       const offer = await screenPc.createOffer();
       offer.sdp = patchScreenShareOpusSdp(offer.sdp || "");
       await screenPc.setLocalDescription(offer);
+      // v0.4.17 — tag every offer with a monotonic share id so late/duplicate
+      // answers from prior share attempts (Supabase realtime re-delivers, or
+      // the peer answered an offer we already replaced) can be ignored on
+      // arrival instead of throwing InvalidStateError and killing the share.
+      const shareId = `${user.id}:${Date.now()}`;
+      (screenPc as any).__cubblyShareId = shareId;
+
 
 
 
@@ -3324,7 +3369,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       channelRef.current.send({
         type: "broadcast",
         event: "voice-signal",
-        payload: { type: "screen-offer", sdp: offer, senderId: user.id },
+        payload: { type: "screen-offer", sdp: offer, senderId: user.id, shareId },
       });
     } catch (e) {
       console.error("Failed to start screen share:", e);
