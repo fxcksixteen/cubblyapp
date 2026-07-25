@@ -698,7 +698,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       if (chosen && /vp9/i.test(chosen)) {
         try {
           const p = sender.getParameters();
-          if (p.encodings?.length) { (p.encodings[0] as any).scalabilityMode = "L1T3"; await sender.setParameters(p); }
+          if (p.encodings?.length) { (p.encodings[0] as any).scalabilityMode = "L1T3"; void sender.setParameters(p); }
         } catch {}
       }
       logScreenEncoderImplementation(pc, "GroupCall");
