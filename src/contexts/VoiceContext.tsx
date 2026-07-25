@@ -137,9 +137,20 @@ export function preferScreenShareCodec(transceiver: RTCRtpTransceiver | null | u
     const caps = (RTCRtpSender as any).getCapabilities?.("video");
     if (!caps?.codecs?.length) return null;
     const isElectron = !!(window as any).electronAPI?.isElectron;
+    // v0.4.17 — when the user has HW acceleration off (or we've flagged
+    // low-power mode), prefer VP8. It's the fastest, most reliable software
+    // encoder in Chromium; VP9/AV1 in SW can stall createOffer under load
+    // and never produce a startable share.
+    const lowPower = typeof document !== "undefined"
+      && document.documentElement.classList.contains("cubbly-low-power");
     const rank = (mime: string): number => {
       const m = mime.toLowerCase();
-      if (isElectron) {
+      if (lowPower) {
+        if (m === "video/vp8") return 0;
+        if (m === "video/h264") return 1;
+        if (m === "video/vp9") return 2;
+        if (m === "video/av1") return 3;
+      } else if (isElectron) {
         // Desktop app: HW H.264 first, then VP9, then VP8, AV1 last.
         if (m === "video/h264") return 0;
         if (m === "video/vp9") return 1;
@@ -157,7 +168,7 @@ export function preferScreenShareCodec(transceiver: RTCRtpTransceiver | null | u
     const codecs = [...caps.codecs].sort((a: any, b: any) => rank(a.mimeType) - rank(b.mimeType));
     (transceiver as any).setCodecPreferences(codecs);
     const chosen = codecs[0]?.mimeType || null;
-    console.log(`[Voice] 🎞️ screenshare codec preference (${isElectron ? "electron/HW" : "browser/SW"}):`, codecs.slice(0, 3).map((c: any) => c.mimeType).join(" → "));
+    console.log(`[Voice] 🎞️ screenshare codec preference (${lowPower ? "low-power/SW" : isElectron ? "electron/HW" : "browser/SW"}):`, codecs.slice(0, 3).map((c: any) => c.mimeType).join(" → "));
     return chosen;
   } catch (e) {
     console.warn("[Voice] setCodecPreferences failed:", e);
