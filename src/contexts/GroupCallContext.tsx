@@ -1607,15 +1607,30 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       // per-peer `onnegotiationneeded` handler, which already runs
       // `mungeGroupCallOpusSdp` on the mic transceiver and now benefits from
       // `preferScreenShareCodec` on the newly-added screen transceiver.
+      const grpLowPower = typeof document !== "undefined"
+        && document.documentElement.classList.contains("cubbly-low-power");
       for (const [peerId, pc] of pcsRef.current) {
         const labeledStream = new MediaStream([videoTrack]);
         Object.defineProperty(labeledStream, "id", { value: `cubbly-screen-${user.id}` });
-        const vSender = pc.addTrack(videoTrack, labeledStream);
+        // v0.4.18 — simulcast per peer, HW-friendly codec pref, VP9 SVC fallback.
+        const enc = buildScreenSendEncodings(maxBitrate, fpsCap, scaleResolutionDownBy, { lowPower: grpLowPower });
+        const tx = pc.addTransceiver(videoTrack, {
+          direction: "sendonly",
+          streams: [labeledStream],
+          sendEncodings: enc,
+        } as any);
+        const vSender = tx.sender;
         screenSendersRef.current.set(peerId, vSender);
+        const chosen = preferScreenShareCodec(tx);
+        if (chosen && /vp9/i.test(chosen)) {
+          try {
+            const p = vSender.getParameters();
+            if (p.encodings?.length) { (p.encodings[0] as any).scalabilityMode = "L1T3"; void vSender.setParameters(p); }
+          } catch {}
+        }
+        logScreenEncoderImplementation(pc, "GroupCall");
         screenEncodingCleanupRef.current.get(peerId)?.();
         screenEncodingCleanupRef.current.set(peerId, startAutomaticScreenEncoding(vSender, pc, localScreenEncodingRef.current));
-        const tx = pc.getTransceivers().find((t) => t.sender === vSender);
-        preferScreenShareCodec(tx || null);
 
         const audioSenders: RTCRtpSender[] = [];
         stream.getAudioTracks().forEach((atrack) => {
@@ -1629,6 +1644,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         });
         screenAudioSendersRef.current.set(peerId, audioSenders);
       }
+
       videoTrack.onended = () => { toggleScreenShare(); };
 
       // v0.4.5 mute-survival: renegotiation must NEVER silently flip the mic
