@@ -31,12 +31,16 @@ import { usePeerGains } from "@/lib/peerGain";
 import { armRemoteAudio } from "@/lib/iosAudioUnlock";
 import { STUN_FALLBACK_SERVERS, sanitizeIceServersForSession } from "@/lib/webrtcIce";
 import { AutomaticScreenEncoding, startAutomaticScreenEncoding } from "@/lib/screenShareEncoding";
+
 import {
   applyScreenAudioBitrate,
   preferScreenShareCodec,
   patchScreenShareOpusSdp,
   loadScreenShareSettings,
+  buildScreenSendEncodings,
+  logScreenEncoderImplementation,
 } from "@/contexts/VoiceContext";
+
 
 export interface GroupPeer {
   userId: string;
@@ -672,12 +676,37 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     if (localScreenTrackRef.current && user) {
       const screenStream = new MediaStream([localScreenTrackRef.current]);
       Object.defineProperty(screenStream, "id", { value: `cubbly-screen-${user.id}` });
-      const sender = pc.addTrack(localScreenTrackRef.current, screenStream);
+      // v0.4.18 — simulcast for late joiners too. See addScreenShare() for
+      // the primary path; this branch fires when a NEW peer joins after we
+      // already started sharing.
+      const lowPower = typeof document !== "undefined"
+        && document.documentElement.classList.contains("cubbly-low-power");
+      const enc = buildScreenSendEncodings(
+        localScreenEncodingRef.current?.targetBitrate ?? 4_000_000,
+        localScreenEncodingRef.current?.targetFps ?? 30,
+        localScreenEncodingRef.current?.baseScale ?? 1,
+        { lowPower },
+      );
+      const tx = pc.addTransceiver(localScreenTrackRef.current, {
+        direction: "sendonly",
+        streams: [screenStream],
+        sendEncodings: enc,
+      } as any);
+      const sender = tx.sender;
       screenSendersRef.current.set(peerId, sender);
+      const chosen = preferScreenShareCodec(tx);
+      if (chosen && /vp9/i.test(chosen)) {
+        try {
+          const p = sender.getParameters();
+          if (p.encodings?.length) { (p.encodings[0] as any).scalabilityMode = "L1T3"; void sender.setParameters(p); }
+        } catch {}
+      }
+      logScreenEncoderImplementation(pc, "GroupCall");
       if (localScreenEncodingRef.current) {
         screenEncodingCleanupRef.current.set(peerId, startAutomaticScreenEncoding(sender, pc, localScreenEncodingRef.current));
       }
     }
+
 
     pc.ontrack = (event) => {
       const stream = event.streams[0];
@@ -1578,15 +1607,30 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       // per-peer `onnegotiationneeded` handler, which already runs
       // `mungeGroupCallOpusSdp` on the mic transceiver and now benefits from
       // `preferScreenShareCodec` on the newly-added screen transceiver.
+      const grpLowPower = typeof document !== "undefined"
+        && document.documentElement.classList.contains("cubbly-low-power");
       for (const [peerId, pc] of pcsRef.current) {
         const labeledStream = new MediaStream([videoTrack]);
         Object.defineProperty(labeledStream, "id", { value: `cubbly-screen-${user.id}` });
-        const vSender = pc.addTrack(videoTrack, labeledStream);
+        // v0.4.18 — simulcast per peer, HW-friendly codec pref, VP9 SVC fallback.
+        const enc = buildScreenSendEncodings(maxBitrate, fpsCap, scaleResolutionDownBy, { lowPower: grpLowPower });
+        const tx = pc.addTransceiver(videoTrack, {
+          direction: "sendonly",
+          streams: [labeledStream],
+          sendEncodings: enc,
+        } as any);
+        const vSender = tx.sender;
         screenSendersRef.current.set(peerId, vSender);
+        const chosen = preferScreenShareCodec(tx);
+        if (chosen && /vp9/i.test(chosen)) {
+          try {
+            const p = vSender.getParameters();
+            if (p.encodings?.length) { (p.encodings[0] as any).scalabilityMode = "L1T3"; void vSender.setParameters(p); }
+          } catch {}
+        }
+        logScreenEncoderImplementation(pc, "GroupCall");
         screenEncodingCleanupRef.current.get(peerId)?.();
         screenEncodingCleanupRef.current.set(peerId, startAutomaticScreenEncoding(vSender, pc, localScreenEncodingRef.current));
-        const tx = pc.getTransceivers().find((t) => t.sender === vSender);
-        preferScreenShareCodec(tx || null);
 
         const audioSenders: RTCRtpSender[] = [];
         stream.getAudioTracks().forEach((atrack) => {
@@ -1600,6 +1644,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         });
         screenAudioSendersRef.current.set(peerId, audioSenders);
       }
+
       videoTrack.onended = () => { toggleScreenShare(); };
 
       // v0.4.5 mute-survival: renegotiation must NEVER silently flip the mic

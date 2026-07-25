@@ -105,14 +105,19 @@ async function applyEncoding(
 ) {
   const params = sender.getParameters();
   if (!params.encodings?.length) params.encodings = [{}];
-  params.encodings[0].maxBitrate = Math.round(bitrate);
-  (params.encodings[0] as any).maxFramerate = Math.round(fps);
-  (params.encodings[0] as any).scaleResolutionDownBy = Math.max(1, +scale.toFixed(2));
-  (params.encodings[0] as any).networkPriority = "high";
-  (params.encodings[0] as any).priority = "high";
+  // v0.4.18 — with simulcast, tune the `f` (full) layer explicitly. Fall
+  // back to index 0 for the low-power single-layer path.
+  const idx = params.encodings.findIndex((e: any) => e.rid === "f");
+  const target = params.encodings[idx >= 0 ? idx : 0] as any;
+  target.maxBitrate = Math.round(bitrate);
+  target.maxFramerate = Math.round(fps);
+  target.scaleResolutionDownBy = Math.max(1, +scale.toFixed(2));
+  target.networkPriority = "high";
+  target.priority = "high";
   (params as any).degradationPreference = "maintain-framerate";
   await sender.setParameters(params);
 }
+
 
 /**
  * One mixed-content controller for DM, group, and server shares. It starts at

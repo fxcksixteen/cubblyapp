@@ -28,13 +28,17 @@ export const CURRENT_VERSION = "0.4.18";
 export const CHANGELOG: ChangelogEntry[] = [
   {
     version: "0.4.18",
-    title: "Screenshare hotfix",
+    title: "Screenshare parity",
     date: "2026-07-25",
     hero: bearImage,
     newFeatures: [],
     bugFixes: [
       "Game screenshares now stay sharp and smooth instead of turning blurry and choppy.",
+      "Desktop screenshares now use your GPU's hardware H.264 encoder when available — much lower CPU, much better quality per bit.",
+      "Screenshares now send multiple quality layers so one struggling viewer no longer drags everyone else's stream down.",
+      "Screenshares hold their picture longer under packet loss thanks to VP9 temporal layers on the fallback path.",
     ],
+
   },
   {
     version: "0.4.17",

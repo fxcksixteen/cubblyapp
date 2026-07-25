@@ -137,12 +137,34 @@ export function preferScreenShareCodec(transceiver: RTCRtpTransceiver | null | u
     const caps = (RTCRtpSender as any).getCapabilities?.("video");
     if (!caps?.codecs?.length) return null;
     const isElectron = !!(window as any).electronAPI?.isElectron;
-    // v0.4.17 — when the user has HW acceleration off (or we've flagged
-    // low-power mode), prefer VP8. It's the fastest, most reliable software
-    // encoder in Chromium; VP9/AV1 in SW can stall createOffer under load
-    // and never produce a startable share.
     const lowPower = typeof document !== "undefined"
       && document.documentElement.classList.contains("cubbly-low-power");
+
+    // v0.4.18 — Chromium exposes several H.264 codec entries. If we let it
+    // pick a High-profile one, libwebrtc silently falls back to the software
+    // OpenH264 encoder — NVENC/MFT/QuickSync/VideoToolbox only accept
+    // Constrained-Baseline/Baseline with packetization-mode=1. Rank those
+    // FIRST among H.264, and drop High-profile entries entirely on desktop
+    // so Chromium can never route around us into software.
+    const isBaselineH264 = (c: any) => {
+      const fmtp = (c.sdpFmtpLine || "").toLowerCase();
+      // 42e0xx / 4200xx = Constrained Baseline; 4200xx = Baseline.
+      const isBaseline = /profile-level-id=42[e04]0[0-9a-f]{2}/i.test(fmtp)
+        || /profile-level-id=4200[0-9a-f]{2}/i.test(fmtp);
+      const pktMode1 = /packetization-mode=1/.test(fmtp);
+      return isBaseline && pktMode1;
+    };
+
+    let pool = caps.codecs as any[];
+    if (isElectron && !lowPower) {
+      // Keep only HW-compatible H.264 entries; keep all other codecs.
+      pool = pool.filter((c: any) => {
+        const m = (c.mimeType || "").toLowerCase();
+        if (m !== "video/h264") return true;
+        return isBaselineH264(c);
+      });
+    }
+
     const rank = (mime: string): number => {
       const m = mime.toLowerCase();
       if (lowPower) {
@@ -151,13 +173,11 @@ export function preferScreenShareCodec(transceiver: RTCRtpTransceiver | null | u
         if (m === "video/vp9") return 2;
         if (m === "video/av1") return 3;
       } else if (isElectron) {
-        // Desktop app: HW H.264 first, then VP9, then VP8, AV1 last.
         if (m === "video/h264") return 0;
         if (m === "video/vp9") return 1;
         if (m === "video/vp8") return 2;
         if (m === "video/av1") return 3;
       } else {
-        // Browser: VP9 first (best SW quality), then VP8, then H.264, AV1 last.
         if (m === "video/vp9") return 0;
         if (m === "video/vp8") return 1;
         if (m === "video/h264") return 2;
@@ -165,16 +185,94 @@ export function preferScreenShareCodec(transceiver: RTCRtpTransceiver | null | u
       }
       return 9;
     };
-    const codecs = [...caps.codecs].sort((a: any, b: any) => rank(a.mimeType) - rank(b.mimeType));
+    // Secondary sort: among H.264 entries with the same rank, put baseline
+    // packetization-mode=1 first so browser-mode too gets the HW-friendly
+    // profile at the head.
+    const codecs = [...pool].sort((a: any, b: any) => {
+      const d = rank(a.mimeType) - rank(b.mimeType);
+      if (d !== 0) return d;
+      if ((a.mimeType || "").toLowerCase() === "video/h264") {
+        const ab = isBaselineH264(a) ? 0 : 1;
+        const bb = isBaselineH264(b) ? 0 : 1;
+        return ab - bb;
+      }
+      return 0;
+    });
     (transceiver as any).setCodecPreferences(codecs);
     const chosen = codecs[0]?.mimeType || null;
-    console.log(`[Voice] 🎞️ screenshare codec preference (${lowPower ? "low-power/SW" : isElectron ? "electron/HW" : "browser/SW"}):`, codecs.slice(0, 3).map((c: any) => c.mimeType).join(" → "));
+    console.log(`[Voice] 🎞️ screenshare codec preference (${lowPower ? "low-power/SW" : isElectron ? "electron/HW" : "browser/SW"}):`, codecs.slice(0, 3).map((c: any) => `${c.mimeType}${c.sdpFmtpLine ? ` [${c.sdpFmtpLine}]` : ""}`).join(" → "));
     return chosen;
   } catch (e) {
     console.warn("[Voice] setCodecPreferences failed:", e);
     return null;
   }
 }
+
+/**
+ * Build the simulcast `sendEncodings` array we hand to `addTransceiver` for
+ * a screen video track. Three layers (f / h / q) so a single struggling
+ * viewer can drop to a lower layer instead of dragging the whole share down.
+ *
+ * Skipped in low-power mode — SW encoders can't sustain 3 layers.
+ */
+export function buildScreenSendEncodings(
+  targetBitrate: number,
+  targetFps: number,
+  baseScale: number,
+  opts?: { lowPower?: boolean; useVp9Svc?: boolean },
+): RTCRtpEncodingParameters[] {
+  const scaleF = Math.max(1, baseScale);
+  if (opts?.lowPower) {
+    const enc: any = { rid: "f", maxBitrate: targetBitrate, maxFramerate: targetFps, scaleResolutionDownBy: scaleF, networkPriority: "high", priority: "high" };
+    if (opts.useVp9Svc) enc.scalabilityMode = "L1T3";
+    return [enc];
+  }
+  const f: any = { rid: "f", maxBitrate: targetBitrate, maxFramerate: targetFps, scaleResolutionDownBy: scaleF, networkPriority: "high", priority: "high" };
+  const h: any = { rid: "h", maxBitrate: Math.round(targetBitrate * 0.4), maxFramerate: targetFps, scaleResolutionDownBy: scaleF * 2, networkPriority: "medium", priority: "medium" };
+  const q: any = { rid: "q", maxBitrate: Math.round(targetBitrate * 0.15), maxFramerate: Math.max(15, Math.round(targetFps / 2)), scaleResolutionDownBy: scaleF * 4, networkPriority: "low", priority: "low" };
+  if (opts?.useVp9Svc) {
+    f.scalabilityMode = "L1T3";
+    h.scalabilityMode = "L1T2";
+    q.scalabilityMode = "L1T2";
+  }
+  return [f, h, q];
+}
+
+/**
+ * After `setLocalDescription` runs, poll the sender's stats once and log
+ * which encoder implementation Chromium actually picked. Loud warning if
+ * we're on a software encoder — that's the single biggest source of choppy
+ * game streams and we want it visible in the console, not silently failing.
+ */
+export function logScreenEncoderImplementation(
+  pc: RTCPeerConnection,
+  label: string = "Voice",
+) {
+  const check = async () => {
+    try {
+      const stats = await pc.getStats();
+      let impl: string | null = null;
+      let codec: string | null = null;
+      const codecMap = new Map<string, string>();
+      stats.forEach((r: any) => { if (r.type === "codec") codecMap.set(r.id, r.mimeType); });
+      stats.forEach((r: any) => {
+        if (r.type === "outbound-rtp" && r.kind === "video") {
+          if (r.encoderImplementation) impl = r.encoderImplementation;
+          if (r.codecId && codecMap.has(r.codecId)) codec = codecMap.get(r.codecId) || null;
+        }
+      });
+      if (impl) {
+        const isSW = /libvpx|libaom|openh264|SimulcastEncoderAdapter \(libvpx/i.test(impl);
+        const tag = isSW ? "⚠️ SOFTWARE" : "✅ hardware";
+        console.log(`[${label}] 🎞️ encoder in use → ${tag} · ${impl} · ${codec || "unknown codec"}`);
+        if (isSW) console.warn(`[${label}] Screenshare is on a SOFTWARE encoder — game streams will look worse. Check GPU flags / driver.`);
+      }
+    } catch {}
+  };
+  window.setTimeout(check, 2500);
+  window.setTimeout(check, 8000);
+}
+
 
 /**
  * Apply high-quality screenshare *video* encoding parameters: max bitrate,
@@ -3316,22 +3414,39 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       const screenPc = new RTCPeerConnection({ iceServers: iceServersRef.current });
       screenPcOutRef.current = screenPc;
 
-      let videoSenderRef: RTCRtpSender | null = null;
-      stream.getTracks().forEach(track => {
-        const sender = screenPc.addTrack(track, stream);
-        if (track.kind === "video") {
-          videoSenderRef = sender;
-          applyScreenBitrate(sender, maxBitrate, encodingOpts);
-          // v0.4.4: force VP9 (or AV1 if present) on the video transceiver so
-          // this share negotiates the same modern codec Discord uses instead
-          // of falling back to VP8's mushier screen-content encoding.
-          const tx = screenPc.getTransceivers().find((t) => t.sender === sender);
-          preferScreenShareCodec(tx || null);
-        }
-        if (track.kind === "audio") applyScreenAudioBitrate(sender);
-        track.onended = () => {
-          stopScreenShare();
-        };
+      const videoTrack = stream.getVideoTracks()[0];
+      const audioTracks = stream.getAudioTracks();
+
+      // v0.4.18 — simulcast on the screen video sender. Three RIDs so a
+      // struggling viewer drops to `h` or `q` without dragging our full
+      // `f` layer down. Low-power path uses a single layer.
+      const useVp9Svc = false; // set below once we know the negotiated codec
+      const sendEncodings = buildScreenSendEncodings(maxBitrate, fpsCap, scaleResolutionDownBy, { lowPower });
+      const videoTx = screenPc.addTransceiver(videoTrack, {
+        direction: "sendonly",
+        streams: [stream],
+        sendEncodings,
+      } as any);
+      const videoSenderRef: RTCRtpSender = videoTx.sender;
+      // v0.4.4 → v0.4.18: force HW-friendly H.264 baseline / VP9 fallback.
+      const chosenCodec = preferScreenShareCodec(videoTx);
+      // If we ended up on VP9, add temporal SVC to the base layer (Discord
+      // parity for the browser/SW path).
+      if (chosenCodec && /vp9/i.test(chosenCodec)) {
+        try {
+          const p = videoSenderRef.getParameters();
+          if (p.encodings?.length) {
+            (p.encodings[0] as any).scalabilityMode = "L1T3";
+            await videoSenderRef.setParameters(p);
+          }
+        } catch {}
+      }
+      videoTrack.onended = () => { stopScreenShare(); };
+
+      audioTracks.forEach((atrack) => {
+        const sender = screenPc.addTrack(atrack, stream);
+        applyScreenAudioBitrate(sender);
+        atrack.onended = () => { stopScreenShare(); };
       });
 
       screenPc.onicecandidate = (event) => {
@@ -3354,8 +3469,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       const shareId = `${user.id}:${Date.now()}`;
       (screenPc as any).__cubblyShareId = shareId;
 
-
-
+      // v0.4.18 — surface which encoder (HW vs SW) Chromium picked so we can
+      // tell at a glance whether a bad-looking stream is a codec-path issue.
+      logScreenEncoderImplementation(screenPc, "Voice");
 
       if (videoSenderRef) {
         screenEncodingCleanupRef.current?.();
@@ -3372,6 +3488,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         event: "voice-signal",
         payload: { type: "screen-offer", sdp: offer, senderId: user.id, shareId },
       });
+
     } catch (e) {
       console.error("Failed to start screen share:", e);
       setIsScreenSharing(false);
