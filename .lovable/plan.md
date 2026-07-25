@@ -1,64 +1,81 @@
+## v0.4.18 — Full "Discord-parity" game streaming (software path)
 
-## v0.4.17 desktop hotfix
+Native DXGI capture is deferred; this patch pushes every other lever to make game streams as clear and smooth as Discord using only the Chromium/WebRTC stack we already have.
 
-Two screenshare bugs. Both diagnosed from the console screenshot on her side and the game-lag / ping-spike behavior on yours.
-
----
-
-### 1. Her screenshare never starts
-
-**Root cause (from her console):**
-```
-Uncaught (in promise) InvalidStateError: Failed to execute 'setRemoteDescription'
-on 'RTCPeerConnection': Failed to set remote answer sdp: Called in wrong state: stable
-```
-Her `screenPcOutRef` receives multiple `screen-answer` broadcasts (she retried the share several times, and old in-flight answers from previous attempts land after her new PC has already been set stable by the first valid answer). The second `setRemoteDescription` throws — the promise is uncaught, and Chromium tears the whole share intent down before any track is ever announced to you. That's why you never see her in the call UI.
-
-The `screen-offer` handler in `VoiceContext.tsx` has the same shape and can fail the same way if a stray offer arrives after her PC is stable.
-
-**Fix in `src/contexts/VoiceContext.tsx`** (mirror the same guards in `GroupCallContext.tsx` for server/group shares):
-- In the `screen-answer` branch (~line 2351): only apply when `screenPcOutRef.current.signalingState === "have-local-offer"`; otherwise log-and-drop. Wrap `setRemoteDescription` in try/catch so a stale/duplicate answer never becomes an uncaught promise rejection.
-- Only apply the answer when `payload.senderId === activeCall.peerId` (or the current expected peer in group), so an answer from a prior peer/session can't corrupt the new PC.
-- In the `screen-offer` branch (~line 2282): same try/catch + signaling-state guard around `setRemoteDescription`/`createAnswer`.
-- On `startScreenShare`, tag the offer with a monotonically-increasing `shareId` (senderId + counter) and record it on `screenPcOutRef`. Ignore any `screen-answer` whose `shareId` doesn't match the current one. This kills the "old attempt's answer clobbers new attempt" race even when Supabase re-delivers.
-
-**Also — her hardware acceleration is off.** With HW-accel off, preferring VP9/AV1/H.264-HW on the transceiver forces a slow SW encoder path that can stall createOffer under load. When `document.documentElement.classList.contains("cubbly-low-power")` is true, `preferScreenShareCodec` should prefer **VP8** first (fastest, most reliable SW encoder in Chromium), then VP9. This keeps the "GPU Unlock" path fully intact for everyone else.
+Goal: at 1080p60 on a normal residential uplink, a fast-motion game (Valorant, Fortnite) should look sharp, hold framerate, and not spike your ping. Same for 1440p60 on a strong uplink.
 
 ---
 
-### 2. Your game streams lag and spike wifi ping
+### 1. Actually get the hardware H.264 encoder to run
 
-Your RTX 4060 Ti is fine — the problem is upload bandwidth. Current default for 1080p60 is a **6 Mbps** ceiling (`resBitrateBase` in `VoiceContext.tsx` line ~3172 and the identical table in `GroupCallContext.tsx`). Sustaining 6 Mbps upload while a competitive game is also uploading is what's spiking your ping in Valorant and in the call itself. Videos/browsers don't hit this because their content is low-motion and the encoder never needs the full ceiling.
+Today `preferScreenShareCodec` puts H.264 first on desktop, but Chromium will silently fall back to software libx264 if any H.264 codec entry with an unsupported profile is listed first. Fix:
 
-The `startAutomaticScreenEncoding` controller in `src/lib/screenShareEncoding.ts` also only backs off on **packet loss**. Home routers usually don't drop packets under bufferbloat — they just queue them, which shows up as RTT growth, not loss. So the current controller happily sits at 6 Mbps while your ping climbs.
+- Filter the H.264 codec list to entries whose `sdpFmtpLine` advertises **Baseline / Constrained Baseline** (`profile-level-id=42e01f` or `42001f`) with `packetization-mode=1`. These are the profiles NVENC / Intel QuickSync / AMD AMF / Media Foundation actually implement.
+- Drop High-profile H.264 entries from the preference order — Chromium will otherwise pick them and route to libx264 in software.
+- After `setLocalDescription`, read `pc.getStats()` and log `codecId` + `encoderImplementation`. If it comes back `"libvpx"` or `"OpenH264"` we know we're software; log a loud warning so we can diagnose without waiting for a user report.
 
-**Fix in `src/lib/screenShareEncoding.ts`:**
-- In the stats poll, also read `remote-inbound-rtp.roundTripTime`. Track a rolling baseline (min over the last ~20 s). If current RTT > baseline + 60 ms for 2 consecutive samples, treat it as bufferbloat and cut bitrate by 25 % (floor 600 kbps). This is the same signal Discord/Meet use to detect a saturated uplink.
-- Read `outbound-rtp.qualityLimitationReason`. When it's `"bandwidth"` or `"network"`, apply the same backoff instead of waiting for loss.
-- Only ramp back up (`bitrate * 1.16`) when RTT is within +20 ms of baseline **and** loss < 1.5 %.
+### 2. Simulcast the screenshare
 
-**Fix in `src/contexts/VoiceContext.tsx` and `src/contexts/GroupCallContext.tsx`:**
-- Lower `resBitrateBase` to match what Discord actually uses (Discord's "Source" 1080p60 tops out at ~4.5 Mbps, and its default is ~2.5):
-  ```
-  480p:  800_000
-  720p:  isHighFps ? 2_000_000 : 1_500_000
-  1080p: isHighFps ? 4_000_000 : 3_000_000
-  1440p: isHighFps ? 6_000_000 : 4_500_000
-  ```
-  The RTT-aware controller can now safely open at the full ceiling (SDP munge is already gone from v0.4.16), and back down within seconds if the link can't sustain it.
+Right now we send one encoding. If any viewer degrades, the whole share drops with them. Add 3 simulcast layers on the screen video sender:
 
-Net effect for you: the stream opens at the same visual quality it does today, and the instant your uplink starts queueing it drops bitrate before your ping goes to hell. Net effect for her: the share actually starts, and on the software encoder it doesn't try to negotiate a codec her CPU can't feed.
+- `f` — full res, full bitrate ceiling (game-friendly numbers from v0.4.18 tick above)
+- `h` — 1/2 res, ~40 % of full bitrate
+- `q` — 1/4 res, ~15 % of full bitrate, half framerate
+
+The automatic controller is updated to only tune the `f` layer; libwebrtc handles per-viewer layer selection.
+
+### 3. Enable VP9 temporal scalability (SVC) on the browser/fallback path
+
+When we do land on VP9 (browser or a machine without HW H.264), set `scalabilityMode: "L1T3"` on the base encoding. A dropped packet then only kills the enhancement layer, not the whole GOP — the exact reason Discord's VP9 fallback still looks smooth under packet loss.
+
+### 4. Encoder low-latency knobs
+
+- `degradationPreference = "maintain-framerate"` (already set — keep).
+- Set `contentHint = "motion"` on the video track (already set — keep, and confirm it survives track replacement).
+- Add `priority = "high"` and `networkPriority = "high"` on every layer (already set on encoding[0], extend to all simulcast layers).
+- On the *sender's* PC, request an immediate keyframe on start (already there) and again on any renegotiation, so viewers never wait ~2 s for the first I-frame.
+
+### 5. Receiver-side tuning
+
+Already set: `playoutDelayHint = 0.05`, `jitterBufferTarget = 50` on screen receivers.
+Add:
+- Ensure the remote screen `<video>` element has no CSS `filter`, `backdrop-filter`, `transform` scale, or `border-radius` on the actual painting layer that forces the compositor into a slow path — audit `RemoteScreenViewer` / call UI and move rounded corners to a parent wrapper.
+- Set `videoElement.playsInline = true`, `videoElement.disablePictureInPicture = false`, and confirm we're not gating playback behind `requestAnimationFrame` anywhere.
+
+### 6. Electron GPU flags — verify, don't guess
+
+`electron/main.cjs` already force-enables `MediaFoundationH264Encoding`, `MediaFoundationVP9Encoding`, `enable-gpu-rasterization`, `enable-accelerated-video-encode`. Two additions:
+
+- `--disable-features=UseChromeOSDirectVideoDecoder` is not relevant on Windows — leave.
+- Add `--enable-features=PlatformHEVCEncoderSupport,WebRTC-Vp9DependencyDescriptor` (the second lets the receiver do smarter SVC layer selection).
+- On start, log `app.getGPUFeatureStatus()` so we can see in the console whether `video_encode` is `enabled` vs `software_only`.
+
+### 7. Confirm v0.4.18's controller doesn't fight simulcast
+
+The controller from the earlier turn tunes `encodings[0]`. With simulcast that IS the top layer, which is what we want — but I need to make sure it uses the `rid`-keyed lookup rather than index 0, so a Chromium reordering doesn't silently point us at the quarter-res layer.
 
 ---
 
-### Ship
+### Technical section
 
-- Bump `package.json` and `src/lib/changelog.ts` to **0.4.15 → 0.4.17** (skipping wasn't done — 0.4.16 is the current version).
-- Changelog (short, per project rule):
-  - Fixed screensharing sometimes never starting for the viewer.
-  - Screenshares now back off automatically when they'd hurt your ping.
-- **Do not publish to web.** Desktop patch only.
+**Files touched**
 
-### Not in this patch
-- Native DXGI capture module still deferred (as agreed).
-- DM rejoin bug still needs her console log during a failing session before I touch it again.
+- `src/contexts/VoiceContext.tsx` — `preferScreenShareCodec` H.264 profile filter + encoder-implementation stats logger; simulcast encodings on the screen sender; VP9 `scalabilityMode: "L1T3"` when VP9 negotiated; keyframe on renegotiation.
+- `src/contexts/GroupCallContext.tsx` — same simulcast + codec changes on the per-peer screen senders (each peer gets its own 3-layer sender).
+- `src/lib/screenShareEncoding.ts` — target the `f` rid explicitly; per-layer priority/networkPriority; keep the v0.4.18 controller math.
+- `electron/main.cjs` — add the `PlatformHEVCEncoderSupport,WebRTC-Vp9DependencyDescriptor` feature flags and a one-time `getGPUFeatureStatus` log.
+- `src/components/call/RemoteScreenViewer.tsx` (or whichever component paints the remote screen video) — audit CSS on the `<video>` for compositor-slow properties, move them to a wrapper.
+- `src/lib/changelog.ts`, `package.json` — v0.4.18 entry already exists; extend bullets to cover the parity work; version stays 0.4.18 (user hasn't shipped).
+
+**Runtime verification (I run these before we call it done)**
+
+1. Start a DM screenshare of a game window, open the receiver's console:
+   - `pc.getStats()` shows `encoderImplementation: "ExternalEncoder"` (NVENC/MFT) — not `"libvpx"` or `"OpenH264"`.
+   - `outbound-rtp` reports 3 SSRCs for the video (simulcast is actually up), and the `f` layer holds within 15 % of the target bitrate.
+   - `remote-inbound-rtp` `roundTripTime` stays flat (no bufferbloat spike).
+2. Same test in a 3-person group call.
+3. On a machine with `cubbly-low-power` set, confirm we fall back to VP8 single-layer without stalling `createOffer`.
+
+**What this will *not* fix**
+
+- Anything caused by the Chromium desktop compositor path — some games (exclusive fullscreen DX12) will still capture at 30-40 fps regardless of what the encoder does. That's the case native DXGI capture is being kept in reserve for.
