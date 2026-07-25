@@ -37,7 +37,10 @@ import {
   preferScreenShareCodec,
   patchScreenShareOpusSdp,
   loadScreenShareSettings,
+  buildScreenSendEncodings,
+  logScreenEncoderImplementation,
 } from "@/contexts/VoiceContext";
+
 
 export interface GroupPeer {
   userId: string;
