@@ -3414,22 +3414,39 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       const screenPc = new RTCPeerConnection({ iceServers: iceServersRef.current });
       screenPcOutRef.current = screenPc;
 
-      let videoSenderRef: RTCRtpSender | null = null;
-      stream.getTracks().forEach(track => {
-        const sender = screenPc.addTrack(track, stream);
-        if (track.kind === "video") {
-          videoSenderRef = sender;
-          applyScreenBitrate(sender, maxBitrate, encodingOpts);
-          // v0.4.4: force VP9 (or AV1 if present) on the video transceiver so
-          // this share negotiates the same modern codec Discord uses instead
-          // of falling back to VP8's mushier screen-content encoding.
-          const tx = screenPc.getTransceivers().find((t) => t.sender === sender);
-          preferScreenShareCodec(tx || null);
-        }
-        if (track.kind === "audio") applyScreenAudioBitrate(sender);
-        track.onended = () => {
-          stopScreenShare();
-        };
+      const videoTrack = stream.getVideoTracks()[0];
+      const audioTracks = stream.getAudioTracks();
+
+      // v0.4.18 — simulcast on the screen video sender. Three RIDs so a
+      // struggling viewer drops to `h` or `q` without dragging our full
+      // `f` layer down. Low-power path uses a single layer.
+      const useVp9Svc = false; // set below once we know the negotiated codec
+      const sendEncodings = buildScreenSendEncodings(maxBitrate, fpsCap, scaleResolutionDownBy, { lowPower });
+      const videoTx = screenPc.addTransceiver(videoTrack, {
+        direction: "sendonly",
+        streams: [stream],
+        sendEncodings,
+      } as any);
+      const videoSenderRef: RTCRtpSender = videoTx.sender;
+      // v0.4.4 → v0.4.18: force HW-friendly H.264 baseline / VP9 fallback.
+      const chosenCodec = preferScreenShareCodec(videoTx);
+      // If we ended up on VP9, add temporal SVC to the base layer (Discord
+      // parity for the browser/SW path).
+      if (chosenCodec && /vp9/i.test(chosenCodec)) {
+        try {
+          const p = videoSenderRef.getParameters();
+          if (p.encodings?.length) {
+            (p.encodings[0] as any).scalabilityMode = "L1T3";
+            await videoSenderRef.setParameters(p);
+          }
+        } catch {}
+      }
+      videoTrack.onended = () => { stopScreenShare(); };
+
+      audioTracks.forEach((atrack) => {
+        const sender = screenPc.addTrack(atrack, stream);
+        applyScreenAudioBitrate(sender);
+        atrack.onended = () => { stopScreenShare(); };
       });
 
       screenPc.onicecandidate = (event) => {
@@ -3452,8 +3469,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       const shareId = `${user.id}:${Date.now()}`;
       (screenPc as any).__cubblyShareId = shareId;
 
-
-
+      // v0.4.18 — surface which encoder (HW vs SW) Chromium picked so we can
+      // tell at a glance whether a bad-looking stream is a codec-path issue.
+      logScreenEncoderImplementation(screenPc, "Voice");
 
       if (videoSenderRef) {
         screenEncodingCleanupRef.current?.();
@@ -3470,6 +3488,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         event: "voice-signal",
         payload: { type: "screen-offer", sdp: offer, senderId: user.id, shareId },
       });
+
     } catch (e) {
       console.error("Failed to start screen share:", e);
       setIsScreenSharing(false);
