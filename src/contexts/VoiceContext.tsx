@@ -3203,18 +3203,19 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       }
 
       const isHighFps = clampedFps >= 50;
-      // v0.4.17 — Discord-parity ceilings. Old defaults (up to 8 Mbps for
-      // 1440p60) saturated typical residential upload and spiked in-game
-      // ping. The automatic controller now opens at these ceilings and
-      // backs off within ~4s if the uplink can't sustain them.
+      // v0.4.18 — game-friendly ceilings (Discord Nitro parity). Previous
+      // v0.4.17 values were tuned for static content and made fast-motion
+      // gameplay look smeared and choppy. The automatic controller still
+      // backs off if the uplink actually can't hold these numbers.
       const resBitrateBase: Record<string, number> = {
-        "480p":  800_000,
-        "720p":  isHighFps ? 2_000_000 : 1_500_000,
-        "1080p": isHighFps ? 4_000_000 : 3_000_000,
-        "1440p": isHighFps ? 6_000_000 : 4_500_000,
+        "480p":  1_200_000,
+        "720p":  isHighFps ? 3_000_000 : 2_500_000,
+        "1080p": isHighFps ? 6_000_000 : 4_500_000,
+        "1440p": isHighFps ? 9_000_000 : 7_000_000,
       };
-      const baseFor = resBitrateBase[clampedQuality] ?? 2_500_000;
+      const baseFor = resBitrateBase[clampedQuality] ?? 4_000_000;
       const maxBitrate = lowPowerCap ? Math.min(baseFor, lowPowerCap) : baseFor;
+
       const targetHeight = clampedRes?.height ?? 1080;
       const fpsCap =
         targetHeight <= 480 ? Math.max(20, Math.min(clampedFps, 24)) :
