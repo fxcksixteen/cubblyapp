@@ -2294,21 +2294,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           const screenPc = new RTCPeerConnection({ iceServers: iceServersRef.current });
           screenPc.ontrack = (event) => {
             const remoteScreen = event.streams[0];
-            // Lower the inbound video jitter buffer so game streaming feels
-            // real-time instead of delayed/laggy. Without this hint Chromium
-            // happily buffers 200-400ms which makes screenshares feel like
-            // they're running underwater.
             try { (event.receiver as any).playoutDelayHint = 0.05; } catch {}
             try { (event.receiver as any).jitterBufferTarget = 50; } catch {}
             setRemoteScreenStream(remoteScreen);
-            // If this stream carries an audio track, route it through the
-            // per-peer GainNode so the right-click "User Volume" slider AND
-            // the fullscreen viewer's volume slider both control the
-            // screen-share audio (not just the mic).
             const peerUserId = peerIdRef.current;
             if (peerUserId && event.track.kind === "audio") {
-              // Use a dedicated hidden <audio> element so we don't fight the
-              // <video> element's autoplay/render path.
               let el = document.querySelector<HTMLAudioElement>(`audio[data-cubbly-peer="${peerUserId}"][data-cubbly-kind="screen"]`);
               const isNew = !el;
               if (!el) {
@@ -2330,28 +2320,61 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               channel.send({
                 type: "broadcast",
                 event: "voice-signal",
-                // role:"in" → this candidate was gathered on OUR incoming PC,
-                // so the peer must apply it to THEIR outgoing PC.
                 payload: { type: "screen-ice-candidate", role: "in", candidate: event.candidate, senderId: user.id },
               });
             }
           };
           screenPcInRef.current = screenPc;
-          await screenPc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
-          const answer = await screenPc.createAnswer();
-          await screenPc.setLocalDescription(answer);
-          channel.send({
-            type: "broadcast",
-            event: "voice-signal",
-            payload: { type: "screen-answer", sdp: answer, senderId: user.id },
-          });
+          // v0.4.17 — echo the sender's shareId back on the answer so the
+          // sharer can drop late/duplicate answers from prior attempts. Also
+          // wrap in try/catch so a stray offer (state-mismatch) never becomes
+          // an uncaught rejection that kills the whole signaling pipeline.
+          try {
+            await screenPc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+            const answer = await screenPc.createAnswer();
+            await screenPc.setLocalDescription(answer);
+            channel.send({
+              type: "broadcast",
+              event: "voice-signal",
+              payload: {
+                type: "screen-answer",
+                sdp: answer,
+                senderId: user.id,
+                shareId: payload.shareId,
+              },
+            });
+          } catch (e) {
+            console.warn("[Voice] screen-offer handling failed (ignored):", e);
+          }
           return;
         }
 
         if (payload.type === "screen-answer" && screenPcOutRef.current) {
-          await screenPcOutRef.current.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+          const pcOut = screenPcOutRef.current;
+          const expectedShareId = (pcOut as any).__cubblyShareId;
+          const expectedPeer = peerIdRef.current;
+          // v0.4.17 — drop late/duplicate answers from prior share attempts.
+          // The offerer had already reached "stable" on the first valid answer,
+          // and a second setRemoteDescription there throws InvalidStateError
+          // (which as an uncaught promise tore the whole share down before
+          // any tracks were announced).
+          if (expectedShareId && payload.shareId && payload.shareId !== expectedShareId) {
+            return;
+          }
+          if (expectedPeer && payload.senderId && payload.senderId !== expectedPeer) {
+            return;
+          }
+          if (pcOut.signalingState !== "have-local-offer") {
+            return;
+          }
+          try {
+            await pcOut.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+          } catch (e) {
+            console.warn("[Voice] screen-answer setRemoteDescription failed (ignored):", e);
+          }
           return;
         }
+
 
         if (payload.type === "screen-ice-candidate") {
           // role "in" came from peer's incoming PC → goes to our OUT PC.
