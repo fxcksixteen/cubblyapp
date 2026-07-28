@@ -28,6 +28,7 @@ import sendIcon from "@/assets/icons/send.svg";
 import folderFileIcon from "@/assets/icons/folder-file.svg";
 import gifIcon from "@/assets/icons/gif.svg";
 import giftIcon from "@/assets/icons/gift.svg";
+import honeyIcon from "@/assets/icons/honey.svg";
 import emojiPickerIcon from "@/assets/icons/emoji-picker.svg";
 import GifPicker from "./GifPicker";
 import HoneyGiftModal from "./HoneyGiftModal";
@@ -1135,29 +1136,35 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
       <div className="px-4 pb-4">
         <div className="flex items-end gap-2 rounded-lg px-4 py-2.5 relative" style={{ backgroundColor: "var(--app-input, #383a40)" }}>
           <div className="relative pb-1">
-            <button
-              onClick={() => setAttachMenuOpen(!attachMenuOpen)}
-              className="flex h-5 w-5 shrink-0 items-center justify-center transition-transform"
-              style={{ color: "var(--app-text-secondary, #b5bac1)", transform: attachMenuOpen ? "rotate(45deg)" : "rotate(0deg)" }}
-            >
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <line x1="12" y1="5" x2="12" y2="19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                <line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              </svg>
-            </button>
-
-            {attachMenuOpen && (
-              <div className="absolute bottom-full left-0 mb-2 w-52 rounded-lg p-1.5 shadow-xl border" style={{ backgroundColor: "var(--app-bg-tertiary, #111214)", borderColor: "var(--app-border, #1e1f22)" }}>
+            <Popover open={attachMenuOpen} onOpenChange={setAttachMenuOpen}>
+              <PopoverTrigger asChild>
                 <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm hover:bg-[#5865f2] hover:text-white transition-colors"
+                  className="flex h-5 w-5 shrink-0 items-center justify-center transition-transform"
+                  style={{ color: "var(--app-text-secondary, #b5bac1)", transform: attachMenuOpen ? "rotate(45deg)" : "rotate(0deg)" }}
+                  title="Attach"
+                >
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <line x1="12" y1="5" x2="12" y2="19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    <line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </button>
+              </PopoverTrigger>
+              <PopoverContent
+                side="top"
+                align="start"
+                className="w-52 p-1.5 border-0 rounded-xl shadow-2xl"
+                style={{ backgroundColor: "var(--app-bg-secondary,#2b2d31)", border: "1px solid var(--app-border,#1f2024)" }}
+              >
+                <button
+                  onClick={() => { setAttachMenuOpen(false); fileInputRef.current?.click(); }}
+                  className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm hover:bg-white/5 transition-colors"
                   style={{ color: "var(--app-text-primary, #dbdee1)" }}
                 >
                   <img src={folderFileIcon} alt="" className="h-5 w-5 invert opacity-80" />
                   Upload a File
                 </button>
-              </div>
-            )}
+              </PopoverContent>
+            </Popover>
           </div>
 
           <div className="relative flex-1 flex">
@@ -1331,7 +1338,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                     onClick={() => { setGiftMenuOpen(false); setGiftModalOpen(true); }}
                     className="w-full text-left px-3 py-2 rounded-md hover:bg-white/5 flex items-start gap-2"
                   >
-                    <span className="text-lg leading-none">🍯</span>
+                    <img src={honeyIcon} alt="" className="h-5 w-5 shrink-0" />
                     <div className="min-w-0">
                       <div className="text-[13px] font-bold text-white leading-tight">Gift Honey</div>
                       <div className="text-[11px] text-white/60 leading-tight mt-0.5">A month or year of Cubbly Honey</div>
@@ -1342,7 +1349,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                       onClick={() => { setGiftMenuOpen(false); setGiftItemModalOpen(true); }}
                       className="w-full text-left px-3 py-2 rounded-md hover:bg-white/5 flex items-start gap-2 mt-0.5"
                     >
-                      <span className="text-lg leading-none">🎁</span>
+                      <img src={giftIcon} alt="" className="h-5 w-5 shrink-0 invert opacity-80" />
                       <div className="min-w-0">
                         <div className="text-[13px] font-bold text-white leading-tight">Gift a shop item</div>
                         <div className="text-[11px] text-white/60 leading-tight mt-0.5">Pick something from the shop</div>
