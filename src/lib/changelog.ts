@@ -41,7 +41,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "The profile menu that opens from the bottom user panel stays solid on every theme, including Space.",
       "Chat composer gift and honey icons now match in color and alignment.",
       "Search results no longer squish avatars into slim shapes when names are long.",
-      "Roblox activity now shows "Using Roblox" when you're only in the launcher and "Playing" when you're in a game.",
+      "Roblox activity now shows 'Using Roblox' when you're only in the launcher and 'Playing' when you're in a game.",
     ],
   },
   {
