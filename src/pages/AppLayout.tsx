@@ -104,6 +104,7 @@ const AppLayout = () => {
   const [activeNowOpen, setActiveNowOpen] = useState(true);
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [showMembersPanel, setShowMembersPanel] = useState(true);
+  const [showServerMembers, setShowServerMembers] = useState(true);
   // v0.3.21: clicking the avatar/name in the DM header opens the profile card
   // (matches every other place in the app — was the only missing surface).
   const [headerProfileCard, setHeaderProfileCard] = useState<{ userId: string; name: string; x: number; y: number } | null>(null);
