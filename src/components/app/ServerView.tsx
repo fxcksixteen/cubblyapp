@@ -233,29 +233,21 @@ const ServerView = ({ unreadByConv, membersHidden = false }: { unreadByConv?: Ma
       {/* Members panel — split into Online / Offline like Discord */}
       {!membersHidden && (
       <div className="w-60 flex flex-col border-l" style={{ backgroundColor: "var(--app-bg-secondary)", borderColor: "var(--app-border)" }}>
-        <button
-          onClick={() => setMembersCollapsed((v) => !v)}
-          className="flex w-full items-center justify-between px-3 py-3 text-[11px] font-bold uppercase tracking-wide transition-colors"
-          style={{ color: "var(--app-text-secondary)" }}
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--app-hover)")}
-          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "")}
-        >
-          <span>Members — {members.length}</span>
-          <ChevronDown
-            className="h-3.5 w-3.5 transition-transform"
-            style={{ transform: membersCollapsed ? "rotate(-90deg)" : "none" }}
-          />
-        </button>
-        {!membersCollapsed && (
-          <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
-            {([
-              { label: "Online", list: onlineMembers },
-              { label: "Offline", list: offlineMembers },
-            ] as const).map((group) => group.list.length === 0 ? null : (
+        <div className="flex-1 overflow-y-auto px-2 py-2 space-y-0.5">
+          {([
+            { label: "Online", list: onlineMembers, collapsed: onlineCollapsed, toggle: () => setOnlineCollapsed((v) => !v) },
+            { label: "Offline", list: offlineMembers, collapsed: offlineCollapsed, toggle: () => setOfflineCollapsed((v) => !v) },
+          ] as const).map((group) => group.list.length === 0 ? null : (
               <div key={group.label} className="pt-1">
-                <div className="px-2 pb-1 text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--app-text-secondary)" }}>
-                  {group.label} — {group.list.length}
-                </div>
+                <button
+                  onClick={group.toggle}
+                  className="flex w-full items-center justify-between px-2 pb-1 text-[11px] font-bold uppercase tracking-wide"
+                  style={{ color: "var(--app-text-secondary)" }}
+                >
+                  <span>{group.label} — {group.list.length}</span>
+                  <ChevronDown className="h-3.5 w-3.5 transition-transform" style={{ transform: group.collapsed ? "rotate(-90deg)" : "none" }} />
+                </button>
+                {!group.collapsed && group.list.map((m) => {
                 {group.list.map((m) => {
               const status = getEffectivePresenceStatus(m.user_id, m.status, onlineUserIds);
               const color = getProfileColor(m.user_id);
