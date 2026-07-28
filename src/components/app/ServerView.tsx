@@ -248,7 +248,7 @@ const ServerView = ({ unreadByConv, membersHidden = false }: { unreadByConv?: Ma
                   <ChevronDown className="h-3.5 w-3.5 transition-transform" style={{ transform: group.collapsed ? "rotate(-90deg)" : "none" }} />
                 </button>
                 {!group.collapsed && group.list.map((m) => {
-                {group.list.map((m) => {
+                
               const status = getEffectivePresenceStatus(m.user_id, m.status, onlineUserIds);
               const color = getProfileColor(m.user_id);
               const openProfile = (e: React.MouseEvent) => {
