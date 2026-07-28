@@ -23,9 +23,27 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.4.18";
+export const CURRENT_VERSION = "0.4.19";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.4.19",
+    title: "QoL & polish",
+    date: "2026-07-28",
+    hero: bearImage,
+    newFeatures: [
+      "Shop gifting now shows a real item grid with category tabs, search, and Owned status so you never waste gems.",
+      "Server members list is now split into Online and Offline sections and can be hidden with the corner toggle.",
+      "Friends, group, and pending lists now have Cubbly's own right-click menu with our custom icons.",
+    ],
+    bugFixes: [
+      "Profile cards and modals are noticeably taller and no longer clip at the bottom.",
+      "The profile menu that opens from the bottom user panel stays solid on every theme, including Space.",
+      "Chat composer gift and honey icons now match in color and alignment.",
+      "Search results no longer squish avatars into slim shapes when names are long.",
+      "Roblox activity now shows 'Using Roblox' when you're only in the launcher and 'Playing' when you're in a game.",
+    ],
+  },
   {
     version: "0.4.18",
     title: "Screenshare parity",
