@@ -95,9 +95,12 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
     return () => clearTimeout(t);
   }, [customStatus?.expires_at]);
 
+  const panelRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (panelRef.current?.contains(t)) return;
+      if (ref.current && !ref.current.contains(t)) setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
