@@ -29,7 +29,7 @@ import friendsIcon from "@/assets/icons/friends.svg";
 
 import type { UnreadInfo } from "@/hooks/useUnreadCounts";
 
-const ServerView = ({ unreadByConv }: { unreadByConv?: Map<string, UnreadInfo> }) => {
+const ServerView = ({ unreadByConv, membersHidden = false }: { unreadByConv?: Map<string, UnreadInfo>; membersHidden?: boolean }) => {
   const location = useLocation();
   const parts = location.pathname.split("/").filter(Boolean);
   // /@me/server/:serverId/:channelId?
