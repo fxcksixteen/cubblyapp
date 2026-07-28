@@ -99,6 +99,22 @@ const ServerView = ({ unreadByConv }: { unreadByConv?: Map<string, UnreadInfo> }
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const [membersCollapsed, setMembersCollapsed] = useState(false);
+  const [membersHidden, setMembersHidden] = useState(false);
+  // Discord-style split: anyone not offline/invisible sits in the Online group.
+  const onlineMembers = useMemo(
+    () => members.filter((m) => {
+      const s = getEffectivePresenceStatus(m.user_id, m.status, onlineUserIds);
+      return s !== "offline" && s !== "invisible";
+    }),
+    [members, onlineUserIds]
+  );
+  const offlineMembers = useMemo(
+    () => members.filter((m) => {
+      const s = getEffectivePresenceStatus(m.user_id, m.status, onlineUserIds);
+      return s === "offline" || s === "invisible";
+    }),
+    [members, onlineUserIds]
+  );
   const [profileCard, setProfileCard] = useState<{ userId: string; name: string; x: number; y: number } | null>(null);
   const [giftTarget, setGiftTarget] = useState<{ userId: string; name: string } | null>(null);
 
