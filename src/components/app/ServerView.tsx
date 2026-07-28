@@ -24,7 +24,6 @@ import MemberRowMenu from "@/components/app/MemberRowMenu";
 import UserProfileCard from "@/components/app/chat/UserProfileCard";
 import ServerSettingsModal from "@/components/app/ServerSettingsModal";
 import GiftItemModal from "@/components/app/GiftItemModal";
-import friendsIcon from "@/assets/icons/friends.svg";
 
 
 import type { UnreadInfo } from "@/hooks/useUnreadCounts";
