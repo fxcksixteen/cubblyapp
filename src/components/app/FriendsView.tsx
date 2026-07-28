@@ -449,6 +449,14 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
           onSendMessage={(userId) => { setProfileCard(null); onOpenDM(userId); }}
         />
       )}
+      {giftTarget && (
+        <GiftItemModal
+          open={!!giftTarget}
+          onClose={() => setGiftTarget(null)}
+          recipientId={giftTarget.userId}
+          recipientName={giftTarget.name}
+        />
+      )}
     </div>
   );
 };
