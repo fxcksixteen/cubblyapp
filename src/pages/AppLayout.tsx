@@ -19,6 +19,7 @@ import addUserIcon from "@/assets/icons/add-user.svg";
 import StatusIndicator from "@/components/app/StatusIndicator";
 import ServerSidebar from "@/components/app/ServerSidebar";
 import DMSidebar from "@/components/app/DMSidebar";
+import UserPanel from "@/components/app/UserPanel";
 import FriendsView from "@/components/app/FriendsView";
 import ChatView from "@/components/app/ChatView";
 import ShopView from "@/components/app/ShopView";
