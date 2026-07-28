@@ -18,6 +18,8 @@ import UserProfileCard from "@/components/app/chat/UserProfileCard";
 import ActivityIcon from "@/components/app/ActivityIcon";
 import UserDisplayName from "@/components/app/UserDisplayName";
 import UserBadges from "@/components/app/UserBadges";
+import MemberRowMenu from "@/components/app/MemberRowMenu";
+import GiftItemModal from "@/components/app/GiftItemModal";
 
 type FriendTab = "online" | "all" | "pending" | "blocked" | "add";
 
@@ -66,6 +68,7 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
   const [addStatus, setAddStatus] = useState<{ type: "success" | "error"; msg: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [profileCard, setProfileCard] = useState<{ userId: string; name: string; x: number; y: number } | null>(null);
+  const [giftTarget, setGiftTarget] = useState<{ userId: string; name: string } | null>(null);
 
   const randomMessage = useMemo(() => {
     const msgs = emptyMessages[activeTab] || emptyMessages.online;
@@ -259,8 +262,22 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
             ) : (
               <div className="flex flex-col">
                 {displayList.map((friendship) => (
-                  <div
+                  <MemberRowMenu
                     key={friendship.id}
+                    userId={friendship.profile.user_id}
+                    displayName={friendship.profile.display_name}
+                    onViewProfile={() =>
+                      setProfileCard({
+                        userId: friendship.profile.user_id,
+                        name: friendship.profile.display_name,
+                        x: window.innerWidth / 2 - 190,
+                        y: 120,
+                      })
+                    }
+                    onMessage={activeTab === "blocked" ? undefined : () => onOpenDM(friendship.profile.user_id)}
+                    onGift={activeTab === "pending" || activeTab === "blocked" ? undefined : () => setGiftTarget({ userId: friendship.profile.user_id, name: friendship.profile.display_name })}
+                  >
+                  <div
                     className="group flex items-center gap-3 rounded-lg border-t px-2 py-3 transition-colors cursor-pointer"
                     style={{ borderColor: "var(--app-border, #3f4147)" }}
                     onMouseEnter={e => { e.currentTarget.style.backgroundColor = "var(--app-active, #404249)"; }}
@@ -324,6 +341,7 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
                     </div>
                     {renderFriendActions(friendship)}
                   </div>
+                  </MemberRowMenu>
                 ))}
               </div>
             )}
@@ -429,6 +447,14 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
           position={{ x: profileCard.x, y: profileCard.y }}
           onClose={() => setProfileCard(null)}
           onSendMessage={(userId) => { setProfileCard(null); onOpenDM(userId); }}
+        />
+      )}
+      {giftTarget && (
+        <GiftItemModal
+          open={!!giftTarget}
+          onClose={() => setGiftTarget(null)}
+          recipientId={giftTarget.userId}
+          recipientName={giftTarget.name}
         />
       )}
     </div>

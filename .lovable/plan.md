@@ -1,81 +1,56 @@
-## v0.4.18 — Full "Discord-parity" game streaming (software path)
+## v0.4.19 — major QoL + hotfix
 
-Native DXGI capture is deferred; this patch pushes every other lever to make game streams as clear and smooth as Discord using only the Chromium/WebRTC stack we already have.
+### 1. Gifting & shop UX
+- **Message-input gift menu** (`ChatView.tsx`): replace the 🍯 and 🎁 emoji with the existing SVG assets — `src/assets/icons/honey.svg` for "Gift Honey" and `src/assets/icons/shop.svg` for "Gift a shop item" (tinted like the other input icons, no emoji anywhere in that popover).
+- **Rebuild `GiftItemModal`** into a clean shop-style picker:
+  - Search field for shop items (name + description), category filter chips (Name colors / Themes / Badges), wishlist items pinned first with the existing "Wished" tag.
+  - Grid of item cards using the same `ShopItemPreview` component the real shop uses, so gifts show the actual visual instead of a bare text row.
+  - Select item → confirm step with the optional note and the gem cost + balance, instead of a note box floating above the list.
+  - Owned filtering hardened: items the recipient already owns are excluded from the list (already partly done) **and** re-checked at send time, with `RECIPIENT_ALREADY_OWNS` surfaced clearly. Same owned-guard applied in `GiftSendModal` and the profile-card gift path.
+  - Empty/loading/insufficient-gems states styled consistently.
+- **Prices are not changed** — gem-only items keep their gem price, coin items keep the `max(20, coins/10)` gift conversion that the backend enforces. Work here is correctness/UX only, and the modal will always display the exact number the RPC will charge.
 
-Goal: at 1080p60 on a normal residential uplink, a fast-motion game (Valorant, Fortnite) should look sharp, hold framerate, and not spike your ping. Same for 1440p60 on a strong uplink.
+### 2. Profile modals bigger
+- `UserProfileCard.tsx` (and the popup variant in `ProfilePopup.tsx`): increase card width (~360px → ~480px) and vertical room; banner height grows (88px → ~150px in the profile card, proportionally in the popup) so banners show more of the image. Avatar/name offsets re-tuned so nothing overlaps.
 
----
+### 3. Roblox detection
+- `electron/gameDetails.cjs` `parseRoblox()`: when no place join is found, return launcher state; when a real place/universe is found, return the experience.
+- Activity publishing (`src/contexts/ActivityContext.tsx`): Roblox becomes `activity_type: "using"` (→ "Using Roblox", subtitle "In Launcher") while only the launcher is detected, and flips to `"playing"` with the experience name once a real game join is detected. Because coin earning keys off `isSoftwareActivity`, launcher-only Roblox stops paying out coins.
+- Widen the join detection: also scan `%LOCALAPPDATA%\Roblox\logs` for `*_Player_*` logs by recency regardless of the 12-newest slice, and add the current client log lines (`[FLog::Output] ! Joining game`, `GameJoinLoadTime`, `join_game` telemetry) so real games are actually detected.
 
-### 1. Actually get the hardware H.264 encoder to run
+### 4. Right-click menus in friends views
+- Wire the existing `MemberRowMenu` (message / call / profile / add-or-remove friend / block / unblock, context-appropriate per tab) onto rows in `FriendsView.tsx` for `/online`, `/all`, `/pending` and `/blocked`.
 
-Today `preferScreenShareCodec` puts H.264 first on desktop, but Chromium will silently fall back to software libx264 if any H.264 codec entry with an unsupported profile is listed first. Fix:
+### 5. DM sidebar search bar
+- `SearchBar.tsx`: include group conversations as first-class results — show the group's real name (or member-name fallback exactly like the sidebar) and render `GroupAvatar` (stacked member pictures) instead of a single member's avatar.
+- De-duplicate: a friend who is only present via a group no longer appears as a separate repeated row, and avatar rendering uses the same component as the sidebar so broken/odd-looking pictures are fixed.
 
-- Filter the H.264 codec list to entries whose `sdpFmtpLine` advertises **Baseline / Constrained Baseline** (`profile-level-id=42e01f` or `42001f`) with `packetization-mode=1`. These are the profiles NVENC / Intel QuickSync / AMD AMF / Media Foundation actually implement.
-- Drop High-profile H.264 entries from the preference order — Chromium will otherwise pick them and route to libx264 in software.
-- After `setLocalDescription`, read `pc.getStats()` and log `codecId` + `encoderImplementation`. If it comes back `"libvpx"` or `"OpenH264"` we know we're software; log a loud warning so we can diagnose without waiting for a user report.
+### 6. Custom status in the bottom user panel
+- Under the display name, show the custom status (emoji + text) when one is set instead of the username; on hover, the status slides/fades down and the username slides/fades back up (CSS transition, both stacked in a fixed-height container so nothing shifts).
+- Custom status data is loaded/subscribed in one place and shared, so setting/clearing/expiry from `CustomStatusModal` updates the panel, the profile popup and profile cards immediately.
 
-### 2. Simulcast the screenshare
+### 7. Attachment "+" menu
+- Convert the ad-hoc absolutely-positioned menu in `ChatView.tsx` to a Radix `Popover` anchored to the "+" button with `side="top"`, aligned directly above the message input, with the same fade/scale-in animation the other popovers use and click-outside / Escape to dismiss cleanly.
 
-Right now we send one encoding. If any viewer degrades, the whole share drops with them. Add 3 simulcast layers on the screen video sender:
+### 8. Profile popup transparency with the Space theme
+- The popup panel uses `var(--app-bg-tertiary)`, which the Space theme makes translucent. Give the popup an opaque solid surface (theme-aware solid token + backdrop) so it is never see-through, matching how the settings menus render.
 
-- `f` — full res, full bitrate ceiling (game-friendly numbers from v0.4.18 tick above)
-- `h` — 1/2 res, ~40 % of full bitrate
-- `q` — 1/4 res, ~15 % of full bitrate, half framerate
+### 9. User panel spanning both sidebars (Discord-style)
+- `AppLayout.tsx` (desktop): restructure the left region into a vertical column — top row = server rail + DM/server sidebar, bottom row = a single full-width `UserPanel` that spans both. `DMSidebar`/`ServerSidebar` stop rendering their own copies of the panel; the shared `UserPanel` gains the extra controls the DM copy has today so nothing is lost. Mobile layout unchanged.
 
-The automatic controller is updated to only tune the `f` layer; libwebrtc handles per-viewer layer selection.
+### 10. Server member list grouping
+- `ServerView.tsx` members panel: split into `ONLINE — n` and `OFFLINE — n` sections (using `getEffectivePresenceStatus` + `onlineUserIds`, invisible counted as offline for others), offline rows dimmed, matching Discord.
 
-### 3. Enable VP9 temporal scalability (SVC) on the browser/fallback path
+### 11. Game streaming (both diagnosis + retune, no forced settings)
+- **Stats overlay**: a screenshare diagnostics readout (encoder implementation hardware/software, resolution, fps, target vs actual bitrate, `qualityLimitationReason`, RTT) available from the call UI, sampled from `getStats()`.
+- **Game path retune** in `screenShareEncoding.ts` / `VoiceContext.tsx` / `GroupCallContext.tsx`:
+  - Single high-quality layer (no simulcast) for game/motion shares, so the encoder budget isn't split.
+  - Relax the RTT backoff further (only react to sustained congestion, not spikes) and raise the floor.
+  - **Strictly honour the user's picked resolution/fps** — if they chose 30 fps or 720p, nothing in the pipeline raises it; the automatic logic may only reduce bitrate, never change the framerate/resolution the user selected.
 
-When we do land on VP9 (browser or a machine without HW H.264), set `scalabilityMode: "L1T3"` on the base encoding. A dropped packet then only kills the enhancement layer, not the whole GOP — the exact reason Discord's VP9 fallback still looks smooth under packet loss.
+### 12. Release
+- Bump `package.json` to `0.4.19` and add a short user-facing `changelog.ts` entry (one-liners, desktop patch — no web publish).
 
-### 4. Encoder low-latency knobs
-
-- `degradationPreference = "maintain-framerate"` (already set — keep).
-- Set `contentHint = "motion"` on the video track (already set — keep, and confirm it survives track replacement).
-- Add `priority = "high"` and `networkPriority = "high"` on every layer (already set on encoding[0], extend to all simulcast layers).
-- On the *sender's* PC, request an immediate keyframe on start (already there) and again on any renegotiation, so viewers never wait ~2 s for the first I-frame.
-
-### 5. Receiver-side tuning
-
-Already set: `playoutDelayHint = 0.05`, `jitterBufferTarget = 50` on screen receivers.
-Add:
-- Ensure the remote screen `<video>` element has no CSS `filter`, `backdrop-filter`, `transform` scale, or `border-radius` on the actual painting layer that forces the compositor into a slow path — audit `RemoteScreenViewer` / call UI and move rounded corners to a parent wrapper.
-- Set `videoElement.playsInline = true`, `videoElement.disablePictureInPicture = false`, and confirm we're not gating playback behind `requestAnimationFrame` anywhere.
-
-### 6. Electron GPU flags — verify, don't guess
-
-`electron/main.cjs` already force-enables `MediaFoundationH264Encoding`, `MediaFoundationVP9Encoding`, `enable-gpu-rasterization`, `enable-accelerated-video-encode`. Two additions:
-
-- `--disable-features=UseChromeOSDirectVideoDecoder` is not relevant on Windows — leave.
-- Add `--enable-features=PlatformHEVCEncoderSupport,WebRTC-Vp9DependencyDescriptor` (the second lets the receiver do smarter SVC layer selection).
-- On start, log `app.getGPUFeatureStatus()` so we can see in the console whether `video_encode` is `enabled` vs `software_only`.
-
-### 7. Confirm v0.4.18's controller doesn't fight simulcast
-
-The controller from the earlier turn tunes `encodings[0]`. With simulcast that IS the top layer, which is what we want — but I need to make sure it uses the `rid`-keyed lookup rather than index 0, so a Chromium reordering doesn't silently point us at the quarter-res layer.
-
----
-
-### Technical section
-
-**Files touched**
-
-- `src/contexts/VoiceContext.tsx` — `preferScreenShareCodec` H.264 profile filter + encoder-implementation stats logger; simulcast encodings on the screen sender; VP9 `scalabilityMode: "L1T3"` when VP9 negotiated; keyframe on renegotiation.
-- `src/contexts/GroupCallContext.tsx` — same simulcast + codec changes on the per-peer screen senders (each peer gets its own 3-layer sender).
-- `src/lib/screenShareEncoding.ts` — target the `f` rid explicitly; per-layer priority/networkPriority; keep the v0.4.18 controller math.
-- `electron/main.cjs` — add the `PlatformHEVCEncoderSupport,WebRTC-Vp9DependencyDescriptor` feature flags and a one-time `getGPUFeatureStatus` log.
-- `src/components/call/RemoteScreenViewer.tsx` (or whichever component paints the remote screen video) — audit CSS on the `<video>` for compositor-slow properties, move them to a wrapper.
-- `src/lib/changelog.ts`, `package.json` — v0.4.18 entry already exists; extend bullets to cover the parity work; version stays 0.4.18 (user hasn't shipped).
-
-**Runtime verification (I run these before we call it done)**
-
-1. Start a DM screenshare of a game window, open the receiver's console:
-   - `pc.getStats()` shows `encoderImplementation: "ExternalEncoder"` (NVENC/MFT) — not `"libvpx"` or `"OpenH264"`.
-   - `outbound-rtp` reports 3 SSRCs for the video (simulcast is actually up), and the `f` layer holds within 15 % of the target bitrate.
-   - `remote-inbound-rtp` `roundTripTime` stays flat (no bufferbloat spike).
-2. Same test in a 3-person group call.
-3. On a machine with `cubbly-low-power` set, confirm we fall back to VP8 single-layer without stalling `createOffer`.
-
-**What this will *not* fix**
-
-- Anything caused by the Chromium desktop compositor path — some games (exclusive fullscreen DX12) will still capture at 30-40 fps regardless of what the encoder does. That's the case native DXGI capture is being kept in reserve for.
+### Technical notes
+- Files touched: `ChatView.tsx`, `GiftItemModal.tsx`, `GiftSendModal.tsx`, `chat/UserProfileCard.tsx`, `ProfilePopup.tsx`, `UserPanel.tsx`, `DMSidebar.tsx`, `ServerSidebar.tsx`, `ServerView.tsx`, `FriendsView.tsx`, `SearchBar.tsx`, `pages/AppLayout.tsx`, `contexts/ActivityContext.tsx`, `electron/gameDetails.cjs`, `lib/screenShareEncoding.ts`, `contexts/VoiceContext.tsx`, `contexts/GroupCallContext.tsx`, `lib/changelog.ts`, `package.json`.
+- No database migrations are required; gifting already enforces ownership and pricing server-side.

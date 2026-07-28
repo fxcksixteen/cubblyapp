@@ -3,12 +3,15 @@ import { useConversations } from "@/hooks/useConversations";
 import { useFriends } from "@/hooks/useFriends";
 import { getProfileColor } from "@/lib/profileColors";
 import searchIcon from "@/assets/icons/search.svg";
+import GroupAvatar from "@/components/app/GroupAvatar";
 
 interface SearchBarProps {
   onOpenDM: (userId: string) => void;
+  /** Opens an existing conversation by id (used for group chats). */
+  onOpenConversation?: (conversationId: string) => void;
 }
 
-const SearchBar = ({ onOpenDM }: SearchBarProps) => {
+const SearchBar = ({ onOpenDM, onOpenConversation }: SearchBarProps) => {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const ref = useRef<HTMLDivElement>(null);
@@ -34,17 +37,42 @@ const SearchBar = ({ onOpenDM }: SearchBarProps) => {
   };
 
   const q = query.toLowerCase();
-  const filteredConversations = conversations.filter(
-    (conversation) =>
-      conversation.participant.display_name.toLowerCase().includes(q) ||
-      conversation.participant.username.toLowerCase().includes(q),
-  );
 
-  const filteredFriends = friends.filter(
-    (friend) =>
-      !conversations.some((conversation) => conversation.participant.user_id === friend.profile.user_id) &&
-      (friend.profile.display_name.toLowerCase().includes(q) || friend.profile.username.toLowerCase().includes(q)),
+  // Group chats match on their own name (or their members' names), never on a
+  // single participant's name — that made groups look like a friend's DM.
+  const conversationLabel = (conversation: (typeof conversations)[number]) =>
+    conversation.is_group
+      ? conversation.name || "Group chat"
+      : conversation.participant.display_name;
+
+  const filteredConversations = conversations.filter((conversation) => {
+    if (!q) return true;
+    if (conversation.is_group) {
+      return (
+        (conversation.name || "group chat").toLowerCase().includes(q) ||
+        conversation.members.some(
+          (m) => m.display_name.toLowerCase().includes(q) || m.username.toLowerCase().includes(q),
+        )
+      );
+    }
+    return (
+      conversation.participant.display_name.toLowerCase().includes(q) ||
+      conversation.participant.username.toLowerCase().includes(q)
+    );
+  });
+
+  // De-duplicate: a friend who already has a DM open should only appear once.
+  const dmUserIds = new Set(
+    conversations.filter((c) => !c.is_group).map((c) => c.participant.user_id),
   );
+  const seenFriendIds = new Set<string>();
+  const filteredFriends = friends.filter((friend) => {
+    const id = friend.profile.user_id;
+    if (dmUserIds.has(id) || seenFriendIds.has(id)) return false;
+    if (q && !(friend.profile.display_name.toLowerCase().includes(q) || friend.profile.username.toLowerCase().includes(q))) return false;
+    seenFriendIds.add(id);
+    return true;
+  });
 
   const shellStyle = {
     backgroundColor: "var(--app-input)",
@@ -96,7 +124,8 @@ const SearchBar = ({ onOpenDM }: SearchBarProps) => {
                       <button
                         key={conversation.id}
                         onClick={() => {
-                          onOpenDM(conversation.participant.user_id);
+                          if (conversation.is_group) onOpenConversation?.(conversation.id);
+                          else onOpenDM(conversation.participant.user_id);
                           setOpen(false);
                           setQuery("");
                         }}
@@ -105,7 +134,9 @@ const SearchBar = ({ onOpenDM }: SearchBarProps) => {
                         onMouseEnter={e => { e.currentTarget.style.backgroundColor = "var(--app-hover, #35373c)"; }}
                         onMouseLeave={e => { e.currentTarget.style.backgroundColor = ""; }}
                       >
-                        {conversation.participant.avatar_url ? (
+                        {conversation.is_group ? (
+                          <GroupAvatar conversation={conversation} size={32} />
+                        ) : conversation.participant.avatar_url ? (
                           <img src={conversation.participant.avatar_url} alt="" className="h-8 w-8 rounded-full object-cover" />
                         ) : (
                           <div
@@ -115,9 +146,11 @@ const SearchBar = ({ onOpenDM }: SearchBarProps) => {
                             {conversation.participant.display_name.charAt(0).toUpperCase()}
                           </div>
                         )}
-                        <span>{conversation.participant.display_name}</span>
-                        <span className="ml-auto text-[11px]" style={{ color: "var(--app-text-secondary)" }}>
-                          {conversation.participant.username}
+                        <span className="truncate">{conversationLabel(conversation)}</span>
+                        <span className="ml-auto shrink-0 text-[11px]" style={{ color: "var(--app-text-secondary)" }}>
+                          {conversation.is_group
+                            ? `${conversation.members.length + 1} members`
+                            : conversation.participant.username}
                         </span>
                       </button>
                     ))}
