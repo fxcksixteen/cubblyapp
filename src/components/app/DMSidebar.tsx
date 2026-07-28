@@ -226,7 +226,7 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
 
   return (
     <div className="flex w-60 flex-shrink-0 flex-col sidebar-primary" style={{ backgroundColor: 'var(--app-bg-secondary)' }}>
-      <SearchBar onOpenDM={onOpenDM} />
+      <SearchBar onOpenDM={onOpenDM} onOpenConversation={(id) => setActiveView(`dm:${id}`)} />
 
       <div className="flex-1 overflow-y-auto px-2 pt-3">
         {navItems.map((item) => (
