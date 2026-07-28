@@ -213,15 +213,7 @@ const ServerView = ({ unreadByConv, membersHidden = false }: { unreadByConv?: Ma
 
       {/* Main: chat or voice channel placeholder */}
       <div className="relative flex-1 min-w-0 flex flex-col">
-        {/* Show/hide the members sidebar, same affordance group chats have. */}
-        <button
-          onClick={() => setMembersHidden((v) => !v)}
-          title={membersHidden ? "Show Member List" : "Hide Member List"}
-          className="absolute right-3 top-2.5 z-20 rounded-md p-1.5 transition-opacity"
-          style={{ backgroundColor: "var(--app-bg-secondary)", opacity: membersHidden ? 0.6 : 1 }}
-        >
-          <img src={friendsIcon} alt="" className="h-4 w-4 invert opacity-80" />
-        </button>
+        {/* Members list visibility is controlled from the topbar. */}
         {activeChannel?.kind === "text" && activeConv ? (
           <ChatView
             conversation={activeConv}
