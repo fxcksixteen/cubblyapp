@@ -577,38 +577,48 @@ const AppLayout = () => {
       {isElectron && <TitleBar />}
 
       <div className="flex flex-1 min-h-0">
-        <ServerSidebar
-          isActive
-          onHomeClick={() => {}}
-          unreadConversations={unreadList}
-          onJumpToConversation={(convId) => navigate(`/@me/chat/${convId}`, { replace: true })}
-        />
+        {/* Discord-style: the server rail and the DM sidebar share one column so
+            the user panel can span the full width of both. */}
+        <div className="flex flex-col min-h-0">
+          <div className="flex flex-1 min-h-0">
+            <ServerSidebar
+              isActive
+              onHomeClick={() => {}}
+              unreadConversations={unreadList}
+              onJumpToConversation={(convId) => navigate(`/@me/chat/${convId}`, { replace: true })}
+            />
 
-        {!isServerRoute && (
-          <DMSidebar
-            conversations={visibleConversations}
-            activeView={activeView}
-            setActiveView={(view) => {
-              if (view.startsWith("dm:")) {
-                const convId = view.replace("dm:", "");
-                navigate(`/@me/chat/${convId}`, { replace: true });
-              } else if (view === "shop") {
-                navigate("/@me/shop", { replace: true });
-              } else if (view === "honey") {
-                navigate("/honey", { replace: true });
-              } else if (view === "notes") {
-                navigate("/@me/notes", { replace: true });
-              } else if (view === "requests") {
-                navigate("/@me/requests", { replace: true });
-              } else {
-                navigate(`/@me/${friendTab}`, { replace: true });
-              }
-            }}
-            onCloseConversation={handleCloseConversation}
-            onOpenDM={handleOpenDM}
-            onCreateGroup={() => setCreateGroupOpen(true)}
-          />
-        )}
+            {!isServerRoute && (
+              <DMSidebar
+                conversations={visibleConversations}
+                activeView={activeView}
+                setActiveView={(view) => {
+                  if (view.startsWith("dm:")) {
+                    const convId = view.replace("dm:", "");
+                    navigate(`/@me/chat/${convId}`, { replace: true });
+                  } else if (view === "shop") {
+                    navigate("/@me/shop", { replace: true });
+                  } else if (view === "honey") {
+                    navigate("/honey", { replace: true });
+                  } else if (view === "notes") {
+                    navigate("/@me/notes", { replace: true });
+                  } else if (view === "requests") {
+                    navigate("/@me/requests", { replace: true });
+                  } else {
+                    navigate(`/@me/${friendTab}`, { replace: true });
+                  }
+                }}
+                onCloseConversation={handleCloseConversation}
+                onOpenDM={handleOpenDM}
+                onCreateGroup={() => setCreateGroupOpen(true)}
+                hideUserPanel={!isServerRoute}
+              />
+            )}
+          </div>
+          {!isServerRoute && <UserPanel />}
+        </div>
+
+
 
 
         <div className="flex flex-1 flex-col">
