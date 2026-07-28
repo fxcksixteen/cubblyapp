@@ -1,0 +1,1 @@
+UPDATE public.gems_balances SET balance = balance + 1000 WHERE user_id IN ('96b65493-ddc3-46df-b107-8bb97c0dd4c0','b7b10e15-bc39-4871-bebe-4bcf2b3617b9','e72383bf-dbc3-4342-aadb-03104914fac4');

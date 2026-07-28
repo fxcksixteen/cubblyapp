@@ -135,12 +135,12 @@ const SearchBar = ({ onOpenDM, onOpenConversation }: SearchBarProps) => {
                         onMouseLeave={e => { e.currentTarget.style.backgroundColor = ""; }}
                       >
                         {conversation.is_group ? (
-                          <GroupAvatar conversation={conversation} size={32} />
+                          <div className="shrink-0"><GroupAvatar conversation={conversation} size={32} /></div>
                         ) : conversation.participant.avatar_url ? (
-                          <img src={conversation.participant.avatar_url} alt="" className="h-8 w-8 rounded-full object-cover" />
+                          <img src={conversation.participant.avatar_url} alt="" className="h-8 w-8 shrink-0 rounded-full object-cover" />
                         ) : (
                           <div
-                            className="flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold text-white"
+                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
                             style={{ backgroundColor: getProfileColor(conversation.participant.user_id).bg }}
                           >
                             {conversation.participant.display_name.charAt(0).toUpperCase()}
@@ -176,17 +176,17 @@ const SearchBar = ({ onOpenDM, onOpenConversation }: SearchBarProps) => {
                         onMouseLeave={e => { e.currentTarget.style.backgroundColor = ""; }}
                       >
                         {friend.profile.avatar_url ? (
-                          <img src={friend.profile.avatar_url} alt="" className="h-8 w-8 rounded-full object-cover" />
+                          <img src={friend.profile.avatar_url} alt="" className="h-8 w-8 shrink-0 rounded-full object-cover" />
                         ) : (
                           <div
-                            className="flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold text-white"
+                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
                             style={{ backgroundColor: getProfileColor(friend.profile.user_id).bg }}
                           >
                             {friend.profile.display_name.charAt(0).toUpperCase()}
                           </div>
                         )}
-                        <span>{friend.profile.display_name}</span>
-                        <span className="ml-auto text-[11px]" style={{ color: "var(--app-text-secondary)" }}>
+                        <span className="truncate">{friend.profile.display_name}</span>
+                        <span className="ml-auto shrink-0 text-[11px]" style={{ color: "var(--app-text-secondary)" }}>
                           {friend.profile.username}
                         </span>
                       </button>

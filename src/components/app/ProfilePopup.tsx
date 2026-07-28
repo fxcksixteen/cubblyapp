@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Copy, Pencil, User, Check, Smile } from "lucide-react";
@@ -94,9 +95,12 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
     return () => clearTimeout(t);
   }, [customStatus?.expires_at]);
 
+  const panelRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (panelRef.current?.contains(t)) return;
+      if (ref.current && !ref.current.contains(t)) setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -120,29 +124,34 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
 
   const currentStatusObj = statuses.find(s => s.value === currentStatus) || statuses[0];
 
-  return (
-    <div ref={ref} className="relative">
-      <button
-        onClick={() => setOpen(!open)}
-        className="relative flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold text-white hover:opacity-80 transition-opacity cursor-pointer"
-        style={{ backgroundColor: avatarUrl ? undefined : profileColor.bg }}
-      >
-        {avatarUrl ? (
-          <img src={avatarUrl} alt={displayName} className="h-full w-full rounded-full object-cover" />
-        ) : (
-          displayName.charAt(0).toUpperCase()
-        )}
-        <div className="absolute -bottom-0.5 -right-0.5 z-10 pointer-events-none">
-          <StatusIndicator status={currentStatus} size="md" borderColor="var(--app-bg-accent, #232428)" />
-        </div>
-      </button>
+  // The panel is portalled out of `.user-panel`, which several themes render
+  // translucent (backdrop blur). Rendering it at the themed root keeps the menu
+  // fully opaque on every theme while still inheriting the theme variables.
+  const portalRoot = typeof document !== "undefined"
+    ? (document.querySelector(".app-themed") as HTMLElement | null) ?? document.body
+    : null;
+  const [anchor, setAnchor] = useState<{ left: number; bottom: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
 
-      {open && (
-        <div className="cb-solid-surface absolute bottom-full left-0 mb-2 w-[420px] rounded-xl shadow-2xl border z-50 overflow-hidden"
-          style={{ borderColor: "var(--app-border, #2b2d31)" }}
+  const toggle = () => {
+    const rect = btnRef.current?.getBoundingClientRect();
+    if (rect) setAnchor({ left: rect.left, bottom: window.innerHeight - rect.top + 8 });
+    setOpen((v) => !v);
+  };
+
+  const panel = open && portalRoot ? createPortal(
+        <div
+          ref={panelRef}
+          className="cb-solid-surface fixed w-[420px] rounded-xl shadow-2xl border z-[200] overflow-hidden"
+          style={{
+            borderColor: "var(--app-border, #2b2d31)",
+            left: Math.max(8, anchor?.left ?? 8),
+            bottom: anchor?.bottom ?? 8,
+          }}
         >
           {/* Banner */}
           <div className="h-[140px]" style={{ background: bannerUrl ? `url(${bannerUrl}) center/cover no-repeat` : profileColor.banner }} />
+
 
 
           {/* Avatar */}
@@ -240,8 +249,28 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
               View Profile
             </button>
           </div>
+        </div>,
+    portalRoot
+  ) : null;
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        ref={btnRef}
+        onClick={toggle}
+        className="relative flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold text-white hover:opacity-80 transition-opacity cursor-pointer"
+        style={{ backgroundColor: avatarUrl ? undefined : profileColor.bg }}
+      >
+        {avatarUrl ? (
+          <img src={avatarUrl} alt={displayName} className="h-full w-full rounded-full object-cover" />
+        ) : (
+          displayName.charAt(0).toUpperCase()
+        )}
+        <div className="absolute -bottom-0.5 -right-0.5 z-10 pointer-events-none">
+          <StatusIndicator status={currentStatus} size="md" borderColor="var(--app-bg-accent, #232428)" />
         </div>
-      )}
+      </button>
+      {panel}
       <CustomStatusModal
         open={customStatusOpen}
         onClose={() => setCustomStatusOpen(false)}
