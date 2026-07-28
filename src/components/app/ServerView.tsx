@@ -98,8 +98,8 @@ const ServerView = ({ unreadByConv, membersHidden = false }: { unreadByConv?: Ma
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  const [membersCollapsed, setMembersCollapsed] = useState(false);
-  const [membersHidden, setMembersHidden] = useState(false);
+  const [onlineCollapsed, setOnlineCollapsed] = useState(false);
+  const [offlineCollapsed, setOfflineCollapsed] = useState(false);
   // Discord-style split: anyone not offline/invisible sits in the Online group.
   const onlineMembers = useMemo(
     () => members.filter((m) => {
