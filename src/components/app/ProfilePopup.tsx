@@ -146,18 +146,19 @@ const ProfilePopup = ({ currentStatus, onStatusChange, onOpenSettings }: Profile
 
 
           {/* Avatar */}
-          <div className="px-4 -mt-9 relative z-10">
+          <div className="px-4 -mt-11 relative z-10">
             {avatarUrl ? (
-              <img src={avatarUrl} alt={displayName} className="h-[72px] w-[72px] rounded-full border-[5px] object-cover" style={{ borderColor: "var(--app-bg-tertiary, #111214)" }} />
+              <img src={avatarUrl} alt={displayName} className="h-[88px] w-[88px] rounded-full border-[6px] object-cover" style={{ borderColor: "var(--app-bg-secondary, #111214)" }} />
             ) : (
               <div
-                className="flex h-[72px] w-[72px] items-center justify-center rounded-full border-[5px] text-2xl font-bold text-white"
-                style={{ backgroundColor: profileColor.bg, borderColor: "var(--app-bg-tertiary, #111214)" }}
+                className="flex h-[88px] w-[88px] items-center justify-center rounded-full border-[6px] text-3xl font-bold text-white"
+                style={{ backgroundColor: profileColor.bg, borderColor: "var(--app-bg-secondary, #111214)" }}
               >
                 {displayName.charAt(0).toUpperCase()}
               </div>
             )}
           </div>
+
 
           {/* Info */}
           <div className="px-4 pt-2 pb-4">
