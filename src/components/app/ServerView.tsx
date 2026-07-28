@@ -195,7 +195,16 @@ const ServerView = ({ unreadByConv }: { unreadByConv?: Map<string, UnreadInfo> }
       </div>
 
       {/* Main: chat or voice channel placeholder */}
-      <div className="flex-1 min-w-0 flex flex-col">
+      <div className="relative flex-1 min-w-0 flex flex-col">
+        {/* Show/hide the members sidebar, same affordance group chats have. */}
+        <button
+          onClick={() => setMembersHidden((v) => !v)}
+          title={membersHidden ? "Show Member List" : "Hide Member List"}
+          className="absolute right-3 top-2.5 z-20 rounded-md p-1.5 transition-opacity"
+          style={{ backgroundColor: "var(--app-bg-secondary)", opacity: membersHidden ? 0.6 : 1 }}
+        >
+          <img src={friendsIcon} alt="" className="h-4 w-4 invert opacity-80" />
+        </button>
         {activeChannel?.kind === "text" && activeConv ? (
           <ChatView
             conversation={activeConv}
@@ -212,7 +221,8 @@ const ServerView = ({ unreadByConv }: { unreadByConv?: Map<string, UnreadInfo> }
         )}
       </div>
 
-      {/* Members panel */}
+      {/* Members panel — split into Online / Offline like Discord */}
+      {!membersHidden && (
       <div className="w-60 flex flex-col border-l" style={{ backgroundColor: "var(--app-bg-secondary)", borderColor: "var(--app-border)" }}>
         <button
           onClick={() => setMembersCollapsed((v) => !v)}
@@ -229,7 +239,15 @@ const ServerView = ({ unreadByConv }: { unreadByConv?: Map<string, UnreadInfo> }
         </button>
         {!membersCollapsed && (
           <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
-            {members.map((m) => {
+            {([
+              { label: "Online", list: onlineMembers },
+              { label: "Offline", list: offlineMembers },
+            ] as const).map((group) => group.list.length === 0 ? null : (
+              <div key={group.label} className="pt-1">
+                <div className="px-2 pb-1 text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--app-text-secondary)" }}>
+                  {group.label} — {group.list.length}
+                </div>
+                {group.list.map((m) => {
               const status = getEffectivePresenceStatus(m.user_id, m.status, onlineUserIds);
               const color = getProfileColor(m.user_id);
               const openProfile = (e: React.MouseEvent) => {
@@ -249,6 +267,7 @@ const ServerView = ({ unreadByConv }: { unreadByConv?: Map<string, UnreadInfo> }
                   <div
                     onClick={openProfile}
                     className="flex items-center gap-2 px-2 py-1 rounded transition-colors hover:bg-[var(--app-hover)] cursor-pointer"
+                    style={{ opacity: group.label === "Offline" ? 0.45 : 1 }}
                   >
                     <div className="relative shrink-0">
                       {m.avatar_url ? (
@@ -270,10 +289,14 @@ const ServerView = ({ unreadByConv }: { unreadByConv?: Map<string, UnreadInfo> }
                   </div>
                 </MemberRowMenu>
               );
-            })}
+                })}
+              </div>
+            ))}
           </div>
         )}
       </div>
+      )}
+
 
       {createChanOpen && <CreateChannelModal serverId={server.id} onClose={() => setCreateChanOpen(false)} />}
       {inviteOpen && <InviteModal serverId={server.id} onClose={() => setInviteOpen(false)} />}
