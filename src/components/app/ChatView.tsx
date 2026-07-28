@@ -29,6 +29,7 @@ import folderFileIcon from "@/assets/icons/folder-file.svg";
 import gifIcon from "@/assets/icons/gif.svg";
 import giftIcon from "@/assets/icons/gift.svg";
 import honeyIcon from "@/assets/icons/honey.svg";
+import shopIcon from "@/assets/icons/shop.svg";
 import emojiPickerIcon from "@/assets/icons/emoji-picker.svg";
 import GifPicker from "./GifPicker";
 import HoneyGiftModal from "./HoneyGiftModal";
