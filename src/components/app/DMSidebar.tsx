@@ -52,6 +52,8 @@ const preloadImages = [micIcon, micMuteIcon, headphoneIcon, headphoneDeafenIcon,
 preloadImages.forEach(src => { const img = new Image(); img.src = src; });
 
 interface DMSidebarProps {
+  /** When true the sidebar skips its own bottom user panel (AppLayout renders a shared one). */
+  hideUserPanel?: boolean;
   conversations: Conversation[];
   activeView: string;
   setActiveView: (view: string) => void;
@@ -61,7 +63,7 @@ interface DMSidebarProps {
 }
 
 
-const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversation, onOpenDM, onCreateGroup }: DMSidebarProps) => {
+const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversation, onOpenDM, onCreateGroup, hideUserPanel }: DMSidebarProps) => {
   const isMobile = useIsMobile();
   const { user, onlineUserIds } = useAuth();
   const { activeCall, toggleMute, toggleDeafen } = useVoice();
@@ -549,7 +551,8 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
       />
       <SidebarGroupCallCard />
 
-      {/* User panel */}
+      {/* User panel (hidden when AppLayout renders the shared, full-width one) */}
+      {!hideUserPanel && (<>
       <div className="flex items-center gap-2.5 px-2 py-2 user-panel" style={{ backgroundColor: 'var(--app-bg-accent)' }}>
         <ProfilePopup
           currentStatus={userStatus}
@@ -631,7 +634,7 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
             />
           </button>
         </div>
-      </div>
+      </div></>)}
 
       <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
       {profileCard && (
