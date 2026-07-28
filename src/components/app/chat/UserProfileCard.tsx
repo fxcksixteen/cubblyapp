@@ -367,7 +367,7 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
                     )}
                   </div>
                 </div>
-                <div className="flex flex-col gap-1.5 max-h-[340px] overflow-y-auto pr-1 -mr-1">
+                <div className="flex flex-col gap-1.5 max-h-[460px] overflow-y-auto pr-1 -mr-1">
                   {wishlist.map((w) => {
                     const canGift = !isOwnProfile && w.price_gems != null && gemBalance >= w.price_gems;
                     const notGiftable = w.price_gems == null;
