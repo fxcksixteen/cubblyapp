@@ -293,8 +293,7 @@ const ServerView = ({ unreadByConv, membersHidden = false }: { unreadByConv?: Ma
                 })}
               </div>
             ))}
-          </div>
-        )}
+        </div>
       </div>
       )}
 
