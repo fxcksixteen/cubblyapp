@@ -1351,7 +1351,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                       onClick={() => { setGiftMenuOpen(false); setGiftItemModalOpen(true); }}
                       className="w-full text-left px-3 py-2 rounded-md hover:bg-white/5 flex items-start gap-2 mt-0.5"
                     >
-                      <img src={giftIcon} alt="" className="h-5 w-5 shrink-0 mt-0.5 invert opacity-80" />
+                      <img src={shopIcon} alt="" className="h-5 w-5 shrink-0 mt-0.5 invert opacity-80" />
                       <div className="min-w-0">
                         <div className="text-[13px] font-bold text-white leading-tight">Gift a shop item</div>
                         <div className="text-[11px] text-white/60 leading-tight mt-0.5">Pick something from the shop</div>
