@@ -298,12 +298,12 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
           </div>
 
           {/* Avatar - with z-index above banner */}
-          <div className="px-5 -mt-12 relative z-10">
+          <div className="px-5 -mt-14 relative z-10">
             <div className="relative inline-block">
               {profile?.avatar_url ? (
                 <img src={profile.avatar_url} alt={displayName} className="h-[124px] w-[124px] rounded-full border-[7px] border-[#111214] object-cover" />
               ) : (
-                <div className="flex h-[96px] w-[96px] items-center justify-center rounded-full border-[6px] border-[#111214] text-3xl font-bold text-white" style={{ backgroundColor: color.bg }}>
+                <div className="flex h-[124px] w-[124px] items-center justify-center rounded-full border-[7px] border-[#111214] text-3xl font-bold text-white" style={{ backgroundColor: color.bg }}>
                   {displayName.charAt(0).toUpperCase()}
                 </div>
               )}
@@ -539,7 +539,7 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
             />
           ) : (
             <div
-              className="flex h-[68px] w-[68px] items-center justify-center rounded-full border-[4px] border-[#111214] text-lg font-bold text-white cursor-pointer hover:opacity-80 transition-opacity"
+              className="flex h-[68px] w-[68px] items-center justify-center rounded-full border-[5px] border-[#111214] text-lg font-bold text-white cursor-pointer hover:opacity-80 transition-opacity"
               style={{ backgroundColor: color.bg }}
               onClick={() => setShowFullProfile(true)}
             >
