@@ -104,6 +104,7 @@ const AppLayout = () => {
   const [activeNowOpen, setActiveNowOpen] = useState(true);
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [showMembersPanel, setShowMembersPanel] = useState(true);
+  const [showServerMembers, setShowServerMembers] = useState(true);
   // v0.3.21: clicking the avatar/name in the DM header opens the profile card
   // (matches every other place in the app — was the only missing surface).
   const [headerProfileCard, setHeaderProfileCard] = useState<{ userId: string; name: string; x: number; y: number } | null>(null);
@@ -408,7 +409,7 @@ const AppLayout = () => {
       return <MessageRequestsView onOpenConversation={(id) => navigate(`/@me/chat/${id}`, { replace: true })} />;
     }
     if (isServerRoute) {
-      return <ServerView unreadByConv={unreadByConv} />;
+      return <ServerView unreadByConv={unreadByConv} membersHidden={!showServerMembers} />;
     }
     return <FriendsView activeTab={friendTab} setActiveTab={setFriendTab} onOpenDM={handleOpenDM} activeNowOpen={activeNowOpen} setActiveNowOpen={setActiveNowOpen} />;
   };
@@ -793,6 +794,16 @@ const AppLayout = () => {
                           {messageRequestCount > 9 ? "9+" : messageRequestCount}
                         </span>
                       )}
+                    </button>
+                  )}
+                  {isServerRoute && (
+                    <button
+                      onClick={() => setShowServerMembers((v) => !v)}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg transition-all"
+                      title={showServerMembers ? "Hide Member List" : "Show Member List"}
+                      style={{ backgroundColor: showServerMembers ? "var(--app-hover)" : undefined }}
+                    >
+                      <img src={friendsIcon} alt="Members" className="h-5 w-5 invert opacity-60" />
                     </button>
                   )}
                   {isShop && <GemPill />}

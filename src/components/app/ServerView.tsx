@@ -24,12 +24,11 @@ import MemberRowMenu from "@/components/app/MemberRowMenu";
 import UserProfileCard from "@/components/app/chat/UserProfileCard";
 import ServerSettingsModal from "@/components/app/ServerSettingsModal";
 import GiftItemModal from "@/components/app/GiftItemModal";
-import friendsIcon from "@/assets/icons/friends.svg";
 
 
 import type { UnreadInfo } from "@/hooks/useUnreadCounts";
 
-const ServerView = ({ unreadByConv }: { unreadByConv?: Map<string, UnreadInfo> }) => {
+const ServerView = ({ unreadByConv, membersHidden = false }: { unreadByConv?: Map<string, UnreadInfo>; membersHidden?: boolean }) => {
   const location = useLocation();
   const parts = location.pathname.split("/").filter(Boolean);
   // /@me/server/:serverId/:channelId?
@@ -98,8 +97,8 @@ const ServerView = ({ unreadByConv }: { unreadByConv?: Map<string, UnreadInfo> }
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  const [membersCollapsed, setMembersCollapsed] = useState(false);
-  const [membersHidden, setMembersHidden] = useState(false);
+  const [onlineCollapsed, setOnlineCollapsed] = useState(false);
+  const [offlineCollapsed, setOfflineCollapsed] = useState(false);
   // Discord-style split: anyone not offline/invisible sits in the Online group.
   const onlineMembers = useMemo(
     () => members.filter((m) => {
@@ -213,15 +212,7 @@ const ServerView = ({ unreadByConv }: { unreadByConv?: Map<string, UnreadInfo> }
 
       {/* Main: chat or voice channel placeholder */}
       <div className="relative flex-1 min-w-0 flex flex-col">
-        {/* Show/hide the members sidebar, same affordance group chats have. */}
-        <button
-          onClick={() => setMembersHidden((v) => !v)}
-          title={membersHidden ? "Show Member List" : "Hide Member List"}
-          className="absolute right-3 top-2.5 z-20 rounded-md p-1.5 transition-opacity"
-          style={{ backgroundColor: "var(--app-bg-secondary)", opacity: membersHidden ? 0.6 : 1 }}
-        >
-          <img src={friendsIcon} alt="" className="h-4 w-4 invert opacity-80" />
-        </button>
+        {/* Members list visibility is controlled from the topbar. */}
         {activeChannel?.kind === "text" && activeConv ? (
           <ChatView
             conversation={activeConv}
@@ -241,30 +232,22 @@ const ServerView = ({ unreadByConv }: { unreadByConv?: Map<string, UnreadInfo> }
       {/* Members panel — split into Online / Offline like Discord */}
       {!membersHidden && (
       <div className="w-60 flex flex-col border-l" style={{ backgroundColor: "var(--app-bg-secondary)", borderColor: "var(--app-border)" }}>
-        <button
-          onClick={() => setMembersCollapsed((v) => !v)}
-          className="flex w-full items-center justify-between px-3 py-3 text-[11px] font-bold uppercase tracking-wide transition-colors"
-          style={{ color: "var(--app-text-secondary)" }}
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--app-hover)")}
-          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "")}
-        >
-          <span>Members — {members.length}</span>
-          <ChevronDown
-            className="h-3.5 w-3.5 transition-transform"
-            style={{ transform: membersCollapsed ? "rotate(-90deg)" : "none" }}
-          />
-        </button>
-        {!membersCollapsed && (
-          <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
-            {([
-              { label: "Online", list: onlineMembers },
-              { label: "Offline", list: offlineMembers },
-            ] as const).map((group) => group.list.length === 0 ? null : (
+        <div className="flex-1 overflow-y-auto px-2 py-2 space-y-0.5">
+          {([
+            { label: "Online", list: onlineMembers, collapsed: onlineCollapsed, toggle: () => setOnlineCollapsed((v) => !v) },
+            { label: "Offline", list: offlineMembers, collapsed: offlineCollapsed, toggle: () => setOfflineCollapsed((v) => !v) },
+          ] as const).map((group) => group.list.length === 0 ? null : (
               <div key={group.label} className="pt-1">
-                <div className="px-2 pb-1 text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--app-text-secondary)" }}>
-                  {group.label} — {group.list.length}
-                </div>
-                {group.list.map((m) => {
+                <button
+                  onClick={group.toggle}
+                  className="flex w-full items-center justify-between px-2 pb-1 text-[11px] font-bold uppercase tracking-wide"
+                  style={{ color: "var(--app-text-secondary)" }}
+                >
+                  <span>{group.label} — {group.list.length}</span>
+                  <ChevronDown className="h-3.5 w-3.5 transition-transform" style={{ transform: group.collapsed ? "rotate(-90deg)" : "none" }} />
+                </button>
+                {!group.collapsed && group.list.map((m) => {
+                
               const status = getEffectivePresenceStatus(m.user_id, m.status, onlineUserIds);
               const color = getProfileColor(m.user_id);
               const openProfile = (e: React.MouseEvent) => {
@@ -309,8 +292,7 @@ const ServerView = ({ unreadByConv }: { unreadByConv?: Map<string, UnreadInfo> }
                 })}
               </div>
             ))}
-          </div>
-        )}
+        </div>
       </div>
       )}
 
