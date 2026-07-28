@@ -238,14 +238,21 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
         if (detected) {
           missStreakRef.current = 0;
           currentlyDetectedRef.current = true;
-          broadcastActivity(detected);
           // Best-effort: ask the main process for rich game-specific details.
           // If no parser matches or it fails, we just leave activity_details alone.
+          let effective = detected;
           try {
             if (api.getGameDetails) {
               const details = await api.getGameDetails(detected.processName)
                 ?? await api.getGameDetails(detected.displayName);
               if (details?.gameKey && details?.payload) {
+                // Roblox: sitting in the launcher/home screen is "Using Roblox",
+                // only an actual experience counts as "Playing".
+                if (details.gameKey === "roblox") {
+                  const p = details.payload as { inLauncher?: boolean; experience?: string | null; placeId?: number | null; universeId?: number | null };
+                  const inGame = !!(p.experience || p.placeId || p.universeId);
+                  effective = { ...detected, type: inGame ? "game" : "software" };
+                }
                 const key = `${details.gameKey}:${JSON.stringify(details.payload)}`;
                 if (lastDetailsKeyRef.current !== key) {
                   lastDetailsKeyRef.current = key;
@@ -262,6 +269,8 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
               }
             }
           } catch { /* swallow parser errors */ }
+          broadcastActivity(effective);
+
         } else {
           missStreakRef.current += 1;
           if (missStreakRef.current >= 2) {
