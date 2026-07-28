@@ -796,6 +796,16 @@ const AppLayout = () => {
                       )}
                     </button>
                   )}
+                  {isServerRoute && (
+                    <button
+                      onClick={() => setShowServerMembers((v) => !v)}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg transition-all"
+                      title={showServerMembers ? "Hide Member List" : "Show Member List"}
+                      style={{ backgroundColor: showServerMembers ? "var(--app-hover)" : undefined }}
+                    >
+                      <img src={friendsIcon} alt="Members" className="h-5 w-5 invert opacity-60" />
+                    </button>
+                  )}
                   {isShop && <GemPill />}
                   {isShop && <CoinPill />}
                   {isHoney && <GemPill />}
