@@ -29,6 +29,10 @@ const UserPanel = () => {
   const [localDeafened, setLocalDeafened] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [userStatus, setUserStatus] = useState("online");
+  const [customStatus, setCustomStatus] = useState<{ text: string; emoji: string | null } | null>(null);
+  // Discord-style: when a custom status is set, the second line cross-fades
+  // between the username and the custom status instead of hiding one of them.
+  const [showCustom, setShowCustom] = useState(false);
 
   // Load the user's saved presence status so the dot under their avatar in the
   // server sidebar matches reality (online / idle / dnd / invisible) instead of
@@ -44,6 +48,38 @@ const UserPanel = () => {
         if (data?.status) setUserStatus(data.status);
       });
   }, [user]);
+
+  // Load + live-watch the user's custom status so the panel can animate it.
+  useEffect(() => {
+    if (!user) { setCustomStatus(null); return; }
+    let alive = true;
+    const load = () => {
+      supabase
+        .from("custom_statuses")
+        .select("text, emoji, expires_at")
+        .eq("user_id", user.id)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (!alive) return;
+          if (!data || (!data.text && !(data as any).emoji)) { setCustomStatus(null); return; }
+          if (data.expires_at && new Date(data.expires_at).getTime() < Date.now()) { setCustomStatus(null); return; }
+          setCustomStatus({ text: data.text || "", emoji: (data as any).emoji ?? null });
+        });
+    };
+    load();
+    const channel = supabase
+      .channel(`user-panel-status:${user.id}:${Math.random().toString(36).slice(2)}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "custom_statuses", filter: `user_id=eq.${user.id}` }, load)
+      .subscribe();
+    return () => { alive = false; supabase.removeChannel(channel); };
+  }, [user]);
+
+  // Alternate between username and custom status every 4s.
+  useEffect(() => {
+    if (!customStatus) { setShowCustom(false); return; }
+    const id = setInterval(() => setShowCustom((v) => !v), 4000);
+    return () => clearInterval(id);
+  }, [customStatus]);
 
   // Reflect whichever call the user is actually in — DM voice or group/server
   // voice. Priority: DM active call > group/server call > local (no-call) state.
@@ -65,9 +101,31 @@ const UserPanel = () => {
           <p className="truncate text-[15px] font-bold text-white leading-snug flex items-center gap-1.5">
             <UserDisplayName userId={user?.id} name={displayName} fallbackColor="#ffffff" className="truncate" />
           </p>
-          <p className="truncate text-[11px] leading-snug" style={{ color: "var(--app-text-secondary, #949ba4)" }}>
-            {username}
-          </p>
+          <div className="relative h-[15px] overflow-hidden">
+            <p
+              className="absolute inset-x-0 truncate text-[11px] leading-snug transition-all duration-300"
+              style={{
+                color: "var(--app-text-secondary, #949ba4)",
+                opacity: showCustom ? 0 : 1,
+                transform: showCustom ? "translateY(-100%)" : "translateY(0)",
+              }}
+            >
+              {username}
+            </p>
+            {customStatus && (
+              <p
+                className="absolute inset-x-0 truncate text-[11px] leading-snug transition-all duration-300 flex items-center gap-1"
+                style={{
+                  color: "var(--app-text-primary, #dbdee1)",
+                  opacity: showCustom ? 1 : 0,
+                  transform: showCustom ? "translateY(0)" : "translateY(100%)",
+                }}
+              >
+                {customStatus.emoji && <span className="cubbly-keep-animation">{customStatus.emoji}</span>}
+                {customStatus.text && <span className="truncate">{customStatus.text}</span>}
+              </p>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-0.5 shrink-0">
           <button
