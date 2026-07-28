@@ -288,10 +288,10 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
         <div
           ref={ref}
           onClick={(e) => e.stopPropagation()}
-          className="w-[520px] max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl border border-[#2b2d31] bg-[#111214] animate-in fade-in-0 zoom-in-95 duration-200"
+          className="w-[680px] max-h-[92vh] overflow-y-auto rounded-2xl shadow-2xl border border-[#2b2d31] bg-[#111214] animate-in fade-in-0 zoom-in-95 duration-200"
         >
           {/* Banner */}
-           <div className="h-[130px] relative" style={{ background: profile?.banner_url ? `url(${profile.banner_url}) center/cover no-repeat` : color.banner }}>
+           <div className="h-[190px] relative" style={{ background: profile?.banner_url ? `url(${profile.banner_url}) center/cover no-repeat` : color.banner }}>
             <button onClick={onClose} className="absolute top-3 right-3 flex h-7 w-7 items-center justify-center rounded-full bg-black/40 text-white hover:bg-black/60 transition-colors">
               <X className="h-4 w-4" />
             </button>
@@ -301,7 +301,7 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
           <div className="px-5 -mt-12 relative z-10">
             <div className="relative inline-block">
               {profile?.avatar_url ? (
-                <img src={profile.avatar_url} alt={displayName} className="h-[96px] w-[96px] rounded-full border-[6px] border-[#111214] object-cover" />
+                <img src={profile.avatar_url} alt={displayName} className="h-[124px] w-[124px] rounded-full border-[7px] border-[#111214] object-cover" />
               ) : (
                 <div className="flex h-[96px] w-[96px] items-center justify-center rounded-full border-[6px] border-[#111214] text-3xl font-bold text-white" style={{ backgroundColor: color.bg }}>
                   {displayName.charAt(0).toUpperCase()}
@@ -367,7 +367,7 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
                     )}
                   </div>
                 </div>
-                <div className="flex flex-col gap-1.5 max-h-[260px] overflow-y-auto pr-1 -mr-1">
+                <div className="flex flex-col gap-1.5 max-h-[340px] overflow-y-auto pr-1 -mr-1">
                   {wishlist.map((w) => {
                     const canGift = !isOwnProfile && w.price_gems != null && gemBalance >= w.price_gems;
                     const notGiftable = w.price_gems == null;
@@ -523,9 +523,9 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
 
   // Mini profile card
   return createPortal((
-    <div ref={ref} style={style} className="w-[300px] rounded-xl overflow-hidden shadow-2xl border border-[#2b2d31] bg-[#111214] animate-in fade-in-0 zoom-in-95 duration-150">
+    <div ref={ref} style={style} className="w-[380px] rounded-xl overflow-hidden shadow-2xl border border-[#2b2d31] bg-[#111214] animate-in fade-in-0 zoom-in-95 duration-150">
       {/* Banner */}
-      <div className="h-[60px]" style={{ background: profile?.banner_url ? `url(${profile.banner_url}) center/cover no-repeat` : color.banner }} />
+      <div className="h-[92px]" style={{ background: profile?.banner_url ? `url(${profile.banner_url}) center/cover no-repeat` : color.banner }} />
 
       {/* Avatar - clickable to open full profile */}
       <div className="px-4 -mt-6 relative z-10">
@@ -534,12 +534,12 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
             <img
               src={profile.avatar_url}
               alt={displayName}
-              className="h-[52px] w-[52px] rounded-full border-[4px] border-[#111214] object-cover cursor-pointer hover:opacity-80 transition-opacity"
+              className="h-[68px] w-[68px] rounded-full border-[5px] border-[#111214] object-cover cursor-pointer hover:opacity-80 transition-opacity"
               onClick={() => setShowFullProfile(true)}
             />
           ) : (
             <div
-              className="flex h-[52px] w-[52px] items-center justify-center rounded-full border-[4px] border-[#111214] text-lg font-bold text-white cursor-pointer hover:opacity-80 transition-opacity"
+              className="flex h-[68px] w-[68px] items-center justify-center rounded-full border-[4px] border-[#111214] text-lg font-bold text-white cursor-pointer hover:opacity-80 transition-opacity"
               style={{ backgroundColor: color.bg }}
               onClick={() => setShowFullProfile(true)}
             >
