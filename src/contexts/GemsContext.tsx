@@ -59,7 +59,7 @@ export const GemsProvider = ({ children }: { children: ReactNode }) => {
     (async () => {
       // Complimentary plans renew themselves — roll the billing period forward
       // first so the monthly stipend below lines up with a real cycle.
-      await supabase.rpc("roll_complimentary_subscription" as any).catch(() => {});
+      try { await supabase.rpc("roll_complimentary_subscription" as any); } catch { /* non-fatal */ }
       if (cancelled) return;
       const { data, error } = await supabase.rpc("claim_honey_monthly_gems");
       if (cancelled || error) return;
