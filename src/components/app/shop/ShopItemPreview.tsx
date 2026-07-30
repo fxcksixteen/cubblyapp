@@ -253,32 +253,34 @@ export function ShopItemPreview({ item, displayName, sizeClass = "h-20 w-full ro
     if (item.id === "theme_aurora_borealis") {
       const curtain = (top: string, height: string, delay: string, dur: string, hueA: string, hueB: string, opacity: number) => (
         <div
-          className="absolute left-[-20%] right-[-20%]"
+          className="absolute left-[-45%] right-[-45%]"
           style={{
             top,
             height,
             opacity,
-            filter: "blur(10px) saturate(1.6)",
+            filter: "blur(8px) saturate(1.6)",
             mixBlendMode: "screen",
+            willChange: "transform, opacity",
             background: `linear-gradient(90deg, transparent 0%, ${hueA} 25%, ${hueB} 55%, ${hueA} 80%, transparent 100%)`,
             maskImage: "linear-gradient(180deg, rgba(0,0,0,0.05), rgba(0,0,0,0.95) 40%, rgba(0,0,0,0.3) 90%, transparent)",
             WebkitMaskImage: "linear-gradient(180deg, rgba(0,0,0,0.05), rgba(0,0,0,0.95) 40%, rgba(0,0,0,0.3) 90%, transparent)",
-            animation: `cb-aurora-preview ${dur} ease-in-out infinite`,
-            animationDelay: delay,
+            animation: `cb-aurora-preview ${dur} ease-in-out infinite, cb-aurora-preview-glow ${dur} ease-in-out infinite`,
+            animationDelay: `${delay}, ${delay}`,
           }}
         />
       );
       return (
         <div className={`relative overflow-hidden ${sizeClass}`} style={{ background: "linear-gradient(180deg,#01102a 0%,#03215a 55%,#042038 100%)" }}>
-          <div className="absolute inset-0" style={{ backgroundImage: "radial-gradient(1px 1px at 12% 18%,#fff,transparent),radial-gradient(1px 1px at 44% 10%,#e0f2fe,transparent),radial-gradient(1px 1px at 78% 22%,#fff,transparent)", opacity: 0.9 }} />
-          {curtain("2%", "70%", "0s", "6s", "rgba(52,211,153,0.75)", "rgba(59,130,246,0.6)", 0.95)}
-          {curtain("6%", "60%", "-2s", "8s", "rgba(168,85,247,0.55)", "rgba(52,211,153,0.5)", 0.8)}
-          {curtain("0%", "78%", "-4s", "11s", "rgba(94,234,212,0.5)", "rgba(147,197,253,0.45)", 0.65)}
-          <div className="absolute left-0 right-0" style={{ bottom: "35%", height: "22%", background: "radial-gradient(ellipse at 50% 100%, rgba(52,211,153,0.55), transparent 70%)", filter: "blur(6px)", mixBlendMode: "screen" }} />
+          <div className="absolute inset-0" style={{ backgroundImage: "radial-gradient(1px 1px at 12% 18%,#fff,transparent),radial-gradient(1px 1px at 44% 10%,#e0f2fe,transparent),radial-gradient(1px 1px at 78% 22%,#fff,transparent)", opacity: 0.9, animation: "cb-aurora-preview-twinkle 3.4s ease-in-out infinite" }} />
+          {curtain("2%", "70%", "0s", "5s", "rgba(52,211,153,0.75)", "rgba(59,130,246,0.6)", 0.95)}
+          {curtain("6%", "60%", "-1.6s", "7s", "rgba(168,85,247,0.55)", "rgba(52,211,153,0.5)", 0.8)}
+          {curtain("0%", "78%", "-3.2s", "9s", "rgba(94,234,212,0.5)", "rgba(147,197,253,0.45)", 0.65)}
+          <div className="absolute left-0 right-0" style={{ bottom: "35%", height: "22%", background: "radial-gradient(ellipse at 50% 100%, rgba(52,211,153,0.55), transparent 70%)", filter: "blur(6px)", mixBlendMode: "screen", animation: "cb-aurora-preview-glow 4.2s ease-in-out infinite" }} />
           <div className="absolute left-0 right-0 bottom-0" style={{ height: "40%", background: "#031225", clipPath: "polygon(0 55%, 20% 40%, 40% 55%, 60% 30%, 80% 55%, 100% 45%, 100% 100%, 0 100%)" }} />
         </div>
       );
     }
+
     if (item.id === "theme_sakura_storm") {
       return (
         <div className={`relative overflow-hidden ${sizeClass}`} style={{ background: "linear-gradient(180deg,#2a0e30 0%,#5c1846 40%,#c86e94 80%,#f4c1a6 100%)" }}>
