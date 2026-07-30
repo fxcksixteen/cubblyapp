@@ -23,11 +23,27 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.4.19";
+export const CURRENT_VERSION = "0.4.20";
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.4.20",
+    title: "Hotfix & QoL",
+    date: "2026-07-30",
+    hero: bearImage,
+    newFeatures: [
+      "Complimentary Honey plans now renew monthly like a real plan, including the 500 gem drop.",
+    ],
+    bugFixes: [
+      "Name decorations like bows and Hello Kitty no longer get cropped in the DM sidebar.",
+      "Northern Lights theme preview is now properly animated in the shop.",
+      "Typing in chats is much smoother on the desktop app.",
+      "Roblox activity now detects the game you're actually in and clears when you leave.",
+    ],
+  },
+  {
     version: "0.4.19",
+
     title: "QoL & polish",
     date: "2026-07-28",
     hero: bearImage,
