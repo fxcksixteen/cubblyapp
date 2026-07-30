@@ -591,9 +591,19 @@
 
 /* Shop preview: aurora curtain sweep */
 @keyframes cb-aurora-preview {
-  0%,100% { transform: translateX(-6%) skewX(-3deg); }
-  50%     { transform: translateX(6%)  skewX(3deg); }
+  0%   { transform: translate3d(-24%, 0, 0) skewX(-8deg) scaleY(1); }
+  50%  { transform: translate3d(24%, 2%, 0) skewX(8deg) scaleY(1.12); }
+  100% { transform: translate3d(-24%, 0, 0) skewX(-8deg) scaleY(1); }
 }
+@keyframes cb-aurora-preview-glow {
+  0%, 100% { opacity: 0.45; }
+  50%      { opacity: 1; }
+}
+@keyframes cb-aurora-preview-twinkle {
+  0%, 100% { opacity: 0.45; }
+  50%      { opacity: 1; }
+}
+
 
 /* ── Sakura Storm ───────────────────────────────────────── */
 .cb-sakura-bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;

@@ -1194,14 +1194,23 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
             onChange={(e) => {
               const v = e.target.value.slice(0, messageCap);
               setInput(v);
-              setCaretPos(e.target.selectionStart ?? v.length);
+              // Caret tracking only matters for the @mention popup. Updating it
+              // on every keystroke forced an extra full re-render of the whole
+              // thread, which is what made typing feel laggy on desktop.
+              if (v.includes("@")) setCaretPos(e.target.selectionStart ?? v.length);
               if (v.trim()) broadcastTyping();
               else broadcastStopTyping();
             }}
-            onSelect={(e) => setCaretPos((e.target as HTMLTextAreaElement).selectionStart ?? 0)}
-            onClick={(e) => setCaretPos((e.target as HTMLTextAreaElement).selectionStart ?? 0)}
-            onKeyUp={(e) => setCaretPos((e.target as HTMLTextAreaElement).selectionStart ?? 0)}
+            onSelect={(e) => {
+              const el = e.target as HTMLTextAreaElement;
+              if (el.value.includes("@")) setCaretPos(el.selectionStart ?? 0);
+            }}
+            onClick={(e) => {
+              const el = e.target as HTMLTextAreaElement;
+              if (el.value.includes("@")) setCaretPos(el.selectionStart ?? 0);
+            }}
             onBlur={broadcastStopTyping}
+
             onKeyDown={(e) => {
               // @mention popup navigation takes priority over Enter→send
               if (mentionMatch && mentionFiltered.length > 0) {

@@ -350,29 +350,31 @@ async function parseRoblox() {
   }
   if (!logPath) { console.log("[game-details] roblox: no log directory found"); return { inLauncher: true, status: "In Launcher" }; }
 
-  // v0.4.12: widen scan to 12 newest logs AND always include any file whose
-  // name contains "player" (Roblox's actual game-client log has *_Player_*
-  // in the filename). Previous 5-newest slice frequently missed it because
-  // launcher / http / crash-handler logs are constantly newer.
+  // v0.4.20: only look at logs from the CURRENT session. Previously every
+  // recent log was concatenated, so a placeId left over from a game you quit
+  // an hour ago kept reporting you as "playing" it, and matches from different
+  // files were read in filesystem order instead of chronological order.
   const dir = path.dirname(logPath);
-  let combined = "";
+  const FRESH_MS = 15 * 60 * 1000;
+  let picked = [];
   try {
+    const now = Date.now();
     const all = fs.readdirSync(dir)
       .filter((n) => n.endsWith(".log"))
-      .map((n) => ({ n, m: (fs.statSync(path.join(dir, n)).mtimeMs || 0) }));
-    const newest = [...all].sort((a, b) => b.m - a.m).slice(0, 12);
-    const playerLogs = all
-      .filter((f) => /player/i.test(f.n) && !newest.find((x) => x.n === f.n))
-      .sort((a, b) => b.m - a.m)
-      .slice(0, 4);
-    const picked = [...newest, ...playerLogs];
-    for (const { n } of picked) combined += "\n" + (tailFile(path.join(dir, n), 96 * 1024) || "");
+      .map((n) => ({ n, m: (fs.statSync(path.join(dir, n)).mtimeMs || 0) }))
+      .filter((f) => now - f.m < FRESH_MS)
+      .sort((a, b) => a.m - b.m); // oldest → newest so `.pop()` is chronological
+    // Prefer the actual game-client logs (*_Player_*) but keep the rest as
+    // context; if nothing is fresh we fall through to launcher.
+    picked = all.slice(-8);
   } catch {
-    combined = tailFile(logPath, 128 * 1024) || "";
+    picked = [];
   }
+  let combined = "";
+  for (const { n } of picked) combined += "\n" + (tailFile(path.join(dir, n), 96 * 1024) || "");
   const tail = combined;
-  if (!tail) {
-    console.log("[game-details] roblox: logs were empty — treating as launcher/home");
+  if (!tail.trim()) {
+    console.log("[game-details] roblox: no fresh logs — launcher/home");
     return { inLauncher: true, status: "In Launcher", studio: null };
   }
 
@@ -385,24 +387,36 @@ async function parseRoblox() {
     [...tail.matchAll(/GameName[\s"':=]+"?([^"\r\n,}]+)"?/gi)].pop() ||
     [...tail.matchAll(/Connecting to game '([^']+)'/gi)].pop() ||
     [...tail.matchAll(/joinGamePost\w*.*?place[= ]"?([A-Za-z0-9 _:'\-]+)"?/gi)].pop();
-  const placeIdMatch =
-    [...tail.matchAll(/place[Ii]d[:=\s"']+(\d{5,})/g)].pop() ||
-    [...tail.matchAll(/Report\s+game_join_loadtime[^]*?placeid[:=\s"']+(\d{5,})/gi)].pop() ||
-    [...tail.matchAll(/!\s*Joining game[^\n]*?place\s+(\d{5,})/gi)].pop() ||
-    [...tail.matchAll(/GameJoinUtil[^\n]*?placeId[:=\s]+(\d{5,})/gi)].pop() ||
-    [...tail.matchAll(/place\s*(\d{5,})/gi)].pop() ||
-    [...tail.matchAll(/Joining game [^\n]*?(\d{9,})/gi)].pop() ||
-    [...tail.matchAll(/joinGamePostPrivateServer[^\d]*(\d{5,})/gi)].pop() ||
-    [...tail.matchAll(/initiateTeleport[A-Za-z]*[^\d]*placeId[=:\s]+(\d{5,})/gi)].pop();
+  const placeIdMatches = [
+    ...tail.matchAll(/place[Ii]d[:=\s"']+(\d{5,})/g),
+    ...tail.matchAll(/Report\s+game_join_loadtime[^]*?placeid[:=\s"']+(\d{5,})/gi),
+    ...tail.matchAll(/!\s*Joining game[^\n]*?place\s+(\d{5,})/gi),
+    ...tail.matchAll(/GameJoinUtil[^\n]*?placeId[:=\s]+(\d{5,})/gi),
+    ...tail.matchAll(/Joining game [^\n]*?(\d{9,})/gi),
+    ...tail.matchAll(/joinGamePostPrivateServer[^\d]*(\d{5,})/gi),
+    ...tail.matchAll(/initiateTeleport[A-Za-z]*[^\d]*placeId[=:\s]+(\d{5,})/gi),
+  ].sort((a, b) => a.index - b.index);
+  const placeIdMatch = placeIdMatches[placeIdMatches.length - 1] || null;
   const universeMatch =
     [...tail.matchAll(/universe[Ii]d[:=\s"']+(\d{5,})/g)].pop() ||
     [...tail.matchAll(/game_join_loadtime[^]*?universeid[:=\s"']+(\d{5,})/gi)].pop();
   const serverTypeMatch = [...tail.matchAll(/serverType[\s"':=]+"?([A-Za-z_]+)/gi)].pop();
   const studio = /RobloxStudio/i.test(logPath);
 
-  const placeId = placeIdMatch?.[1] ? Number(placeIdMatch[1]) : null;
-  const universeId = universeMatch?.[1] ? Number(universeMatch[1]) : null;
-  let experience = placeNameMatch?.[1]?.trim() || null;
+  // Did the user LEAVE after the last join? If the newest disconnect/shutdown
+  // marker appears after the newest join marker, they're back in the launcher.
+  const lastJoinIdx = placeIdMatch ? placeIdMatch.index : -1;
+  const leaveMatches = [
+    ...tail.matchAll(/Client:Disconnect/gi),
+    ...tail.matchAll(/Leaving game/gi),
+    ...tail.matchAll(/GameShutdown|shutting down game|DataModel .*destroy/gi),
+  ].sort((a, b) => a.index - b.index);
+  const lastLeaveIdx = leaveMatches.length ? leaveMatches[leaveMatches.length - 1].index : -1;
+  const leftAfterJoin = lastJoinIdx >= 0 && lastLeaveIdx > lastJoinIdx;
+
+  const placeId = !leftAfterJoin && placeIdMatch?.[1] ? Number(placeIdMatch[1]) : null;
+  const universeId = !leftAfterJoin && universeMatch?.[1] ? Number(universeMatch[1]) : null;
+  let experience = !leftAfterJoin ? (placeNameMatch?.[1]?.trim() || null) : null;
 
   // Enrichment: if we only have a placeId, look up the experience name via
   // Roblox's public REST API. This is the difference between friends seeing
@@ -412,8 +426,14 @@ async function parseRoblox() {
     if (lookup?.name) experience = lookup.name;
   }
 
+  console.log(
+    "[game-details] roblox: logs=" + picked.map((f) => f.n).join(",") +
+    " placeId=" + placeId + " universeId=" + universeId +
+    " experience=" + (experience || "-") + " leftAfterJoin=" + leftAfterJoin
+  );
+
   if (!experience && !placeId && !universeId && !studio) {
-    console.log("[game-details] roblox: log found but no game-join lines — user is only in the launcher");
+    console.log("[game-details] roblox: no active game-join lines — user is only in the launcher");
     return { inLauncher: true, status: "In Launcher", studio: null };
   }
   // v0.4.12: even if REST enrichment failed, having a placeId/universeId
@@ -427,6 +447,7 @@ async function parseRoblox() {
     studio: studio || null,
   };
 }
+
 
 
 // ---------- Dispatcher -------------------------------------------------------

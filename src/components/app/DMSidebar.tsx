@@ -368,7 +368,7 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                           : ""
                       }`}
                     >
-                      <p className="truncate text-sm font-medium leading-tight flex items-center gap-1.5">
+                      <p className="min-w-0 overflow-visible text-sm font-medium leading-tight flex items-center gap-1.5">
                         {conv.is_group ? (
                           <span className="truncate">{displayName}</span>
                         ) : (
@@ -559,8 +559,9 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
           onStatusChange={setUserStatus}
           onOpenSettings={() => setSettingsOpen(true)}
         />
-        <div className="flex-1 overflow-hidden min-w-0">
-          <p className="truncate text-[15px] font-bold text-white leading-snug flex items-center gap-1.5">
+        <div className="flex-1 min-w-0">
+          <p className="min-w-0 overflow-visible text-[15px] font-bold text-white leading-snug flex items-center gap-1.5">
+
             <UserDisplayName userId={user?.id} name={displayName} fallbackColor="#ffffff" className="truncate" />
           </p>
           <p className="truncate text-[11px] leading-snug" style={{ color: "var(--app-text-secondary, #949ba4)" }}>{username}</p>

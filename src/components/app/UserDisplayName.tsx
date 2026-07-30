@@ -97,7 +97,11 @@ const UserDisplayName = ({
     mergedStyle.position = "relative";
     mergedStyle.display = "inline-block";
     mergedStyle.overflow = "visible";
+    // Reserve real space for the decoration instead of letting it overhang
+    // outside the box — parents in the DM sidebar clip overflow, which was
+    // cropping bows / Hello Kitty icons off the left edge.
     mergedStyle.paddingTop = iconUrl ? "0.45em" : "0.35em";
+    mergedStyle.paddingLeft = iconUrl ? "0.7em" : "0.3em";
   }
   return (
     <Tag className={className} style={mergedStyle} onClick={onClick}>
@@ -110,8 +114,8 @@ const UserDisplayName = ({
           draggable={false}
           style={{
             position: "absolute",
-            top: iconUrl ? "-0.1em" : "0.2em",
-            left: iconUrl ? "-0.55em" : "-0.15em",
+            top: iconUrl ? "0" : "0.2em",
+            left: 0,
             height: iconUrl ? "1.05em" : "0.75em",
             width: "auto",
             pointerEvents: "none",
@@ -122,6 +126,7 @@ const UserDisplayName = ({
           }}
         />
       )}
+
     </Tag>
   );
 };
