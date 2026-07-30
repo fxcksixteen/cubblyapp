@@ -368,7 +368,7 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                           : ""
                       }`}
                     >
-                      <p className="truncate text-sm font-medium leading-tight flex items-center gap-1.5">
+                      <p className="min-w-0 overflow-visible text-sm font-medium leading-tight flex items-center gap-1.5">
                         {conv.is_group ? (
                           <span className="truncate">{displayName}</span>
                         ) : (
