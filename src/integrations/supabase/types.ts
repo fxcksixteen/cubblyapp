@@ -1256,6 +1256,7 @@ export type Database = {
       subscriptions: {
         Row: {
           cancel_at_period_end: boolean
+          complimentary: boolean
           created_at: string
           current_period_end: string | null
           id: string
@@ -1269,6 +1270,7 @@ export type Database = {
         }
         Insert: {
           cancel_at_period_end?: boolean
+          complimentary?: boolean
           created_at?: string
           current_period_end?: string | null
           id?: string
@@ -1282,6 +1284,7 @@ export type Database = {
         }
         Update: {
           cancel_at_period_end?: boolean
+          complimentary?: boolean
           created_at?: string
           current_period_end?: string | null
           id?: string
@@ -1714,6 +1717,7 @@ export type Database = {
         Returns: undefined
       }
       revoke_server_invite: { Args: { _invite_id: string }; Returns: undefined }
+      roll_complimentary_subscription: { Args: never; Returns: Json }
       send_honey_gift_gems: {
         Args: {
           _conversation_id: string
