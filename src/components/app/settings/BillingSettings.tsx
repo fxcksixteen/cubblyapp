@@ -151,9 +151,10 @@ const BillingSettings = () => {
                 </div>
                 <p className="mt-1 text-sm" style={{ color: "var(--app-text-secondary)" }}>
                   {sub
-                    ? `Billed ${sub.interval === "year" ? "annually" : "monthly"}${sub.current_period_end ? ` • Renews ${new Date(sub.current_period_end).toLocaleDateString()}` : ""}`
+                    ? `${sub.complimentary ? "Complimentary" : `Billed ${sub.interval === "year" ? "annually" : "monthly"}`}${sub.current_period_end ? ` • Renews ${new Date(sub.current_period_end).toLocaleDateString()}` : ""}${sub.complimentary ? " • 500 gems each renewal" : ""}`
                     : "You're on the free plan. Upgrade for more badges, bigger uploads, and 500 monthly gems."}
                 </p>
+
               </div>
             </div>
 
