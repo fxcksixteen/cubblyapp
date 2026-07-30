@@ -57,8 +57,13 @@ export const GemsProvider = ({ children }: { children: ReactNode }) => {
     if (!user || !ent.loaded || !ent.isHoney) return;
     let cancelled = false;
     (async () => {
+      // Complimentary plans renew themselves — roll the billing period forward
+      // first so the monthly stipend below lines up with a real cycle.
+      await supabase.rpc("roll_complimentary_subscription" as any).catch(() => {});
+      if (cancelled) return;
       const { data, error } = await supabase.rpc("claim_honey_monthly_gems");
       if (cancelled || error) return;
+
       const payload = data as any;
       if (payload?.granted) {
         setBalance(Number(payload.balance ?? 0));
