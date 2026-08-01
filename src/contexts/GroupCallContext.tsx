@@ -39,6 +39,7 @@ import { STUN_FALLBACK_SERVERS, sanitizeIceServersForSession } from "@/lib/webrt
 import { AutomaticScreenEncoding, startAutomaticScreenEncoding } from "@/lib/screenShareEncoding";
 
 import {
+  applyScreenBitrate,
   applyScreenAudioBitrate,
   preferScreenShareCodec,
   patchScreenShareOpusSdp,

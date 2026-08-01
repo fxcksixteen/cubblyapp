@@ -50,11 +50,8 @@ const NONE: NativeWindowVideoHandle = { videoTrack: null, stop: () => {}, getSta
 
 /**
  * Hard ceiling on native capture rate, independent of the user's fps setting.
- *
- * WHY 30 AND NOT 60: there is no flow control between the main process and the
- * renderer — main sends every paced frame via webContents.send regardless of
- * whether the renderer is keeping up, so a starved renderer lets the IPC queue
- * grow without bound.
+ * Main now permits at most two unacknowledged frames, so 60fps cannot create
+ * the unbounded stale IPC queue that previously required a 30fps clamp.
  *
  * Measured at 1080p, VP9, under 12 busy-loop workers on 8 cores:
  *   60fps: main sent 8046 frames, renderer received 5294. ~2750 frames stuck
@@ -67,8 +64,7 @@ const NONE: NativeWindowVideoHandle = { videoTrack: null, stop: () => {}, getSta
  * ceiling exists purely because the unloaded case isn't the one that hurts
  * users — capturing a game is exactly when the machine is under load.
  *
- * Raise this only once main throttles on renderer acknowledgement rather than
- * firing frames blindly.
+ * Keep the acknowledgement guard in place before raising this further.
  */
 export const NATIVE_CAPTURE_FPS_CEILING = 60;
 
