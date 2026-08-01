@@ -5,6 +5,7 @@ import { useServers, type ServerChannel } from "@/contexts/ServersContext";
 import { useServerChannels, useServerMembers } from "@/hooks/useServerChannels";
 import { useChannelVoiceParticipants } from "@/hooks/useChannelVoiceParticipants";
 import type { Conversation } from "@/hooks/useConversations";
+import { useCustomStatuses } from "@/hooks/useCustomStatuses";
 import { useAuth } from "@/contexts/AuthContext";
 import { useGroupCall } from "@/contexts/GroupCallContext";
 import { supabase } from "@/integrations/supabase/client";
