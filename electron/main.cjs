@@ -936,17 +936,28 @@ ipcMain.handle("start-window-audio-capture", async (evt, sourceId) => {
     log.info("[winaudio] starting capture for sourceId:", sourceId, "pid:", pid);
     const senderWebContents = evt.sender;
     let frameCount = 0;
+    let nextSequence = 1;
+    const pendingSequences = new Set();
     const handle = winAudioCapture.start(pid, (pcmBuf) => {
       try {
         if (senderWebContents.isDestroyed()) return;
+        // Never let native audio queue behind a busy renderer. New PCM is
+        // preferable to replaying old game audio seconds later.
+        if (pendingSequences.size >= 4) return;
         frameCount++;
         if (frameCount === 1 || frameCount === 50 || frameCount % 500 === 0) {
           log.info("[winaudio] PCM frame #" + frameCount + " bytes=" + (pcmBuf?.length || 0));
         }
-        senderWebContents.send("window-audio-pcm", pcmBuf);
+        const sequence = nextSequence++;
+        pendingSequences.add(sequence);
+        senderWebContents.send("window-audio-pcm", {
+          data: pcmBuf,
+          sequence,
+          capturedAtMs: performance.timeOrigin + performance.now(),
+        });
       } catch (_) {}
     });
-    activeWindowCapture = { handle, sourceId, win: senderWebContents };
+    activeWindowCapture = { handle, sourceId, win: senderWebContents, pendingSequences };
     const fmt = winAudioCapture.getFormat();
     log.info("[winaudio] capture started OK, format:", JSON.stringify(fmt));
     return { ok: true, handle, format: fmt };
@@ -955,6 +966,11 @@ ipcMain.handle("start-window-audio-capture", async (evt, sourceId) => {
     log.error("[winaudio] start failed:", msg);
     return { ok: false, error: msg };
   }
+});
+
+ipcMain.on("window-audio-pcm-ack", (evt, sequence) => {
+  if (!activeWindowCapture || evt.sender !== activeWindowCapture.win) return;
+  activeWindowCapture.pendingSequences?.delete(sequence);
 });
 
 ipcMain.handle("stop-window-audio-capture", () => {

@@ -81,7 +81,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
   stopWindowAudioCapture: () => ipcRenderer.invoke("stop-window-audio-capture"),
   /** Subscribes to PCM frames; returns an unsubscribe fn. */
   onWindowAudioPcm: (cb) => {
-    const listener = (_e, buf) => cb(buf);
+    const listener = (_e, payload) => {
+      try { cb(payload); }
+      finally {
+        if (payload && typeof payload === "object" && Number.isFinite(payload.sequence)) {
+          ipcRenderer.send("window-audio-pcm-ack", payload.sequence);
+        }
+      }
+    };
     ipcRenderer.on("window-audio-pcm", listener);
     return () => ipcRenderer.removeListener("window-audio-pcm", listener);
   },

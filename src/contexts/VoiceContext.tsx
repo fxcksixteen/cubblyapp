@@ -329,8 +329,8 @@ export async function applyScreenBitrate(
     (params.encodings[0] as any).maxFramerate = opts?.maxFramerate ?? (params.encodings[0] as any).maxFramerate ?? 60;
     // v0.4.4: bump to "high" so a browser under load prioritises screenshare
     // packets over background fetches — Discord does the same.
-    (params.encodings[0] as any).networkPriority = "high";
-    (params.encodings[0] as any).priority = "high";
+    (params.encodings[0] as any).networkPriority = "low";
+    (params.encodings[0] as any).priority = "low";
     // v0.4.4: Ultra uses VP9/AV1 temporal scalability so a lost frame drops
     // the enhancement layer instead of the whole picture — framerate stays
     // stable under packet loss without the picture turning to mush.
@@ -359,8 +359,8 @@ export async function applyScreenAudioBitrate(sender: RTCRtpSender) {
       params.encodings = [{}];
     }
     params.encodings[0].maxBitrate = 256_000;
-    (params.encodings[0] as any).networkPriority = "high";
-    (params.encodings[0] as any).priority = "high";
+    (params.encodings[0] as any).networkPriority = "medium";
+    (params.encodings[0] as any).priority = "medium";
     await sender.setParameters(params);
   } catch (e) {
     console.warn("[Voice] Could not set screen audio bitrate:", e);
@@ -3573,6 +3573,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           targetFps: fpsCap,
           targetHeight,
           baseScale: scaleResolutionDownBy,
+          voicePc: pcRef.current,
         });
       }
 
