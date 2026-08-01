@@ -740,6 +740,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   // overwrote my outgoing PC's ref, breaking ICE routing for both streams.
   const screenPcOutRef = useRef<RTCPeerConnection | null>(null);
   const screenPcInRef = useRef<RTCPeerConnection | null>(null);
+  // v0.4.20 — ICE candidates routinely arrive BEFORE the matching screen PC
+  // exists (the offer and the first candidates are sent back-to-back over the
+  // same realtime channel, and delivery order is not guaranteed). Previously
+  // those candidates were silently dropped, which is exactly the "offer + ICE
+  // in the logs but no tracks ever flow" failure: the connection never gets a
+  // usable candidate pair and just sits there until the share is stopped.
+  const pendingScreenIceRef = useRef<{ in: RTCIceCandidateInit[]; out: RTCIceCandidateInit[] }>({ in: [], out: [] });
   /** Cleanup fn for an active native (WASAPI) per-window audio capture, if any. */
   const nativeWindowAudioStopRef = useRef<(() => void) | null>(null);
   /** Cleanup fn for an active native (WGC) per-window video capture, if any. */
