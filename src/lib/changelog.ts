@@ -32,9 +32,10 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: "2026-07-30",
     hero: bearImage,
     newFeatures: [
-      "Complimentary Honey plans now renew monthly like a real plan, including the 500 gem drop.",
+      "Custom statuses now show up everywhere — DM list, profiles, chat header and member lists.",
     ],
     bugFixes: [
+      "Everyone in a call can screen share at once — all shares now show up, not just the first.",
       "Name decorations like bows and Hello Kitty no longer get cropped in the DM sidebar.",
       "Northern Lights theme preview is now properly animated in the shop.",
       "Typing in chats is much smoother on the desktop app.",
