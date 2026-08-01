@@ -35,6 +35,12 @@ interface GroupMembersPanelProps {
 const GroupMembersPanel = ({ conversation, onClose, onLeftGroup }: GroupMembersPanelProps) => {
   const { user, onlineUserIds, myStatus } = useAuth();
   const { getActivity } = useActivity();
+  const memberStatuses = useCustomStatuses(
+    useMemo(
+      () => [...conversation.members.map((m) => m.user_id), user?.id],
+      [conversation.members, user?.id],
+    ),
+  );
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(conversation.name || "");
   const [savingName, setSavingName] = useState(false);
