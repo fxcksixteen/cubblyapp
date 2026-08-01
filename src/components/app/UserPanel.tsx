@@ -74,11 +74,11 @@ const UserPanel = () => {
     return () => { alive = false; supabase.removeChannel(channel); };
   }, [user]);
 
-  // Alternate between username and custom status every 4s.
+  // When a status is set it stays visible; the username only slides in while
+  // the pointer is over the panel.
   useEffect(() => {
-    if (!customStatus) { setShowCustom(false); return; }
-    const id = setInterval(() => setShowCustom((v) => !v), 4000);
-    return () => clearInterval(id);
+    if (!customStatus) setShowCustom(false);
+    else setShowCustom(true);
   }, [customStatus]);
 
   // Reflect whichever call the user is actually in — DM voice or group/server
