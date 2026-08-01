@@ -23,7 +23,7 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.4.21";
+export const CURRENT_VERSION = "0.4.22";
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
