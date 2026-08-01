@@ -347,6 +347,15 @@ export function startAutomaticScreenEncoding(
         lastAdjustAt = now;
       }
 
+      // Preserve motion cadence under a constrained uplink: step resolution
+      // down before touching the requested frame rate, then restore it slowly.
+      const bitrateRatio = bitrate / Math.max(1, perPeerTarget());
+      if (bitrateRatio < 0.45) {
+        scale = Math.min(Math.max(target.baseScale, 2.5), scale * 1.2);
+      } else if (decision.reason === "probe" && scale > target.baseScale) {
+        scale = Math.max(target.baseScale, scale / 1.1);
+      }
+
       cpuSamples = cpuLimited ? cpuSamples + 1 : 0;
       if (cpuSamples >= 4) {
         scale = Math.min(Math.max(target.baseScale, 2), scale * 1.15);
