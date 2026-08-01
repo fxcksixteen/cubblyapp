@@ -281,10 +281,18 @@ const ServerView = ({ unreadByConv, membersHidden = false }: { unreadByConv?: Ma
                         <StatusIndicator status={status} size="sm" borderColor="var(--app-bg-secondary)" />
                       </div>
                     </div>
-                    <div className="min-w-0 flex-1 flex items-center gap-1">
-                      <UserDisplayName userId={m.user_id} name={m.display_name} className="truncate text-sm font-medium" />
-                      <UserBadges userId={m.user_id} size={12} />
-                      {m.role === "owner" && <Crown aria-label="Owner" className="h-3.5 w-3.5 shrink-0" style={{ color: "#faa61a" }} />}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1 min-w-0">
+                        <UserDisplayName userId={m.user_id} name={m.display_name} className="truncate text-sm font-medium" />
+                        <UserBadges userId={m.user_id} size={12} />
+                        {m.role === "owner" && <Crown aria-label="Owner" className="h-3.5 w-3.5 shrink-0" style={{ color: "#faa61a" }} />}
+                      </div>
+                      {memberStatuses[m.user_id] && (
+                        <p className="truncate text-[11px] leading-tight flex items-center gap-1" style={{ color: "var(--app-text-secondary, #949ba4)" }}>
+                          {memberStatuses[m.user_id].emoji && <span className="cubbly-keep-animation">{memberStatuses[m.user_id].emoji}</span>}
+                          {memberStatuses[m.user_id].text && <span className="truncate">{memberStatuses[m.user_id].text}</span>}
+                        </p>
+                      )}
                     </div>
                   </div>
                 </MemberRowMenu>
