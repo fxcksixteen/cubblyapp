@@ -241,6 +241,7 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
           // Best-effort: ask the main process for rich game-specific details.
           // If no parser matches or it fails, we just leave activity_details alone.
           let effective = detected;
+          const isRoblox = /roblox/i.test(detected.processName || "") || /roblox/i.test(detected.displayName || "");
           try {
             if (api.getGameDetails) {
               const details = await api.getGameDetails(detected.processName)
@@ -250,8 +251,13 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
                 // only an actual experience counts as "Playing".
                 if (details.gameKey === "roblox") {
                   const p = details.payload as { inLauncher?: boolean; experience?: string | null; placeId?: number | null; universeId?: number | null };
-                  const inGame = !!(p.experience || p.placeId || p.universeId);
+                  const inGame = !p.inLauncher && !!(p.experience || p.placeId || p.universeId);
                   effective = { ...detected, type: inGame ? "game" : "software" };
+                  if (!inGame && lastDetailsKeyRef.current !== null) {
+                    // Drop any stale "In Game" row so the card and the verb agree.
+                    lastDetailsKeyRef.current = null;
+                    await supabase.from("activity_details").delete().eq("user_id", user.id);
+                  }
                 }
                 const key = `${details.gameKey}:${JSON.stringify(details.payload)}`;
                 if (lastDetailsKeyRef.current !== key) {
@@ -266,9 +272,22 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
                     { onConflict: "user_id" },
                   );
                 }
+              } else if (isRoblox) {
+                // No usable parse → we cannot claim they're in an experience.
+                // Roblox running with no fresh join logs means the launcher.
+                effective = { ...detected, type: "software" };
+                if (lastDetailsKeyRef.current !== null) {
+                  lastDetailsKeyRef.current = null;
+                  await supabase.from("activity_details").delete().eq("user_id", user.id);
+                }
               }
+            } else if (isRoblox) {
+              effective = { ...detected, type: "software" };
             }
-          } catch { /* swallow parser errors */ }
+          } catch {
+            /* swallow parser errors */
+            if (isRoblox) effective = { ...detected, type: "software" };
+          }
           broadcastActivity(effective);
 
         } else {
