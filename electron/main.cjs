@@ -1061,7 +1061,24 @@ function resetVideoStats() {
   };
 }
 
-ipcMain.handle("start-window-capture", async (evt, sourceId, maxFps) => {
+// Hard ceiling on the height that native capture emits. A 1440p/4K game
+// window otherwise ships ~12 MB per frame through the main process, which is
+// what made the app freeze while sharing a game (v0.4.24).
+const NATIVE_CAPTURE_MAX_HEIGHT = 1080;
+// If native capture produces nothing in this window, tear it down so the
+// renderer falls back to getDisplayMedia instead of sitting on a dead share.
+const NATIVE_FIRST_FRAME_TIMEOUT_MS = 4000;
+
+function teardownActiveVideoCapture(reason) {
+  if (!activeVideoCapture) return;
+  const { handle, watchdog } = activeVideoCapture;
+  if (watchdog) { try { clearTimeout(watchdog); } catch (_) {} }
+  try { winDxgiCapture?.stop(handle); } catch (e) { log.warn("[winvideo] stop error:", e?.message || e); }
+  activeVideoCapture = null;
+  if (reason) log.warn("[winvideo] capture torn down:", reason);
+}
+
+ipcMain.handle("start-window-capture", async (evt, sourceId, maxFps, maxHeight) => {
   if (!winDxgiCapture) {
     return { ok: false, error: "native addon unavailable (requires Windows 10 1903+ with prebuilt binary)" };
   }
@@ -1069,10 +1086,7 @@ ipcMain.handle("start-window-capture", async (evt, sourceId, maxFps) => {
   if (!hwnd) {
     return { ok: false, error: "could not parse HWND from sourceId: " + sourceId };
   }
-  if (activeVideoCapture) {
-    try { winDxgiCapture.stop(activeVideoCapture.handle); } catch {}
-    activeVideoCapture = null;
-  }
+  teardownActiveVideoCapture("replaced by a new capture");
   try {
     const senderWebContents = evt.sender;
     resetVideoStats();
@@ -1086,6 +1100,9 @@ ipcMain.handle("start-window-capture", async (evt, sourceId, maxFps) => {
     let nextFrameId = 1;
     log.info("[winvideo] starting capture for sourceId:", sourceId, "hwnd:", hwnd, "maxFps:", targetFps || "uncapped");
 
+    const heightCap = Number(maxHeight) > 0
+      ? Math.min(Number(maxHeight), NATIVE_CAPTURE_MAX_HEIGHT)
+      : NATIVE_CAPTURE_MAX_HEIGHT;
     const handle = winDxgiCapture.start(hwnd, (frame) => {
       try {
         videoStats.framesFromNative++;
@@ -1106,7 +1123,10 @@ ipcMain.handle("start-window-capture", async (evt, sourceId, maxFps) => {
         // Bound the main→renderer queue. At most two native frames may be in
         // flight; under game load newer frames are dropped instead of becoming
         // seconds-old video queued inside Electron IPC.
-        if (pendingFrameIds.size >= 2) {
+        // Single in-flight frame. Two was still enough to let a stalled
+        // renderer accumulate seconds-old video inside Electron IPC while the
+        // main thread serialized megabyte buffers.
+        if (pendingFrameIds.size >= 1) {
           videoStats.framesDroppedBackpressure++;
           return;
         }
@@ -1116,9 +1136,20 @@ ipcMain.handle("start-window-capture", async (evt, sourceId, maxFps) => {
         videoStats.bytesSent += frame?.data?.length || 0;
         senderWebContents.send("window-video-frame", { ...frame, frameId });
       } catch (_) {}
-    });
+    }, heightCap);
 
-    activeVideoCapture = { handle, sourceId, hwnd, win: senderWebContents, pendingFrameIds };
+    const watchdog = setTimeout(() => {
+      if (activeVideoCapture?.handle === handle && videoStats && videoStats.framesFromNative === 0) {
+        teardownActiveVideoCapture("no frames within " + NATIVE_FIRST_FRAME_TIMEOUT_MS + "ms (protected or hidden window)");
+        try { senderWebContents.send("window-video-capture-failed", { sourceId, reason: "no-frames" }); } catch (_) {}
+      }
+    }, NATIVE_FIRST_FRAME_TIMEOUT_MS);
+    // Never keep capturing into a renderer that went away.
+    const onGone = () => teardownActiveVideoCapture("renderer gone");
+    try { senderWebContents.once("destroyed", onGone); } catch (_) {}
+    try { senderWebContents.once("render-process-gone", onGone); } catch (_) {}
+
+    activeVideoCapture = { handle, sourceId, hwnd, win: senderWebContents, pendingFrameIds, watchdog };
     log.info("[winvideo] capture started OK, handle:", handle);
     return { ok: true, handle };
   } catch (e) {
