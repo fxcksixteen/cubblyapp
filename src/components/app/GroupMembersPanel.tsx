@@ -291,6 +291,15 @@ const GroupMembersPanel = ({ conversation, onClose, onLeftGroup }: GroupMembersP
                         </p>
                       );
                     }
+                    const cs = memberStatuses[m.user_id];
+                    if (cs) {
+                      return (
+                        <p className="truncate text-[11px] leading-tight flex items-center gap-1" style={{ color: "var(--app-text-secondary, #949ba4)" }}>
+                          {cs.emoji && <span className="cubbly-keep-animation">{cs.emoji}</span>}
+                          {cs.text && <span className="truncate">{cs.text}</span>}
+                        </p>
+                      );
+                    }
                     return null;
                   })()}
                 </div>
