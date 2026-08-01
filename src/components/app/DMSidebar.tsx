@@ -72,6 +72,13 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
   const { pending } = useFriends();
   const { isMuted, mutedUntil, setMute } = useConversationMutes();
   const { isPinned, pinnedAt, pinnedCount, setPinned } = useConversationPins();
+  const dmUserIds = useMemo(
+    () => conversations.filter((c) => !c.is_group).map((c) => c.participant.user_id),
+    [conversations],
+  );
+  const customStatuses = useCustomStatuses(dmUserIds);
+
+
 
   const handleTogglePin = async (convId: string, label: string) => {
     const currentlyPinned = isPinned(convId);
