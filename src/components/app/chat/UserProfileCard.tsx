@@ -74,6 +74,7 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
   const userActivity = getActivity(userId);
   const userActivityDetails = getActivityDetails(userId);
   const userActivityLabel = activityLabel(userActivity, isUserOnline);
+  const customStatus = useCustomStatus(userId);
 
   const [wishlist, setWishlist] = useState<WishlistEntry[] | null>(null);
   const { balance: gemBalance } = useGems();
