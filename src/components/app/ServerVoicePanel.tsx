@@ -174,15 +174,16 @@ const ServerVoicePanel = ({ conversationId }: Props) => {
       {/* Scrolling content area */}
       <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6">
         {/* Active screen share — large prominent tile at top */}
-        {sharingPeer && sharingPeer.screenStream && (
+        {sharingPeers.map((sp) => (
           <div
+            key={sp.userId}
             className="group relative mb-6 overflow-hidden rounded-xl bg-black"
             style={{ border: "1px solid var(--app-border)" }}
           >
             <video
               ref={(el) => {
-                if (el && sharingPeer.screenStream) {
-                  el.srcObject = sharingPeer.screenStream;
+                if (el && sp.screenStream) {
+                  el.srcObject = sp.screenStream;
                   el.play().catch(() => {});
                 }
               }}
@@ -192,12 +193,12 @@ const ServerVoicePanel = ({ conversationId }: Props) => {
             <button
               type="button"
               onClick={() =>
-                sharingPeer.screenStream &&
+                sp.screenStream &&
                 setFullscreenView({
-                  stream: sharingPeer.screenStream,
-                  name: sharingPeer.displayName,
+                  stream: sp.screenStream,
+                  name: sp.displayName,
                   type: "screen",
-                  peerId: sharingPeer.userId,
+                  peerId: sp.userId,
                 })
               }
               className="absolute top-3 right-3 flex h-9 w-9 items-center justify-center rounded-md bg-black/60 text-white opacity-0 group-hover:opacity-100 hover:bg-black/80 transition-opacity"
@@ -209,10 +210,10 @@ const ServerVoicePanel = ({ conversationId }: Props) => {
               className="absolute bottom-3 left-3 rounded px-2 py-1 text-xs font-medium"
               style={{ backgroundColor: "rgba(0,0,0,0.6)", color: "white" }}
             >
-              {sharingPeer.displayName} is sharing
+              {sp.displayName} is sharing
             </div>
           </div>
-        )}
+        ))}
 
         {activeCall.isScreenSharing && localScreenStream && (
           <div
