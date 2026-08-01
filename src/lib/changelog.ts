@@ -36,6 +36,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     ],
     bugFixes: [
       "Everyone in a call can screen share at once — all shares now show up, not just the first.",
+      "Screen shares that used to never appear for some people now start reliably.",
       "Name decorations like bows and Hello Kitty no longer get cropped in the DM sidebar.",
       "Northern Lights theme preview is now properly animated in the shop.",
       "Typing in chats is much smoother on the desktop app.",
