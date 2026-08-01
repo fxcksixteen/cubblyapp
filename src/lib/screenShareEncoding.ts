@@ -97,6 +97,34 @@ export function patchScreenShareVideoSdp(
 }
 
 
+/**
+ * v0.4.22 — keep voice ahead of the screen encoder.
+ *
+ * When a share saturates the uplink, Chromium splits the estimate across all
+ * senders on the connection. Marking the audio sender high-priority (and the
+ * video sender low) makes the pacer service voice packets first, which is why
+ * calls used to stutter the moment a game share started.
+ */
+export function prioritizeVoiceOverScreen(pc: RTCPeerConnection) {
+  try {
+    pc.getSenders().forEach((sender) => {
+      const kind = sender.track?.kind;
+      if (!kind) return;
+      const params = sender.getParameters();
+      if (!params.encodings?.length) return;
+      params.encodings.forEach((enc: any) => {
+        if (kind === "audio") {
+          enc.priority = "high";
+          enc.networkPriority = "high";
+        } else if (enc.networkPriority === "high") {
+          enc.networkPriority = "medium";
+        }
+      });
+      void sender.setParameters(params).catch(() => {});
+    });
+  } catch {}
+}
+
 async function applyEncoding(
   sender: RTCRtpSender,
   bitrate: number,
@@ -115,6 +143,7 @@ async function applyEncoding(
   (params as any).degradationPreference = "maintain-framerate";
   await sender.setParameters(params);
 }
+
 
 
 /**
