@@ -23,9 +23,22 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.4.23";
+export const CURRENT_VERSION = "0.4.24";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.4.24",
+    title: "Screenshare stability hotfix",
+    date: "2026-08-04",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Starting a screenshare no longer freezes the app.",
+      "Rejoining a call after closing Cubbly now actually puts you back in it.",
+      "Crashed or force-closed users no longer linger in the call.",
+      "The share picker no longer lists invisible background windows.",
+    ],
+  },
   {
     version: "0.4.23",
     title: "Game streaming hotfix",
