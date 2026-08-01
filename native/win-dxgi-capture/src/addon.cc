@@ -47,13 +47,18 @@ Napi::Value IsSupported(const Napi::CallbackInfo& info) {
 Napi::Value StartCapture(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
   if (info.Length() < 2 || !info[0].IsNumber() || !info[1].IsFunction()) {
-    Napi::TypeError::New(env, "startCapture(hwnd: number, onFrame: function)")
+    Napi::TypeError::New(env, "startCapture(hwnd: number, onFrame: function, maxHeight?: number)")
         .ThrowAsJavaScriptException();
     return env.Null();
   }
   HWND hwnd = reinterpret_cast<HWND>(
       static_cast<uintptr_t>(info[0].As<Napi::Number>().Int64Value()));
   Napi::Function jsCb = info[1].As<Napi::Function>();
+  uint32_t maxHeight = 0;
+  if (info.Length() >= 3 && info[2].IsNumber()) {
+    int32_t v = info[2].As<Napi::Number>().Int32Value();
+    if (v > 0) maxHeight = static_cast<uint32_t>(v);
+  }
 
   uint32_t handle;
   {
@@ -61,9 +66,18 @@ Napi::Value StartCapture(const Napi::CallbackInfo& info) {
     handle = g_nextHandle++;
   }
 
+  // BOUNDED queue + NonBlockingCall (v0.4.24).
+  //
+  // This used to be an unlimited queue driven by BlockingCall. Capturing a
+  // busy game window meant the WGC thread could enqueue multi-megabyte NV12
+  // frames faster than the Electron main thread could drain them, so the
+  // queue — and main-process memory — grew without bound and the whole app
+  // stopped responding (Windows offers to force-close it). With a depth of 2
+  // and a non-blocking call, a main thread that falls behind simply drops
+  // frames, which is always the correct trade for live video.
   auto tsfn = Napi::ThreadSafeFunction::New(
       env, jsCb, "cubbly-dxgi-frame-callback",
-      0,   // unlimited queue
+      2,   // max queue depth
       1);  // single thread
 
   auto capture = std::make_unique<cubbly::WindowCapture>();
