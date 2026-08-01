@@ -189,9 +189,20 @@ try {
       ? ["PlatformHEVCEncoderSupport"]
       : []),
   ];
-  const disableFeatures = ["UseChromeOSDirectVideoDecoder"];
+  const disableFeatures = [
+    "UseChromeOSDirectVideoDecoder",
+    // v0.4.22 — Windows Graphics Capture makes Windows paint a yellow outline
+    // around whatever is being shared, and it stays until the share ends.
+    // Chromium's older DXGI/GDI capture path has no such outline, so opt out
+    // of WGC for getDisplayMedia. The native game-capture module clears its
+    // own border via IsBorderRequired(false).
+    ...(process.platform === "win32"
+      ? ["WebRtcAllowWgcWindowCapturer", "WebRtcAllowWgcScreenCapturer", "WebRtcAllowWgcScreenZeroHz"]
+      : []),
+  ];
   app.commandLine.appendSwitch("enable-features", enableFeatures.join(","));
   app.commandLine.appendSwitch("disable-features", disableFeatures.join(","));
+
 
   if (process.platform === "win32") {
     app.commandLine.appendSwitch("use-angle", "d3d11");
