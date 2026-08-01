@@ -1,0 +1,22 @@
+{
+  "name": "win-dxgi-capture",
+  "version": "0.1.0",
+  "description": "Windows Graphics Capture (WGC) window capture as a native Node addon for Electron",
+  "main": "index.js",
+  "scripts": {
+    "install": "node-gyp-build",
+    "rebuild": "node-gyp rebuild",
+    "prebuild": "prebuildify --napi --strip -t electron@41.0.0 --arch=x64"
+  },
+  "dependencies": {
+    "node-addon-api": "^7.1.1",
+    "node-gyp-build": "^4.8.4"
+  },
+  "devDependencies": {
+    "prebuildify": "^6.0.1",
+    "prebuild-install": "^7.1.2"
+  },
+  "binary": {
+    "napi_versions": [ 8 ]
+  }
+}
