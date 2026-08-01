@@ -381,21 +381,48 @@ const FullscreenScreenShareViewer = ({ stream, sharerName, type = "screen", isLo
           </div>
 
           <div
-            className="flex items-center gap-2 shrink-0 rounded-full bg-black/60 backdrop-blur-md px-2 py-1.5 pointer-events-auto"
+            className="flex flex-col items-end gap-2 shrink-0 pointer-events-auto"
             onClick={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
           >
+            <div className="flex items-center gap-2 rounded-full bg-black/60 backdrop-blur-md px-2 py-1.5">
+              <button
+                onClick={(e) => { e.stopPropagation(); handlePip(); }}
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+                aria-label="Picture in picture"
+                title="Picture in picture"
+              >
+                <PictureInPicture2 className="h-4 w-4" />
+              </button>
+
+              <button
+                onClick={(e) => { e.stopPropagation(); setFitMode((m) => m === "contain" ? "cover" : "contain"); }}
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+                aria-label="Toggle fit"
+                title={fitMode === "contain" ? "Fill screen" : "Fit screen"}
+              >
+                {fitMode === "contain" ? <Maximize2 className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}
+              </button>
+
+              <button
+                onClick={(e) => { e.stopPropagation(); onClose(); }}
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 hover:bg-[#ed4245] text-white transition-colors"
+                aria-label="Exit fullscreen"
+                title="Exit (Esc)"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* v0.4.22 — VERTICAL stream volume. A horizontal slider sat right
+                next to the exit button, so a slightly-off drag would dismiss
+                fullscreen. Vertical keeps the drag axis away from the chrome. */}
             {!isLocal && (
-              <div className="flex items-center gap-2 px-1">
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleMuteToggle(); }}
-                  className="text-white hover:text-white/80"
-                  aria-label={muted ? "Unmute stream" : "Mute stream"}
-                  title={muted ? "Unmute stream" : "Mute stream"}
-                >
-                  {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
-                </button>
+              <div className="flex flex-col items-center gap-2 rounded-2xl bg-black/60 backdrop-blur-md px-2 py-2.5">
+                <span className="text-[10px] font-semibold tabular-nums text-white/80">
+                  {volumePct}%
+                </span>
                 <input
                   type="range"
                   min={0}
@@ -406,43 +433,29 @@ const FullscreenScreenShareViewer = ({ stream, sharerName, type = "screen", isLo
                   onClick={(e) => e.stopPropagation()}
                   onMouseDown={(e) => e.stopPropagation()}
                   onPointerDown={(e) => e.stopPropagation()}
-                  className="h-1 w-24 accent-[#3ba55c]"
+                  className="accent-[#3ba55c] cursor-pointer"
+                  style={{
+                    writingMode: "vertical-lr" as any,
+                    direction: "rtl",
+                    WebkitAppearance: "slider-vertical" as any,
+                    width: "20px",
+                    height: "110px",
+                  }}
                   aria-label="Stream volume"
                   title="Stream volume (right-click stream for advanced)"
                 />
-                <span className="text-[10px] font-semibold tabular-nums text-white/80 w-9 text-right">
-                  {volumePct}%
-                </span>
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleMuteToggle(); }}
+                  className="flex h-7 w-7 items-center justify-center rounded-full text-white hover:bg-white/15 transition-colors"
+                  aria-label={muted ? "Unmute stream" : "Mute stream"}
+                  title={muted ? "Unmute stream" : "Mute stream"}
+                >
+                  {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+                </button>
               </div>
             )}
-
-            <button
-              onClick={(e) => { e.stopPropagation(); handlePip(); }}
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
-              aria-label="Picture in picture"
-              title="Picture in picture"
-            >
-              <PictureInPicture2 className="h-4 w-4" />
-            </button>
-
-            <button
-              onClick={(e) => { e.stopPropagation(); setFitMode((m) => m === "contain" ? "cover" : "contain"); }}
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
-              aria-label="Toggle fit"
-              title={fitMode === "contain" ? "Fill screen" : "Fit screen"}
-            >
-              {fitMode === "contain" ? <Maximize2 className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}
-            </button>
-
-            <button
-              onClick={(e) => { e.stopPropagation(); onClose(); }}
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 hover:bg-[#ed4245] text-white transition-colors"
-              aria-label="Exit fullscreen"
-              title="Exit (Esc)"
-            >
-              <X className="h-4 w-4" />
-            </button>
           </div>
+
         </div>
 
         {/* Bottom hint pill — also anchored to inner frame */}
