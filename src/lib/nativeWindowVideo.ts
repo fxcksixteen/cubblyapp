@@ -21,8 +21,6 @@ export interface NativeWindowVideoStats {
   written: number;
   /** Dropped because a previous write was still in flight. */
   droppedBackpressure: number;
-  /** Dropped by the maxFps cap. */
-  droppedFpsCap: number;
   bytesReceived: number;
   /** FrameArrived (native) -> writer.write() resolved, microseconds. */
   endToEndUs: { p50: number; p95: number; max: number };
@@ -123,8 +121,10 @@ export async function startNativeWindowVideoStream(
   // ---- Start capture ------------------------------------------------------
   let result: any;
   try {
+    // maxFps is enforced in the main process before webContents.send, so
+    // capped frames never cross the process boundary at all.
     result = await Promise.race([
-      api.startWindowCapture(sourceId),
+      api.startWindowCapture(sourceId, maxFps),
       new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 2000)),
     ]);
   } catch (e: any) {
@@ -151,14 +151,14 @@ export async function startNativeWindowVideoStream(
   // unbounded queue would balloon memory and add latency. If a write is still
   // in flight, drop the incoming frame rather than queue it — for live
   // screenshare, newest-wins beats a growing backlog.
+  // NOTE: no fps gate here — pacing moved into the main process (see
+  // electron/framePacer.cjs) so dropped frames never pay the IPC cost.
+  // Frames arriving in this callback are already at the target rate.
   let writeInFlight = false;
-  let lastAcceptedAt = 0;
-  const minFrameIntervalMs = maxFps > 0 ? 1000 / maxFps : 0;
 
   let received = 0;
   let written = 0;
   let droppedBackpressure = 0;
-  let droppedFpsCap = 0;
   let bytesReceived = 0;
   const endToEndUs: number[] = [];
 
@@ -169,7 +169,6 @@ export async function startNativeWindowVideoStream(
       received++;
       bytesReceived += frame?.data?.byteLength || frame?.data?.length || 0;
 
-      if (minFrameIntervalMs && now - lastAcceptedAt < minFrameIntervalMs) { droppedFpsCap++; return; }
       if (writeInFlight) { droppedBackpressure++; return; }
 
       const data: Uint8Array =
@@ -186,7 +185,6 @@ export async function startNativeWindowVideoStream(
         timestamp: Math.round((now - t0) * 1000),
       });
 
-      lastAcceptedAt = now;
       writeInFlight = true;
 
       writer
@@ -227,7 +225,6 @@ export async function startNativeWindowVideoStream(
       received,
       written,
       droppedBackpressure,
-      droppedFpsCap,
       bytesReceived,
       endToEndUs: { p50: pct(0.5), p95: pct(0.95), max: sorted[sorted.length - 1] || 0 },
     };
@@ -241,7 +238,7 @@ export async function startNativeWindowVideoStream(
     const s = getStats();
     console.debug(
       `[NativeWindowVideo] stopped — received=${s.received} written=${s.written} ` +
-      `dropFps=${s.droppedFpsCap} dropBP=${s.droppedBackpressure}`
+      `dropBP=${s.droppedBackpressure}`
     );
   };
 

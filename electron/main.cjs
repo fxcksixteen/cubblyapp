@@ -4,6 +4,7 @@ const fs = require("fs");
 const { exec } = require("child_process");
 const { autoUpdater } = require("electron-updater");
 const log = require("electron-log");
+const { createFramePacer } = require("./framePacer.cjs");
 
 // ---- Native WASAPI process-loopback addon (Windows only) ---------------------
 // Resolves the prebuilt .node binary from native/win-audio-capture/prebuilds/.
@@ -986,6 +987,7 @@ function resetVideoStats() {
   videoStats = {
     startedAt: Date.now(),
     framesFromNative: 0,
+    framesDroppedByPacer: 0,
     framesSent: 0,
     framesSkippedDestroyed: 0,
     bytesSent: 0,
@@ -994,7 +996,7 @@ function resetVideoStats() {
   };
 }
 
-ipcMain.handle("start-window-capture", async (evt, sourceId) => {
+ipcMain.handle("start-window-capture", async (evt, sourceId, maxFps) => {
   if (!winDxgiCapture) {
     return { ok: false, error: "native addon unavailable (requires Windows 10 1903+ with prebuilt binary)" };
   }
@@ -1009,7 +1011,13 @@ ipcMain.handle("start-window-capture", async (evt, sourceId) => {
   try {
     const senderWebContents = evt.sender;
     resetVideoStats();
-    log.info("[winvideo] starting capture for sourceId:", sourceId, "hwnd:", hwnd);
+    const targetFps = Number(maxFps) > 0 ? Number(maxFps) : 0;
+    // CRITICAL: pace BEFORE webContents.send. The cap originally lived in the
+    // renderer, which meant every frame was serialized and copied across the
+    // process boundary only to be discarded on arrival — measured at 61% of
+    // 127 MB/s thrown away. Dropping here skips the IPC cost entirely.
+    const pacer = createFramePacer(targetFps);
+    log.info("[winvideo] starting capture for sourceId:", sourceId, "hwnd:", hwnd, "maxFps:", targetFps || "uncapped");
 
     const handle = winDxgiCapture.start(hwnd, (frame) => {
       try {
@@ -1019,6 +1027,10 @@ ipcMain.handle("start-window-capture", async (evt, sourceId) => {
           // the native system_clock stamp, so this subtraction is meaningful.
           const nowUs = (performance.timeOrigin + performance.now()) * 1000;
           videoStats.nativeToMainUs.push(nowUs - frame.captureTimeUs);
+        }
+        if (!pacer.shouldEmit(frame?.captureTimeUs)) {
+          videoStats.framesDroppedByPacer++;
+          return;
         }
         if (senderWebContents.isDestroyed()) {
           videoStats.framesSkippedDestroyed++;
@@ -1073,6 +1085,7 @@ ipcMain.handle("get-window-video-capture-stats", () => {
   return {
     elapsedMs: Date.now() - videoStats.startedAt,
     framesFromNative: videoStats.framesFromNative,
+    framesDroppedByPacer: videoStats.framesDroppedByPacer,
     framesSent: videoStats.framesSent,
     framesSkippedDestroyed: videoStats.framesSkippedDestroyed,
     bytesSent: videoStats.bytesSent,

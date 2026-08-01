@@ -90,7 +90,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Mirrors the audio channels above. All of these are absent on older
   // preloads, which the renderer treats as "fall back to getDisplayMedia".
   isWindowVideoCaptureAvailable: () => ipcRenderer.invoke("is-window-video-capture-available"),
-  startWindowCapture: (sourceId) => ipcRenderer.invoke("start-window-capture", sourceId),
+  /** maxFps is enforced in main BEFORE IPC, so capped frames cost nothing. */
+  startWindowCapture: (sourceId, maxFps) => ipcRenderer.invoke("start-window-capture", sourceId, maxFps),
   stopWindowCapture: () => ipcRenderer.invoke("stop-window-capture"),
   /** Subscribes to NV12 frames; returns an unsubscribe fn. */
   onWindowVideoFrame: (cb) => {
