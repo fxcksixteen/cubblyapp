@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, useRef, useEffect, ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { clearOwnGhostParticipants } from "@/lib/callGhosts";
 import { useAuth } from "@/contexts/AuthContext";
 import { playSound, playLooping, stopLooping } from "@/lib/sounds";
 import { startNativeWindowAudioStream } from "@/lib/nativeWindowAudio";
@@ -2732,6 +2733,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       // one participant briefly dropped out. The call only truly "ends" when
       // the last participant leaves (state flips to "ended").
       let existingStartedAtMs: number | undefined;
+      // Kill my own leftover rows first — otherwise a force-quit while in a
+      // call makes acquire_call_session hand me back the stale event I was
+      // "still in", and the people who moved on are invisible to me.
+      if (!activeCallRef.current) {
+        await clearOwnGhostParticipants(user.id, conversationId);
+      }
       try {
         const { data, error } = await (supabase as any).rpc("acquire_call_session", {
           _conversation_id: conversationId,

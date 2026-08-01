@@ -98,7 +98,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // preloads, which the renderer treats as "fall back to getDisplayMedia".
   isWindowVideoCaptureAvailable: () => ipcRenderer.invoke("is-window-video-capture-available"),
   /** maxFps is enforced in main BEFORE IPC, so capped frames cost nothing. */
-  startWindowCapture: (sourceId, maxFps) => ipcRenderer.invoke("start-window-capture", sourceId, maxFps),
+  startWindowCapture: (sourceId, maxFps, maxHeight) =>
+    ipcRenderer.invoke("start-window-capture", sourceId, maxFps, maxHeight),
+  onWindowVideoCaptureFailed: (cb) => {
+    const listener = (_e, info) => cb(info);
+    ipcRenderer.on("window-video-capture-failed", listener);
+    return () => ipcRenderer.removeListener("window-video-capture-failed", listener);
+  },
   stopWindowCapture: () => ipcRenderer.invoke("stop-window-capture"),
   /** Subscribes to NV12 frames; returns an unsubscribe fn. */
   onWindowVideoFrame: (cb) => {

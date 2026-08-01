@@ -6,7 +6,7 @@
 //
 // Exposes:
 //   isSupported(): boolean
-//   start(hwnd: number, onFrame: (frame: Frame) => void): handle
+//   start(hwnd: number, onFrame: (frame: Frame) => void, maxHeight?: number): handle
 //   stop(handle): void
 //
 // Frame = { data: Buffer, width: number, height: number, captureTimeUs: number }
@@ -82,7 +82,7 @@ function isSupported() {
   }
 }
 
-function start(hwnd, onFrame) {
+function start(hwnd, onFrame, maxHeight) {
   if (!hasCapture()) {
     throw new Error(
       "win-dxgi-capture native addon unavailable: " +
@@ -95,7 +95,8 @@ function start(hwnd, onFrame) {
   if (typeof onFrame !== "function") {
     throw new Error("start(hwnd, onFrame): onFrame must be a function");
   }
-  return nativeBinding.startCapture(hwnd, onFrame);
+  const cap = typeof maxHeight === "number" && maxHeight > 0 ? Math.round(maxHeight) : 0;
+  return nativeBinding.startCapture(hwnd, onFrame, cap);
 }
 
 function stop(handle) {

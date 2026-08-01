@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { isParticipantFresh } from "@/lib/callGhosts";
 
 export interface CallParticipantState {
   user_id: string;
@@ -25,15 +26,20 @@ export function useCallParticipants(callEventId: string | null) {
     }
     const { data } = await supabase
       .from("call_participants")
-      .select("user_id, is_muted, is_deafened, is_video_on, is_screen_sharing")
+      .select("user_id, is_muted, is_deafened, is_video_on, is_screen_sharing, last_seen_at, joined_at")
       .eq("call_event_id", callEventId)
       .is("left_at", null);
 
     if (!data) return;
     const map = new Map<string, CallParticipantState>();
-    data.forEach((p: any) => map.set(p.user_id, p));
+    // Skip rows whose heartbeat went stale — those are crashed/force-quit
+    // clients that would otherwise linger in the call UI forever.
+    data.forEach((p: any) => {
+      if (p.user_id !== user?.id && !isParticipantFresh(p)) return;
+      map.set(p.user_id, p);
+    });
     setParticipants(map);
-  }, [callEventId]);
+  }, [callEventId, user?.id]);
 
   useEffect(() => {
     fetchParticipants();

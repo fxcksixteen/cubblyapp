@@ -44,6 +44,13 @@ export interface NativeWindowVideoOptions {
   maxFps?: number;
   /** How long to wait for the first real frame before giving up (ms). */
   firstFrameTimeoutMs?: number;
+  /**
+   * Cap on the emitted frame height. Downscaling happens inside the native
+   * capture (before the frame is copied across the process boundary), so a
+   * 1440p/4K game window no longer ships multi-megabyte frames into the main
+   * process — the exact load that froze the whole app while sharing a game.
+   */
+  maxHeight?: number;
 }
 
 const NONE: NativeWindowVideoHandle = { videoTrack: null, stop: () => {}, getStats: () => null };
@@ -67,6 +74,9 @@ const NONE: NativeWindowVideoHandle = { videoTrack: null, stop: () => {}, getSta
  * Keep the acknowledgement guard in place before raising this further.
  */
 export const NATIVE_CAPTURE_FPS_CEILING = 60;
+
+/** Height ceiling for native capture output (see NativeWindowVideoOptions.maxHeight). */
+export const NATIVE_CAPTURE_MAX_HEIGHT = 1080;
 
 /**
  * Renderer-side capability probe.
@@ -106,7 +116,11 @@ export async function startNativeWindowVideoStream(
   sourceId: string,
   opts: NativeWindowVideoOptions = {}
 ): Promise<NativeWindowVideoHandle> {
-  const { maxFps = NATIVE_CAPTURE_FPS_CEILING, firstFrameTimeoutMs = 1500 } = opts;
+  const {
+    maxFps = NATIVE_CAPTURE_FPS_CEILING,
+    firstFrameTimeoutMs = 1500,
+    maxHeight = NATIVE_CAPTURE_MAX_HEIGHT,
+  } = opts;
 
   // ---- Gate 1: source kind ------------------------------------------------
   // WGC here is CreateForWindow only. "screen:" sources have no HWND to bind,
@@ -146,7 +160,7 @@ export async function startNativeWindowVideoStream(
     // maxFps is enforced in the main process before webContents.send, so
     // capped frames never cross the process boundary at all.
     result = await Promise.race([
-      api.startWindowCapture(sourceId, maxFps),
+      api.startWindowCapture(sourceId, maxFps, maxHeight),
       new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 2000)),
     ]);
   } catch (e: any) {
@@ -265,7 +279,16 @@ export async function startNativeWindowVideoStream(
     };
   };
 
+  // Main tears the capture down when the target window turns out to be
+  // protected/hidden (no frames). Stop the generator so the caller's track
+  // ends instead of freezing on the last frame.
+  const unsubscribeFailed = (api.onWindowVideoCaptureFailed?.((info: any) => {
+    console.debug("[NativeWindowVideo] main reported capture failure:", info?.reason);
+    try { stop(); } catch {}
+  }) ?? null) as null | (() => void);
+
   const stop = () => {
+    try { unsubscribeFailed?.(); } catch {}
     try { unsubscribe?.(); } catch {}
     try { api.stopWindowCapture?.(); } catch {}
     try { writer.close(); } catch {}

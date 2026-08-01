@@ -822,13 +822,50 @@ ipcMain.handle("pick-game-exe", async () => {
 });
 
 // Desktop capturer for screen sharing
+// Background/tray helpers (Razer overlays, GPU control panels, IME hosts, ...)
+// own real HWNDs with no visible window, so desktopCapturer happily lists them
+// as pickable "windows". Nothing usable ever comes out of capturing one, so
+// they are filtered out before the picker sees them (v0.4.24).
+const HIDDEN_WINDOW_NAME_PATTERNS = [
+  /^Default IME$/i,
+  /^MSCTFIME UI$/i,
+  /^GDI\+ Window$/i,
+  /^Program Manager$/i,
+  /^Windows Input Experience$/i,
+  /^Windows Shell Experience Host$/i,
+  /overlay( host)?$/i,
+  /^NVIDIA GeForce Overlay/i,
+  /Broadcast Window$/i,
+  /Hidden Window$/i,
+  /^Razer /i,
+  /Notification Center$/i,
+  /^Search$/i,
+];
+
+function isLikelyRealWindow(source) {
+  if (!source?.id) return false;
+  if (source.id.startsWith("screen:")) return true;
+  const name = (source.name || "").trim();
+  if (!name) return false;
+  if (HIDDEN_WINDOW_NAME_PATTERNS.some((re) => re.test(name))) return false;
+  // A window with nothing on screen produces an empty/degenerate thumbnail.
+  try {
+    if (!source.thumbnail || source.thumbnail.isEmpty()) return false;
+    const size = source.thumbnail.getSize();
+    if (!size || size.width < 8 || size.height < 8) return false;
+  } catch (_) {
+    return false;
+  }
+  return true;
+}
+
 ipcMain.handle("get-desktop-sources", async () => {
   const sources = await desktopCapturer.getSources({
     types: ["window", "screen"],
     thumbnailSize: { width: 320, height: 180 },
     fetchWindowIcons: true,
   });
-  return sources.map(source => ({
+  return sources.filter(isLikelyRealWindow).map(source => ({
     id: source.id,
     name: source.name,
     thumbnail: source.thumbnail.toDataURL(),
@@ -1024,7 +1061,24 @@ function resetVideoStats() {
   };
 }
 
-ipcMain.handle("start-window-capture", async (evt, sourceId, maxFps) => {
+// Hard ceiling on the height that native capture emits. A 1440p/4K game
+// window otherwise ships ~12 MB per frame through the main process, which is
+// what made the app freeze while sharing a game (v0.4.24).
+const NATIVE_CAPTURE_MAX_HEIGHT = 1080;
+// If native capture produces nothing in this window, tear it down so the
+// renderer falls back to getDisplayMedia instead of sitting on a dead share.
+const NATIVE_FIRST_FRAME_TIMEOUT_MS = 4000;
+
+function teardownActiveVideoCapture(reason) {
+  if (!activeVideoCapture) return;
+  const { handle, watchdog } = activeVideoCapture;
+  if (watchdog) { try { clearTimeout(watchdog); } catch (_) {} }
+  try { winDxgiCapture?.stop(handle); } catch (e) { log.warn("[winvideo] stop error:", e?.message || e); }
+  activeVideoCapture = null;
+  if (reason) log.warn("[winvideo] capture torn down:", reason);
+}
+
+ipcMain.handle("start-window-capture", async (evt, sourceId, maxFps, maxHeight) => {
   if (!winDxgiCapture) {
     return { ok: false, error: "native addon unavailable (requires Windows 10 1903+ with prebuilt binary)" };
   }
@@ -1032,10 +1086,7 @@ ipcMain.handle("start-window-capture", async (evt, sourceId, maxFps) => {
   if (!hwnd) {
     return { ok: false, error: "could not parse HWND from sourceId: " + sourceId };
   }
-  if (activeVideoCapture) {
-    try { winDxgiCapture.stop(activeVideoCapture.handle); } catch {}
-    activeVideoCapture = null;
-  }
+  teardownActiveVideoCapture("replaced by a new capture");
   try {
     const senderWebContents = evt.sender;
     resetVideoStats();
@@ -1049,6 +1100,9 @@ ipcMain.handle("start-window-capture", async (evt, sourceId, maxFps) => {
     let nextFrameId = 1;
     log.info("[winvideo] starting capture for sourceId:", sourceId, "hwnd:", hwnd, "maxFps:", targetFps || "uncapped");
 
+    const heightCap = Number(maxHeight) > 0
+      ? Math.min(Number(maxHeight), NATIVE_CAPTURE_MAX_HEIGHT)
+      : NATIVE_CAPTURE_MAX_HEIGHT;
     const handle = winDxgiCapture.start(hwnd, (frame) => {
       try {
         videoStats.framesFromNative++;
@@ -1069,7 +1123,10 @@ ipcMain.handle("start-window-capture", async (evt, sourceId, maxFps) => {
         // Bound the main→renderer queue. At most two native frames may be in
         // flight; under game load newer frames are dropped instead of becoming
         // seconds-old video queued inside Electron IPC.
-        if (pendingFrameIds.size >= 2) {
+        // Single in-flight frame. Two was still enough to let a stalled
+        // renderer accumulate seconds-old video inside Electron IPC while the
+        // main thread serialized megabyte buffers.
+        if (pendingFrameIds.size >= 1) {
           videoStats.framesDroppedBackpressure++;
           return;
         }
@@ -1079,9 +1136,20 @@ ipcMain.handle("start-window-capture", async (evt, sourceId, maxFps) => {
         videoStats.bytesSent += frame?.data?.length || 0;
         senderWebContents.send("window-video-frame", { ...frame, frameId });
       } catch (_) {}
-    });
+    }, heightCap);
 
-    activeVideoCapture = { handle, sourceId, hwnd, win: senderWebContents, pendingFrameIds };
+    const watchdog = setTimeout(() => {
+      if (activeVideoCapture?.handle === handle && videoStats && videoStats.framesFromNative === 0) {
+        teardownActiveVideoCapture("no frames within " + NATIVE_FIRST_FRAME_TIMEOUT_MS + "ms (protected or hidden window)");
+        try { senderWebContents.send("window-video-capture-failed", { sourceId, reason: "no-frames" }); } catch (_) {}
+      }
+    }, NATIVE_FIRST_FRAME_TIMEOUT_MS);
+    // Never keep capturing into a renderer that went away.
+    const onGone = () => teardownActiveVideoCapture("renderer gone");
+    try { senderWebContents.once("destroyed", onGone); } catch (_) {}
+    try { senderWebContents.once("render-process-gone", onGone); } catch (_) {}
+
+    activeVideoCapture = { handle, sourceId, hwnd, win: senderWebContents, pendingFrameIds, watchdog };
     log.info("[winvideo] capture started OK, handle:", handle);
     return { ok: true, handle };
   } catch (e) {
@@ -1098,11 +1166,7 @@ ipcMain.on("window-video-frame-ack", (evt, frameId) => {
 
 ipcMain.handle("stop-window-capture", () => {
   if (!activeVideoCapture) return { ok: true };
-  try {
-    winDxgiCapture?.stop(activeVideoCapture.handle);
-  } catch (e) {
-    log.warn("[winvideo] stop error:", e?.message || e);
-  }
+  teardownActiveVideoCapture(null);
   if (videoStats) {
     const secs = (Date.now() - videoStats.startedAt) / 1000;
     log.info(
@@ -1112,7 +1176,6 @@ ipcMain.handle("stop-window-capture", () => {
       `MB=${(videoStats.bytesSent / 1e6).toFixed(1)}`
     );
   }
-  activeVideoCapture = null;
   return { ok: true };
 });
 

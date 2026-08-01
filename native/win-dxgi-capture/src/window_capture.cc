@@ -54,7 +54,9 @@ inline uint8_t Clamp8(int v) { return static_cast<uint8_t>(v < 0 ? 0 : (v > 255 
 
 WindowCapture::~WindowCapture() { Stop(); }
 
-bool WindowCapture::Start(HWND hwnd, FrameCallback callback, std::string& outError) {
+bool WindowCapture::Start(HWND hwnd, FrameCallback callback, uint32_t maxHeight,
+                          std::string& outError) {
+  maxHeight_ = maxHeight;
   if (running_.load()) {
     outError = "Capture already running";
     return false;
@@ -242,13 +244,16 @@ void WindowCapture::OnFrameArrived(
 
     D3D11_MAPPED_SUBRESOURCE mapped;
     winrt::check_hresult(d3dContext_->Map(stagingTexture_.get(), 0, D3D11_MAP_READ, 0, &mapped));
+    uint32_t outW = 0, outH = 0;
     ConvertBgraToNv12(static_cast<const uint8_t*>(mapped.pData), mapped.RowPitch, desc.Width,
-                       desc.Height);
+                       desc.Height, outW, outH);
     d3dContext_->Unmap(stagingTexture_.get(), 0);
 
-    if (callback_) {
-      FrameInfo info{desc.Width, desc.Height, arrivedUs};
-      callback_(nv12Buffer_.data(), nv12Buffer_.size(), info);
+    if (callback_ && outW && outH) {
+      const size_t emitted =
+          static_cast<size_t>(outW) * outH + static_cast<size_t>((outW + 1) / 2) * ((outH + 1) / 2) * 2;
+      FrameInfo info{outW, outH, arrivedUs};
+      callback_(nv12Buffer_.data(), emitted, info);
     }
   } catch (...) {
     // Swallow and wait for the next frame.
@@ -283,21 +288,39 @@ void WindowCapture::EnsureStagingTexture(uint32_t width, uint32_t height) {
 // computed once per 2x2 block from the averaged RGB of that block (standard
 // 4:2:0 chroma subsampling), clamped to the edge for odd width/height.
 void WindowCapture::ConvertBgraToNv12(const uint8_t* srcData, uint32_t srcRowPitch,
-                                       uint32_t width, uint32_t height) {
-  uint32_t chromaWidth = (width + 1) / 2;
-  uint32_t chromaHeight = (height + 1) / 2;
-  size_t ySize = static_cast<size_t>(width) * height;
+                                       uint32_t width, uint32_t height,
+                                       uint32_t& outWidth, uint32_t& outHeight) {
+  // Integer downscale factor so the emitted frame never exceeds maxHeight_.
+  uint32_t step = 1;
+  if (maxHeight_ > 0 && height > maxHeight_) {
+    step = (height + maxHeight_ - 1) / maxHeight_;
+    if (step < 1) step = 1;
+  }
+  // Keep both dimensions even so 4:2:0 chroma blocks stay aligned.
+  uint32_t dstW = (width / step) & ~1u;
+  uint32_t dstH = (height / step) & ~1u;
+  if (dstW < 2 || dstH < 2) {
+    step = 1;
+    dstW = width & ~1u;
+    dstH = height & ~1u;
+  }
+  outWidth = dstW;
+  outHeight = dstH;
+
+  uint32_t chromaWidth = dstW / 2;
+  uint32_t chromaHeight = dstH / 2;
+  size_t ySize = static_cast<size_t>(dstW) * dstH;
+  size_t needed = ySize + static_cast<size_t>(chromaWidth) * chromaHeight * 2;
+  if (nv12Buffer_.size() < needed) nv12Buffer_.resize(needed);
   uint8_t* yPlane = nv12Buffer_.data();
   uint8_t* uvPlane = nv12Buffer_.data() + ySize;
 
-  for (uint32_t y = 0; y < height; ++y) {
-    const uint8_t* row = srcData + static_cast<size_t>(y) * srcRowPitch;
-    uint8_t* yRow = yPlane + static_cast<size_t>(y) * width;
-    for (uint32_t x = 0; x < width; ++x) {
-      uint8_t b = row[x * 4 + 0];
-      uint8_t g = row[x * 4 + 1];
-      uint8_t r = row[x * 4 + 2];
-      int yVal = ((66 * r + 129 * g + 25 * b + 128) >> 8) + 16;
+  for (uint32_t y = 0; y < dstH; ++y) {
+    const uint8_t* row = srcData + static_cast<size_t>(y * step) * srcRowPitch;
+    uint8_t* yRow = yPlane + static_cast<size_t>(y) * dstW;
+    for (uint32_t x = 0; x < dstW; ++x) {
+      const uint8_t* px = row + static_cast<size_t>(x * step) * 4;
+      int yVal = ((66 * px[2] + 129 * px[1] + 25 * px[0] + 128) >> 8) + 16;
       yRow[x] = Clamp8(yVal);
     }
   }
@@ -305,12 +328,12 @@ void WindowCapture::ConvertBgraToNv12(const uint8_t* srcData, uint32_t srcRowPit
   for (uint32_t cy = 0; cy < chromaHeight; ++cy) {
     uint8_t* uvRow = uvPlane + static_cast<size_t>(cy) * chromaWidth * 2;
     for (uint32_t cx = 0; cx < chromaWidth; ++cx) {
-      uint32_t x0 = cx * 2, y0 = cy * 2;
+      uint32_t x0 = cx * 2 * step, y0 = cy * 2 * step;
       uint8_t b0, g0, r0, b1, g1, r1, b2, g2, r2, b3, g3, r3;
       SampleBgra(srcData, srcRowPitch, width, height, x0, y0, b0, g0, r0);
-      SampleBgra(srcData, srcRowPitch, width, height, x0 + 1, y0, b1, g1, r1);
-      SampleBgra(srcData, srcRowPitch, width, height, x0, y0 + 1, b2, g2, r2);
-      SampleBgra(srcData, srcRowPitch, width, height, x0 + 1, y0 + 1, b3, g3, r3);
+      SampleBgra(srcData, srcRowPitch, width, height, x0 + step, y0, b1, g1, r1);
+      SampleBgra(srcData, srcRowPitch, width, height, x0, y0 + step, b2, g2, r2);
+      SampleBgra(srcData, srcRowPitch, width, height, x0 + step, y0 + step, b3, g3, r3);
       int r = (r0 + r1 + r2 + r3) / 4;
       int g = (g0 + g1 + g2 + g3) / 4;
       int b = (b0 + b1 + b2 + b3) / 4;
