@@ -1,0 +1,108 @@
+name: Prebuild Windows DXGI capture addon
+
+# Builds the win-dxgi-capture .node binary on a Windows runner so end users
+# (and your local electron-builder) don't need Visual Studio installed.
+# After a successful run, the workflow commits the produced .node files into
+# `native/win-dxgi-capture/prebuilds/` on the same branch.
+#
+# Mirrors prebuild-native.yml (win-audio-capture). The one real difference is
+# the toolchain requirement: this addon uses C++/WinRT and needs /std:c++20
+# plus the Windows SDK headers for Windows.Graphics.Capture, so it must build
+# with MSVC 2022 against a Windows 10 SDK 10.0.19041 or newer. windows-2022
+# runners ship a suitable SDK by default.
+#
+# Manual trigger: Actions tab → "Prebuild Windows DXGI capture addon" → Run workflow.
+# Auto-trigger: any push that touches the native source.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'native/win-dxgi-capture/**'
+      - '.github/workflows/prebuild-dxgi.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  prebuild:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+          fetch-depth: 0
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Python 3.11 (node-gyp)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Install node-gyp globally
+        run: npm install -g node-gyp@10
+
+      - name: Install native addon deps (incl. dev deps for prebuildify)
+        working-directory: native/win-dxgi-capture
+        env:
+          npm_config_build_from_source: 'true'
+        run: npm install --ignore-scripts --include=dev
+
+      # N-API addons are ABI-stable across Node/Electron versions, so a single
+      # NAPI build works for Electron 33, 41, and beyond. Targeting the actual
+      # Electron version we ship (41) avoids any chance of header drift.
+      - name: Prebuild for Electron 41 (x64, NAPI)
+        working-directory: native/win-dxgi-capture
+        env:
+          npm_config_msvs_version: '2022'
+        shell: cmd
+        run: npx --no-install prebuildify --napi --strip -t electron@41.0.0 --arch=x64 --verbose
+
+      - name: List prebuilds
+        if: always()
+        shell: cmd
+        run: |
+          if exist native\win-dxgi-capture\prebuilds (
+            dir /s native\win-dxgi-capture\prebuilds
+          ) else (
+            echo No prebuilds directory was created.
+            exit /b 1
+          )
+
+      - name: Commit prebuilds back to repo
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Always pull --rebase BEFORE staging, so we apply our prebuild on top
+          # of whatever the remote currently has (avoids "fetch first" rejection
+          # when other commits, like a version bump, landed mid-run).
+          BRANCH="${GITHUB_REF_NAME}"
+          echo "Branch: $BRANCH"
+          git fetch origin "$BRANCH"
+          git checkout -B "$BRANCH" "origin/$BRANCH" || git checkout "$BRANCH"
+          git add native/win-dxgi-capture/prebuilds
+          if git diff --cached --quiet; then
+            echo "No prebuild changes to commit."
+            exit 0
+          fi
+          git commit -m "chore(native): prebuild win-dxgi-capture (NAPI, Electron 41) [skip ci]"
+          # Retry loop in case someone pushes between our pull and our push.
+          for i in 1 2 3 4 5; do
+            if git pull --rebase origin "$BRANCH" && git push origin "HEAD:refs/heads/$BRANCH"; then
+              echo "Pushed prebuild on attempt $i"
+              exit 0
+            fi
+            echo "Push attempt $i failed, retrying..."
+            sleep 3
+          done
+          echo "All push attempts failed" >&2
+          exit 1
