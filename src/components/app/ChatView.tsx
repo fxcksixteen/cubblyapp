@@ -821,29 +821,13 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
       )}
 
       {latestOngoingCallEvent && latestEventRejoinable && !liveCallInThisChat && !inGroupCallHere && (conversation?.is_group || !!recipientUserId) && (
-        <div className="shrink-0 border-b px-4 py-3" style={{ borderColor: "var(--app-border)", backgroundColor: "var(--app-bg-secondary)" }}>
-          <div className="flex items-center justify-between gap-3 rounded-xl border px-3 py-3" style={{ borderColor: "var(--app-border)", backgroundColor: "var(--app-bg-tertiary)" }}>
-            <div className="flex min-w-0 items-center gap-3">
-              <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                <Phone className="h-4 w-4" />
-                <span className="absolute -inset-1 rounded-full border border-primary/40 animate-pulse" />
-              </div>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold" style={{ color: "var(--app-text-primary)" }}>Ongoing call in this chat</p>
-                <p className="truncate text-xs" style={{ color: "var(--app-text-secondary)" }}>
-                  Join back in without starting a second call.
-                </p>
-              </div>
-            </div>
-            <Button
-              size="sm"
-              onClick={() => handleRejoin(latestOngoingCallEvent.id)}
-              disabled={rejoiningEventId === latestOngoingCallEvent.id}
-              className="shrink-0 rounded-full"
-            >
-              {rejoiningEventId === latestOngoingCallEvent.id ? "Rejoining..." : "Join Call"}
-            </Button>
-          </div>
+        <div className="shrink-0">
+          <OngoingCallPanel
+            callEventId={latestOngoingCallEvent.id}
+            startedAt={latestOngoingCallEvent.startedAt}
+            joining={rejoiningEventId === latestOngoingCallEvent.id}
+            onJoin={() => handleRejoin(latestOngoingCallEvent.id)}
+          />
         </div>
       )}
 
