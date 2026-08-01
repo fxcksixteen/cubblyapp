@@ -3,6 +3,45 @@ export interface AutomaticScreenEncoding {
   targetFps: number;
   targetHeight: number;
   baseScale: number;
+  voicePc?: RTCPeerConnection | null;
+  getPeerCount?: () => number;
+}
+
+export interface ScreenCongestionSample {
+  bitrate: number;
+  targetBitrate: number;
+  floorBitrate: number;
+  availableOutgoingBitrate: number;
+  loss: number;
+  rttMs: number;
+  baselineRttMs: number;
+  bandwidthLimited: boolean;
+  cleanSamples: number;
+}
+
+export function nextScreenBitrate(sample: ScreenCongestionSample): { bitrate: number; cleanSamples: number; reason: string } {
+  const rttBloat = sample.baselineRttMs > 0 && sample.rttMs > sample.baselineRttMs + 65;
+  const pressure = sample.loss > 0.04 || sample.bandwidthLimited || rttBloat;
+  const estimatedSafe = sample.availableOutgoingBitrate > 0
+    ? Math.max(sample.floorBitrate, sample.availableOutgoingBitrate * 0.72)
+    : sample.targetBitrate;
+  if (pressure) {
+    return {
+      bitrate: Math.max(sample.floorBitrate, Math.min(sample.bitrate * 0.72, estimatedSafe)),
+      cleanSamples: 0,
+      reason: rttBloat ? "call-rtt" : sample.bandwidthLimited ? "bandwidth" : "loss",
+    };
+  }
+  const clean = sample.loss < 0.015 && (sample.baselineRttMs === 0 || sample.rttMs <= sample.baselineRttMs + 25);
+  const cleanSamples = clean ? sample.cleanSamples + 1 : 0;
+  if (cleanSamples >= 4) {
+    return {
+      bitrate: Math.min(sample.targetBitrate, estimatedSafe, sample.bitrate * 1.08),
+      cleanSamples: 0,
+      reason: "probe",
+    };
+  }
+  return { bitrate: sample.bitrate, cleanSamples, reason: "hold" };
 }
 
 /**
@@ -105,19 +144,29 @@ export function patchScreenShareVideoSdp(
  * video sender low) makes the pacer service voice packets first, which is why
  * calls used to stutter the moment a game share started.
  */
-export function prioritizeVoiceOverScreen(pc: RTCPeerConnection) {
+export function prioritizeVoiceOverScreen(screenPc: RTCPeerConnection, voicePc?: RTCPeerConnection | null) {
   try {
-    pc.getSenders().forEach((sender) => {
+    voicePc?.getSenders().forEach((sender) => {
+      if (sender.track?.kind !== "audio") return;
+      const params = sender.getParameters();
+      params.encodings?.forEach((enc: any) => {
+        enc.priority = "high";
+        enc.networkPriority = "high";
+      });
+      void sender.setParameters(params).catch(() => {});
+    });
+    screenPc.getSenders().forEach((sender) => {
       const kind = sender.track?.kind;
       if (!kind) return;
       const params = sender.getParameters();
       if (!params.encodings?.length) return;
       params.encodings.forEach((enc: any) => {
         if (kind === "audio") {
-          enc.priority = "high";
-          enc.networkPriority = "high";
-        } else if (enc.networkPriority === "high") {
-          enc.networkPriority = "medium";
+          enc.priority = voicePc ? "medium" : "high";
+          enc.networkPriority = voicePc ? "medium" : "high";
+        } else {
+          enc.priority = "low";
+          enc.networkPriority = "low";
         }
       });
       void sender.setParameters(params).catch(() => {});
@@ -166,12 +215,13 @@ export function startAutomaticScreenEncoding(
   // user-selected ceiling, uses a strict floor of 60 % of target, and only
   // reacts to *sustained* pressure (loss > 8 %, bandwidth-limited by
   // Chromium, or RTT sitting > 150 ms above baseline for 4+ samples).
-  let bitrate = target.targetBitrate;
+  const peerCount = () => Math.max(1, target.getPeerCount?.() ?? 1);
+  const perPeerTarget = () => Math.max(500_000, Math.round(target.targetBitrate / peerCount()));
+  let bitrate = Math.round(perPeerTarget() * 0.65);
   let scale = Math.max(1, target.baseScale);
-  const bitrateFloor = Math.round(target.targetBitrate * 0.6);
+  const bitrateFloor = Math.min(900_000, Math.max(350_000, Math.round(perPeerTarget() * 0.25)));
   let cleanSamples = 0;
   let cpuSamples = 0;
-  let bloatSamples = 0;
   let lastLost = 0;
   let lastReceived = 0;
   let lastFrames = 0;
@@ -185,11 +235,8 @@ export function startAutomaticScreenEncoding(
   // share. Now: a warm-up window where we never downshift, two consecutive
   // pressure samples before any backoff, a cooldown between adjustments, and
   // setParameters only when the value actually moved.
-  const startedAt = Date.now();
-  const WARMUP_MS = 8_000;
-  const COOLDOWN_MS = 6_000;
+  const COOLDOWN_MS = 3_000;
   let lastAdjustAt = 0;
-  let pressureSamples = 0;
   let appliedBitrate = 0;
   let appliedScale = 0;
 
@@ -204,7 +251,7 @@ export function startAutomaticScreenEncoding(
   // Start AT the target instead of discovering it: the first apply is forced
   // so the very first frames are already full quality.
   void update(true);
-  prioritizeVoiceOverScreen(pc);
+  prioritizeVoiceOverScreen(pc, target.voicePc);
 
   // Force an immediate keyframe so the very first frame the peer decodes is
   // full quality instead of a smeared low-bitrate I-frame from the encoder's
@@ -221,11 +268,15 @@ export function startAutomaticScreenEncoding(
     if (stopped || pc.connectionState === "closed") return;
     try {
       const stats = await pc.getStats();
+      const voiceStats = target.voicePc && target.voicePc !== pc
+        ? await target.voicePc.getStats().catch(() => null)
+        : null;
       let loss = 0;
       let fps = target.targetFps;
       let cpuLimited = false;
       let bandwidthLimited = false;
       let rttMs = 0;
+      let availableOutgoingBitrate = 0;
       stats.forEach((report: any) => {
         if (report.type === "remote-inbound-rtp" && report.kind === "video") {
           const lost = report.packetsLost ?? 0;
@@ -254,6 +305,18 @@ export function startAutomaticScreenEncoding(
             || encodeMsPerFrame > (1000 / target.targetFps) * 1.1;
           if (report.qualityLimitationReason === "bandwidth") bandwidthLimited = true;
         }
+        if (report.type === "candidate-pair" && report.state === "succeeded" && report.nominated) {
+          availableOutgoingBitrate = Math.max(availableOutgoingBitrate, report.availableOutgoingBitrate ?? 0);
+          if (!rttMs && typeof report.currentRoundTripTime === "number") rttMs = report.currentRoundTripTime * 1000;
+        }
+      });
+      voiceStats?.forEach((report: any) => {
+        if (report.type === "candidate-pair" && report.state === "succeeded" && report.nominated && typeof report.currentRoundTripTime === "number") {
+          rttMs = report.currentRoundTripTime * 1000;
+        }
+        if (report.type === "remote-inbound-rtp" && report.kind === "audio" && typeof report.roundTripTime === "number") {
+          rttMs = report.roundTripTime * 1000;
+        }
       });
 
       if (rttMs > 0) {
@@ -261,39 +324,26 @@ export function startAutomaticScreenEncoding(
         if (rttWindow.length > 20) rttWindow.shift();
       }
       const baselineRtt = rttWindow.length ? Math.min(...rttWindow) : 0;
-      // Only count as "bloated" if RTT sits well above baseline. 60 ms was
-      // way too tight for gaming — a Valorant round routinely swings 40 ms.
-      const bloated = baselineRtt > 0 && rttMs > baselineRtt + 150;
-      bloatSamples = bloated ? bloatSamples + 1 : Math.max(0, bloatSamples - 1);
-
-      const bandwidthPressure = loss > 0.08 || bandwidthLimited || bloatSamples >= 4;
-      const clearlyClean = loss < 0.02 && !bandwidthLimited && (baselineRtt === 0 || rttMs <= baselineRtt + 40);
-
       const now = Date.now();
-      const warmingUp = now - startedAt < WARMUP_MS;
       const cooling = now - lastAdjustAt < COOLDOWN_MS;
-
-      pressureSamples = bandwidthPressure ? pressureSamples + 1 : 0;
-
-      if (pressureSamples >= 2 && !warmingUp && !cooling) {
-        cleanSamples = 0;
-        pressureSamples = 0;
+      const decision = nextScreenBitrate({
+        bitrate,
+        targetBitrate: perPeerTarget(),
+        floorBitrate: bitrateFloor,
+        availableOutgoingBitrate,
+        loss,
+        rttMs,
+        baselineRttMs: baselineRtt,
+        bandwidthLimited,
+        cleanSamples,
+      });
+      cleanSamples = decision.cleanSamples;
+      if ((!cooling || decision.reason !== "probe") && decision.bitrate !== bitrate) {
+        bitrate = decision.bitrate;
         lastAdjustAt = now;
-        // Gentler backoff (10 %) with a high floor so a burst of loss can't
-        // knock the stream down to a blur.
-        bitrate = Math.max(bitrateFloor, bitrate * 0.9);
-        if (bloatSamples >= 4) bloatSamples = 2;
-      } else if (clearlyClean) {
-        cleanSamples += 1;
-        if (cleanSamples >= 3 && !cooling && bitrate < target.targetBitrate) {
-          lastAdjustAt = now;
-          bitrate = Math.min(target.targetBitrate, bitrate * 1.2);
-        }
-      } else if (!bandwidthPressure) {
-        cleanSamples = 0;
       }
 
-      cpuSamples = cpuLimited && !warmingUp ? cpuSamples + 1 : 0;
+      cpuSamples = cpuLimited ? cpuSamples + 1 : 0;
       if (cpuSamples >= 4) {
         scale = Math.min(Math.max(target.baseScale, 2), scale * 1.15);
         cpuSamples = 0;
@@ -301,6 +351,9 @@ export function startAutomaticScreenEncoding(
         scale = Math.max(target.baseScale, scale / 1.15);
       }
       await update();
+      if (import.meta.env.DEV) {
+        console.debug("[ScreenShare] transport", { bitrate: Math.round(bitrate), availableOutgoingBitrate, rttMs: Math.round(rttMs), baselineRtt: Math.round(baselineRtt), loss, scale, peers: peerCount(), reason: decision.reason });
+      }
     } catch {}
   }, 2_000);
 

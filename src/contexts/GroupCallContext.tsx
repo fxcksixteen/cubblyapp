@@ -720,7 +720,10 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       }
       logScreenEncoderImplementation(pc, "GroupCall");
       if (localScreenEncodingRef.current) {
-        screenEncodingCleanupRef.current.set(peerId, startAutomaticScreenEncoding(sender, pc, localScreenEncodingRef.current));
+        screenEncodingCleanupRef.current.set(peerId, startAutomaticScreenEncoding(sender, pc, {
+          ...localScreenEncodingRef.current,
+          getPeerCount: () => Math.max(1, pcsRef.current.size),
+        }));
       }
     }
 
@@ -1687,7 +1690,10 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         }
         logScreenEncoderImplementation(pc, "GroupCall");
         screenEncodingCleanupRef.current.get(peerId)?.();
-        screenEncodingCleanupRef.current.set(peerId, startAutomaticScreenEncoding(vSender, pc, localScreenEncodingRef.current));
+        screenEncodingCleanupRef.current.set(peerId, startAutomaticScreenEncoding(vSender, pc, {
+          ...localScreenEncodingRef.current,
+          getPeerCount: () => Math.max(1, pcsRef.current.size),
+        }));
 
         const audioSenders: RTCRtpSender[] = [];
         stream.getAudioTracks().forEach((atrack) => {
