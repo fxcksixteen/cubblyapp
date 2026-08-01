@@ -211,8 +211,8 @@ const CallDiagnosticsModal = ({ open, onClose }: Props) => {
                 mono
               />
               <Row
-
                 label="Transport"
+
                 value={
                   diag?.isRelay
                     ? <span style={{ color: "#faa61a" }}>Relayed (TURN)</span>
