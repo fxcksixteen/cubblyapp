@@ -255,12 +255,13 @@ const GroupCallPanel = ({ conversationId }: Props) => {
         </span>
       </div>
 
-      {sharingPeer && (
+      {sharingPeers.map((sp) => (
         <ScreenShareViewer
-          peer={sharingPeer}
-          onMaximize={() => sharingPeer.screenStream && setFullscreenView({ stream: sharingPeer.screenStream, name: sharingPeer.displayName, type: "screen", peerId: sharingPeer.userId })}
+          key={sp.userId}
+          peer={sp}
+          onMaximize={() => sp.screenStream && setFullscreenView({ stream: sp.screenStream, name: sp.displayName, type: "screen", peerId: sp.userId })}
         />
-      )}
+      ))}
       {activeCall.isScreenSharing && localScreenStream && (
         <div className="group mx-4 mt-3 rounded-xl overflow-hidden bg-black border relative" style={{ borderColor: "var(--app-border)" }}>
           <video
