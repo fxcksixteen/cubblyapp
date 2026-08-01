@@ -5,7 +5,8 @@
       "conditions": [
         ["OS=='win'", {
           "sources": [
-            "src/addon.cc"
+            "src/addon.cc",
+            "src/window_capture.cc"
           ],
           "include_dirs": [
             "<!(node -p \"require('node-addon-api').include_dir\")"

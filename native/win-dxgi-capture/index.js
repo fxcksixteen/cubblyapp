@@ -5,7 +5,10 @@
 // win-audio-capture/index.js for the incident that taught us this).
 //
 // Exposes:
-//   isSupported(): boolean   // false on non-Windows, missing binary, or unsupported OS build
+//   isSupported(): boolean
+//   start(hwnd: number, onFrame: (frame: { data: Buffer, width: number, height: number }) => void): handle
+//   stop(handle): void
+// `data` is NV12 (Y plane followed by interleaved UV, 4:2:0 subsampled).
 
 let nativeBinding = null;
 let loadError = null;
@@ -20,6 +23,10 @@ function tryLoad(filePath) {
     loadError = e;
   }
   return null;
+}
+
+function hasCapture() {
+  return !!nativeBinding && typeof nativeBinding.startCapture === "function";
 }
 
 try {
@@ -70,4 +77,27 @@ function isSupported() {
   }
 }
 
-module.exports = { isSupported, _loadError: loadError };
+function start(hwnd, onFrame) {
+  if (!hasCapture()) {
+    throw new Error(
+      "win-dxgi-capture native addon unavailable: " +
+      (loadError ? loadError.message : "non-Windows platform or missing prebuild")
+    );
+  }
+  if (typeof hwnd !== "number" || hwnd <= 0) {
+    throw new Error("start(hwnd, onFrame): hwnd must be a positive number");
+  }
+  if (typeof onFrame !== "function") {
+    throw new Error("start(hwnd, onFrame): onFrame must be a function");
+  }
+  return nativeBinding.startCapture(hwnd, onFrame);
+}
+
+function stop(handle) {
+  if (!hasCapture() || handle == null) return;
+  try {
+    nativeBinding.stopCapture(handle);
+  } catch (_) { /* ignore */ }
+}
+
+module.exports = { isSupported, start, stop, _loadError: loadError };
