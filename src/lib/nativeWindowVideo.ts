@@ -50,11 +50,8 @@ const NONE: NativeWindowVideoHandle = { videoTrack: null, stop: () => {}, getSta
 
 /**
  * Hard ceiling on native capture rate, independent of the user's fps setting.
- *
- * WHY 30 AND NOT 60: there is no flow control between the main process and the
- * renderer — main sends every paced frame via webContents.send regardless of
- * whether the renderer is keeping up, so a starved renderer lets the IPC queue
- * grow without bound.
+ * Main now permits at most two unacknowledged frames, so 60fps cannot create
+ * the unbounded stale IPC queue that previously required a 30fps clamp.
  *
  * Measured at 1080p, VP9, under 12 busy-loop workers on 8 cores:
  *   60fps: main sent 8046 frames, renderer received 5294. ~2750 frames stuck
@@ -67,10 +64,9 @@ const NONE: NativeWindowVideoHandle = { videoTrack: null, stop: () => {}, getSta
  * ceiling exists purely because the unloaded case isn't the one that hurts
  * users — capturing a game is exactly when the machine is under load.
  *
- * Raise this only once main throttles on renderer acknowledgement rather than
- * firing frames blindly.
+ * Keep the acknowledgement guard in place before raising this further.
  */
-export const NATIVE_CAPTURE_FPS_CEILING = 30;
+export const NATIVE_CAPTURE_FPS_CEILING = 60;
 
 /**
  * Renderer-side capability probe.
@@ -197,19 +193,22 @@ export async function startNativeWindowVideoStream(
   const endToEndUs: number[] = [];
 
   const unsubscribe = api.onWindowVideoFrame((frame: any) => {
+    const acknowledge = () => {
+      if (frame?.frameId != null) api.ackWindowVideoFrame?.(frame.frameId);
+    };
     try {
-      if (generator.readyState !== "live") return;
+      if (generator.readyState !== "live") { acknowledge(); return; }
       const now = performance.now();
       received++;
       bytesReceived += frame?.data?.byteLength || frame?.data?.length || 0;
 
-      if (writeInFlight) { droppedBackpressure++; return; }
+      if (writeInFlight) { droppedBackpressure++; acknowledge(); return; }
 
       const data: Uint8Array =
         frame?.data instanceof Uint8Array ? frame.data : new Uint8Array(frame?.data || []);
       const width = frame?.width | 0;
       const height = frame?.height | 0;
-      if (!width || !height || data.byteLength === 0) return;
+      if (!width || !height || data.byteLength === 0) { acknowledge(); return; }
 
       const vf = new G.VideoFrame(data, {
         format: "NV12",
@@ -235,6 +234,7 @@ export async function startNativeWindowVideoStream(
         .catch(() => { /* generator closed mid-write; teardown handles it */ })
         .finally(() => {
           writeInFlight = false;
+          acknowledge();
           // Writing transfers ownership, but close() is idempotent and this
           // guarantees we never leak a frame if the write rejected.
           try { vf.close(); } catch {}
@@ -246,6 +246,7 @@ export async function startNativeWindowVideoStream(
         signalFirstFrame(true);
       }
     } catch (e) {
+      acknowledge();
       console.debug("[NativeWindowVideo] frame decode failed:", e);
     }
   });

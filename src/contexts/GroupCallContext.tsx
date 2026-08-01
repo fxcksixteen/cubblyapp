@@ -39,6 +39,8 @@ import { STUN_FALLBACK_SERVERS, sanitizeIceServersForSession } from "@/lib/webrt
 import { AutomaticScreenEncoding, startAutomaticScreenEncoding } from "@/lib/screenShareEncoding";
 
 import {
+  addScreenVideoTransceiver,
+  applyScreenBitrate,
   applyScreenAudioBitrate,
   preferScreenShareCodec,
   patchScreenShareOpusSdp,
@@ -697,13 +699,18 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         localScreenEncodingRef.current?.baseScale ?? 1,
         { lowPower },
       );
-      const tx = pc.addTransceiver(localScreenTrackRef.current, {
-        direction: "sendonly",
-        streams: [screenStream],
-        sendEncodings: enc,
-      } as any);
+      const tx = addScreenVideoTransceiver(pc, localScreenTrackRef.current, screenStream, enc);
       const sender = tx.sender;
       screenSendersRef.current.set(peerId, sender);
+      void applyScreenBitrate(sender,
+        localScreenEncodingRef.current?.targetBitrate ?? 4_000_000,
+        {
+          maxFramerate: localScreenEncodingRef.current?.targetFps ?? 30,
+          scaleResolutionDownBy: localScreenEncodingRef.current?.baseScale ?? 1,
+          preferMotion: true,
+          ultra: true,
+        },
+      );
       const chosen = preferScreenShareCodec(tx);
       if (chosen && /vp9/i.test(chosen)) {
         try {
@@ -1662,13 +1669,15 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         Object.defineProperty(labeledStream, "id", { value: `cubbly-screen-${user.id}` });
         // v0.4.18 — simulcast per peer, HW-friendly codec pref, VP9 SVC fallback.
         const enc = buildScreenSendEncodings(maxBitrate, fpsCap, scaleResolutionDownBy, { lowPower: grpLowPower });
-        const tx = pc.addTransceiver(videoTrack, {
-          direction: "sendonly",
-          streams: [labeledStream],
-          sendEncodings: enc,
-        } as any);
+        const tx = addScreenVideoTransceiver(pc, videoTrack, labeledStream, enc);
         const vSender = tx.sender;
         screenSendersRef.current.set(peerId, vSender);
+        void applyScreenBitrate(vSender, maxBitrate, {
+          maxFramerate: fpsCap,
+          scaleResolutionDownBy,
+          preferMotion: true,
+          ultra: true,
+        });
         const chosen = preferScreenShareCodec(tx);
         if (chosen && /vp9/i.test(chosen)) {
           try {

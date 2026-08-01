@@ -988,6 +988,7 @@ function resetVideoStats() {
     startedAt: Date.now(),
     framesFromNative: 0,
     framesDroppedByPacer: 0,
+    framesDroppedBackpressure: 0,
     framesSent: 0,
     framesSkippedDestroyed: 0,
     bytesSent: 0,
@@ -1017,6 +1018,8 @@ ipcMain.handle("start-window-capture", async (evt, sourceId, maxFps) => {
     // process boundary only to be discarded on arrival — measured at 61% of
     // 127 MB/s thrown away. Dropping here skips the IPC cost entirely.
     const pacer = createFramePacer(targetFps);
+    const pendingFrameIds = new Set();
+    let nextFrameId = 1;
     log.info("[winvideo] starting capture for sourceId:", sourceId, "hwnd:", hwnd, "maxFps:", targetFps || "uncapped");
 
     const handle = winDxgiCapture.start(hwnd, (frame) => {
@@ -1036,13 +1039,22 @@ ipcMain.handle("start-window-capture", async (evt, sourceId, maxFps) => {
           videoStats.framesSkippedDestroyed++;
           return;
         }
+        // Bound the main→renderer queue. At most two native frames may be in
+        // flight; under game load newer frames are dropped instead of becoming
+        // seconds-old video queued inside Electron IPC.
+        if (pendingFrameIds.size >= 2) {
+          videoStats.framesDroppedBackpressure++;
+          return;
+        }
+        const frameId = nextFrameId++;
+        pendingFrameIds.add(frameId);
         videoStats.framesSent++;
         videoStats.bytesSent += frame?.data?.length || 0;
-        senderWebContents.send("window-video-frame", frame);
+        senderWebContents.send("window-video-frame", { ...frame, frameId });
       } catch (_) {}
     });
 
-    activeVideoCapture = { handle, sourceId, hwnd, win: senderWebContents };
+    activeVideoCapture = { handle, sourceId, hwnd, win: senderWebContents, pendingFrameIds };
     log.info("[winvideo] capture started OK, handle:", handle);
     return { ok: true, handle };
   } catch (e) {
@@ -1050,6 +1062,11 @@ ipcMain.handle("start-window-capture", async (evt, sourceId, maxFps) => {
     log.error("[winvideo] start failed:", msg);
     return { ok: false, error: msg };
   }
+});
+
+ipcMain.on("window-video-frame-ack", (evt, frameId) => {
+  if (!activeVideoCapture || evt.sender !== activeVideoCapture.win) return;
+  activeVideoCapture.pendingFrameIds?.delete(frameId);
 });
 
 ipcMain.handle("stop-window-capture", () => {
@@ -1064,6 +1081,7 @@ ipcMain.handle("stop-window-capture", () => {
     log.info(
       `[winvideo] capture stopped after ${secs.toFixed(1)}s — ` +
       `native=${videoStats.framesFromNative} sent=${videoStats.framesSent} ` +
+      `dropBP=${videoStats.framesDroppedBackpressure} ` +
       `MB=${(videoStats.bytesSent / 1e6).toFixed(1)}`
     );
   }
