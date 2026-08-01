@@ -99,7 +99,10 @@ Napi::Value StartCapture(const Napi::CallbackInfo& info) {
           }
           tsfn = it->second;
         }
-        auto status = tsfn.BlockingCall(
+        // NonBlockingCall: when the main thread is behind, napi_queue_full is
+        // returned and this frame is discarded instead of stalling the WGC
+        // thread and growing an unbounded backlog.
+        auto status = tsfn.NonBlockingCall(
             payload, [](Napi::Env env, Napi::Function cb, FramePayload* p) {
               auto buf = Napi::Buffer<uint8_t>::Copy(env, p->nv12.data(), p->nv12.size());
               Napi::Object frame = Napi::Object::New(env);
@@ -115,6 +118,7 @@ Napi::Value StartCapture(const Napi::CallbackInfo& info) {
             });
         if (status != napi_ok) delete payload;
       },
+      maxHeight,
       err);
 
   if (!ok) {
