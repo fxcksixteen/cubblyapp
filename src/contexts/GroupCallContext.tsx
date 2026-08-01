@@ -23,6 +23,7 @@
  */
 import { createContext, useContext, useState, useCallback, useRef, useEffect, ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { clearOwnGhostParticipants } from "@/lib/callGhosts";
 import { useAuth } from "@/contexts/AuthContext";
 import { playSound, playLooping, stopLooping } from "@/lib/sounds";
 import { toast } from "sonner";
@@ -941,6 +942,9 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
 
     let callEventId: string;
     let callStartedAt: number = Date.now();
+    // Same ghost guard as DM calls: a force-quit leaves my participant row
+    // open, which would make acquire_call_session reuse the dead event.
+    await clearOwnGhostParticipants(user.id, conversationId);
     try {
       const { data, error } = await (supabase as any).rpc("acquire_call_session", {
         _conversation_id: conversationId,
