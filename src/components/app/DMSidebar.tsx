@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useCustomStatuses } from "@/hooks/useCustomStatuses";
 import StatusIndicator from "@/components/app/StatusIndicator";
 import GroupAvatar from "@/components/app/GroupAvatar";
 import { useAuth } from "@/contexts/AuthContext";
