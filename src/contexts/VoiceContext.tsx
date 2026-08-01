@@ -2500,6 +2500,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           }
           try {
             await pcOut.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+            const queuedOut = pendingScreenIceRef.current.out.splice(0);
+            for (const c of queuedOut) {
+              try { await pcOut.addIceCandidate(new RTCIceCandidate(c)); } catch {}
+            }
           } catch (e) {
             console.warn("[Voice] screen-answer setRemoteDescription failed (ignored):", e);
           }
