@@ -23,9 +23,21 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.4.22";
+export const CURRENT_VERSION = "0.4.23";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.4.23",
+    title: "Game streaming hotfix",
+    date: "2026-08-03",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Game streams now protect call ping while keeping motion clear.",
+      "Stream audio now catches back up automatically after lag.",
+      "Group and server streams no longer overload upload as viewers join.",
+    ],
+  },
   {
     version: "0.4.22",
     title: "Streaming polish",

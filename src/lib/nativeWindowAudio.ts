@@ -16,6 +16,14 @@ export interface NativeWindowAudioHandle {
   stop: () => void;
 }
 
+export const NATIVE_AUDIO_TARGET_LEAD_SECONDS = 0.045;
+export const NATIVE_AUDIO_MAX_LEAD_SECONDS = 0.22;
+
+export function shouldResyncNativeAudio(nextStartTime: number, currentTime: number, capturedAtMs?: number, nowMs = performance.timeOrigin + performance.now()) {
+  const staleCapture = typeof capturedAtMs === "number" && nowMs - capturedAtMs > 250;
+  return staleCapture || nextStartTime - currentTime > NATIVE_AUDIO_MAX_LEAD_SECONDS;
+}
+
 export async function startNativeWindowAudioStream(sourceId: string): Promise<NativeWindowAudioHandle> {
   const api = (window as any).electronAPI;
   if (!api?.startWindowAudioCapture) {
@@ -70,9 +78,14 @@ export async function startNativeWindowAudioStream(sourceId: string): Promise<Na
   const isFloat = !!fmt.floatPcm;
   const bytesPerSample = isFloat ? 4 : 2;
   let pcmFramesReceived = 0;
+  let droppedStaleFrames = 0;
+  let resyncCount = 0;
+  const scheduledSources = new Set<AudioBufferSourceNode>();
 
-  const unsubscribe = api.onWindowAudioPcm((buf: ArrayBuffer | Uint8Array) => {
+  const unsubscribe = api.onWindowAudioPcm((payload: ArrayBuffer | Uint8Array | { data: ArrayBuffer | Uint8Array; capturedAtMs?: number }) => {
     try {
+      const buf = payload && typeof payload === "object" && "data" in payload ? payload.data : payload;
+      const capturedAtMs = payload && typeof payload === "object" && "data" in payload ? payload.capturedAtMs : undefined;
       const u8 = buf instanceof Uint8Array ? buf : new Uint8Array(buf as ArrayBuffer);
       const totalSamples = u8.byteLength / bytesPerSample;
       const framesPerChannel = totalSamples / channels;
@@ -104,7 +117,18 @@ export async function startNativeWindowAudioStream(sourceId: string): Promise<Na
       src.buffer = audioBuf;
       src.connect(gain);
       const now = ctx.currentTime;
-      if (nextStartTime < now) nextStartTime = now + 0.02;
+      if (shouldResyncNativeAudio(nextStartTime, now, capturedAtMs)) {
+        scheduledSources.forEach((queued) => { try { queued.stop(); } catch {} });
+        scheduledSources.clear();
+        nextStartTime = now + NATIVE_AUDIO_TARGET_LEAD_SECONDS;
+        resyncCount++;
+        droppedStaleFrames++;
+        if (import.meta.env.DEV) console.debug("[NativeWindowAudio] resynced", { resyncCount, droppedStaleFrames });
+      } else if (nextStartTime < now) {
+        nextStartTime = now + NATIVE_AUDIO_TARGET_LEAD_SECONDS;
+      }
+      scheduledSources.add(src);
+      src.onended = () => scheduledSources.delete(src);
       src.start(nextStartTime);
       nextStartTime += audioBuf.duration;
     } catch (e) {
@@ -122,6 +146,8 @@ export async function startNativeWindowAudioStream(sourceId: string): Promise<Na
 
   const stop = () => {
     try { unsubscribe?.(); } catch {}
+    scheduledSources.forEach((src) => { try { src.stop(); } catch {} });
+    scheduledSources.clear();
     try { api.stopWindowAudioCapture?.(); } catch {}
     try { audioTrack?.stop(); } catch {}
     try { ctx.close(); } catch {}
