@@ -416,6 +416,7 @@ const AppLayout = () => {
 
   const participantColor = activeParticipant ? getProfileColor(activeParticipant.user_id) : null;
   const activeParticipantStatus = getEffectivePresenceStatus(activeParticipant?.user_id, activeParticipant?.status, onlineUserIds);
+  const headerCustomStatus = useCustomStatus(activeParticipant?.user_id);
 
   // === MOBILE LAYOUT ===
   if (isMobile) {
