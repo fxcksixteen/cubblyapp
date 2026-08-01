@@ -200,16 +200,21 @@ Deno.serve(async (req) => {
           ? "api.sandbox.push.apple.com"
           : "api.push.apple.com";
 
-        let result = await sendOne({ host: primary, token: s.device_token, jwt, payload, threadId: thread_id });
-        if (!result.ok && result.reason === "BadDeviceToken") {
-          result = await sendOne({ host: fallback, token: s.device_token, jwt, payload, threadId: thread_id });
-        }
-        if (result.ok) {
-          sent++;
-        } else if (result.reason === "Unregistered" || result.reason === "BadDeviceToken") {
-          dead.push(s.id);
-        } else {
-          console.warn("[apns] send failed:", result.status, result.reason);
+        try {
+          let result = await sendOne({ host: primary, token: s.device_token, jwt, payload, threadId: thread_id });
+          if (!result.ok && (result.reason === "BadDeviceToken" || result.reason === "NetworkError")) {
+            result = await sendOne({ host: fallback, token: s.device_token, jwt, payload, threadId: thread_id });
+          }
+          if (result.ok) {
+            sent++;
+          } else if (result.reason === "Unregistered" || result.reason === "BadDeviceToken") {
+            dead.push(s.id);
+          } else {
+            console.warn("[apns] send failed:", result.status, result.reason);
+          }
+        } catch (e) {
+          // Never let one device abort the batch.
+          console.warn("[apns] device send threw:", (e as Error)?.message);
         }
       }),
     );
