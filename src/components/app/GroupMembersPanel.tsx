@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useCustomStatuses } from "@/hooks/useCustomStatuses";
 import { Conversation } from "@/hooks/useConversations";
 import { useAuth } from "@/contexts/AuthContext";
 import { useActivity } from "@/contexts/ActivityContext";
