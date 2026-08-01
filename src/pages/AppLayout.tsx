@@ -659,11 +659,16 @@ const AppLayout = () => {
                             ? (activeConv.name || activeConv.members.map((m) => m.display_name).slice(0, 3).join(", ") || "Group")
                             : activeParticipant?.display_name || "Conversation"}
                         </p>
-                        {activeConv.is_group && (
+                        {activeConv.is_group ? (
                           <p className="text-[11px] leading-tight" style={{ color: "var(--app-text-secondary)" }}>
                             {activeConv.members.length + 1} members
                           </p>
-                        )}
+                        ) : headerCustomStatus ? (
+                          <p className="truncate text-[11px] leading-tight flex items-center gap-1" style={{ color: "var(--app-text-secondary)" }}>
+                            {headerCustomStatus.emoji && <span className="cubbly-keep-animation">{headerCustomStatus.emoji}</span>}
+                            {headerCustomStatus.text && <span className="truncate">{headerCustomStatus.text}</span>}
+                          </p>
+                        ) : null}
                       </div>
                     </div>
                   );
