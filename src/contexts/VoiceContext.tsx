@@ -2539,6 +2539,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           setRemoteScreenStream(null);
           screenPcInRef.current?.close();
           screenPcInRef.current = null;
+          pendingScreenIceRef.current.in = [];
         }
 
         // Instant peer state (mute/deafen/video) — bypasses DB realtime lag.
