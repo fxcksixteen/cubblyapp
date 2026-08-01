@@ -206,6 +206,12 @@ const CallDiagnosticsModal = ({ open, onClose }: Props) => {
             </h3>
             <div className="rounded-md px-3" style={{ backgroundColor: "var(--app-bg-tertiary, #1e1f22)" }}>
               <Row
+                label="Region"
+                value={diag?.regionLabel || diag?.region || "—"}
+                mono
+              />
+              <Row
+
                 label="Transport"
                 value={
                   diag?.isRelay
