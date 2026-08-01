@@ -2506,16 +2506,21 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           // role "in" came from peer's incoming PC → goes to our OUT PC.
           // role "out" came from peer's outgoing PC → goes to our IN PC.
           // Missing role (legacy) → try out first, then in.
+          const slot: "in" | "out" = payload.role === "in" ? "out" : "in";
           const target =
             payload.role === "in" ? screenPcOutRef.current :
             payload.role === "out" ? screenPcInRef.current :
             (screenPcOutRef.current || screenPcInRef.current);
-          if (target) {
-            try {
-              await target.addIceCandidate(new RTCIceCandidate(payload.candidate));
-            } catch (e) {
-              console.error("Failed to add screen ICE candidate:", e);
-            }
+          // Buffer until the PC exists AND has a remote description — adding a
+          // candidate before either is ready throws and loses the candidate.
+          if (!target || !target.remoteDescription) {
+            pendingScreenIceRef.current[slot].push(payload.candidate);
+            return;
+          }
+          try {
+            await target.addIceCandidate(new RTCIceCandidate(payload.candidate));
+          } catch (e) {
+            console.error("Failed to add screen ICE candidate:", e);
           }
           return;
         }
