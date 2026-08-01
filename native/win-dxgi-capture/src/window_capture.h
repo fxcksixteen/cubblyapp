@@ -43,7 +43,10 @@ class WindowCapture {
   // Begins capturing `hwnd` via Windows Graphics Capture. Returns false and
   // fills outError on failure (unsupported OS, invalid window, D3D11/WinRT
   // failure). Must be called at most once per instance.
-  bool Start(HWND hwnd, FrameCallback callback, std::string& outError);
+  // `maxHeight` (0 = unlimited) caps the emitted frame height; the frame is
+  // box-downsampled by an integer factor during BGRA->NV12 conversion so a
+  // 1440p/4K game window never ships a full-size buffer per frame.
+  bool Start(HWND hwnd, FrameCallback callback, uint32_t maxHeight, std::string& outError);
 
   // Idempotent; safe to call from any thread, safe to call multiple times.
   void Stop();
@@ -55,8 +58,10 @@ class WindowCapture {
 
   void ResetAfterFailedStart();
   void EnsureStagingTexture(uint32_t width, uint32_t height);
+  // Returns the emitted (possibly downscaled) frame size via outWidth/outHeight.
   void ConvertBgraToNv12(const uint8_t* srcData, uint32_t srcRowPitch,
-                          uint32_t width, uint32_t height);
+                          uint32_t width, uint32_t height, uint32_t& outWidth,
+                          uint32_t& outHeight);
 
   winrt::com_ptr<ID3D11Device> d3dDevice_;
   winrt::com_ptr<ID3D11DeviceContext> d3dContext_;
@@ -74,6 +79,7 @@ class WindowCapture {
   uint32_t stagingWidth_ = 0;
   uint32_t stagingHeight_ = 0;
   std::vector<uint8_t> nv12Buffer_;
+  uint32_t maxHeight_ = 0;
 
   FrameCallback callback_;
   std::atomic<bool> running_{false};
