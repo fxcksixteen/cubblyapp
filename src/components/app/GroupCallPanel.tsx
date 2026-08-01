@@ -227,7 +227,7 @@ const GroupCallPanel = ({ conversationId }: Props) => {
   if (!activeCall || activeCall.conversationId !== conversationId) return null;
 
   const displayName = user?.user_metadata?.display_name || "You";
-  const sharingPeer = peers.find(p => p.isScreenSharing && p.screenStream);
+  const sharingPeers = peers.filter(p => p.isScreenSharing && p.screenStream);
 
   const handleShareClick = async () => {
     if (activeCall.isScreenSharing) {
