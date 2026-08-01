@@ -84,19 +84,31 @@ async function sendOne(opts: {
   jwt: string;
   payload: Record<string, unknown>;
   threadId?: string;
+  retry?: boolean;
 }): Promise<{ ok: boolean; status: number; reason?: string }> {
-  const res = await fetch(`https://${opts.host}/3/device/${opts.token}`, {
-    method: "POST",
-    headers: {
-      authorization: `bearer ${opts.jwt}`,
-      "apns-topic": APNS_BUNDLE_ID,
-      "apns-push-type": "alert",
-      "apns-priority": "10",
-      ...(opts.threadId ? { "apns-collapse-id": opts.threadId.slice(0, 64) } : {}),
-      "content-type": "application/json",
-    },
-    body: JSON.stringify(opts.payload),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`https://${opts.host}/3/device/${opts.token}`, {
+      method: "POST",
+      headers: {
+        authorization: `bearer ${opts.jwt}`,
+        "apns-topic": APNS_BUNDLE_ID,
+        "apns-push-type": "alert",
+        "apns-priority": "10",
+        ...(opts.threadId ? { "apns-collapse-id": opts.threadId.slice(0, 64) } : {}),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(opts.payload),
+    });
+  } catch (e) {
+    // Transient HTTP/2 errors (REFUSED_STREAM, GOAWAY) — Apple allows one retry.
+    if (opts.retry !== false) {
+      await new Promise((r) => setTimeout(r, 250));
+      return await sendOne({ ...opts, retry: false });
+    }
+    console.warn("[apns] network error:", (e as Error)?.message);
+    return { ok: false, status: 0, reason: "NetworkError" };
+  }
   if (res.ok) return { ok: true, status: res.status };
   let reason: string | undefined;
   try {
@@ -188,16 +200,21 @@ Deno.serve(async (req) => {
           ? "api.sandbox.push.apple.com"
           : "api.push.apple.com";
 
-        let result = await sendOne({ host: primary, token: s.device_token, jwt, payload, threadId: thread_id });
-        if (!result.ok && result.reason === "BadDeviceToken") {
-          result = await sendOne({ host: fallback, token: s.device_token, jwt, payload, threadId: thread_id });
-        }
-        if (result.ok) {
-          sent++;
-        } else if (result.reason === "Unregistered" || result.reason === "BadDeviceToken") {
-          dead.push(s.id);
-        } else {
-          console.warn("[apns] send failed:", result.status, result.reason);
+        try {
+          let result = await sendOne({ host: primary, token: s.device_token, jwt, payload, threadId: thread_id });
+          if (!result.ok && (result.reason === "BadDeviceToken" || result.reason === "NetworkError")) {
+            result = await sendOne({ host: fallback, token: s.device_token, jwt, payload, threadId: thread_id });
+          }
+          if (result.ok) {
+            sent++;
+          } else if (result.reason === "Unregistered" || result.reason === "BadDeviceToken") {
+            dead.push(s.id);
+          } else {
+            console.warn("[apns] send failed:", result.status, result.reason);
+          }
+        } catch (e) {
+          // Never let one device abort the batch.
+          console.warn("[apns] device send threw:", (e as Error)?.message);
         }
       }),
     );
