@@ -704,6 +704,15 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       } as any);
       const sender = tx.sender;
       screenSendersRef.current.set(peerId, sender);
+      void applyScreenBitrate(sender,
+        localScreenEncodingRef.current?.targetBitrate ?? 4_000_000,
+        {
+          maxFramerate: localScreenEncodingRef.current?.targetFps ?? 30,
+          scaleResolutionDownBy: localScreenEncodingRef.current?.baseScale ?? 1,
+          preferMotion: true,
+          ultra: true,
+        },
+      );
       const chosen = preferScreenShareCodec(tx);
       if (chosen && /vp9/i.test(chosen)) {
         try {
@@ -1669,6 +1678,12 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         } as any);
         const vSender = tx.sender;
         screenSendersRef.current.set(peerId, vSender);
+        void applyScreenBitrate(vSender, maxBitrate, {
+          maxFramerate: fpsCap,
+          scaleResolutionDownBy,
+          preferMotion: true,
+          ultra: true,
+        });
         const chosen = preferScreenShareCodec(tx);
         if (chosen && /vp9/i.test(chosen)) {
           try {

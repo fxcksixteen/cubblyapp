@@ -70,7 +70,7 @@ const NONE: NativeWindowVideoHandle = { videoTrack: null, stop: () => {}, getSta
  * Raise this only once main throttles on renderer acknowledgement rather than
  * firing frames blindly.
  */
-export const NATIVE_CAPTURE_FPS_CEILING = 30;
+export const NATIVE_CAPTURE_FPS_CEILING = 60;
 
 /**
  * Renderer-side capability probe.
@@ -197,19 +197,22 @@ export async function startNativeWindowVideoStream(
   const endToEndUs: number[] = [];
 
   const unsubscribe = api.onWindowVideoFrame((frame: any) => {
+    const acknowledge = () => {
+      if (frame?.frameId != null) api.ackWindowVideoFrame?.(frame.frameId);
+    };
     try {
-      if (generator.readyState !== "live") return;
+      if (generator.readyState !== "live") { acknowledge(); return; }
       const now = performance.now();
       received++;
       bytesReceived += frame?.data?.byteLength || frame?.data?.length || 0;
 
-      if (writeInFlight) { droppedBackpressure++; return; }
+      if (writeInFlight) { droppedBackpressure++; acknowledge(); return; }
 
       const data: Uint8Array =
         frame?.data instanceof Uint8Array ? frame.data : new Uint8Array(frame?.data || []);
       const width = frame?.width | 0;
       const height = frame?.height | 0;
-      if (!width || !height || data.byteLength === 0) return;
+      if (!width || !height || data.byteLength === 0) { acknowledge(); return; }
 
       const vf = new G.VideoFrame(data, {
         format: "NV12",
@@ -235,6 +238,7 @@ export async function startNativeWindowVideoStream(
         .catch(() => { /* generator closed mid-write; teardown handles it */ })
         .finally(() => {
           writeInFlight = false;
+          acknowledge();
           // Writing transfers ownership, but close() is idempotent and this
           // guarantees we never leak a frame if the write rejected.
           try { vf.close(); } catch {}
@@ -246,6 +250,7 @@ export async function startNativeWindowVideoStream(
         signalFirstFrame(true);
       }
     } catch (e) {
+      acknowledge();
       console.debug("[NativeWindowVideo] frame decode failed:", e);
     }
   });

@@ -99,6 +99,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("window-video-frame", listener);
     return () => ipcRenderer.removeListener("window-video-frame", listener);
   },
+  /** Acknowledge renderer consumption so main never builds a stale IPC queue. */
+  ackWindowVideoFrame: (frameId) => ipcRenderer.send("window-video-frame-ack", frameId),
   /** Main-side throughput/latency counters (instrumentation only). */
   getWindowVideoCaptureStats: () => ipcRenderer.invoke("get-window-video-capture-stats"),
 

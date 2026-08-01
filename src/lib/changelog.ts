@@ -23,9 +23,21 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.4.20";
+export const CURRENT_VERSION = "0.4.21";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.4.21",
+    title: "Screenshare hotfix",
+    date: "2026-08-01",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Screen shares now start reliably across DM, group, and server calls.",
+      "Native game streams stay responsive under load instead of building up delayed frames.",
+      "Fullscreen images now show their right-click actions correctly.",
+    ],
+  },
   {
     version: "0.4.20",
     title: "Hotfix & QoL",

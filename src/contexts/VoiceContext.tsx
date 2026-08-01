@@ -229,13 +229,13 @@ export function buildScreenSendEncodings(
 ): RTCRtpEncodingParameters[] {
   const scaleF = Math.max(1, baseScale);
   if (opts?.lowPower) {
-    const enc: any = { rid: "f", maxBitrate: targetBitrate, maxFramerate: targetFps, scaleResolutionDownBy: scaleF, networkPriority: "high", priority: "high" };
+    const enc: any = { rid: "f", maxBitrate: targetBitrate, maxFramerate: targetFps, scaleResolutionDownBy: scaleF };
     if (opts.useVp9Svc) enc.scalabilityMode = "L1T3";
     return [enc];
   }
-  const f: any = { rid: "f", maxBitrate: targetBitrate, maxFramerate: targetFps, scaleResolutionDownBy: scaleF, networkPriority: "high", priority: "high" };
-  const h: any = { rid: "h", maxBitrate: Math.round(targetBitrate * 0.4), maxFramerate: targetFps, scaleResolutionDownBy: scaleF * 2, networkPriority: "medium", priority: "medium" };
-  const q: any = { rid: "q", maxBitrate: Math.round(targetBitrate * 0.15), maxFramerate: Math.max(15, Math.round(targetFps / 2)), scaleResolutionDownBy: scaleF * 4, networkPriority: "low", priority: "low" };
+  const f: any = { rid: "f", maxBitrate: targetBitrate, maxFramerate: targetFps, scaleResolutionDownBy: scaleF };
+  const h: any = { rid: "h", maxBitrate: Math.round(targetBitrate * 0.4), maxFramerate: targetFps, scaleResolutionDownBy: scaleF * 2 };
+  const q: any = { rid: "q", maxBitrate: Math.round(targetBitrate * 0.15), maxFramerate: Math.max(15, Math.round(targetFps / 2)), scaleResolutionDownBy: scaleF * 4 };
   if (opts?.useVp9Svc) {
     f.scalabilityMode = "L1T3";
     h.scalabilityMode = "L1T2";
@@ -3201,8 +3201,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       sampleRate: 48000,
     };
 
+    let stream: MediaStream | null = null;
     try {
-      let stream: MediaStream;
 
       // Electron path: use the modern display-capture pipeline. Main injects
       // the chosen source + 'loopback' audio via setDisplayMediaRequestHandler.
@@ -3343,6 +3343,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         }
       }
 
+      if (!stream) throw new Error("Screen capture produced no stream");
       setScreenStream(stream);
       setIsScreenSharing(true);
       playSound("screenshareStart", { volume: 0.4 });
@@ -3494,6 +3495,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         sendEncodings,
       } as any);
       const videoSenderRef: RTCRtpSender = videoTx.sender;
+      // Chromium rejects priority/networkPriority when supplied in the
+      // addTransceiver init dictionary on some desktop builds. Apply optional
+      // sender tuning only after the transceiver exists; failures are harmless.
+      void applyScreenBitrate(videoSenderRef, maxBitrate, encodingOpts);
       // v0.4.4 → v0.4.18: force HW-friendly H.264 baseline / VP9 fallback.
       const chosenCodec = preferScreenShareCodec(videoTx);
       // If we ended up on VP9, add temporal SVC to the base layer (Discord
@@ -3557,6 +3562,19 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
     } catch (e) {
       console.error("Failed to start screen share:", e);
+      stream?.getTracks().forEach((track) => track.stop());
+      if (nativeWindowAudioStopRef.current) {
+        try { nativeWindowAudioStopRef.current(); } catch {}
+        nativeWindowAudioStopRef.current = null;
+      }
+      if (nativeWindowVideoStopRef.current) {
+        try { nativeWindowVideoStopRef.current(); } catch {}
+        nativeWindowVideoStopRef.current = null;
+        nativeWindowVideoStatsRef.current = null;
+      }
+      try { screenPcOutRef.current?.close(); } catch {}
+      screenPcOutRef.current = null;
+      setScreenStream(null);
       setIsScreenSharing(false);
     }
   }, [user, activeCall, screenShareSettings, settings.outputVolume]);

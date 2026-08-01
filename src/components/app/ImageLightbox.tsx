@@ -135,7 +135,7 @@ const ImageLightbox = ({ url, name, onClose }: ImageLightboxProps) => {
           />
         </ContextMenuTrigger>
         <ContextMenuContent
-          className="w-52 rounded-xl border p-1.5 shadow-xl"
+          className="z-[200] w-52 rounded-xl border p-1.5 shadow-xl"
           style={{ backgroundColor: "#111214", borderColor: "var(--app-border, #2b2d31)" }}
         >
           <ContextMenuItem
