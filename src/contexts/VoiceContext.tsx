@@ -602,6 +602,9 @@ export interface CallDiagnostics {
   outboundPacketsSent?: number;
   // Server / region
   turnServerHost?: string;
+  /** Effective voice region (user-selected, or auto-detected). */
+  region?: string;
+  regionLabel?: string;
 }
 
 const VoiceContext = createContext<VoiceContextType>({} as VoiceContextType);
@@ -689,6 +692,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const activeCallRef = useRef<ActiveCall | null>(null);
   const currentCallEventIdRef = useRef<string | null>(null);
   const [detectedRegion, setDetectedRegion] = useState("us-east");
+  const effectiveRegionRef = useRef<string>("us-east");
   const [ping, setPing] = useState(0);
 
   const [isScreenSharing, setIsScreenSharing] = useState(false);
@@ -860,6 +864,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     if (!user) return;
     const preferredRegion = settings.serverRegion === "auto" ? detectedRegion : settings.serverRegion;
+    // v0.4.22 — keep the effective region reachable from getDiagnostics (which
+    // is a stable []-dep callback), so the Server section can show it again.
+    effectiveRegionRef.current = preferredRegion;
     supabase.functions
       .invoke("get-turn-credentials", {
         body: { preferredRegion },
@@ -4348,6 +4355,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         outboundBytesSent: outbound?.bytesSent,
         outboundPacketsSent: outbound?.packetsSent,
         turnServerHost,
+        region: effectiveRegionRef.current,
+        regionLabel:
+          SERVER_REGIONS.find((r) => r.id === effectiveRegionRef.current)?.label
+          || effectiveRegionRef.current,
       };
     } catch {
       return null;
