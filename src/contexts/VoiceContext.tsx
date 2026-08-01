@@ -3227,8 +3227,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         let nativeVideo: Awaited<ReturnType<typeof startNativeWindowVideoStream>> | null = null;
         if (!isScreenPick && selectedSourceId && couldUseNativeWindowVideo(selectedSourceId)) {
           try {
+            // Bind capture rate to the user's configured screenshare fps so a
+            // lower setting actually costs less to capture, rather than
+            // capturing high and throwing frames away. Mirrors the low-power
+            // clamp applied to encoding further down.
+            const lowPowerNow =
+              typeof document !== "undefined" &&
+              document.documentElement.classList.contains("cubbly-low-power");
             nativeVideo = await startNativeWindowVideoStream(selectedSourceId, {
-              maxFps: Math.min(effectiveFps, 30),
+              maxFps: lowPowerNow ? Math.min(effectiveFps, 30) : effectiveFps,
             });
           } catch (e) {
             console.debug("[Voice] native window video unavailable, using getDisplayMedia:", e);

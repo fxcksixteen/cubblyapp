@@ -35,9 +35,13 @@ export interface NativeWindowVideoHandle {
 
 export interface NativeWindowVideoOptions {
   /**
-   * Drop frames above this rate before they reach the encoder. 0 = uncapped.
-   * Defaults to 30 — a deliberately conservative first baseline while we
-   * measure IPC cost, not a final value.
+   * Target capture rate. Enforced in the main process before IPC, so capped
+   * frames cost nothing (see electron/framePacer.cjs). 0 = uncapped.
+   *
+   * Defaults to 60. Measured at 1080p60 with a real encoder in the loop: 183
+   * MB/s over IPC, zero dropped frames, p99 latency 18.5-21.5ms. Callers
+   * should pass the user's configured screenshare fps rather than relying on
+   * this default, so lower settings actually reduce capture cost.
    */
   maxFps?: number;
   /** How long to wait for the first real frame before giving up (ms). */
@@ -84,7 +88,7 @@ export async function startNativeWindowVideoStream(
   sourceId: string,
   opts: NativeWindowVideoOptions = {}
 ): Promise<NativeWindowVideoHandle> {
-  const { maxFps = 30, firstFrameTimeoutMs = 1500 } = opts;
+  const { maxFps = 60, firstFrameTimeoutMs = 1500 } = opts;
 
   // ---- Gate 1: source kind ------------------------------------------------
   // WGC here is CreateForWindow only. "screen:" sources have no HWND to bind,
@@ -146,11 +150,19 @@ export async function startNativeWindowVideoStream(
   let signalFirstFrame: (ok: boolean) => void = () => {};
   const firstFramePromise = new Promise<boolean>((res) => { signalFirstFrame = res; });
 
-  // Backpressure guard: WGC fires on every compositor change (can exceed
-  // 144fps on a game window). Each 1080p NV12 frame is ~3.1MB, so an
-  // unbounded queue would balloon memory and add latency. If a write is still
-  // in flight, drop the incoming frame rather than queue it — for live
-  // screenshare, newest-wins beats a growing backlog.
+  // Newest-wins guard against a slow writable.
+  //
+  // MEASURED CAVEAT: this does not, in practice, protect against encoder
+  // overload. MediaStreamTrackGenerator's writable resolves as soon as the
+  // frame is handed to the track sink; it does NOT propagate backpressure from
+  // a downstream WebRTC encoder. Benchmarked at 1080p60 with a real VP9 and
+  // H264 encoder in the loop, write() resolved in p50 0ms / p95 0.1ms and this
+  // branch fired exactly 0 times out of 3600 frames on both codecs.
+  //
+  // WebRTC absorbs overload itself instead, by downscaling resolution and
+  // dropping frames internally (qualityLimitationReason). So this is cheap
+  // insurance for a writable that blocks for some other reason, not the
+  // encoder-overload protection it was originally written as.
   // NOTE: no fps gate here — pacing moved into the main process (see
   // electron/framePacer.cjs) so dropped frames never pay the IPC cost.
   // Frames arriving in this callback are already at the target rate.

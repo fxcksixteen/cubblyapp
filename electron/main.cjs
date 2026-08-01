@@ -1075,6 +1075,29 @@ ipcMain.handle("is-window-video-capture-available", () => {
   return !!winDxgiCapture;
 });
 
+/**
+ * Working set of the renderer that owns the active capture. The renderer is
+ * what actually holds the VideoFrames, so main-process RSS alone understates
+ * the cost — measured ~330MB renderer vs ~165MB main at 1080p60 under VP9.
+ * app.getAppMetrics() reports per-process memory in KB.
+ */
+function rendererMemoryMB(webContents) {
+  try {
+    if (!webContents || webContents.isDestroyed()) return null;
+    const pid = webContents.getOSProcessId();
+    const m = app.getAppMetrics().find((x) => x.pid === pid);
+    if (!m?.memory) return null;
+    return {
+      workingSetMB: +(m.memory.workingSetSize / 1024).toFixed(1),
+      peakWorkingSetMB: m.memory.peakWorkingSetSize
+        ? +(m.memory.peakWorkingSetSize / 1024).toFixed(1)
+        : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 /** Main-side counters for the throughput/latency measurement. */
 ipcMain.handle("get-window-video-capture-stats", () => {
   if (!videoStats) return null;
@@ -1093,6 +1116,7 @@ ipcMain.handle("get-window-video-capture-stats", () => {
     mainRssBytes: mem.rss,
     mainHeapUsedBytes: mem.heapUsed,
     mainExternalBytes: mem.external,
+    renderer: rendererMemoryMB(activeVideoCapture?.win),
   };
 });
 

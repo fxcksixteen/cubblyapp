@@ -1501,8 +1501,13 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
           let nativeVideo: Awaited<ReturnType<typeof startNativeWindowVideoStream>> | null = null;
           if (!isScreenPick && selectedSourceId && couldUseNativeWindowVideo(selectedSourceId)) {
             try {
+              // Same policy as the DM path: capture at the user's configured
+              // fps (low-power clamped), not a hardcoded ceiling.
+              const lowPowerNow =
+                typeof document !== "undefined" &&
+                document.documentElement.classList.contains("cubbly-low-power");
               nativeVideo = await startNativeWindowVideoStream(selectedSourceId, {
-                maxFps: Math.min(effectiveFps, 30),
+                maxFps: lowPowerNow ? Math.min(effectiveFps, 30) : effectiveFps,
               });
             } catch (e) {
               console.debug("[GroupCall] native window video unavailable, using getDisplayMedia:", e);
