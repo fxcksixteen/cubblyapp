@@ -3610,6 +3610,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     // Only close OUR outgoing screen PC. Incoming peer share stays untouched.
     screenPcOutRef.current?.close();
     screenPcOutRef.current = null;
+    pendingScreenIceRef.current.out = [];
 
     if (channelRef.current && user) {
       channelRef.current.send({
