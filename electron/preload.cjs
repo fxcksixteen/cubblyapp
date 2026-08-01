@@ -86,6 +86,21 @@ contextBridge.exposeInMainWorld("electronAPI", {
     return () => ipcRenderer.removeListener("window-audio-pcm", listener);
   },
 
+  // Native per-window video capture (Windows Graphics Capture / DXGI).
+  // Mirrors the audio channels above. All of these are absent on older
+  // preloads, which the renderer treats as "fall back to getDisplayMedia".
+  isWindowVideoCaptureAvailable: () => ipcRenderer.invoke("is-window-video-capture-available"),
+  startWindowCapture: (sourceId) => ipcRenderer.invoke("start-window-capture", sourceId),
+  stopWindowCapture: () => ipcRenderer.invoke("stop-window-capture"),
+  /** Subscribes to NV12 frames; returns an unsubscribe fn. */
+  onWindowVideoFrame: (cb) => {
+    const listener = (_e, frame) => cb(frame);
+    ipcRenderer.on("window-video-frame", listener);
+    return () => ipcRenderer.removeListener("window-video-frame", listener);
+  },
+  /** Main-side throughput/latency counters (instrumentation only). */
+  getWindowVideoCaptureStats: () => ipcRenderer.invoke("get-window-video-capture-stats"),
+
   // v0.3.21: enable Windows DRM-style content protection on the main window
   // when a view-once shared note is being read. This makes the BrowserWindow
   // appear black in any screen-capture API (OBS, Lightshot, Snipping Tool,

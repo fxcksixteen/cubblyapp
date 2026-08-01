@@ -6,6 +6,8 @@
 #include <windows.graphics.capture.interop.h>
 #include <windows.graphics.directx.direct3d11.interop.h>
 
+#include <chrono>
+
 #include "win_rt_util.h"
 
 // Deliberately NOT pulling in winrt::Windows::Foundation::IInspectable via a
@@ -157,6 +159,13 @@ void WindowCapture::OnFrameArrived(
     winrt::Windows::Foundation::IInspectable const&) {
   if (!running_.load(std::memory_order_acquire)) return;
 
+  // Stamp arrival before any work so the measured latency includes our own
+  // copy/convert cost, not just the IPC hop.
+  const uint64_t arrivedUs =
+      static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+                                std::chrono::system_clock::now().time_since_epoch())
+                                .count());
+
   auto frame = sender.TryGetNextFrame();
   if (!frame) return;
 
@@ -189,7 +198,7 @@ void WindowCapture::OnFrameArrived(
   d3dContext_->Unmap(stagingTexture_.get(), 0);
 
   if (callback_) {
-    FrameInfo info{desc.Width, desc.Height};
+    FrameInfo info{desc.Width, desc.Height, arrivedUs};
     callback_(nv12Buffer_.data(), nv12Buffer_.size(), info);
   }
 }

@@ -27,6 +27,11 @@ import { useAuth } from "@/contexts/AuthContext";
 import { playSound, playLooping, stopLooping } from "@/lib/sounds";
 import { toast } from "sonner";
 import { startNativeWindowAudioStream } from "@/lib/nativeWindowAudio";
+import {
+  startNativeWindowVideoStream,
+  couldUseNativeWindowVideo,
+  type NativeWindowVideoStats,
+} from "@/lib/nativeWindowVideo";
 import { usePeerGains } from "@/lib/peerGain";
 import { armRemoteAudio } from "@/lib/iosAudioUnlock";
 import { STUN_FALLBACK_SERVERS, sanitizeIceServersForSession } from "@/lib/webrtcIce";
@@ -459,6 +464,10 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
 
   /** Cleanup fn for an active native (WASAPI) per-window audio capture, if any. */
   const nativeWindowAudioStopRef = useRef<(() => void) | null>(null);
+  /** Cleanup fn for an active native (WGC) per-window video capture, if any. */
+  const nativeWindowVideoStopRef = useRef<(() => void) | null>(null);
+  /** Instrumentation accessor for the active native video capture, if any. */
+  const nativeWindowVideoStatsRef = useRef<(() => NativeWindowVideoStats | null) | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const callEventIdRef = useRef<string | null>(null);
   const callConvIdRef = useRef<string | null>(null);
@@ -1273,6 +1282,12 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       try { nativeWindowAudioStopRef.current(); } catch {}
       nativeWindowAudioStopRef.current = null;
     }
+    // Tear down native per-window video (WGC) if it was active
+    if (nativeWindowVideoStopRef.current) {
+      try { nativeWindowVideoStopRef.current(); } catch {}
+      nativeWindowVideoStopRef.current = null;
+      nativeWindowVideoStatsRef.current = null;
+    }
     videoSendersRef.current.clear();
     screenSendersRef.current.clear();
     screenEncodingCleanupRef.current.forEach((cleanup) => cleanup());
@@ -1479,13 +1494,37 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
               ? { width: { ideal: res.width }, height: { ideal: res.height } }
               : { width: { ideal: 1920 }, height: { ideal: 1080 } }),
           };
-          try {
-            stream = await navigator.mediaDevices.getDisplayMedia({
-              video: videoConstraints,
-              audio: useChromiumLoopback ? screenAudioConstraints : false,
-            } as any);
-          } finally {
+
+          // ---- Native WGC video path — identical policy to the DM path. ----
+          // Attempted before getDisplayMedia so only one capture ever runs;
+          // any failure silently falls through to getDisplayMedia.
+          let nativeVideo: Awaited<ReturnType<typeof startNativeWindowVideoStream>> | null = null;
+          if (!isScreenPick && selectedSourceId && couldUseNativeWindowVideo(selectedSourceId)) {
+            try {
+              nativeVideo = await startNativeWindowVideoStream(selectedSourceId, {
+                maxFps: Math.min(effectiveFps, 30),
+              });
+            } catch (e) {
+              console.debug("[GroupCall] native window video unavailable, using getDisplayMedia:", e);
+              nativeVideo = null;
+            }
+          }
+
+          if (nativeVideo?.videoTrack) {
+            stream = new MediaStream([nativeVideo.videoTrack]);
+            nativeWindowVideoStopRef.current = nativeVideo.stop;
+            nativeWindowVideoStatsRef.current = nativeVideo.getStats || null;
             try { await api.clearSelectedShareSource?.(); } catch {}
+            console.log("[GroupCall] 🎯 Native WGC window capture attached to share");
+          } else {
+            try {
+              stream = await navigator.mediaDevices.getDisplayMedia({
+                video: videoConstraints,
+                audio: useChromiumLoopback ? screenAudioConstraints : false,
+              } as any);
+            } finally {
+              try { await api.clearSelectedShareSource?.(); } catch {}
+            }
           }
 
           if (useNativeWindowAudio && selectedSourceId) {
@@ -1673,6 +1712,16 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       if (nativeWindowAudioStopRef.current) {
         try { nativeWindowAudioStopRef.current(); } catch {}
         nativeWindowAudioStopRef.current = null;
+      }
+
+      if (nativeWindowVideoStopRef.current) {
+        try {
+          const s = nativeWindowVideoStatsRef.current?.();
+          if (s) console.log("[GroupCall] native WGC capture stats:", s);
+        } catch {}
+        try { nativeWindowVideoStopRef.current(); } catch {}
+        nativeWindowVideoStopRef.current = null;
+        nativeWindowVideoStatsRef.current = null;
       }
 
       for (const [peerId, sender] of screenSendersRef.current) {

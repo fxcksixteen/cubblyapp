@@ -25,6 +25,7 @@ struct FramePayload {
   std::vector<uint8_t> nv12;
   uint32_t width;
   uint32_t height;
+  uint64_t captureTimeUs;
 };
 
 Napi::Value IsSupported(const Napi::CallbackInfo& info) {
@@ -68,7 +69,8 @@ Napi::Value StartCapture(const Napi::CallbackInfo& info) {
       hwnd,
       [handle](const uint8_t* data, size_t bytes, const cubbly::FrameInfo& info) {
         auto* payload = new FramePayload{
-            std::vector<uint8_t>(data, data + bytes), info.width, info.height};
+            std::vector<uint8_t>(data, data + bytes), info.width, info.height,
+            info.captureTimeUs};
         Napi::ThreadSafeFunction tsfn;
         {
           std::lock_guard<std::mutex> lk(g_mutex);
@@ -86,6 +88,10 @@ Napi::Value StartCapture(const Napi::CallbackInfo& info) {
               frame.Set("data", buf);
               frame.Set("width", Napi::Number::New(env, p->width));
               frame.Set("height", Napi::Number::New(env, p->height));
+              // Epoch microseconds fit exactly in a double until year ~2255
+              // (1.75e15 << 2^53), so no precision loss here.
+              frame.Set("captureTimeUs",
+                        Napi::Number::New(env, static_cast<double>(p->captureTimeUs)));
               delete p;
               cb.Call({frame});
             });

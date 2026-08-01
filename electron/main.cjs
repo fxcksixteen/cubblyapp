@@ -37,6 +37,38 @@ try {
   log.warn("[winaudio] init error:", e?.message || e);
 }
 
+// ---- Native Windows Graphics Capture addon (Windows only) -------------------
+// Same resolution strategy as win-audio-capture above. `isSupported()` folds
+// two checks into one: the prebuilt .node actually loaded, AND this Windows
+// build implements GraphicsCaptureSession. Either failing leaves
+// `winDxgiCapture` null, and the renderer silently keeps using getDisplayMedia.
+let winDxgiCapture = null;
+try {
+  if (process.platform === "win32") {
+    const candidates = [
+      path.join(__dirname, "..", "native", "win-dxgi-capture"),
+      path.join(process.resourcesPath || "", "app.asar.unpacked", "native", "win-dxgi-capture"),
+    ];
+    for (const dir of candidates) {
+      try {
+        if (dir && fs.existsSync(dir)) {
+          const mod = require(dir);
+          if (mod && typeof mod.isSupported === "function" && mod.isSupported()) {
+            winDxgiCapture = mod;
+            log.info("[winvideo] native addon loaded from", dir);
+            break;
+          }
+        }
+      } catch (e) {
+        log.warn("[winvideo] load attempt failed for", dir, e?.message || e);
+      }
+    }
+    if (!winDxgiCapture) log.warn("[winvideo] native addon NOT loaded — native window capture disabled");
+  }
+} catch (e) {
+  log.warn("[winvideo] init error:", e?.message || e);
+}
+
 app.name = "Cubbly";
 
 // CRITICAL: single-instance lock. Without this, Windows auto-launch + a user
@@ -926,6 +958,129 @@ ipcMain.handle("stop-window-audio-capture", () => {
 
 ipcMain.handle("is-window-audio-capture-available", () => {
   return !!winAudioCapture;
+});
+
+// ---- Native window VIDEO capture (Windows Graphics Capture) -----------------
+
+/**
+ * Electron formats window sources as `window:<hwnd>:<n>`. Same decimal-then-hex
+ * parse as resolveSourcePid() above, but we keep the HWND itself rather than
+ * resolving it to a PID — WGC binds to the window, not the process.
+ */
+function parseHwndFromSourceId(sourceId) {
+  if (typeof sourceId !== "string" || !sourceId.startsWith("window:")) return null;
+  const hwndStr = sourceId.split(":")[1];
+  let hwnd = Number(hwndStr);
+  if (!Number.isFinite(hwnd) || hwnd <= 0) {
+    const asHex = parseInt(hwndStr, 16);
+    if (Number.isFinite(asHex) && asHex > 0) hwnd = asHex;
+  }
+  return Number.isFinite(hwnd) && hwnd > 0 ? hwnd : null;
+}
+
+let activeVideoCapture = null;
+// Instrumentation for the throughput question — reset per capture session.
+let videoStats = null;
+
+function resetVideoStats() {
+  videoStats = {
+    startedAt: Date.now(),
+    framesFromNative: 0,
+    framesSent: 0,
+    framesSkippedDestroyed: 0,
+    bytesSent: 0,
+    // native FrameArrived -> main-process JS callback (N-API/TSFN hop)
+    nativeToMainUs: [],
+  };
+}
+
+ipcMain.handle("start-window-capture", async (evt, sourceId) => {
+  if (!winDxgiCapture) {
+    return { ok: false, error: "native addon unavailable (requires Windows 10 1903+ with prebuilt binary)" };
+  }
+  const hwnd = parseHwndFromSourceId(sourceId);
+  if (!hwnd) {
+    return { ok: false, error: "could not parse HWND from sourceId: " + sourceId };
+  }
+  if (activeVideoCapture) {
+    try { winDxgiCapture.stop(activeVideoCapture.handle); } catch {}
+    activeVideoCapture = null;
+  }
+  try {
+    const senderWebContents = evt.sender;
+    resetVideoStats();
+    log.info("[winvideo] starting capture for sourceId:", sourceId, "hwnd:", hwnd);
+
+    const handle = winDxgiCapture.start(hwnd, (frame) => {
+      try {
+        videoStats.framesFromNative++;
+        if (frame?.captureTimeUs) {
+          // performance.timeOrigin + performance.now() shares the epoch with
+          // the native system_clock stamp, so this subtraction is meaningful.
+          const nowUs = (performance.timeOrigin + performance.now()) * 1000;
+          videoStats.nativeToMainUs.push(nowUs - frame.captureTimeUs);
+        }
+        if (senderWebContents.isDestroyed()) {
+          videoStats.framesSkippedDestroyed++;
+          return;
+        }
+        videoStats.framesSent++;
+        videoStats.bytesSent += frame?.data?.length || 0;
+        senderWebContents.send("window-video-frame", frame);
+      } catch (_) {}
+    });
+
+    activeVideoCapture = { handle, sourceId, hwnd, win: senderWebContents };
+    log.info("[winvideo] capture started OK, handle:", handle);
+    return { ok: true, handle };
+  } catch (e) {
+    const msg = e?.message || String(e);
+    log.error("[winvideo] start failed:", msg);
+    return { ok: false, error: msg };
+  }
+});
+
+ipcMain.handle("stop-window-capture", () => {
+  if (!activeVideoCapture) return { ok: true };
+  try {
+    winDxgiCapture?.stop(activeVideoCapture.handle);
+  } catch (e) {
+    log.warn("[winvideo] stop error:", e?.message || e);
+  }
+  if (videoStats) {
+    const secs = (Date.now() - videoStats.startedAt) / 1000;
+    log.info(
+      `[winvideo] capture stopped after ${secs.toFixed(1)}s — ` +
+      `native=${videoStats.framesFromNative} sent=${videoStats.framesSent} ` +
+      `MB=${(videoStats.bytesSent / 1e6).toFixed(1)}`
+    );
+  }
+  activeVideoCapture = null;
+  return { ok: true };
+});
+
+ipcMain.handle("is-window-video-capture-available", () => {
+  return !!winDxgiCapture;
+});
+
+/** Main-side counters for the throughput/latency measurement. */
+ipcMain.handle("get-window-video-capture-stats", () => {
+  if (!videoStats) return null;
+  const mem = process.memoryUsage();
+  const lat = videoStats.nativeToMainUs;
+  const sorted = [...lat].sort((a, b) => a - b);
+  const pct = (p) => (sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))] : 0);
+  return {
+    elapsedMs: Date.now() - videoStats.startedAt,
+    framesFromNative: videoStats.framesFromNative,
+    framesSent: videoStats.framesSent,
+    framesSkippedDestroyed: videoStats.framesSkippedDestroyed,
+    bytesSent: videoStats.bytesSent,
+    nativeToMainUs: { p50: pct(0.5), p95: pct(0.95), max: sorted[sorted.length - 1] || 0 },
+    mainRssBytes: mem.rss,
+    mainHeapUsedBytes: mem.heapUsed,
+    mainExternalBytes: mem.external,
+  };
 });
 
 function installDisplayMediaHandler() {

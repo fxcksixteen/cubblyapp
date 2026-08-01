@@ -6,9 +6,14 @@
 //
 // Exposes:
 //   isSupported(): boolean
-//   start(hwnd: number, onFrame: (frame: { data: Buffer, width: number, height: number }) => void): handle
+//   start(hwnd: number, onFrame: (frame: Frame) => void): handle
 //   stop(handle): void
+//
+// Frame = { data: Buffer, width: number, height: number, captureTimeUs: number }
 // `data` is NV12 (Y plane followed by interleaved UV, 4:2:0 subsampled).
+// `captureTimeUs` is epoch microseconds stamped at WGC FrameArrived, on the
+// same epoch as `performance.timeOrigin + performance.now()` so latency can be
+// measured across the main/renderer process boundary.
 
 let nativeBinding = null;
 let loadError = null;

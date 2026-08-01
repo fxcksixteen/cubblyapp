@@ -19,6 +19,9 @@
       "native/win-audio-capture/index.js",
       "native/win-audio-capture/package.json",
       "native/win-audio-capture/prebuilds/win32-x64/**/*",
+      "native/win-dxgi-capture/index.js",
+      "native/win-dxgi-capture/package.json",
+      "native/win-dxgi-capture/prebuilds/win32-x64/**/*",
       "node_modules/electron-log/**/*",
       "node_modules/electron-store/**/*",
       "node_modules/electron-updater/**/*",
@@ -78,7 +81,8 @@
     "buildDependenciesFromSource": false,
     "asarUnpack": [
       "electron/icon.ico",
-      "native/win-audio-capture/**/*"
+      "native/win-audio-capture/**/*",
+      "native/win-dxgi-capture/**/*"
     ],
     "win": {
       "target": [

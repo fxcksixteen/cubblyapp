@@ -3,6 +3,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { playSound, playLooping, stopLooping } from "@/lib/sounds";
 import { startNativeWindowAudioStream } from "@/lib/nativeWindowAudio";
+import {
+  startNativeWindowVideoStream,
+  couldUseNativeWindowVideo,
+  type NativeWindowVideoStats,
+} from "@/lib/nativeWindowVideo";
 import { usePeerGains } from "@/lib/peerGain";
 import { armRemoteAudio } from "@/lib/iosAudioUnlock";
 import { STUN_FALLBACK_SERVERS, sanitizeIceServersForSession } from "@/lib/webrtcIce";
@@ -736,6 +741,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const screenPcInRef = useRef<RTCPeerConnection | null>(null);
   /** Cleanup fn for an active native (WASAPI) per-window audio capture, if any. */
   const nativeWindowAudioStopRef = useRef<(() => void) | null>(null);
+  /** Cleanup fn for an active native (WGC) per-window video capture, if any. */
+  const nativeWindowVideoStopRef = useRef<(() => void) | null>(null);
+  /** Instrumentation accessor for the active native video capture, if any. */
+  const nativeWindowVideoStatsRef = useRef<(() => NativeWindowVideoStats | null) | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   // v0.3.11: track which conversation channelRef belongs to so setupSignaling
   // never accidentally hands back a stale channel from a previous call to a
@@ -3211,13 +3220,37 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             : { width: { ideal: 1920 }, height: { ideal: 1080 } }),
         };
 
-        try {
-          stream = await navigator.mediaDevices.getDisplayMedia({
-            video: videoConstraints,
-            audio: useChromiumLoopback ? screenAudioConstraints : false,
-          } as any);
-        } finally {
+        // ---- Native WGC video path (Windows, window picks only) -----------
+        // Tried BEFORE getDisplayMedia so we never run two captures at once.
+        // Every failure mode inside returns a null track and we fall straight
+        // through to getDisplayMedia with nothing surfaced to the user.
+        let nativeVideo: Awaited<ReturnType<typeof startNativeWindowVideoStream>> | null = null;
+        if (!isScreenPick && selectedSourceId && couldUseNativeWindowVideo(selectedSourceId)) {
+          try {
+            nativeVideo = await startNativeWindowVideoStream(selectedSourceId, {
+              maxFps: Math.min(effectiveFps, 30),
+            });
+          } catch (e) {
+            console.debug("[Voice] native window video unavailable, using getDisplayMedia:", e);
+            nativeVideo = null;
+          }
+        }
+
+        if (nativeVideo?.videoTrack) {
+          stream = new MediaStream([nativeVideo.videoTrack]);
+          nativeWindowVideoStopRef.current = nativeVideo.stop;
+          nativeWindowVideoStatsRef.current = nativeVideo.getStats || null;
           try { await api.clearSelectedShareSource?.(); } catch {}
+          console.log("[Voice] 🎯 Native WGC window capture attached to share");
+        } else {
+          try {
+            stream = await navigator.mediaDevices.getDisplayMedia({
+              video: videoConstraints,
+              audio: useChromiumLoopback ? screenAudioConstraints : false,
+            } as any);
+          } finally {
+            try { await api.clearSelectedShareSource?.(); } catch {}
+          }
         }
 
         // Window/tab + native addon → start per-process WASAPI capture and mix
@@ -3520,6 +3553,17 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     if (nativeWindowAudioStopRef.current) {
       try { nativeWindowAudioStopRef.current(); } catch {}
       nativeWindowAudioStopRef.current = null;
+    }
+
+    // Tear down native per-window video (WGC) if it was active
+    if (nativeWindowVideoStopRef.current) {
+      try {
+        const s = nativeWindowVideoStatsRef.current?.();
+        if (s) console.log("[Voice] native WGC capture stats:", s);
+      } catch {}
+      try { nativeWindowVideoStopRef.current(); } catch {}
+      nativeWindowVideoStopRef.current = null;
+      nativeWindowVideoStatsRef.current = null;
     }
 
     // Clean up screen loopback peers

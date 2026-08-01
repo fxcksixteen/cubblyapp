@@ -21,6 +21,12 @@ namespace cubbly {
 struct FrameInfo {
   uint32_t width;
   uint32_t height;
+  // Microseconds since the Unix epoch, stamped the instant WGC delivered the
+  // frame. Deliberately system_clock rather than steady_clock: it shares an
+  // epoch with JS `performance.timeOrigin + performance.now()` in BOTH the
+  // main and renderer processes, which is what makes the FrameArrived -> track
+  // write latency measurable across the process boundary at all.
+  uint64_t captureTimeUs;
 };
 
 // Called with a fully-formed NV12 frame (Y plane followed by interleaved UV).
