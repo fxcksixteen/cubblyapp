@@ -8,6 +8,7 @@ import { useGems } from "@/contexts/GemsContext";
 import { getProfileColor } from "@/lib/profileColors";
 import { getEffectivePresenceStatus } from "@/lib/presence";
 import { activityLabel } from "@/lib/activityLabel";
+import { useCustomStatus } from "@/hooks/useCustomStatuses";
 import { toast } from "sonner";
 import { X, Loader2 } from "lucide-react";
 import messagesIcon from "@/assets/icons/messages.svg";
