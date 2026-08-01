@@ -822,13 +822,50 @@ ipcMain.handle("pick-game-exe", async () => {
 });
 
 // Desktop capturer for screen sharing
+// Background/tray helpers (Razer overlays, GPU control panels, IME hosts, ...)
+// own real HWNDs with no visible window, so desktopCapturer happily lists them
+// as pickable "windows". Nothing usable ever comes out of capturing one, so
+// they are filtered out before the picker sees them (v0.4.24).
+const HIDDEN_WINDOW_NAME_PATTERNS = [
+  /^Default IME$/i,
+  /^MSCTFIME UI$/i,
+  /^GDI\+ Window$/i,
+  /^Program Manager$/i,
+  /^Windows Input Experience$/i,
+  /^Windows Shell Experience Host$/i,
+  /overlay( host)?$/i,
+  /^NVIDIA GeForce Overlay/i,
+  /Broadcast Window$/i,
+  /Hidden Window$/i,
+  /^Razer /i,
+  /Notification Center$/i,
+  /^Search$/i,
+];
+
+function isLikelyRealWindow(source) {
+  if (!source?.id) return false;
+  if (source.id.startsWith("screen:")) return true;
+  const name = (source.name || "").trim();
+  if (!name) return false;
+  if (HIDDEN_WINDOW_NAME_PATTERNS.some((re) => re.test(name))) return false;
+  // A window with nothing on screen produces an empty/degenerate thumbnail.
+  try {
+    if (!source.thumbnail || source.thumbnail.isEmpty()) return false;
+    const size = source.thumbnail.getSize();
+    if (!size || size.width < 8 || size.height < 8) return false;
+  } catch (_) {
+    return false;
+  }
+  return true;
+}
+
 ipcMain.handle("get-desktop-sources", async () => {
   const sources = await desktopCapturer.getSources({
     types: ["window", "screen"],
     thumbnailSize: { width: 320, height: 180 },
     fetchWindowIcons: true,
   });
-  return sources.map(source => ({
+  return sources.filter(isLikelyRealWindow).map(source => ({
     id: source.id,
     name: source.name,
     thumbnail: source.thumbnail.toDataURL(),
