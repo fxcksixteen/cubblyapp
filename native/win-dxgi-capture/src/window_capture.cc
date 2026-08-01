@@ -8,6 +8,8 @@
 
 #include <chrono>
 
+#include <winrt/Windows.Foundation.Metadata.h>
+
 #include "win_rt_util.h"
 
 // Deliberately NOT pulling in winrt::Windows::Foundation::IInspectable via a
@@ -19,6 +21,8 @@ using winrt::Windows::Graphics::SizeInt32;
 using winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool;
 using winrt::Windows::Graphics::Capture::GraphicsCaptureItem;
 using winrt::Windows::Graphics::Capture::GraphicsCaptureSession;
+using winrt::Windows::Graphics::Capture::GraphicsCaptureAccess;
+using winrt::Windows::Graphics::Capture::GraphicsCaptureAccessKind;
 using winrt::Windows::Graphics::DirectX::DirectXPixelFormat;
 using winrt::Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice;
 // This one is the raw ABI interop interface from windows.graphics.directx.
@@ -101,6 +105,27 @@ bool WindowCapture::Start(HWND hwnd, FrameCallback callback, std::string& outErr
     framePool_ = Direct3D11CaptureFramePool::CreateFreeThreaded(
         winrtDevice_, DirectXPixelFormat::B8G8R8A8UIntNormalized, 2, lastSize_);
     session_ = framePool_.CreateCaptureSession(item_);
+
+    // v0.4.22 — kill the yellow "this window is being captured" outline that
+    // Windows draws around the capture target. IsBorderRequired only exists on
+    // Windows 11 (build 22000+) / late Win10 servicing builds, and on some
+    // builds it also needs the graphics-capture-without-border capability, so
+    // both the API-presence check and the call itself are best-effort.
+    try {
+      if (winrt::Windows::Foundation::Metadata::ApiInformation::IsPropertyPresent(
+              L"Windows.Graphics.Capture.GraphicsCaptureSession",
+              L"IsBorderRequired")) {
+        // Best-effort permission request; ignore the result, the setter below
+        // simply no-ops if the OS refuses.
+        try {
+          GraphicsCaptureAccess::RequestAccessAsync(
+              GraphicsCaptureAccessKind::Borderless).get();
+        } catch (...) {}
+        session_.IsBorderRequired(false);
+      }
+    } catch (...) {
+      // Older OS or access denied — keep capturing, just with the border.
+    }
 
     callback_ = std::move(callback);
     running_.store(true, std::memory_order_release);

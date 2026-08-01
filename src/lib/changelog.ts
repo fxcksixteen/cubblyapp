@@ -23,9 +23,27 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.4.21";
+export const CURRENT_VERSION = "0.4.22";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.4.22",
+    title: "Streaming polish",
+    date: "2026-08-02",
+    hero: bearImage,
+    newFeatures: [
+      "You can now see who's still in a call after you leave, and join straight from there.",
+    ],
+    bugFixes: [
+      "Removed the yellow outline around whatever you're sharing.",
+      "Stream volume now uses a vertical slider in fullscreen so you don't accidentally exit.",
+      "Watching fullscreen now exits automatically when the stream ends.",
+      "Calls no longer lag while you're streaming a game.",
+      "Stream quality settles immediately instead of fluctuating.",
+      "Your region shows in call diagnostics again.",
+      "Multiple people can screen share at the same time in a call.",
+    ],
+  },
   {
     version: "0.4.21",
     title: "Screenshare hotfix",

@@ -97,6 +97,34 @@ export function patchScreenShareVideoSdp(
 }
 
 
+/**
+ * v0.4.22 — keep voice ahead of the screen encoder.
+ *
+ * When a share saturates the uplink, Chromium splits the estimate across all
+ * senders on the connection. Marking the audio sender high-priority (and the
+ * video sender low) makes the pacer service voice packets first, which is why
+ * calls used to stutter the moment a game share started.
+ */
+export function prioritizeVoiceOverScreen(pc: RTCPeerConnection) {
+  try {
+    pc.getSenders().forEach((sender) => {
+      const kind = sender.track?.kind;
+      if (!kind) return;
+      const params = sender.getParameters();
+      if (!params.encodings?.length) return;
+      params.encodings.forEach((enc: any) => {
+        if (kind === "audio") {
+          enc.priority = "high";
+          enc.networkPriority = "high";
+        } else if (enc.networkPriority === "high") {
+          enc.networkPriority = "medium";
+        }
+      });
+      void sender.setParameters(params).catch(() => {});
+    });
+  } catch {}
+}
+
 async function applyEncoding(
   sender: RTCRtpSender,
   bitrate: number,
@@ -115,6 +143,7 @@ async function applyEncoding(
   (params as any).degradationPreference = "maintain-framerate";
   await sender.setParameters(params);
 }
+
 
 
 /**
@@ -151,8 +180,31 @@ export function startAutomaticScreenEncoding(
   // brief spike doesn't dominate.
   const rttWindow: number[] = [];
 
-  const update = () => applyEncoding(sender, bitrate, target.targetFps, scale).catch(() => {});
-  void update();
+  // v0.4.22 — stability. The loop used to re-apply parameters every 2 s and
+  // react to a single bad sample, so quality visibly oscillated for the whole
+  // share. Now: a warm-up window where we never downshift, two consecutive
+  // pressure samples before any backoff, a cooldown between adjustments, and
+  // setParameters only when the value actually moved.
+  const startedAt = Date.now();
+  const WARMUP_MS = 8_000;
+  const COOLDOWN_MS = 6_000;
+  let lastAdjustAt = 0;
+  let pressureSamples = 0;
+  let appliedBitrate = 0;
+  let appliedScale = 0;
+
+  const update = async (force = false) => {
+    const bitrateMoved = appliedBitrate === 0 || Math.abs(bitrate - appliedBitrate) / appliedBitrate > 0.08;
+    const scaleMoved = Math.abs(scale - appliedScale) > 0.01;
+    if (!force && !bitrateMoved && !scaleMoved) return;
+    appliedBitrate = bitrate;
+    appliedScale = scale;
+    await applyEncoding(sender, bitrate, target.targetFps, scale).catch(() => {});
+  };
+  // Start AT the target instead of discovering it: the first apply is forced
+  // so the very first frames are already full quality.
+  void update(true);
+  prioritizeVoiceOverScreen(pc);
 
   // Force an immediate keyframe so the very first frame the peer decodes is
   // full quality instead of a smeared low-bitrate I-frame from the encoder's
@@ -217,24 +269,35 @@ export function startAutomaticScreenEncoding(
       const bandwidthPressure = loss > 0.08 || bandwidthLimited || bloatSamples >= 4;
       const clearlyClean = loss < 0.02 && !bandwidthLimited && (baselineRtt === 0 || rttMs <= baselineRtt + 40);
 
-      if (bandwidthPressure) {
+      const now = Date.now();
+      const warmingUp = now - startedAt < WARMUP_MS;
+      const cooling = now - lastAdjustAt < COOLDOWN_MS;
+
+      pressureSamples = bandwidthPressure ? pressureSamples + 1 : 0;
+
+      if (pressureSamples >= 2 && !warmingUp && !cooling) {
         cleanSamples = 0;
-        // Gentler backoff (15 %) with a high floor so a burst of loss can't
+        pressureSamples = 0;
+        lastAdjustAt = now;
+        // Gentler backoff (10 %) with a high floor so a burst of loss can't
         // knock the stream down to a blur.
-        bitrate = Math.max(bitrateFloor, bitrate * 0.85);
+        bitrate = Math.max(bitrateFloor, bitrate * 0.9);
         if (bloatSamples >= 4) bloatSamples = 2;
       } else if (clearlyClean) {
         cleanSamples += 1;
-        if (cleanSamples >= 2) bitrate = Math.min(target.targetBitrate, bitrate * 1.25);
-      } else {
+        if (cleanSamples >= 3 && !cooling && bitrate < target.targetBitrate) {
+          lastAdjustAt = now;
+          bitrate = Math.min(target.targetBitrate, bitrate * 1.2);
+        }
+      } else if (!bandwidthPressure) {
         cleanSamples = 0;
       }
 
-      cpuSamples = cpuLimited ? cpuSamples + 1 : 0;
-      if (cpuSamples >= 3) {
+      cpuSamples = cpuLimited && !warmingUp ? cpuSamples + 1 : 0;
+      if (cpuSamples >= 4) {
         scale = Math.min(Math.max(target.baseScale, 2), scale * 1.15);
         cpuSamples = 0;
-      } else if (!cpuLimited && cleanSamples >= 4 && scale > target.baseScale) {
+      } else if (!cpuLimited && cleanSamples >= 6 && scale > target.baseScale) {
         scale = Math.max(target.baseScale, scale / 1.15);
       }
       await update();
