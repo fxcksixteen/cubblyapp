@@ -40,6 +40,7 @@ const ServerView = ({ unreadByConv, membersHidden = false }: { unreadByConv?: Ma
   const server = servers.find((s) => s.id === serverId);
   const { channels } = useServerChannels(serverId || null);
   const { members } = useServerMembers(serverId || null);
+  const memberStatuses = useCustomStatuses(useMemo(() => members.map((m) => m.user_id), [members]));
   const groupCall = useGroupCall();
   const [activeConv, setActiveConv] = useState<Conversation | null>(null);
 
