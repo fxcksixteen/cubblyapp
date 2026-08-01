@@ -320,6 +320,12 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
               <UserBadges userId={userId} size={18} withTooltip />
             </p>
             <p className="text-[15px] text-[#949ba4]">@{profile?.username || displayName.toLowerCase()}</p>
+            {customStatus && (
+              <p className="mt-2 text-sm text-[#dbdee1] flex items-center gap-1.5 break-words">
+                {customStatus.emoji && <span className="cubbly-keep-animation">{customStatus.emoji}</span>}
+                {customStatus.text && <span>{customStatus.text}</span>}
+              </p>
+            )}
 
             {userActivity?.name && isUserOnline && (
               <div className="mt-3">
