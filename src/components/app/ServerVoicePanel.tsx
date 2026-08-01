@@ -146,8 +146,8 @@ const ServerVoicePanel = ({ conversationId }: Props) => {
   }, [user]);
 
   const inThisChannel = !!activeCall && activeCall.conversationId === conversationId;
-  const sharingPeer = useMemo(
-    () => (inThisChannel ? peers.find((p) => p.isScreenSharing && p.screenStream) : undefined),
+  const sharingPeers = useMemo(
+    () => (inThisChannel ? peers.filter((p) => p.isScreenSharing && p.screenStream) : []),
     [peers, inThisChannel],
   );
 
