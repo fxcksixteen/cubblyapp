@@ -2457,6 +2457,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           // an uncaught rejection that kills the whole signaling pipeline.
           try {
             await screenPc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+            // Flush any candidates that beat the offer here.
+            const queuedIn = pendingScreenIceRef.current.in.splice(0);
+            for (const c of queuedIn) {
+              try { await screenPc.addIceCandidate(new RTCIceCandidate(c)); } catch {}
+            }
             const answer = await screenPc.createAnswer();
             await screenPc.setLocalDescription(answer);
             channel.send({
