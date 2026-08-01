@@ -232,6 +232,39 @@ const FullscreenScreenShareViewer = ({ stream, sharerName, type = "screen", isLo
     else { v.play().catch(() => {}); }
   }, [previewPaused, isLocal]);
 
+  // v0.4.22 — auto-exit fullscreen when the share actually ends. Previously
+  // the watcher was left staring at a black rectangle because nothing closed
+  // the viewer once the sharer stopped. We watch every video track on the
+  // stream for `ended`, plus `removetrack` on the stream itself, and bail out
+  // as soon as no live video track remains.
+  useEffect(() => {
+    let closed = false;
+    const bail = () => {
+      if (closed) return;
+      closed = true;
+      onClose();
+    };
+    const check = () => {
+      const live = stream.getVideoTracks().some((t) => t.readyState === "live");
+      if (!live) bail();
+    };
+    const tracks = stream.getVideoTracks();
+    tracks.forEach((t) => {
+      t.addEventListener("ended", bail);
+    });
+    stream.addEventListener("removetrack", check as EventListener);
+    // Safety net for browsers that don't fire `ended` on remote tracks.
+    const poll = window.setInterval(check, 1000);
+    check();
+    return () => {
+      closed = true;
+      window.clearInterval(poll);
+      tracks.forEach((t) => t.removeEventListener("ended", bail));
+      stream.removeEventListener("removetrack", check as EventListener);
+    };
+  }, [stream, onClose]);
+
+
   const handleVolumeChange = (next: number) => {
     setVolume(next);
     if (next > 0 && muted) setMuted(false);
