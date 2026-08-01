@@ -1166,11 +1166,7 @@ ipcMain.on("window-video-frame-ack", (evt, frameId) => {
 
 ipcMain.handle("stop-window-capture", () => {
   if (!activeVideoCapture) return { ok: true };
-  try {
-    winDxgiCapture?.stop(activeVideoCapture.handle);
-  } catch (e) {
-    log.warn("[winvideo] stop error:", e?.message || e);
-  }
+  teardownActiveVideoCapture(null);
   if (videoStats) {
     const secs = (Date.now() - videoStats.startedAt) / 1000;
     log.info(
@@ -1180,7 +1176,6 @@ ipcMain.handle("stop-window-capture", () => {
       `MB=${(videoStats.bytesSent / 1e6).toFixed(1)}`
     );
   }
-  activeVideoCapture = null;
   return { ok: true };
 });
 
