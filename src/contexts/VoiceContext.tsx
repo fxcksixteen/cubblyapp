@@ -6,6 +6,7 @@ import { startNativeWindowAudioStream } from "@/lib/nativeWindowAudio";
 import {
   startNativeWindowVideoStream,
   couldUseNativeWindowVideo,
+  NATIVE_CAPTURE_FPS_CEILING,
   type NativeWindowVideoStats,
 } from "@/lib/nativeWindowVideo";
 import { usePeerGains } from "@/lib/peerGain";
@@ -3228,14 +3229,17 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         if (!isScreenPick && selectedSourceId && couldUseNativeWindowVideo(selectedSourceId)) {
           try {
             // Bind capture rate to the user's configured screenshare fps so a
-            // lower setting actually costs less to capture, rather than
-            // capturing high and throwing frames away. Mirrors the low-power
-            // clamp applied to encoding further down.
+            // lower setting actually costs less to capture, then clamp to the
+            // native ceiling — see NATIVE_CAPTURE_FPS_CEILING for the measured
+            // reason 60 is unsafe under CPU contention.
             const lowPowerNow =
               typeof document !== "undefined" &&
               document.documentElement.classList.contains("cubbly-low-power");
+            const ceiling = lowPowerNow
+              ? Math.min(NATIVE_CAPTURE_FPS_CEILING, 30)
+              : NATIVE_CAPTURE_FPS_CEILING;
             nativeVideo = await startNativeWindowVideoStream(selectedSourceId, {
-              maxFps: lowPowerNow ? Math.min(effectiveFps, 30) : effectiveFps,
+              maxFps: Math.min(effectiveFps, ceiling),
             });
           } catch (e) {
             console.debug("[Voice] native window video unavailable, using getDisplayMedia:", e);

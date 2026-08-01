@@ -38,10 +38,8 @@ export interface NativeWindowVideoOptions {
    * Target capture rate. Enforced in the main process before IPC, so capped
    * frames cost nothing (see electron/framePacer.cjs). 0 = uncapped.
    *
-   * Defaults to 60. Measured at 1080p60 with a real encoder in the loop: 183
-   * MB/s over IPC, zero dropped frames, p99 latency 18.5-21.5ms. Callers
-   * should pass the user's configured screenshare fps rather than relying on
-   * this default, so lower settings actually reduce capture cost.
+   * Callers should pass the user's configured screenshare fps, clamped to
+   * NATIVE_CAPTURE_FPS_CEILING. Defaults to that ceiling.
    */
   maxFps?: number;
   /** How long to wait for the first real frame before giving up (ms). */
@@ -49,6 +47,30 @@ export interface NativeWindowVideoOptions {
 }
 
 const NONE: NativeWindowVideoHandle = { videoTrack: null, stop: () => {}, getStats: () => null };
+
+/**
+ * Hard ceiling on native capture rate, independent of the user's fps setting.
+ *
+ * WHY 30 AND NOT 60: there is no flow control between the main process and the
+ * renderer — main sends every paced frame via webContents.send regardless of
+ * whether the renderer is keeping up, so a starved renderer lets the IPC queue
+ * grow without bound.
+ *
+ * Measured at 1080p, VP9, under 12 busy-loop workers on 8 cores:
+ *   60fps: main sent 8046 frames, renderer received 5294. ~2750 frames stuck
+ *          in the IPC queue. End-to-end latency p50 20.2 SECONDS, p99 46.2s.
+ *          The 60s test timer itself took 136.9s of wall clock.
+ *   30fps: main sent 1806, renderer received 1803 — queue stays empty.
+ *          End-to-end p50 81ms, p95 477ms, p99 721ms. Degraded but usable.
+ *
+ * Unloaded, 60fps is completely fine (183 MB/s, zero drops, p99 ~21ms). The
+ * ceiling exists purely because the unloaded case isn't the one that hurts
+ * users — capturing a game is exactly when the machine is under load.
+ *
+ * Raise this only once main throttles on renderer acknowledgement rather than
+ * firing frames blindly.
+ */
+export const NATIVE_CAPTURE_FPS_CEILING = 30;
 
 /**
  * Renderer-side capability probe.
@@ -88,7 +110,7 @@ export async function startNativeWindowVideoStream(
   sourceId: string,
   opts: NativeWindowVideoOptions = {}
 ): Promise<NativeWindowVideoHandle> {
-  const { maxFps = 60, firstFrameTimeoutMs = 1500 } = opts;
+  const { maxFps = NATIVE_CAPTURE_FPS_CEILING, firstFrameTimeoutMs = 1500 } = opts;
 
   // ---- Gate 1: source kind ------------------------------------------------
   // WGC here is CreateForWindow only. "screen:" sources have no HWND to bind,

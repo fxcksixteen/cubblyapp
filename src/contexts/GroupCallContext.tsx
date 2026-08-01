@@ -30,6 +30,7 @@ import { startNativeWindowAudioStream } from "@/lib/nativeWindowAudio";
 import {
   startNativeWindowVideoStream,
   couldUseNativeWindowVideo,
+  NATIVE_CAPTURE_FPS_CEILING,
   type NativeWindowVideoStats,
 } from "@/lib/nativeWindowVideo";
 import { usePeerGains } from "@/lib/peerGain";
@@ -1501,13 +1502,16 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
           let nativeVideo: Awaited<ReturnType<typeof startNativeWindowVideoStream>> | null = null;
           if (!isScreenPick && selectedSourceId && couldUseNativeWindowVideo(selectedSourceId)) {
             try {
-              // Same policy as the DM path: capture at the user's configured
-              // fps (low-power clamped), not a hardcoded ceiling.
+              // Same policy as the DM path: user's configured fps, clamped to
+              // the native ceiling (see NATIVE_CAPTURE_FPS_CEILING).
               const lowPowerNow =
                 typeof document !== "undefined" &&
                 document.documentElement.classList.contains("cubbly-low-power");
+              const ceiling = lowPowerNow
+                ? Math.min(NATIVE_CAPTURE_FPS_CEILING, 30)
+                : NATIVE_CAPTURE_FPS_CEILING;
               nativeVideo = await startNativeWindowVideoStream(selectedSourceId, {
-                maxFps: lowPowerNow ? Math.min(effectiveFps, 30) : effectiveFps,
+                maxFps: Math.min(effectiveFps, ceiling),
               });
             } catch (e) {
               console.debug("[GroupCall] native window video unavailable, using getDisplayMedia:", e);
