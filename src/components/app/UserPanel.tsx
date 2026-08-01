@@ -91,6 +91,8 @@ const UserPanel = () => {
       <div
         className="flex items-center gap-2.5 px-2 py-2 user-panel"
         style={{ backgroundColor: "var(--app-bg-accent)" }}
+        onMouseEnter={() => { if (customStatus) setShowCustom(false); }}
+        onMouseLeave={() => { if (customStatus) setShowCustom(true); }}
       >
         <ProfilePopup
           currentStatus={userStatus}
