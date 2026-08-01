@@ -327,9 +327,15 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
               ? (conv.participant.user_id === "00000000-0000-0000-0000-000000000001" || onlineUserIds.has(conv.participant.user_id))
               : false;
             const dmActivityLabel = activityLabel(dmActivity, dmIsOnline);
+            // Activity wins over a custom status (Discord parity), custom
+            // status wins over nothing.
+            const dmCustomStatus = !conv.is_group ? customStatuses[conv.participant.user_id] : undefined;
+            const dmStatusLine = dmCustomStatus
+              ? `${dmCustomStatus.emoji ? `${dmCustomStatus.emoji} ` : ""}${dmCustomStatus.text}`.trim()
+              : null;
             const subtitle = conv.is_group
               ? `${conv.members.length + 1} members`
-              : dmActivityLabel;
+              : dmActivityLabel || dmStatusLine;
             return (
               <ContextMenu key={conv.id}>
                 <ContextMenuTrigger asChild>
