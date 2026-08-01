@@ -60,14 +60,17 @@ bool WindowCapture::Start(HWND hwnd, FrameCallback callback, std::string& outErr
     return false;
   }
 
-  EnsureApartmentInitialized();
-
-  if (!GraphicsCaptureSession::IsSupported()) {
-    outError = "Windows Graphics Capture is not supported on this system";
+  if (!EnsureApartmentInitialized()) {
+    outError = "COM apartment could not be initialized";
     return false;
   }
 
   try {
+    if (!GraphicsCaptureSession::IsSupported()) {
+      outError = "Windows Graphics Capture is not supported on this system";
+      return false;
+    }
+
     auto interopFactory =
         winrt::get_activation_factory<GraphicsCaptureItem, IGraphicsCaptureItemInterop>();
     winrt::check_hresult(interopFactory->CreateForWindow(
@@ -114,18 +117,34 @@ bool WindowCapture::Start(HWND hwnd, FrameCallback callback, std::string& outErr
     session_.StartCapture();
   } catch (const winrt::hresult_error& e) {
     outError = winrt::to_string(e.message());
-    running_.store(false);
-    frameArrivedRevoker_.revoke();
-    itemClosedRevoker_.revoke();
-    session_ = nullptr;
-    framePool_ = nullptr;
-    item_ = nullptr;
-    d3dContext_ = nullptr;
-    d3dDevice_ = nullptr;
+    ResetAfterFailedStart();
+    return false;
+  } catch (const std::exception& e) {
+    outError = e.what();
+    ResetAfterFailedStart();
+    return false;
+  } catch (...) {
+    // Nothing may escape into N-API: NAPI_DISABLE_CPP_EXCEPTIONS means an
+    // uncaught C++ exception terminates the process.
+    outError = "unknown native failure during capture start";
+    ResetAfterFailedStart();
     return false;
   }
 
   return true;
+}
+
+void WindowCapture::ResetAfterFailedStart() {
+  running_.store(false);
+  frameArrivedRevoker_.revoke();
+  itemClosedRevoker_.revoke();
+  session_ = nullptr;
+  framePool_ = nullptr;
+  item_ = nullptr;
+  stagingTexture_ = nullptr;
+  d3dContext_ = nullptr;
+  d3dDevice_ = nullptr;
+  callback_ = nullptr;
 }
 
 void WindowCapture::Stop() {
@@ -166,40 +185,48 @@ void WindowCapture::OnFrameArrived(
                                 std::chrono::system_clock::now().time_since_epoch())
                                 .count());
 
-  auto frame = sender.TryGetNextFrame();
-  if (!frame) return;
+  // This runs on a WinRT thread-pool thread. check_hresult() throws on
+  // device-removed / resource-lost, and an exception escaping back into WinRT's
+  // event dispatch would terminate the process — so nothing may propagate out
+  // of here. A dropped frame is always preferable to a dead app.
+  try {
+    auto frame = sender.TryGetNextFrame();
+    if (!frame) return;
 
-  std::lock_guard<std::mutex> lk(mutex_);
-  if (!running_.load(std::memory_order_acquire)) return;
+    std::lock_guard<std::mutex> lk(mutex_);
+    if (!running_.load(std::memory_order_acquire)) return;
 
-  auto contentSize = frame.ContentSize();
-  if (contentSize.Width != lastSize_.Width || contentSize.Height != lastSize_.Height) {
-    lastSize_ = contentSize;
-    framePool_.Recreate(winrtDevice_, DirectXPixelFormat::B8G8R8A8UIntNormalized, 2, lastSize_);
-    return;  // next FrameArrived will deliver frames at the new size
-  }
+    auto contentSize = frame.ContentSize();
+    if (contentSize.Width != lastSize_.Width || contentSize.Height != lastSize_.Height) {
+      lastSize_ = contentSize;
+      framePool_.Recreate(winrtDevice_, DirectXPixelFormat::B8G8R8A8UIntNormalized, 2, lastSize_);
+      return;  // next FrameArrived will deliver frames at the new size
+    }
 
-  auto access = frame.Surface().as<IDirect3DDxgiInterfaceAccess>();
-  winrt::com_ptr<ID3D11Texture2D> frameTexture;
-  winrt::check_hresult(
-      access->GetInterface(winrt::guid_of<ID3D11Texture2D>(), frameTexture.put_void()));
+    auto access = frame.Surface().as<IDirect3DDxgiInterfaceAccess>();
+    winrt::com_ptr<ID3D11Texture2D> frameTexture;
+    winrt::check_hresult(
+        access->GetInterface(winrt::guid_of<ID3D11Texture2D>(), frameTexture.put_void()));
 
-  D3D11_TEXTURE2D_DESC desc;
-  frameTexture->GetDesc(&desc);
-  if (desc.Width == 0 || desc.Height == 0) return;
+    D3D11_TEXTURE2D_DESC desc;
+    frameTexture->GetDesc(&desc);
+    if (desc.Width == 0 || desc.Height == 0) return;
 
-  EnsureStagingTexture(desc.Width, desc.Height);
-  d3dContext_->CopyResource(stagingTexture_.get(), frameTexture.get());
+    EnsureStagingTexture(desc.Width, desc.Height);
+    d3dContext_->CopyResource(stagingTexture_.get(), frameTexture.get());
 
-  D3D11_MAPPED_SUBRESOURCE mapped;
-  winrt::check_hresult(d3dContext_->Map(stagingTexture_.get(), 0, D3D11_MAP_READ, 0, &mapped));
-  ConvertBgraToNv12(static_cast<const uint8_t*>(mapped.pData), mapped.RowPitch, desc.Width,
-                     desc.Height);
-  d3dContext_->Unmap(stagingTexture_.get(), 0);
+    D3D11_MAPPED_SUBRESOURCE mapped;
+    winrt::check_hresult(d3dContext_->Map(stagingTexture_.get(), 0, D3D11_MAP_READ, 0, &mapped));
+    ConvertBgraToNv12(static_cast<const uint8_t*>(mapped.pData), mapped.RowPitch, desc.Width,
+                       desc.Height);
+    d3dContext_->Unmap(stagingTexture_.get(), 0);
 
-  if (callback_) {
-    FrameInfo info{desc.Width, desc.Height, arrivedUs};
-    callback_(nv12Buffer_.data(), nv12Buffer_.size(), info);
+    if (callback_) {
+      FrameInfo info{desc.Width, desc.Height, arrivedUs};
+      callback_(nv12Buffer_.data(), nv12Buffer_.size(), info);
+    }
+  } catch (...) {
+    // Swallow and wait for the next frame.
   }
 }
 

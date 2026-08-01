@@ -30,11 +30,15 @@ struct FramePayload {
 
 Napi::Value IsSupported(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
-  cubbly::EnsureApartmentInitialized();
   bool supported = false;
+  // Everything WinRT-touching stays inside the catch-all: with
+  // NAPI_DISABLE_CPP_EXCEPTIONS an escaping C++ exception would terminate the
+  // process instead of throwing into JS.
   try {
-    supported = GraphicsCaptureSession::IsSupported();
-  } catch (const winrt::hresult_error&) {
+    if (cubbly::EnsureApartmentInitialized()) {
+      supported = GraphicsCaptureSession::IsSupported();
+    }
+  } catch (...) {
     supported = false;
   }
   return Napi::Boolean::New(env, supported);

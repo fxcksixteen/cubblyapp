@@ -53,6 +53,7 @@ class WindowCapture {
       winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool const& sender,
       winrt::Windows::Foundation::IInspectable const& args);
 
+  void ResetAfterFailedStart();
   void EnsureStagingTexture(uint32_t width, uint32_t height);
   void ConvertBgraToNv12(const uint8_t* srcData, uint32_t srcRowPitch,
                           uint32_t width, uint32_t height);
