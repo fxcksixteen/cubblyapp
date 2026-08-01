@@ -244,6 +244,25 @@ export function buildScreenSendEncodings(
   return [f, h, q];
 }
 
+/** Add a screen sender with simulcast when supported, otherwise one safe layer. */
+export function addScreenVideoTransceiver(
+  pc: RTCPeerConnection,
+  track: MediaStreamTrack,
+  stream: MediaStream,
+  encodings: RTCRtpEncodingParameters[],
+): RTCRtpTransceiver {
+  try {
+    return pc.addTransceiver(track, {
+      direction: "sendonly",
+      streams: [stream],
+      sendEncodings: encodings,
+    });
+  } catch (error) {
+    console.warn("[Voice] Simulcast transceiver unsupported; using one screen layer:", error);
+    return pc.addTransceiver(track, { direction: "sendonly", streams: [stream] });
+  }
+}
+
 /**
  * After `setLocalDescription` runs, poll the sender's stats once and log
  * which encoder implementation Chromium actually picked. Loud warning if
@@ -3489,11 +3508,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       // `f` layer down. Low-power path uses a single layer.
       const useVp9Svc = false; // set below once we know the negotiated codec
       const sendEncodings = buildScreenSendEncodings(maxBitrate, fpsCap, scaleResolutionDownBy, { lowPower });
-      const videoTx = screenPc.addTransceiver(videoTrack, {
-        direction: "sendonly",
-        streams: [stream],
-        sendEncodings,
-      } as any);
+      const videoTx = addScreenVideoTransceiver(screenPc, videoTrack, stream, sendEncodings);
       const videoSenderRef: RTCRtpSender = videoTx.sender;
       // Chromium rejects priority/networkPriority when supplied in the
       // addTransceiver init dictionary on some desktop builds. Apply optional

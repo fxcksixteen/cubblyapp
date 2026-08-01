@@ -112,8 +112,6 @@ async function applyEncoding(
   target.maxBitrate = Math.round(bitrate);
   target.maxFramerate = Math.round(fps);
   target.scaleResolutionDownBy = Math.max(1, +scale.toFixed(2));
-  target.networkPriority = "high";
-  target.priority = "high";
   (params as any).degradationPreference = "maintain-framerate";
   await sender.setParameters(params);
 }

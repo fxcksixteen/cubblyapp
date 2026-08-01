@@ -1081,6 +1081,7 @@ ipcMain.handle("stop-window-capture", () => {
     log.info(
       `[winvideo] capture stopped after ${secs.toFixed(1)}s — ` +
       `native=${videoStats.framesFromNative} sent=${videoStats.framesSent} ` +
+      `dropBP=${videoStats.framesDroppedBackpressure} ` +
       `MB=${(videoStats.bytesSent / 1e6).toFixed(1)}`
     );
   }
