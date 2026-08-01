@@ -44,6 +44,10 @@ export function nextScreenBitrate(sample: ScreenCongestionSample): { bitrate: nu
   return { bitrate: sample.bitrate, cleanSamples, reason: "hold" };
 }
 
+export function calculatePerPeerScreenBudget(totalBitrate: number, peerCount: number) {
+  return Math.max(500_000, Math.round(totalBitrate / Math.max(1, peerCount)));
+}
+
 /**
  * Discord-style SDP munging for the video m-line(s): raises the encoder's
  * initial bitrate + max ceiling so Chromium's Google Congestion Control does
@@ -216,10 +220,10 @@ export function startAutomaticScreenEncoding(
   // reacts to *sustained* pressure (loss > 8 %, bandwidth-limited by
   // Chromium, or RTT sitting > 150 ms above baseline for 4+ samples).
   const peerCount = () => Math.max(1, target.getPeerCount?.() ?? 1);
-  const perPeerTarget = () => Math.max(500_000, Math.round(target.targetBitrate / peerCount()));
+  const perPeerTarget = () => calculatePerPeerScreenBudget(target.targetBitrate, peerCount());
   let bitrate = Math.round(perPeerTarget() * 0.65);
   let scale = Math.max(1, target.baseScale);
-  const bitrateFloor = Math.min(900_000, Math.max(350_000, Math.round(perPeerTarget() * 0.25)));
+  const bitrateFloor = () => Math.min(900_000, Math.max(350_000, Math.round(perPeerTarget() * 0.25)));
   let cleanSamples = 0;
   let cpuSamples = 0;
   let lastLost = 0;
@@ -329,7 +333,7 @@ export function startAutomaticScreenEncoding(
       const decision = nextScreenBitrate({
         bitrate,
         targetBitrate: perPeerTarget(),
-        floorBitrate: bitrateFloor,
+        floorBitrate: bitrateFloor(),
         availableOutgoingBitrate,
         loss,
         rttMs,

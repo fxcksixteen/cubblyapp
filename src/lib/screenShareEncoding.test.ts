@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nextScreenBitrate } from "./screenShareEncoding";
+import { calculatePerPeerScreenBudget, nextScreenBitrate } from "./screenShareEncoding";
 
 const healthy = {
   bitrate: 3_000_000,
@@ -28,5 +28,12 @@ describe("nextScreenBitrate", () => {
   it("probes upward only after four clean samples", () => {
     expect(nextScreenBitrate({ ...healthy, cleanSamples: 2 }).reason).toBe("hold");
     expect(nextScreenBitrate({ ...healthy, cleanSamples: 3 }).reason).toBe("probe");
+  });
+});
+
+describe("calculatePerPeerScreenBudget", () => {
+  it("bounds aggregate mesh upload as viewers join", () => {
+    expect(calculatePerPeerScreenBudget(6_000_000, 1)).toBe(6_000_000);
+    expect(calculatePerPeerScreenBudget(6_000_000, 3)).toBe(2_000_000);
   });
 });

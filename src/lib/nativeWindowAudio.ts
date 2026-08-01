@@ -121,6 +121,9 @@ export async function startNativeWindowAudioStream(sourceId: string): Promise<Na
         scheduledSources.forEach((queued) => { try { queued.stop(); } catch {} });
         scheduledSources.clear();
         nextStartTime = now + NATIVE_AUDIO_TARGET_LEAD_SECONDS;
+        gain.gain.cancelScheduledValues(now);
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(1, now + 0.025);
         resyncCount++;
         droppedStaleFrames++;
         if (import.meta.env.DEV) console.debug("[NativeWindowAudio] resynced", { resyncCount, droppedStaleFrames });
