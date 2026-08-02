@@ -31,6 +31,15 @@ export interface NativeWindowVideoHandle {
   stop: () => void;
   /** Renderer-side instrumentation; null when the native path wasn't used. */
   getStats?: () => NativeWindowVideoStats | null;
+  /**
+   * v0.4.27 — frames per second observed during the settle window, i.e. how
+   * often the captured window's content actually CHANGED. WGC only emits on
+   * change, so a game sits near the capture cap and a static document sits
+   * near zero. Used once, before the encoder is configured, to resolve the
+   * share's content mode (see lib/shareContentMode). null when the sample
+   * window was too short to be meaningful.
+   */
+  measuredCaptureFps?: number | null;
 }
 
 export interface NativeWindowVideoOptions {
@@ -53,7 +62,14 @@ export interface NativeWindowVideoOptions {
   maxHeight?: number;
 }
 
-const NONE: NativeWindowVideoHandle = { videoTrack: null, stop: () => {}, getStats: () => null };
+const NONE: NativeWindowVideoHandle = { videoTrack: null, stop: () => {}, getStats: () => null, measuredCaptureFps: null };
+
+/**
+ * How long to count native frame arrivals for before deciding motion vs static.
+ * Long enough to distinguish a still document from a game, short enough that
+ * the user doesn't notice it in the share start-up path.
+ */
+const CONTENT_MODE_SAMPLE_MS = 700;
 
 /**
  * Hard ceiling on native capture rate, independent of the user's fps setting.
@@ -312,11 +328,28 @@ export async function startNativeWindowVideoStream(
     new Promise<boolean>((res) => setTimeout(() => res(false), firstFrameTimeoutMs)),
   ]);
 
+  // v0.4.27 — content-mode sample. We already have to wait for the first frame
+  // before committing to the native path; keep counting for a short window
+  // after it so "how fast does this window change?" is answered BEFORE the
+  // encoder is configured. Doing it later would mean re-configuring a running
+  // encoder, which is what triggers the transient software-encoder fallback.
+  let measuredCaptureFps: number | null = null;
+  if (gotFrame) {
+    const sampleStart = performance.now();
+    const framesAtStart = received;
+    await new Promise((res) => setTimeout(res, CONTENT_MODE_SAMPLE_MS));
+    const elapsedSec = (performance.now() - sampleStart) / 1000;
+    if (elapsedSec > 0.2) {
+      measuredCaptureFps = (received - framesAtStart) / elapsedSec;
+      console.log(`[NativeWindowVideo] capture rate ${measuredCaptureFps.toFixed(1)} fps over ${(elapsedSec * 1000).toFixed(0)}ms`);
+    }
+  }
+
   if (!gotFrame) {
     console.debug(`[NativeWindowVideo] no frame within ${firstFrameTimeoutMs}ms — using getDisplayMedia`);
     stop();
     return NONE;
   }
 
-  return { videoTrack: generator as MediaStreamTrack, stop, getStats };
+  return { videoTrack: generator as MediaStreamTrack, stop, getStats, measuredCaptureFps };
 }
