@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useVoice, CallDiagnostics, PickupSelfTestResult } from "@/contexts/VoiceContext";
 import { Activity, Globe, Shield, Wifi, ArrowDownToLine, ArrowUpToLine, Phone, Check, X, Loader2 } from "lucide-react";
 
@@ -158,6 +158,12 @@ const CallDiagnosticsModal = ({ open, onClose }: Props) => {
               <span className="text-[10px] uppercase tracking-wide font-bold" style={{ color: qualityColor(liveRtt) }}>Live</span>
             </span>
           </DialogTitle>
+          {/* Radix warns when DialogContent has no description, and this is
+              what a screen reader announces after the title. */}
+          <DialogDescription className="sr-only">
+            Live connection quality for the current call: round-trip time, GPU and encoder
+            pipeline, relay region, ICE candidate pair, and inbound/outbound audio statistics.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="px-5 py-4 space-y-4 max-h-[70vh] overflow-y-auto">
