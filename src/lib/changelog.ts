@@ -23,9 +23,20 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.4.24";
+export const CURRENT_VERSION = "0.4.25";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.4.25",
+    title: "Screenshare hang fix",
+    date: "2026-08-02",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Fixed screensharing freezing the app on every share.",
+      "Fixed the screenshare native module not being rebuilt, so the improvements from the last few patches actually take effect.",
+    ],
+  },
   {
     version: "0.4.24",
     title: "Screenshare stability hotfix",
