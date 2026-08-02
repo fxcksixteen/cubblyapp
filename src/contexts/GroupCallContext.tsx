@@ -1773,7 +1773,15 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       if (nativeWindowVideoStopRef.current) {
         try {
           const s = nativeWindowVideoStatsRef.current?.();
-          if (s) console.log("[GroupCall] native WGC capture stats:", s);
+          // v0.4.27 — formatted, not a collapsed object (see the DM path).
+          if (s) console.log(
+            `[GroupCall] native WGC capture: received=${s.received} written=${s.written} ` +
+            `dropped(backpressure)=${s.droppedBackpressure} ` +
+            `${(s.bytesReceived / 1e6).toFixed(1)}MB over ${(s.elapsedMs / 1000).toFixed(1)}s ` +
+            `(${(s.received / Math.max(1, s.elapsedMs / 1000)).toFixed(1)} fps) ` +
+            `latency p50=${(s.endToEndUs.p50 / 1000).toFixed(0)}ms ` +
+            `p95=${(s.endToEndUs.p95 / 1000).toFixed(0)}ms max=${(s.endToEndUs.max / 1000).toFixed(0)}ms`
+          );
         } catch {}
         try { nativeWindowVideoStopRef.current(); } catch {}
         nativeWindowVideoStopRef.current = null;
