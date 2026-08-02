@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { getProfileColor } from "@/lib/profileColors";
 import ScreenSharePicker from "./ScreenSharePicker";
+import StreamStatusOverlay, { useStreamStalled } from "./StreamStatusOverlay";
 import FullscreenScreenShareViewer from "./FullscreenScreenShareViewer";
 import UserVolumeMenu from "./UserVolumeMenu";
 import micIcon from "@/assets/icons/microphone.svg";
@@ -154,12 +155,16 @@ const ScreenShareViewer = ({ peer, onMaximize }: { peer: GroupPeer; onMaximize: 
       ref.current.play().catch(() => {});
     }
   }, [peer.screenStream]);
+  const screenStalled = useStreamStalled(peer.screenStream);
   return (
     <div className="group mx-4 mt-3 rounded-xl overflow-hidden bg-black border relative" style={{ borderColor: "var(--app-border)" }}>
       {/* muted: screen audio is routed through the per-peer GainNode (see
           GroupCallContext ontrack) so the right-click "User Volume" + the
           fullscreen viewer's volume slider both control it. */}
       <video ref={ref} muted playsInline className="w-full max-h-[50vh] object-contain bg-black" />
+      {/* v0.4.27 — the stall indicator used to exist only in fullscreen, so a
+          viewer on this tile saw a frozen picture with no explanation. */}
+      <StreamStatusOverlay show={screenStalled} videoRef={ref} sharerName={peer.displayName} compact />
       <button
         type="button"
         onClick={onMaximize}

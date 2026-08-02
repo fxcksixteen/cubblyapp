@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { X, Maximize2, Minimize2, Volume2, VolumeX, PictureInPicture2, Pause, RotateCcw } from "lucide-react";
 import cubblyLogo from "@/assets/cubbly-logo.png";
 import { setScreenAudioMuted, isLocallyDeafened, subscribeLocalDeafen } from "@/lib/peerGain";
+import StreamStatusOverlay, { useStreamStalled } from "./StreamStatusOverlay";
 
 interface Props {
   stream: MediaStream;
@@ -78,12 +79,12 @@ const FullscreenScreenShareViewer = ({ stream, sharerName, type = "screen", isLo
     );
   };
 
-  // v0.4.26 — "no frames yet" indicator. A fresh <video> element shows pure
-  // black until the FIRST frame after srcObject attach arrives. Remote tracks
-  // deliver nothing while muted (share starting up, sharer's window static,
-  // share renegotiating), which users read as "fullscreen is broken". Track
-  // frame arrival explicitly and show a waiting hint instead of silent black.
-  const [waitingForFrames, setWaitingForFrames] = useState(true);
+  // v0.4.27 — stall detection moved into useStreamStalled and keys off TRACK
+  // STATE, not frame timing. The old requestVideoFrameCallback rule declared a
+  // stall after 2s without a composited frame, which a healthy share of a
+  // static document trips constantly: WGC only emits on change and WebRTC does
+  // not resend static content.
+  const stalled = useStreamStalled(stream);
 
   // Wire the visible <video> for picture only — its audio stays muted because
   // the audible playback is owned by the shared <audio> element above.
@@ -96,38 +97,8 @@ const FullscreenScreenShareViewer = ({ stream, sharerName, type = "screen", isLo
     v.muted = true;
     v.volume = 1;
     v.play().catch(() => {});
-    setWaitingForFrames(true);
 
-    // First-frame detection: requestVideoFrameCallback fires per composited
-    // frame; fall back to `loadeddata` where rVFC is unavailable.
     let cancelled = false;
-    let stallTimer: number | null = null;
-    const anyV = v as any;
-    if (typeof anyV.requestVideoFrameCallback === "function") {
-      const onFrame = () => {
-        if (cancelled) return;
-        setWaitingForFrames(false);
-        // Keep watching: if frames stop for >2 s, surface the waiting hint
-        // again instead of freezing silently — but ONLY when the track is
-        // actually muted. A screenshare of a static window legitimately stops
-        // producing frames (both WGC and WebRTC send nothing when nothing
-        // changes), and the first version of this check papered a "Waiting for
-        // video…" overlay over a perfectly good picture whenever the sharer
-        // stopped moving for two seconds.
-        if (stallTimer !== null) window.clearTimeout(stallTimer);
-        stallTimer = window.setTimeout(() => {
-          if (cancelled) return;
-          const vt = stream.getVideoTracks()[0];
-          if (!vt || vt.muted || vt.readyState !== "live") setWaitingForFrames(true);
-        }, 2000);
-        anyV.requestVideoFrameCallback(onFrame);
-      };
-      anyV.requestVideoFrameCallback(onFrame);
-    } else {
-      const onLoaded = () => { if (!cancelled) setWaitingForFrames(false); };
-      v.addEventListener("loadeddata", onLoaded, { once: true });
-    }
-
     // A muted remote track that un-mutes = frames resumed after a stall or a
     // renegotiation. Nudge playback — some Chromium builds need a play() kick
     // after a track transitions muted -> unmuted on an already-attached sink.
@@ -137,7 +108,7 @@ const FullscreenScreenShareViewer = ({ stream, sharerName, type = "screen", isLo
 
     return () => {
       cancelled = true;
-      if (stallTimer !== null) window.clearTimeout(stallTimer);
+      void cancelled;
       track?.removeEventListener("unmute", onUnmute);
     };
   }, [stream]);
@@ -423,18 +394,13 @@ const FullscreenScreenShareViewer = ({ stream, sharerName, type = "screen", isLo
           }}
         />
 
-        {/* v0.4.26 — honest feedback while no frames are arriving (share
-            starting, sharer's window static, renegotiation in flight)
-            instead of an unexplained black screen. */}
-        {waitingForFrames && !previewPaused && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 pointer-events-none">
-            <img src={cubblyLogo} alt="" className="h-12 w-12 rounded-xl opacity-80 animate-pulse" />
-            <p className="text-sm font-semibold text-white/85">Waiting for video…</p>
-            <p className="text-[11px] text-white/50 max-w-xs text-center px-4">
-              {sharerName}'s stream is connecting or paused. This clears as soon as frames arrive.
-            </p>
-          </div>
-        )}
+        {/* v0.4.27 — shared overlay: track-state driven, blurred last frame
+            behind it instead of flat black. */}
+        <StreamStatusOverlay
+          show={stalled && !previewPaused}
+          videoRef={videoRef}
+          sharerName={sharerName}
+        />
 
         {isLocal && previewPaused && (
           <div

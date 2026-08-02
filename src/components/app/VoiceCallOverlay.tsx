@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { defaultProfileColor, getProfileColor } from "@/lib/profileColors";
 import { useCallParticipants } from "@/hooks/useCallParticipants";
 import ScreenSharePicker, { ScreenShareType } from "./ScreenSharePicker";
+import StreamStatusOverlay, { useStreamStalled } from "./StreamStatusOverlay";
 import FullscreenScreenShareViewer from "./FullscreenScreenShareViewer";
 import UserVolumeMenu from "./UserVolumeMenu";
 import { Button } from "@/components/ui/button";
@@ -110,6 +111,7 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
   const [volumeMenu, setVolumeMenu] = useState<{ userId: string; name: string; x: number; y: number } | null>(null);
   const screenVideoRef = useRef<HTMLVideoElement>(null);
   const remoteScreenVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteScreenStalled = useStreamStalled(remoteScreenStream);
   const localCamRef = useRef<HTMLVideoElement>(null);
   const remoteCamRef = useRef<HTMLVideoElement>(null);
 
@@ -288,6 +290,8 @@ export const CallPanel = ({ conversationId, recipientName, recipientAvatar, reci
                   VoiceContext screen-pc ontrack), so the right-click "User Volume"
                   and the fullscreen viewer's volume slider both control it. */}
               <video ref={remoteScreenVideoRef} autoPlay muted playsInline className="w-full max-h-[400px] object-contain" />
+              {/* v0.4.27 — stall indicator in the normal view too, not just fullscreen. */}
+              <StreamStatusOverlay show={remoteScreenStalled} videoRef={remoteScreenVideoRef} sharerName={recipientName} compact />
               <div className="absolute top-3 right-3 flex gap-2">
                 <button
                   onClick={() => remoteScreenStream && setFullscreenView({ name: recipientName, type: "screen", isLocal: false })}
