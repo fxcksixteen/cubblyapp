@@ -21,8 +21,6 @@ using winrt::Windows::Graphics::SizeInt32;
 using winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool;
 using winrt::Windows::Graphics::Capture::GraphicsCaptureItem;
 using winrt::Windows::Graphics::Capture::GraphicsCaptureSession;
-using winrt::Windows::Graphics::Capture::GraphicsCaptureAccess;
-using winrt::Windows::Graphics::Capture::GraphicsCaptureAccessKind;
 using winrt::Windows::Graphics::DirectX::DirectXPixelFormat;
 using winrt::Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice;
 // This one is the raw ABI interop interface from windows.graphics.directx.
@@ -108,21 +106,26 @@ bool WindowCapture::Start(HWND hwnd, FrameCallback callback, uint32_t maxHeight,
         winrtDevice_, DirectXPixelFormat::B8G8R8A8UIntNormalized, 2, lastSize_);
     session_ = framePool_.CreateCaptureSession(item_);
 
-    // v0.4.22 — kill the yellow "this window is being captured" outline that
-    // Windows draws around the capture target. IsBorderRequired only exists on
-    // Windows 11 (build 22000+) / late Win10 servicing builds, and on some
-    // builds it also needs the graphics-capture-without-border capability, so
-    // both the API-presence check and the call itself are best-effort.
+    // Best-effort: hide the yellow "this window is being captured" outline
+    // (IsBorderRequired exists on Windows 11 / late Win10 servicing builds).
+    //
+    // HARD RULE — never call a blocking WinRT `.get()` in this addon. The
+    // v0.4.22 version of this block did
+    // `GraphicsCaptureAccess::RequestAccessAsync(...).get()` here, and that
+    // deadlocked every capture start: Start() runs synchronously on Electron's
+    // main thread, which is an STA, and a blocked, non-pumping STA can never
+    // receive the async completion. The app's message pump lives on that same
+    // thread, so Windows flagged the whole app "not responding" (Application
+    // Hang 1002, reproduced 2026-08-02). The try/catch never helped — nothing
+    // throws, it just blocks forever.
+    //
+    // So: set the property directly. Where the OS wants an access grant we
+    // don't have, this throws access-denied, we catch it, and the border
+    // stays — a cosmetic loss, never a hang.
     try {
       if (winrt::Windows::Foundation::Metadata::ApiInformation::IsPropertyPresent(
               L"Windows.Graphics.Capture.GraphicsCaptureSession",
               L"IsBorderRequired")) {
-        // Best-effort permission request; ignore the result, the setter below
-        // simply no-ops if the OS refuses.
-        try {
-          GraphicsCaptureAccess::RequestAccessAsync(
-              GraphicsCaptureAccessKind::Borderless).get();
-        } catch (...) {}
         session_.IsBorderRequired(false);
       }
     } catch (...) {

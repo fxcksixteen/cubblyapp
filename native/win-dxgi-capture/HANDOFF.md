@@ -186,6 +186,29 @@ If you refactor `Stop()`, preserve this ordering: **clear flag → revoke unlock
 
 ---
 
+## HARD RULE: no blocking WinRT `.get()` anywhere in this addon
+
+A v0.4.22 patch called `GraphicsCaptureAccess::RequestAccessAsync(...).get()`
+inside `Start()` to remove the yellow capture border. `Start()` runs
+synchronously on Electron's main thread, which is an STA; a blocked,
+non-pumping STA can never receive the async completion, so `Start()` never
+returned, the message pump on that same thread died, and Windows flagged the
+app "not responding" (Application Hang event 1002 — reproduced and confirmed
+2026-08-02; the app log shows `starting capture ...` with no `capture started
+OK` ever following). try/catch does not help — nothing throws, it blocks.
+
+`com_ptr::get()` (raw pointer accessor) is fine. `IAsyncOperation::get()` /
+`IAsyncAction::get()` are never fine here. If a WinRT async result is ever
+genuinely needed, take a `.Completed` handler; never wait.
+
+Related trap from the same incident — **binary/source skew**: the shipped
+`prebuilds/win32-x64/win-dxgi-capture.node` is only as new as the last CI
+prebuild run. JS-side changes land instantly; C++ changes do nothing until the
+binary is rebuilt, and a stale binary silently ignores new `start()` arguments
+(extra N-API args are dropped). When debugging, confirm the binary's vintage
+first: `grep -aoE "startCapture\(hwnd[^\"]*" <the .node>` prints the embedded
+usage string, which changes with the signature.
+
 ## The STA apartment crash (read before writing any verification)
 
 `winrt::init_apartment(apartment_type::multi_threaded)` throws
