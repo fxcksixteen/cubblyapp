@@ -235,10 +235,19 @@ export function buildScreenSendEncodings(
   targetBitrate: number,
   targetFps: number,
   baseScale: number,
-  opts?: { lowPower?: boolean; useVp9Svc?: boolean },
+  opts?: { lowPower?: boolean; useVp9Svc?: boolean; simulcast?: boolean },
 ): RTCRtpEncodingParameters[] {
   const scaleF = Math.max(1, baseScale);
-  if (opts?.lowPower) {
+  // v0.4.27 — single layer unless simulcast is explicitly asked for.
+  //
+  // Simulcast only pays off with an SFU that can forward a per-viewer layer.
+  // Cubbly calls are peer-to-peer, so the extra `h` and `q` layers were encoded
+  // and transmitted with nothing able to select them — burning upload and CPU
+  // for no viewer-side benefit. Worse, the adaptive controller and the encoder
+  // clamp only ever touch the `f` layer (applyEncoding looks up rid === "f"), so
+  // when they backed bitrate off under congestion, `h` and `q` kept sending at
+  // their original ceilings and the real total never came down.
+  if (opts?.lowPower || opts?.simulcast === false) {
     const enc: any = { rid: "f", maxBitrate: targetBitrate, maxFramerate: targetFps, scaleResolutionDownBy: scaleF };
     if (opts.useVp9Svc) enc.scalabilityMode = "L1T3";
     return [enc];
@@ -3723,11 +3732,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       const videoTrack = stream.getVideoTracks()[0];
       const audioTracks = stream.getAudioTracks();
 
-      // v0.4.18 — simulcast on the screen video sender. Three RIDs so a
-      // struggling viewer drops to `h` or `q` without dragging our full
-      // `f` layer down. Low-power path uses a single layer.
+      // v0.4.27 — SINGLE layer. A 1:1 DM call is peer-to-peer with no SFU, so
+      // the extra simulcast layers had nothing to select them: pure wasted
+      // upload and encode. They were also invisible to the adaptive controller,
+      // which only manages the `f` layer.
       const useVp9Svc = false; // set below once we know the negotiated codec
-      const sendEncodings = buildScreenSendEncodings(maxBitrate, fpsCap, scaleResolutionDownBy, { lowPower });
+      const sendEncodings = buildScreenSendEncodings(maxBitrate, fpsCap, scaleResolutionDownBy, { lowPower, simulcast: false });
       const videoTx = addScreenVideoTransceiver(screenPc, videoTrack, stream, sendEncodings);
       const videoSenderRef: RTCRtpSender = videoTx.sender;
       // Chromium rejects priority/networkPriority when supplied in the

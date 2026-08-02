@@ -698,7 +698,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         localScreenEncodingRef.current?.targetBitrate ?? 4_000_000,
         localScreenEncodingRef.current?.targetFps ?? 30,
         localScreenEncodingRef.current?.baseScale ?? 1,
-        { lowPower },
+        { lowPower, simulcast: false },
       );
       const tx = addScreenVideoTransceiver(pc, localScreenTrackRef.current, screenStream, enc);
       const sender = tx.sender;
@@ -1693,7 +1693,10 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         const labeledStream = new MediaStream([videoTrack]);
         Object.defineProperty(labeledStream, "id", { value: `cubbly-screen-${user.id}` });
         // v0.4.18 — simulcast per peer, HW-friendly codec pref, VP9 SVC fallback.
-        const enc = buildScreenSendEncodings(maxBitrate, fpsCap, scaleResolutionDownBy, { lowPower: grpLowPower });
+        // v0.4.27 — single layer: the group call is a full MESH of peer-to-peer
+        // connections, not an SFU, so per-peer simulcast layers are wasted
+        // upload on an uplink already carrying one stream per peer.
+        const enc = buildScreenSendEncodings(maxBitrate, fpsCap, scaleResolutionDownBy, { lowPower: grpLowPower, simulcast: false });
         const tx = addScreenVideoTransceiver(pc, videoTrack, labeledStream, enc);
         const vSender = tx.sender;
         screenSendersRef.current.set(peerId, vSender);
