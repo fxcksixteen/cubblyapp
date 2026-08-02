@@ -35,6 +35,16 @@ const speakingShadow = (level: number) => {
   return `0 0 0 ${ring}px rgba(59,165,92,${0.7 + eased * 0.25}), 0 0 ${glow}px rgba(59,165,92,${0.35 + eased * 0.35})`;
 };
 
+/** Same thresholds the sidebar ping indicator uses. */
+const pingColor = (ms: number) => (ms < 120 ? "#3ba55c" : ms < 200 ? "#faa61a" : "#ed4245");
+
+const PingLabel = ({ pingMs }: { pingMs?: number | null }) =>
+  typeof pingMs === "number" && pingMs > 0 ? (
+    <span className="text-[10px] font-semibold tabular-nums" style={{ color: pingColor(pingMs) }} title="Round trip to this person">
+      {pingMs} ms
+    </span>
+  ) : null;
+
 interface PeerTileProps {
   userId: string;
   displayName: string;
@@ -48,9 +58,12 @@ interface PeerTileProps {
   onMaximize?: () => void;
   /** Called when the user right-clicks the tile (used to open the volume menu). Suppressed for the local user. */
   onContextMenu?: (e: React.MouseEvent) => void;
+  /** v0.4.27 — round trip to this specific peer. The header shows the worst
+   *  link across the mesh; this says WHICH link that is. */
+  pingMs?: number | null;
 }
 
-const PeerTile = ({ userId, displayName, avatarUrl, audioLevel, isMuted, isLocal, videoStream, onMaximize, onContextMenu }: PeerTileProps) => {
+const PeerTile = ({ userId, displayName, avatarUrl, audioLevel, isMuted, isLocal, videoStream, onMaximize, onContextMenu, pingMs }: PeerTileProps) => {
   const color = getProfileColor(userId);
   const speaking = audioLevel > SPEAKING_THRESHOLD && !isMuted;
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -93,6 +106,7 @@ const PeerTile = ({ userId, displayName, avatarUrl, audioLevel, isMuted, isLocal
         <span className="text-xs font-semibold max-w-[200px] truncate" style={{ color: "var(--app-text-primary)" }}>
           {displayName}{isLocal ? " (you)" : ""}
         </span>
+        <PingLabel pingMs={pingMs} />
       </div>
     );
   }
@@ -126,6 +140,7 @@ const PeerTile = ({ userId, displayName, avatarUrl, audioLevel, isMuted, isLocal
       <span className="text-xs font-semibold max-w-[100px] truncate" style={{ color: "var(--app-text-primary)" }}>
         {displayName}{isLocal ? " (you)" : ""}
       </span>
+      <PingLabel pingMs={pingMs} />
     </div>
   );
 };
@@ -313,6 +328,7 @@ const GroupCallPanel = ({ conversationId }: Props) => {
             avatarUrl={p.avatarUrl}
             audioLevel={p.audioLevel}
             isMuted={p.isMuted}
+            pingMs={p.pingMs}
             // Render whenever we actually have a remote video stream — never
             // gate on `isVideoOn` boolean alone; that signal can lag/miss and
             // hides the tile even though frames are arriving.

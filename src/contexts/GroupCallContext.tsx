@@ -37,6 +37,9 @@ import {
 import { usePeerGains } from "@/lib/peerGain";
 import { armRemoteAudio } from "@/lib/iosAudioUnlock";
 import { STUN_FALLBACK_SERVERS, sanitizeIceServersForSession } from "@/lib/webrtcIce";
+import { getSelectedCandidatePair } from "@/lib/webrtcStats";
+import { broadcastToTopic, broadcastToTopicWithRetry, voiceGlobalTopic, groupGlobalTopic } from "@/lib/realtimeBroadcast";
+import { setLegacyGroupRingHandler } from "@/lib/legacyGroupRingBridge";
 import { AutomaticScreenEncoding, startAutomaticScreenEncoding } from "@/lib/screenShareEncoding";
 
 import {
@@ -67,6 +70,10 @@ export interface GroupPeer {
   isVideoOn: boolean;
   /** Peer-side screenshare toggle (broadcast). */
   isScreenSharing: boolean;
+  /** v0.4.27 — round trip to THIS peer, ms. null until the pair is selected.
+   *  In a mesh every link differs, so the panel's single number (the worst
+   *  link) can't tell you which connection is actually struggling. */
+  pingMs?: number | null;
 }
 
 export interface GroupActiveCall {
@@ -292,44 +299,27 @@ async function applyRealtimeAudioParams(sender: RTCRtpSender, bitrate = 128_000)
 }
 
 /**
- * Ring one member on their `voice-global:<uid>` broadcast channel. Waits for
- * the JOIN ack before publishing — supabase-js resolves `.subscribe()`
- * BEFORE the topic is actually joined server-side, and any broadcast fired
- * in that window is dropped on the floor. That race is the reason group-call
- * rings intermittently failed to reach every member. Retries once on failure
- * so a transient Realtime hiccup never leaves a friend with no way to join.
+ * Ring one member's GROUP incoming-call topic.
+ *
+ * v0.4.27: sends over the Realtime REST broadcast endpoint instead of joining
+ * the topic. The previous implementation subscribed, waited for the JOIN ack
+ * (to dodge the race where `.subscribe()` resolves before the topic is joined
+ * server-side and any broadcast in that window is dropped), published, then
+ * removed the channel. httpSend never joins, so that race cannot occur — and,
+ * critically, nothing is ever removed. `channel()` dedupes by topic, so a
+ * `removeChannel()` on a topic the app also listens to tears down a LIVE
+ * listener.
  */
 async function ringMemberWithRetry(mid: string, payload: Record<string, unknown>, attempt = 0): Promise<void> {
-  const ch = supabase.channel(`voice-global:${mid}`);
-  const joined = await new Promise<boolean>((resolve) => {
-    let settled = false;
-    const timer = window.setTimeout(() => { if (!settled) { settled = true; resolve(false); } }, 4000);
-    ch.subscribe((status) => {
-      if (settled) return;
-      if (status === "SUBSCRIBED") { settled = true; window.clearTimeout(timer); resolve(true); }
-      else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
-        settled = true; window.clearTimeout(timer); resolve(false);
-      }
-    });
-  });
-  try {
-    if (joined) {
-      const res: any = await ch.send({ type: "broadcast", event: "group-incoming-call", payload });
-      if (res !== "ok" && attempt === 0) {
-        setTimeout(() => { supabase.removeChannel(ch); void ringMemberWithRetry(mid, payload, 1); }, 400);
-        return;
-      }
-    } else if (attempt === 0) {
-      setTimeout(() => { supabase.removeChannel(ch); void ringMemberWithRetry(mid, payload, 1); }, 400);
-      return;
-    }
-  } catch {
-    if (attempt === 0) {
-      setTimeout(() => { supabase.removeChannel(ch); void ringMemberWithRetry(mid, payload, 1); }, 400);
-      return;
-    }
-  }
-  setTimeout(() => supabase.removeChannel(ch), 3000);
+  const [primary] = await Promise.all([
+    // Dedicated group topic — split from voice-global so the Voice and
+    // GroupCall providers stop sharing one RealtimeChannel instance.
+    broadcastToTopicWithRetry(groupGlobalTopic(mid), "group-incoming-call", payload),
+    // COMPAT: clients on 0.4.26 and older still listen for group rings on
+    // voice-global:<uid>. Safe to delete once >=0.4.27 is broadly installed.
+    broadcastToTopic(voiceGlobalTopic(mid), "group-incoming-call", payload),
+  ]);
+  if (!primary.ok) groupTrace("ring.failed", { mid, attempt, error: primary.error });
 }
 
 async function sendGroupSignalReliably(
@@ -455,6 +445,8 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
   const localVideoTrackRef = useRef<MediaStreamTrack | null>(null);
   const localScreenTrackRef = useRef<MediaStreamTrack | null>(null);
   const localScreenEncodingRef = useRef<AutomaticScreenEncoding | null>(null);
+  /** Always-current toggleScreenShare, for callbacks installed at share start. */
+  const toggleScreenShareRef = useRef<(() => void) | null>(null);
   /**
    * Local SDP munger applied to every offer/answer this peer sends.
    * Only touches Opus fmtp params for stereo high-bitrate mic audio.
@@ -636,6 +628,9 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     ignoreOfferRef.current.delete(peerId);
     videoSendersRef.current.delete(peerId);
     screenSendersRef.current.delete(peerId);
+    // Was missed here, so every peer that ever left leaked its screen-audio
+    // sender array for the lifetime of the provider.
+    screenAudioSendersRef.current.delete(peerId);
     screenEncodingCleanupRef.current.get(peerId)?.();
     screenEncodingCleanupRef.current.delete(peerId);
     setPeers(prev => prev.filter(p => p.userId !== peerId));
@@ -1712,7 +1707,12 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         screenAudioSendersRef.current.set(peerId, audioSenders);
       }
 
-      videoTrack.onended = () => { toggleScreenShare(); };
+      // v0.4.27: must go through the ref. This handler captured the
+      // `toggleScreenShare` from the render where `isScreenSharing` was still
+      // false, so ending the capture from Windows' own "Stop sharing" bar
+      // re-entered the START branch and silently began sharing a DIFFERENT
+      // window (sources[0]) instead of stopping.
+      videoTrack.onended = () => { toggleScreenShareRef.current?.(); };
 
       // v0.4.5 mute-survival: renegotiation must NEVER silently flip the mic
       // track's enabled bit. Re-assert the caller's chosen mute state right
@@ -1775,6 +1775,10 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [activeCall, user, localScreenStream]);
 
+  // Always-current toggleScreenShare for callbacks installed at share start
+  // (see videoTrack.onended above).
+  useEffect(() => { toggleScreenShareRef.current = toggleScreenShare; }, [toggleScreenShare]);
+
 
   // Listen for global incoming group calls.
   // v0.4.0: read activeCall via ref so we don't tear down and rebuild this
@@ -1782,12 +1786,34 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
   // swallowing incoming-call broadcasts.
   const activeCallRef = useRef(activeCall);
   useEffect(() => { activeCallRef.current = activeCall; }, [activeCall]);
+  /** callEventId -> when we rang for it, so a ring delivered on both the new
+   *  and the legacy topic only rings once. */
+  const handledRingsRef = useRef<Map<string, number>>(new Map());
   useEffect(() => {
     if (!user) return;
-    const ch = supabase.channel(`voice-global:${user.id}`);
-    ch.on("broadcast", { event: "group-incoming-call" }, ({ payload }) => {
-      if (payload.targetId !== user.id) return;
+    // v0.4.27 — own topic. This used to be `voice-global:<uid>`, the SAME topic
+    // VoiceContext's incoming-call listener uses. `channel()` dedupes by topic,
+    // so both providers were binding handlers onto one shared RealtimeChannel —
+    // and either one's cleanup (or an effect re-run; VoiceContext's global
+    // effect depends on `setupSignaling`) removed the channel and silently took
+    // the other provider's listener down with it.
+    // ONE handler for both delivery paths. A 0.4.27 caller dual-sends the ring
+    // (group-global + the legacy voice-global topic), so this can be invoked
+    // twice for the same call — de-duplicate on callEventId.
+    const handleGroupRing = (payload: any) => {
+      if (payload?.targetId !== user.id) return;
       if (activeCallRef.current) return; // already in a call
+      const key = String(payload.callEventId || `${payload.conversationId}:${payload.callerId}`);
+      const now = Date.now();
+      const seenAt = handledRingsRef.current.get(key);
+      if (seenAt && now - seenAt < 60_000) return; // duplicate delivery
+      handledRingsRef.current.set(key, now);
+      // Keep the dedupe map from growing across a long session.
+      if (handledRingsRef.current.size > 50) {
+        for (const [k, t] of handledRingsRef.current) {
+          if (now - t > 60_000) handledRingsRef.current.delete(k);
+        }
+      }
       setIncomingCall({
         conversationId: payload.conversationId,
         conversationName: payload.conversationName || "Group Call",
@@ -1797,9 +1823,21 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         callEventId: payload.callEventId,
       });
       playLooping("incomingCall", { volume: 0.5 });
-    });
+    };
+
+    const ch = supabase.channel(groupGlobalTopic(user.id));
+    ch.on("broadcast", { event: "group-incoming-call" }, ({ payload }) => handleGroupRing(payload));
     ch.subscribe();
-    return () => { supabase.removeChannel(ch); };
+
+    // COMPAT: remove once >=0.4.27 is broadly installed. Lets a 0.4.26 caller —
+    // which only publishes to voice-global:<uid> — still ring us. VoiceContext
+    // owns that topic and forwards the payload; we never touch its channel.
+    const unregisterLegacy = setLegacyGroupRingHandler(handleGroupRing);
+
+    return () => {
+      unregisterLegacy();
+      supabase.removeChannel(ch);
+    };
   }, [user]);
 
   // Auto-stop incoming ringtone after 45s
@@ -1809,23 +1847,40 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     return () => clearTimeout(t);
   }, [incomingCall?.callEventId]);
 
-  // Average ping across active peer connections
+  // Ping across the peer mesh — WORST link, not an average.
+  //
+  // v0.4.27: this used to push EVERY `succeeded` candidate pair from every
+  // peer into one list and average them. Two problems: unused and
+  // post-ICE-restart pairs stay "succeeded" in getStats(), so unrelated paths
+  // were folded into the number; and averaging a mesh hides the one bad link
+  // that is actually degrading the call. Now we read each peer's selected pair
+  // and report the worst — that is the number that matches what the call
+  // actually feels like.
   useEffect(() => {
     if (!activeCall) { setPing(0); return; }
     const interval = setInterval(async () => {
-      const rtts: number[] = [];
-      for (const [, pc] of pcsRef.current) {
+      let worst: number | null = null;
+      const perPeer = new Map<string, number>();
+      for (const [peerId, pc] of pcsRef.current) {
         try {
-          const stats = await pc.getStats();
-          stats.forEach((report: any) => {
-            if (report.type === "candidate-pair" && report.state === "succeeded" && typeof report.currentRoundTripTime === "number") {
-              rtts.push(report.currentRoundTripTime * 1000);
-            }
-          });
+          const selected = getSelectedCandidatePair(await pc.getStats());
+          if (selected?.rttMs == null) continue;
+          perPeer.set(peerId, selected.rttMs);
+          if (worst == null || selected.rttMs > worst) worst = selected.rttMs;
         } catch {}
       }
-      if (rtts.length > 0) {
-        setPing(Math.round(rtts.reduce((s, v) => s + v, 0) / rtts.length));
+      if (worst != null) setPing(worst);
+      if (perPeer.size > 0) {
+        setPeers((prev) => {
+          let changed = false;
+          const next = prev.map((p) => {
+            const rtt = perPeer.get(p.userId);
+            if (rtt == null || rtt === p.pingMs) return p;
+            changed = true;
+            return { ...p, pingMs: rtt };
+          });
+          return changed ? next : prev;
+        });
       }
     }, 2000);
     return () => clearInterval(interval);

@@ -172,13 +172,24 @@ void WindowCapture::ResetAfterFailedStart() {
   framePool_ = nullptr;
   item_ = nullptr;
   stagingTexture_ = nullptr;
+  winrtDevice_ = nullptr;
   d3dContext_ = nullptr;
   d3dDevice_ = nullptr;
   callback_ = nullptr;
 }
 
 void WindowCapture::Stop() {
-  if (!running_.exchange(false)) return;
+  // NOTE: deliberately NOT gated on `running_`. The GraphicsCaptureItem::Closed
+  // handler clears running_ when the captured window disappears, and the old
+  // `if (!running_.exchange(false)) return;` guard made Stop() a no-op in
+  // exactly that case: the FrameArrived handler was never revoked, and the
+  // session / frame pool / D3D device stayed alive. Worse, addon.cc releases
+  // the ThreadSafeFunction right after Stop() returns, relying on revoke()
+  // having drained any in-flight callback — so skipping the revoke left a
+  // window where the WGC thread could invoke a released TSFN.
+  // `stopped_` keeps the method idempotent instead.
+  running_.store(false, std::memory_order_release);
+  if (stopped_.exchange(true)) return;
 
   // No lock held here: revoke() waits for any in-flight OnFrameArrived to
   // return, and that handler's very first check is the running_ flag we just
@@ -198,6 +209,9 @@ void WindowCapture::Stop() {
   }
   item_ = nullptr;
   stagingTexture_ = nullptr;
+  // winrtDevice_ holds a reference to the same D3D11 device as d3dDevice_;
+  // leaving it set kept the GPU device object alive after teardown.
+  winrtDevice_ = nullptr;
   d3dContext_ = nullptr;
   d3dDevice_ = nullptr;
   callback_ = nullptr;

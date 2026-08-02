@@ -28,6 +28,23 @@ export interface Message {
   note_ref?: string | null;
 }
 
+/**
+ * Insert a message into an ascending-by-created_at list, keeping order.
+ * Scans from the tail because the overwhelmingly common case is an append.
+ */
+function insertByCreatedAt(list: Message[], msg: Message): Message[] {
+  const t = Date.parse(msg.created_at);
+  if (!Number.isFinite(t) || list.length === 0) return [...list, msg];
+  let i = list.length;
+  while (i > 0) {
+    const prev = Date.parse(list[i - 1].created_at);
+    if (!Number.isFinite(prev) || prev <= t) break;
+    i--;
+  }
+  if (i === list.length) return [...list, msg];
+  return [...list.slice(0, i), msg, ...list.slice(i)];
+}
+
 const getSenderName = (senderId: string, displayName?: string | null) => {
   if (senderId === BOT_USER_ID) return "CubblyBot";
   return displayName || "Unknown";
@@ -65,6 +82,8 @@ export function useMessages(conversationId: string | null) {
   const [hasMore, setHasMore] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const oldestLoadedRef = useRef<string | null>(null);
+  /** Conversation id of the most recently started fetch (last write wins). */
+  const activeFetchRef = useRef<string | null>(null);
 
   const hydrateMessages = useCallback(async (rows: any[]): Promise<Message[]> => {
     if (rows.length === 0) return [];
@@ -98,10 +117,16 @@ export function useMessages(conversationId: string | null) {
 
   const fetchMessages = useCallback(async () => {
     if (!conversationId) {
+      activeFetchRef.current = null;
       setMessages([]);
       setHasMore(false);
       return;
     }
+    // Claim this fetch. Switching conversations fires a new fetchMessages while
+    // the previous one is still awaiting the network + profile hydration; if
+    // the OLD one resolved last it wrote another conversation's messages into
+    // the currently-open thread.
+    activeFetchRef.current = conversationId;
     setLoading(true);
     // Fetch the LATEST page (descending), then reverse for ascending render order.
     const { data, error } = await supabase
@@ -110,6 +135,7 @@ export function useMessages(conversationId: string | null) {
       .eq("conversation_id", conversationId)
       .order("created_at", { ascending: false })
       .limit(PAGE_SIZE);
+    if (activeFetchRef.current !== conversationId) return; // superseded
     if (error) {
       console.error("Failed to fetch messages:", error);
       setMessages([]);
@@ -119,6 +145,7 @@ export function useMessages(conversationId: string | null) {
     }
     const ascending = (data || []).slice().reverse();
     const hydrated = await hydrateMessages(ascending);
+    if (activeFetchRef.current !== conversationId) return; // superseded
     setMessages(hydrated);
     setHasMore((data?.length || 0) >= PAGE_SIZE);
     oldestLoadedRef.current = hydrated[0]?.created_at || null;
@@ -132,7 +159,11 @@ export function useMessages(conversationId: string | null) {
       .from("messages")
       .select("*")
       .eq("conversation_id", conversationId)
-      .lt("created_at", oldestLoadedRef.current)
+      // v0.4.27: `lte`, not `lt`. Several messages can share the exact same
+      // created_at (bulk insert, same-millisecond sends); a strict `<` on the
+      // oldest loaded timestamp silently skipped every sibling that shared it.
+      // The boundary row comes back too, so we de-dupe by id on merge.
+      .lte("created_at", oldestLoadedRef.current)
       .order("created_at", { ascending: false })
       .limit(PAGE_SIZE);
     if (error || !data) {
@@ -141,7 +172,11 @@ export function useMessages(conversationId: string | null) {
     }
     const ascending = data.slice().reverse();
     const hydrated = await hydrateMessages(ascending);
-    setMessages((prev) => [...hydrated, ...prev]);
+    setMessages((prev) => {
+      const known = new Set(prev.map((m) => m.id));
+      const fresh = hydrated.filter((m) => !known.has(m.id));
+      return fresh.length ? [...fresh, ...prev] : prev;
+    });
     setHasMore(data.length >= PAGE_SIZE);
     oldestLoadedRef.current = hydrated[0]?.created_at || oldestLoadedRef.current;
     setLoadingOlder(false);
@@ -244,16 +279,19 @@ export function useMessages(conversationId: string | null) {
                 return updated;
               }
 
-              return [
-                ...previous,
-                {
+              // v0.4.27: insert by created_at instead of blindly appending.
+              // Realtime delivery order is not guaranteed, and the hydration
+              // above is async (profile + reply lookups), so two near-
+              // simultaneous messages could resolve out of order and render
+              // reversed. Almost always this appends to the end — the scan is
+              // from the tail and stops immediately for in-order arrivals.
+              return insertByCreatedAt(previous, {
                   ...newMessage,
                   sender_name: getSenderName(newMessage.sender_id, profile?.display_name),
                   sender_avatar_url: profile?.avatar_url || null,
                   reply_to: replyPreview,
                   status: "delivered",
-                },
-              ];
+              });
             });
           },
         )

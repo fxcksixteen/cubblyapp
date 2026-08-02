@@ -269,8 +269,14 @@ export function startAutomaticScreenEncoding(
   let cpuSamples = 0;
   let lastLost = 0;
   let lastReceived = 0;
-  let lastFrames = 0;
-  let lastEncodeTime = 0;
+  // Keyed by report id: with simulcast there are THREE outbound-rtp video
+  // reports (rid f/h/q) per getStats() pass. Single scalars meant each report
+  // overwrote the previous one's counters, so `framesEncoded - lastFrames`
+  // compared one layer against another and produced garbage encode times —
+  // which then tripped the "CPU limited" downscale on a perfectly healthy
+  // hardware encoder.
+  const lastFramesById = new Map<string, number>();
+  const lastEncodeTimeById = new Map<string, number>();
   // Rolling min-RTT baseline over the last ~40 s (20 samples @ 2 s) so a
   // brief spike doesn't dominate.
   const rttWindow: number[] = [];
@@ -336,17 +342,20 @@ export function startAutomaticScreenEncoding(
         }
         if (report.type === "outbound-rtp" && report.kind === "video") {
           fps = report.framesPerSecond ?? fps;
+          const id = String(report.id ?? report.ssrc ?? "0");
           const frames = report.framesEncoded ?? 0;
           const encodeTime = report.totalEncodeTime ?? 0;
-          const deltaFrames = Math.max(0, frames - lastFrames);
-          const deltaEncode = Math.max(0, encodeTime - lastEncodeTime);
-          lastFrames = frames;
-          lastEncodeTime = encodeTime;
+          const deltaFrames = Math.max(0, frames - (lastFramesById.get(id) ?? frames));
+          const deltaEncode = Math.max(0, encodeTime - (lastEncodeTimeById.get(id) ?? encodeTime));
+          lastFramesById.set(id, frames);
+          lastEncodeTimeById.set(id, encodeTime);
           const encodeMsPerFrame = deltaFrames > 0 ? (deltaEncode * 1000) / deltaFrames : 0;
           // CPU limit only when Chromium explicitly says so or the encoder
           // is spending nearly a whole frame budget encoding — not on brief
-          // fps dips (games render bursty frames).
-          cpuLimited = report.qualityLimitationReason === "cpu"
+          // fps dips (games render bursty frames). OR across layers: any
+          // struggling layer means the encoder as a whole is struggling.
+          cpuLimited = cpuLimited
+            || report.qualityLimitationReason === "cpu"
             || encodeMsPerFrame > (1000 / target.targetFps) * 1.1;
           if (report.qualityLimitationReason === "bandwidth") bandwidthLimited = true;
         }
@@ -401,7 +410,11 @@ export function startAutomaticScreenEncoding(
       if (cpuSamples >= 4) {
         scale = Math.min(Math.max(target.baseScale, 2), scale * 1.15);
         cpuSamples = 0;
-      } else if (!cpuLimited && cleanSamples >= 6 && scale > target.baseScale) {
+      } else if (!cpuLimited && cleanSamples >= 3 && scale > target.baseScale) {
+        // Was `>= 6`, which could never be true: nextScreenBitrate resets
+        // cleanSamples to 0 the moment it reaches 4, so this recovery branch
+        // was dead code and a CPU-triggered downscale never came back up
+        // except by way of the slower bitrate-probe path below.
         scale = Math.max(target.baseScale, scale / 1.15);
       }
       await update();

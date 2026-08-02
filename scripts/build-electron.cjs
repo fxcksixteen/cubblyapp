@@ -46,8 +46,87 @@ rmrf(releaseRoot);
 fs.mkdirSync(releaseRoot, { recursive: true });
 fs.mkdirSync(path.dirname(builderConfigPath), { recursive: true });
 
+/**
+ * Renderer dependencies are ALREADY bundled into dist/ by Vite — the packaged
+ * app loads dist/index.html, which references nothing outside dist/assets. But
+ * electron-builder copies the entire production dependency tree into app.asar
+ * regardless, because for node_modules it only honours the NEGATED entries of
+ * `build.files` (see app-builder-lib/out/fileMatcher.js: getNodeModuleFileMatcher
+ * skips every non-"!" pattern and prepends "**\/*"). That is why the positive
+ * `node_modules/...` entries in package.json are inert and why ~60 MB of React,
+ * date-fns, lucide-react, recharts, etc. shipped a second time inside the asar.
+ *
+ * So: derive the set the MAIN process actually requires at runtime, and emit a
+ * "!" pattern for every other production package. Computed rather than
+ * hand-listed so it can never go stale as dependencies change.
+ *
+ * Failure mode is deliberately safe — any error here falls back to shipping
+ * everything, i.e. today's behaviour.
+ */
+const MAIN_PROCESS_MODULES = ["electron-log", "electron-updater", "electron-store"];
+
+function readModulePkg(name) {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(rootDir, "node_modules", name, "package.json"), "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+/** Transitive dependency closure of the given package names. */
+function dependencyClosure(roots) {
+  const seen = new Set();
+  const stack = [...roots];
+  while (stack.length) {
+    const name = stack.pop();
+    if (seen.has(name)) continue;
+    const meta = readModulePkg(name);
+    if (!meta) continue;
+    seen.add(name);
+    for (const dep of Object.keys(meta.dependencies || {})) stack.push(dep);
+  }
+  return seen;
+}
+
+function computeNodeModuleExclusions() {
+  const prodRoots = Object.keys(pkg.dependencies || {});
+  if (prodRoots.length === 0) return [];
+  const allProd = dependencyClosure(prodRoots);
+  const keep = dependencyClosure(MAIN_PROCESS_MODULES);
+  // Sanity: if the closure of the main-process modules came back empty, our
+  // resolution is broken — ship everything rather than risk a broken app.
+  if (keep.size === 0) {
+    console.warn(`[build:electron] could not resolve main-process modules — skipping node_modules pruning`);
+    return [];
+  }
+  // Belt and braces: never exclude anything the hand-written allowlist in
+  // package.json mentions, even if the closure disagrees.
+  const allowlisted = new Set();
+  for (const pattern of pkg.build?.files || []) {
+    if (typeof pattern !== "string" || pattern.startsWith("!")) continue;
+    const m = pattern.match(/^node_modules\/((?:@[^/]+\/)?[^/]+)/);
+    if (m) allowlisted.add(m[1]);
+  }
+  return [...allProd]
+    .filter((name) => !keep.has(name) && !allowlisted.has(name))
+    .sort()
+    .map((name) => `!node_modules/${name}/**/*`);
+}
+
+let nodeModuleExclusions = [];
+try {
+  nodeModuleExclusions = computeNodeModuleExclusions();
+} catch (e) {
+  console.warn(`[build:electron] node_modules pruning skipped: ${e?.message || e}`);
+  nodeModuleExclusions = [];
+}
+if (nodeModuleExclusions.length) {
+  console.log(`[build:electron] pruning ${nodeModuleExclusions.length} renderer-only packages from app.asar (bundled into dist/ already)`);
+}
+
 const buildConfig = {
   ...pkg.build,
+  files: [...(pkg.build?.files || []), ...nodeModuleExclusions],
   directories: {
     ...(pkg.build?.directories || {}),
     output: releaseRoot,

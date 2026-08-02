@@ -222,7 +222,32 @@ try {
   app.commandLine.appendSwitch("media-cache-size", String(40 * 1024 * 1024));
 } catch (e) { log.warn("[cache] failed to cap disk cache:", e?.message || e); }
 
-// One-shot prune of any pre-existing oversized cache from earlier versions.
+// Prune any pre-existing OVERSIZED cache left by an earlier version.
+//
+// This used to delete every cache dir unconditionally on every launch, despite
+// the "only prune if bigger than 200 MB" comment. That wiped GPUCache and
+// ShaderCache on each boot, so Chromium recompiled shaders and re-fetched
+// every asset at every start. Now we actually measure first and only delete a
+// directory that is genuinely over the cap — which, given the disk-cache-size
+// switch above, should be a one-time event after upgrading.
+const CACHE_PRUNE_LIMIT_BYTES = 200 * 1024 * 1024;
+/** Recursive size, bailing out as soon as `limit` is exceeded. */
+function dirSizeExceeds(dir, limit) {
+  let total = 0;
+  const stack = [dir];
+  while (stack.length) {
+    const cur = stack.pop();
+    let entries;
+    try { entries = fs.readdirSync(cur, { withFileTypes: true }); } catch { continue; }
+    for (const ent of entries) {
+      const full = path.join(cur, ent.name);
+      if (ent.isDirectory()) { stack.push(full); continue; }
+      try { total += fs.statSync(full).size; } catch {}
+      if (total > limit) return true;
+    }
+  }
+  return false;
+}
 app.whenReady().then(() => {
   try {
     const userData = app.getPath("userData");
@@ -231,22 +256,129 @@ app.whenReady().then(() => {
     for (const d of cacheDirs) {
       const p = path.join(userData, d);
       try {
-        if (fs.existsSync(p)) {
-          const stat = fs.statSync(p);
-          // Only prune if it's gotten bigger than 200 MB total.
-          freed += 1;
-          // Don't recursively measure; just clear unconditionally on startup
-          // — Chromium will rebuild what it actually needs within the new cap.
-          fs.rmSync(p, { recursive: true, force: true });
-        }
+        if (!fs.existsSync(p)) continue;
+        if (!dirSizeExceeds(p, CACHE_PRUNE_LIMIT_BYTES)) continue;
+        fs.rmSync(p, { recursive: true, force: true });
+        freed += 1;
+        log.info(`[cache] pruned oversized cache dir: ${d}`);
       } catch {}
     }
     if (freed > 0) log.info(`[cache] cleared ${freed} oversized cache dirs on startup`);
   } catch (e) { log.warn("[cache] prune failed:", e?.message || e); }
 });
 
+// ----- v0.4.27: reclaim the auto-updater's download cache -----------------
+// electron-updater downloads each update into %LOCALAPPDATA%\<name>-updater\
+// and does not always clean up afterwards. Measured on a real install: 429 MB
+// sitting there (a 215 MB pending installer for a version ALREADY running,
+// plus another 215 MB top-level copy) — more disk than the app itself, and a
+// large part of why users report a "650 MB" install.
+//
+// Rule is deliberately conservative: we only delete a pending update whose
+// version is <= the version we are currently running (it can never be applied,
+// so it is pure garbage), plus anything older than 30 days. A genuinely
+// pending NEWER update is never touched.
+const UPDATER_CACHE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
+function parseVersionFromFileName(name) {
+  const m = /(\d+)\.(\d+)\.(\d+)/.exec(String(name || ""));
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+}
+/** -1 / 0 / 1, or null when either side is unparseable. */
+function compareVersions(a, b) {
+  const va = Array.isArray(a) ? a : parseVersionFromFileName(a);
+  const vb = Array.isArray(b) ? b : parseVersionFromFileName(b);
+  if (!va || !vb) return null;
+  for (let i = 0; i < 3; i++) {
+    if (va[i] !== vb[i]) return va[i] < vb[i] ? -1 : 1;
+  }
+  return 0;
+}
+
+/** True while electron-updater is downloading — pruning must not race it. */
+let updateDownloadInProgress = false;
+
+function pruneUpdaterCache() {
+  if (process.platform !== "win32") return;
+  // autoDownload is on, so a check that finds an update starts writing into the
+  // very directory we are about to prune. Never run concurrently with that.
+  if (updateDownloadInProgress) {
+    log.info("[updater-cache] prune skipped — an update download is in flight");
+    return;
+  }
+  const localAppData = process.env.LOCALAPPDATA;
+  if (!localAppData) return;
+  let freed = 0;
+  const rm = (p) => {
+    try {
+      const st = fs.statSync(p);
+      const size = st.isDirectory() ? 0 : st.size;
+      fs.rmSync(p, { recursive: true, force: true });
+      freed += size;
+    } catch {}
+  };
+
+  for (const dirName of new Set([`${app.getName()}-updater`, "cubbly-updater"])) {
+    const cacheDir = path.join(localAppData, dirName);
+    try {
+      if (!fs.existsSync(cacheDir)) continue;
+
+      // 1) A pending update we can never apply (same version or older).
+      const pendingDir = path.join(cacheDir, "pending");
+      let pendingIsStale = false;
+      try {
+        const info = JSON.parse(fs.readFileSync(path.join(pendingDir, "update-info.json"), "utf8"));
+        const cmp = compareVersions(info?.fileName, app.getVersion());
+        // cmp <= 0 → the pending installer is for a version we already run.
+        pendingIsStale = cmp !== null && cmp <= 0;
+      } catch {
+        // No/*unreadable* update-info.json: fall back to the installer name.
+        try {
+          for (const f of fs.readdirSync(pendingDir)) {
+            if (!f.toLowerCase().endsWith(".exe")) continue;
+            const cmp = compareVersions(f, app.getVersion());
+            if (cmp !== null && cmp <= 0) pendingIsStale = true;
+          }
+        } catch {}
+      }
+      if (pendingIsStale) {
+        for (const f of fs.readdirSync(pendingDir)) rm(path.join(pendingDir, f));
+        // The top-level installer.exe / blockmap are the working copies from
+        // that same completed download cycle.
+        for (const f of fs.readdirSync(cacheDir)) {
+          if (f === "pending") continue;
+          rm(path.join(cacheDir, f));
+        }
+      }
+
+      // 2) Orphans of any version that nothing has touched in a month.
+      const cutoff = Date.now() - UPDATER_CACHE_MAX_AGE_MS;
+      const sweep = (dir) => {
+        let entries;
+        try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+        for (const entry of entries) {
+          const p = path.join(dir, entry.name);
+          if (entry.isDirectory()) { sweep(p); continue; }
+          try {
+            if (fs.statSync(p).mtimeMs < cutoff) rm(p);
+          } catch {}
+        }
+      };
+      sweep(cacheDir);
+    } catch (e) {
+      log.warn("[updater-cache] prune failed for", cacheDir, e?.message || e);
+    }
+  }
+
+  if (freed > 0) {
+    log.info(`[updater-cache] reclaimed ${(freed / (1024 * 1024)).toFixed(1)} MB of stale update downloads`);
+  }
+}
+
 let mainWindow;
 let appIconImage = null;
+/** True once the auto-updater listeners + periodic check have been installed. */
+let updaterWired = false;
 
 /** Resolve our .ico to an on-disk path that Windows can actually read.
  *  Inside an asar archive, native APIs can't read files, so we mark the
@@ -366,12 +498,22 @@ function createWindow() {
   });
 
   // ----- Auto-updater wiring -----
+  // Guarded: createWindow() can run more than once (macOS `activate` after all
+  // windows closed). Without this flag each re-creation stacked another full
+  // set of autoUpdater listeners AND another hourly checkForUpdates interval,
+  // so the app would fire N parallel update checks per hour.
+  if (updaterWired) return;
+  updaterWired = true;
+
   autoUpdater.on("checking-for-update", () => {
     log.info("[updater] checking-for-update");
     mainWindow?.webContents.send("update-status", { type: "checking" });
   });
   autoUpdater.on("update-available", (info) => {
     log.info("[updater] update-available", info?.version);
+    // autoDownload is true, so the download starts now — block cache pruning
+    // until it finishes or fails.
+    updateDownloadInProgress = true;
     mainWindow?.webContents.send("update-available", { version: info?.version });
     mainWindow?.webContents.send("update-status", { type: "available", version: info?.version });
   });
@@ -388,10 +530,12 @@ function createWindow() {
   });
   autoUpdater.on("update-downloaded", (info) => {
     log.info("[updater] update-downloaded", info?.version);
+    updateDownloadInProgress = false;
     mainWindow?.webContents.send("update-downloaded", { version: info?.version });
     mainWindow?.webContents.send("update-status", { type: "downloaded", version: info?.version });
   });
   autoUpdater.on("error", (err) => {
+    updateDownloadInProgress = false;
     const message = err?.message || String(err);
     log.error("[updater] error", message);
     mainWindow?.webContents.send("update-status", { type: "error", message });
@@ -465,6 +609,18 @@ ipcMain.on("install-update", () => {
 // Tiny in-memory cache of remote avatars -> nativeImage so we don't refetch
 // for every message in the same DM.
 const remoteIconCache = new Map(); // url -> nativeImage
+// Bounded: every distinct avatar URL used to be cached forever, so a busy
+// account with many correspondents grew main-process memory without limit.
+// Map preserves insertion order, so deleting the first key evicts the oldest.
+const REMOTE_ICON_CACHE_MAX = 64;
+function cacheSet(map, key, value, max) {
+  map.set(key, value);
+  while (map.size > max) {
+    const oldest = map.keys().next().value;
+    if (oldest === undefined) break;
+    map.delete(oldest);
+  }
+}
 async function loadRemoteIcon(url) {
   if (!url || typeof url !== "string" || !/^https?:\/\//i.test(url)) return null;
   if (remoteIconCache.has(url)) return remoteIconCache.get(url);
@@ -474,7 +630,7 @@ async function loadRemoteIcon(url) {
     const buf = Buffer.from(await res.arrayBuffer());
     const img = nativeImage.createFromBuffer(buf);
     if (img.isEmpty()) return null;
-    remoteIconCache.set(url, img);
+    cacheSet(remoteIconCache, url, img, REMOTE_ICON_CACHE_MAX);
     return img;
   } catch (e) {
     log.warn("[notify] avatar fetch failed:", e?.message || e);
@@ -750,7 +906,10 @@ ipcMain.handle("get-open-windows", async () => {
 // Given a process name (e.g. "valorant"), returns a base64 data URL of the
 // process .exe / .app icon. Used as a final fallback when we don't have a
 // curated logo or a Steam header for the activity.
+// Bounded like remoteIconCache above: entries are full-size base64 PNG data
+// URLs (tens of KB each) and a long session sees a lot of distinct processes.
 const iconCache = new Map(); // processName -> dataURL | null
+const ICON_CACHE_MAX = 128;
 async function getProcessIcon(processName) {
   if (!processName) return null;
   const key = processName.toLowerCase();
@@ -768,14 +927,14 @@ async function getProcessIcon(processName) {
           resolve(path || null);
         });
       });
-      if (!exePath) { iconCache.set(key, null); return null; }
+      if (!exePath) { cacheSet(iconCache, key, null, ICON_CACHE_MAX); return null; }
       try {
         const img = await app.getFileIcon(exePath, { size: "large" });
         const dataUrl = img.isEmpty() ? null : img.toDataURL();
-        iconCache.set(key, dataUrl);
+        cacheSet(iconCache, key, dataUrl, ICON_CACHE_MAX);
         return dataUrl;
       } catch (_) {
-        iconCache.set(key, null);
+        cacheSet(iconCache, key, null, ICON_CACHE_MAX);
         return null;
       }
     }
@@ -786,17 +945,17 @@ async function getProcessIcon(processName) {
       try {
         const img = await app.getFileIcon(appPath, { size: "large" });
         const dataUrl = img.isEmpty() ? null : img.toDataURL();
-        iconCache.set(key, dataUrl);
+        cacheSet(iconCache, key, dataUrl, ICON_CACHE_MAX);
         return dataUrl;
       } catch (_) {
-        iconCache.set(key, null);
+        cacheSet(iconCache, key, null, ICON_CACHE_MAX);
         return null;
       }
     }
   } catch (e) {
     log.warn("[activity] getProcessIcon failed:", e?.message || e);
   }
-  iconCache.set(key, null);
+  cacheSet(iconCache, key, null, ICON_CACHE_MAX);
   return null;
 }
 ipcMain.handle("get-process-icon", async (_evt, processName) => getProcessIcon(processName));
@@ -911,6 +1070,12 @@ ipcMain.handle("clear-selected-share-source", () => {
 
 const { exec: _exec } = require("child_process");
 
+// How long an un-acknowledged frame/PCM block may block the backpressure gate
+// before we assume the acknowledgement was lost and let new media through.
+// Renderer reloads do NOT destroy the webContents, so without this a single
+// dropped ack silently kills native capture until the share is restarted.
+const ACK_STALL_MS = 1000;
+
 let activeWindowCapture = null; // { handle, sourceId, win }
 
 async function resolveSourcePid(sourceId) {
@@ -975,12 +1140,22 @@ ipcMain.handle("start-window-audio-capture", async (evt, sourceId) => {
     let frameCount = 0;
     let nextSequence = 1;
     const pendingSequences = new Set();
+    let oldestPendingAt = 0;
     const handle = winAudioCapture.start(pid, (pcmBuf) => {
       try {
         if (senderWebContents.isDestroyed()) return;
         // Never let native audio queue behind a busy renderer. New PCM is
         // preferable to replaying old game audio seconds later.
-        if (pendingSequences.size >= 4) return;
+        if (pendingSequences.size >= 4) {
+          // ...but an ack that never arrives (renderer reloaded, or the
+          // listener was torn down between send and ack) would otherwise wedge
+          // this gate shut FOREVER and kill share audio for the rest of the
+          // session. Treat un-acked sequences older than the stall window as
+          // lost and reopen the gate.
+          if (Date.now() - oldestPendingAt < ACK_STALL_MS) return;
+          pendingSequences.clear();
+        }
+        if (pendingSequences.size === 0) oldestPendingAt = Date.now();
         frameCount++;
         if (frameCount === 1 || frameCount === 50 || frameCount % 500 === 0) {
           log.info("[winaudio] PCM frame #" + frameCount + " bytes=" + (pcmBuf?.length || 0));
@@ -994,7 +1169,20 @@ ipcMain.handle("start-window-audio-capture", async (evt, sourceId) => {
         });
       } catch (_) {}
     });
-    activeWindowCapture = { handle, sourceId, win: senderWebContents, pendingSequences };
+    // Never keep a WASAPI process-loopback capture running into a renderer
+    // that went away — the video path already did this, the audio path didn't,
+    // so a renderer crash mid-share left the native capture running for the
+    // rest of the app's life.
+    const onAudioGone = () => {
+      if (!activeWindowCapture || activeWindowCapture.handle !== handle) return;
+      try { winAudioCapture.stop(handle); } catch (_) {}
+      activeWindowCapture = null;
+      log.warn("[winaudio] capture torn down: renderer gone");
+    };
+    try { senderWebContents.once("destroyed", onAudioGone); } catch (_) {}
+    try { senderWebContents.once("render-process-gone", onAudioGone); } catch (_) {}
+
+    activeWindowCapture = { handle, sourceId, win: senderWebContents, pendingSequences, onGone: onAudioGone };
     const fmt = winAudioCapture.getFormat();
     log.info("[winaudio] capture started OK, format:", JSON.stringify(fmt));
     return { ok: true, handle, format: fmt };
@@ -1012,6 +1200,11 @@ ipcMain.on("window-audio-pcm-ack", (evt, sequence) => {
 
 ipcMain.handle("stop-window-audio-capture", () => {
   if (!activeWindowCapture) return { ok: true };
+  const { win, onGone } = activeWindowCapture;
+  if (win && onGone && !win.isDestroyed?.()) {
+    try { win.removeListener("destroyed", onGone); } catch (_) {}
+    try { win.removeListener("render-process-gone", onGone); } catch (_) {}
+  }
   try {
     winAudioCapture?.stop(activeWindowCapture.handle);
   } catch (e) {
@@ -1046,6 +1239,8 @@ function parseHwndFromSourceId(sourceId) {
 let activeVideoCapture = null;
 // Instrumentation for the throughput question — reset per capture session.
 let videoStats = null;
+/** Max retained native->main latency samples (~1 min at 60fps). */
+const LATENCY_SAMPLE_CAP = 4096;
 
 function resetVideoStats() {
   videoStats = {
@@ -1071,8 +1266,17 @@ const NATIVE_FIRST_FRAME_TIMEOUT_MS = 4000;
 
 function teardownActiveVideoCapture(reason) {
   if (!activeVideoCapture) return;
-  const { handle, watchdog } = activeVideoCapture;
+  const { handle, watchdog, win, onGone } = activeVideoCapture;
   if (watchdog) { try { clearTimeout(watchdog); } catch (_) {} }
+  // Detach the renderer-lifetime listeners. `once` only self-removes when it
+  // FIRES, so a user who starts and stops several shares in one session kept
+  // stacking listeners on the same webContents until Node printed a
+  // MaxListenersExceededWarning — and every stale listener could tear down a
+  // later, unrelated capture.
+  if (win && onGone && !win.isDestroyed?.()) {
+    try { win.removeListener("destroyed", onGone); } catch (_) {}
+    try { win.removeListener("render-process-gone", onGone); } catch (_) {}
+  }
   try { winDxgiCapture?.stop(handle); } catch (e) { log.warn("[winvideo] stop error:", e?.message || e); }
   activeVideoCapture = null;
   if (reason) log.warn("[winvideo] capture torn down:", reason);
@@ -1098,6 +1302,7 @@ ipcMain.handle("start-window-capture", async (evt, sourceId, maxFps, maxHeight) 
     const pacer = createFramePacer(targetFps);
     const pendingFrameIds = new Set();
     let nextFrameId = 1;
+    let oldestPendingFrameAt = 0;
     log.info("[winvideo] starting capture for sourceId:", sourceId, "hwnd:", hwnd, "maxFps:", targetFps || "uncapped");
 
     const heightCap = Number(maxHeight) > 0
@@ -1110,7 +1315,12 @@ ipcMain.handle("start-window-capture", async (evt, sourceId, maxFps, maxHeight) 
           // performance.timeOrigin + performance.now() shares the epoch with
           // the native system_clock stamp, so this subtraction is meaningful.
           const nowUs = (performance.timeOrigin + performance.now()) * 1000;
-          videoStats.nativeToMainUs.push(nowUs - frame.captureTimeUs);
+          // Ring buffer, not an unbounded array: at 60fps this grew by 216k
+          // entries per hour of sharing (~1.7 MB of live heap in the main
+          // process) and every stats call sorted a full copy of it.
+          const lat = videoStats.nativeToMainUs;
+          if (lat.length >= LATENCY_SAMPLE_CAP) lat.shift();
+          lat.push(nowUs - frame.captureTimeUs);
         }
         if (!pacer.shouldEmit(frame?.captureTimeUs)) {
           videoStats.framesDroppedByPacer++;
@@ -1127,11 +1337,20 @@ ipcMain.handle("start-window-capture", async (evt, sourceId, maxFps, maxHeight) 
         // renderer accumulate seconds-old video inside Electron IPC while the
         // main thread serialized megabyte buffers.
         if (pendingFrameIds.size >= 1) {
-          videoStats.framesDroppedBackpressure++;
-          return;
+          // A renderer reload (or a frame the renderer dropped before acking)
+          // leaves an id in here that is never acknowledged. Because the gate
+          // is exactly one frame deep, that froze the share permanently — the
+          // window stayed on its last frame with no error anywhere. Expire
+          // stale in-flight ids instead of trusting the ack unconditionally.
+          if (Date.now() - oldestPendingFrameAt < ACK_STALL_MS) {
+            videoStats.framesDroppedBackpressure++;
+            return;
+          }
+          pendingFrameIds.clear();
         }
         const frameId = nextFrameId++;
         pendingFrameIds.add(frameId);
+        oldestPendingFrameAt = Date.now();
         videoStats.framesSent++;
         videoStats.bytesSent += frame?.data?.length || 0;
         senderWebContents.send("window-video-frame", { ...frame, frameId });
@@ -1149,7 +1368,7 @@ ipcMain.handle("start-window-capture", async (evt, sourceId, maxFps, maxHeight) 
     try { senderWebContents.once("destroyed", onGone); } catch (_) {}
     try { senderWebContents.once("render-process-gone", onGone); } catch (_) {}
 
-    activeVideoCapture = { handle, sourceId, hwnd, win: senderWebContents, pendingFrameIds, watchdog };
+    activeVideoCapture = { handle, sourceId, hwnd, win: senderWebContents, pendingFrameIds, watchdog, onGone };
     log.info("[winvideo] capture started OK, handle:", handle);
     return { ok: true, handle };
   } catch (e) {
@@ -1278,6 +1497,10 @@ function installDisplayMediaHandler() {
 app.whenReady().then(() => {
   installDisplayMediaHandler();
   createWindow();
+  // Deferred so it never competes with window creation for I/O on startup, but
+  // still ahead of the updater's first check at +4s (and guarded by
+  // updateDownloadInProgress for the hourly checks after that).
+  setTimeout(() => { try { pruneUpdaterCache(); } catch (_) {} }, 2000);
 });
 app.on("window-all-closed", () => { app.quit(); });
 app.on("activate", () => {

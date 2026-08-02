@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { X, Maximize2, Minimize2, Volume2, VolumeX, PictureInPicture2, Pause, RotateCcw } from "lucide-react";
 import cubblyLogo from "@/assets/cubbly-logo.png";
+import { setScreenAudioMuted, isLocallyDeafened, subscribeLocalDeafen } from "@/lib/peerGain";
 
 interface Props {
   stream: MediaStream;
@@ -106,10 +107,19 @@ const FullscreenScreenShareViewer = ({ stream, sharerName, type = "screen", isLo
       const onFrame = () => {
         if (cancelled) return;
         setWaitingForFrames(false);
-        // Keep watching: if frames stop for >2s (track muted mid-share),
-        // surface the waiting hint again instead of freezing silently.
+        // Keep watching: if frames stop for >2 s, surface the waiting hint
+        // again instead of freezing silently — but ONLY when the track is
+        // actually muted. A screenshare of a static window legitimately stops
+        // producing frames (both WGC and WebRTC send nothing when nothing
+        // changes), and the first version of this check papered a "Waiting for
+        // video…" overlay over a perfectly good picture whenever the sharer
+        // stopped moving for two seconds.
         if (stallTimer !== null) window.clearTimeout(stallTimer);
-        stallTimer = window.setTimeout(() => { if (!cancelled) setWaitingForFrames(true); }, 2000);
+        stallTimer = window.setTimeout(() => {
+          if (cancelled) return;
+          const vt = stream.getVideoTracks()[0];
+          if (!vt || vt.muted || vt.readyState !== "live") setWaitingForFrames(true);
+        }, 2000);
         anyV.requestVideoFrameCallback(onFrame);
       };
       anyV.requestVideoFrameCallback(onFrame);
@@ -138,10 +148,27 @@ const FullscreenScreenShareViewer = ({ stream, sharerName, type = "screen", isLo
   const audioCtxRef = useRef<AudioContext | null>(null);
   const audioGainRef = useRef<GainNode | null>(null);
   const audioSrcRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  // v0.4.27 — local deafen must silence this viewer too. Bump a tick on every
+  // deafen change so the effect below re-applies BOTH audible paths (element
+  // and >100% boost graph); deafen is composed on top of the user's own mute
+  // choice, so undeafening restores exactly what they had selected.
+  const [deafenTick, setDeafenTick] = useState(0);
+  useEffect(() => subscribeLocalDeafen(() => setDeafenTick((t) => t + 1)), []);
+  /** Bounded retry counter for locating the shared screen-audio element. */
+  const [audioElRetry, setAudioElRetry] = useState(0);
   useEffect(() => {
     if (isLocal || type !== "screen") return;
     const audioEl = findSharedAudioEl();
-    if (!audioEl) return;
+    if (!audioEl) {
+      // v0.4.27: the peer's screen-audio element is created by the call
+      // context's `ontrack`, which can land AFTER this viewer mounts. Bailing
+      // out permanently meant the user's saved stream volume was never applied
+      // until they nudged the slider. Retry briefly instead.
+      if (audioElRetry >= 6) return;
+      const t = window.setTimeout(() => setAudioElRetry((n) => n + 1), 150 + audioElRetry * 150);
+      return () => window.clearTimeout(t);
+    }
+    const deafened = isLocallyDeafened();
 
     if (volume <= 1) {
       // Tear down any boost graph from a previous higher value.
@@ -154,7 +181,7 @@ const FullscreenScreenShareViewer = ({ stream, sharerName, type = "screen", isLo
         audioSrcRef.current = null;
       }
       try {
-        audioEl.muted = muted;
+        setScreenAudioMuted(audioEl, muted);
         audioEl.volume = volume;
         audioEl.play().catch(() => {});
       } catch {}
@@ -172,13 +199,16 @@ const FullscreenScreenShareViewer = ({ stream, sharerName, type = "screen", isLo
         audioGainRef.current = gain;
         audioSrcRef.current = src;
       }
-      audioGainRef.current!.gain.value = muted ? 0 : volume;
-      try { audioEl.muted = true; } catch {}
+      // The boost graph bypasses the element entirely, so deafen has to be
+      // enforced here as well or a deafened user would still hear a share
+      // that happens to be boosted above 100%.
+      audioGainRef.current!.gain.value = muted || deafened ? 0 : volume;
+      setScreenAudioMuted(audioEl, true);
     } catch (e) {
       console.warn("[FullscreenViewer] WebAudio boost failed, falling back to element:", e);
-      try { audioEl.muted = muted; audioEl.volume = 1; } catch {}
+      try { setScreenAudioMuted(audioEl, muted); audioEl.volume = 1; } catch {}
     }
-  }, [volume, muted, isLocal, stream, type, peerUserId]);
+  }, [volume, muted, isLocal, stream, type, peerUserId, deafenTick, audioElRetry]);
 
   // Persist stream volume.
   useEffect(() => {
@@ -208,7 +238,7 @@ const FullscreenScreenShareViewer = ({ stream, sharerName, type = "screen", isLo
           // unmount, so cap the element to 1.0 — the saved boost is restored
           // next time the viewer is opened (see initial useState).
           const finalVol = Math.min(1, Math.max(0, v));
-          audioEl.muted = m;
+          setScreenAudioMuted(audioEl, m);
           audioEl.volume = finalVol;
           audioEl.play().catch(() => {});
         } catch {}

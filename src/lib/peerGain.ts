@@ -109,7 +109,62 @@ let _localDeafened = false;
 const _deafenListeners = new Set<() => void>();
 function setLocalDeafenedFlag(v: boolean) {
   _localDeafened = v;
+  applyDeafenToScreenAudio();
   _deafenListeners.forEach((fn) => { try { fn(); } catch {} });
+}
+
+/* ──────────────────────────────────────────────────────────
+   Screen-share receiver audio and local deafen.
+
+   Screen audio deliberately stays OUT of the per-peer gain graph (see the
+   `streamKind === "screen"` branch in attachPeerGain — routing it through the
+   shared GainNode is what caused the "two audios, mute doesn't silence" bug,
+   and it would also re-couple stream volume to the per-user slider). The
+   side effect was that DEAFEN silenced mics only: a friend's game audio kept
+   playing at full volume while you were deafened.
+
+   These helpers own `el.muted` for those elements without touching volume at
+   all. Callers record the mute they *intend* (viewer mute button, boost-graph
+   handoff); the effective value is always `intended || deafened`, so deafen
+   composes on top of whatever the viewer wants and undeafen restores exactly
+   the caller's intent. Elements are found by the `data-cubbly-kind="screen"`
+   attribute that attachPeerGain already stamps on them (DM *and* group call),
+   so there is no registry to keep in sync or leak.
+   ────────────────────────────────────────────────────────── */
+const SCREEN_AUDIO_SELECTOR = 'audio[data-cubbly-kind="screen"]';
+const INTENDED_MUTE_PROP = "__cubblyScreenIntendedMute";
+
+function applyScreenAudioMute(el: HTMLMediaElement) {
+  try { el.muted = !!(el as any)[INTENDED_MUTE_PROP] || _localDeafened; } catch { /* ignore */ }
+}
+
+function applyDeafenToScreenAudio() {
+  if (typeof document === "undefined") return;
+  try {
+    document.querySelectorAll<HTMLMediaElement>(SCREEN_AUDIO_SELECTOR).forEach(applyScreenAudioMute);
+  } catch { /* ignore */ }
+}
+
+/**
+ * Set the intended mute state of a screen-share audio element. ALWAYS use this
+ * instead of writing `el.muted` directly — a direct write would drop the
+ * deafen overlay and un-silence a deafened user.
+ */
+export function setScreenAudioMuted(el: HTMLMediaElement | null | undefined, muted: boolean) {
+  if (!el) return;
+  (el as any)[INTENDED_MUTE_PROP] = !!muted;
+  applyScreenAudioMute(el);
+}
+
+/** Current local-deafen state (for playback paths outside the gain graph). */
+export function isLocallyDeafened(): boolean {
+  return _localDeafened;
+}
+
+/** Subscribe to local-deafen changes. Returns an unsubscribe fn. */
+export function subscribeLocalDeafen(cb: () => void): () => void {
+  _deafenListeners.add(cb);
+  return () => { _deafenListeners.delete(cb); };
 }
 
 export interface PeerGainApi {
@@ -180,8 +235,10 @@ export function usePeerGains(): PeerGainApi {
 
   // Re-apply whenever the module-level deafen flag changes.
   if (typeof window !== "undefined") {
-    // Register a listener once per hook instance; cleaned up in clearAllPeerGains.
-    // Idempotent re-add is fine because Set dedupes by reference.
+    // Registered once per hook instance and intentionally never removed: the
+    // Set dedupes by reference (applyAllPeerGains is stable), there are only
+    // ever the two providers, and dropping it would break deafen for any hook
+    // instance that does not re-render afterwards.
     _deafenListeners.add(applyAllPeerGains);
   }
 
@@ -232,8 +289,11 @@ export function usePeerGains(): PeerGainApi {
         mediaEl.setAttribute("data-cubbly-peer", userId);
         mediaEl.setAttribute("data-cubbly-kind", "screen");
         // Default: full volume, unmuted. User-volume menu still affects mic
-        // only — screen audio is a separate, viewer-controlled stream.
-        try { mediaEl.muted = false; mediaEl.volume = 1; } catch {}
+        // only — screen audio is a separate, viewer-controlled stream. Mute
+        // goes through setScreenAudioMuted so an already-deafened user does
+        // not suddenly hear a share that started while they were deafened.
+        try { mediaEl.volume = 1; } catch {}
+        setScreenAudioMuted(mediaEl, false);
       } catch {}
       return;
     }

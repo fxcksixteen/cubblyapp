@@ -23,9 +23,36 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.4.26";
+export const CURRENT_VERSION = "0.4.27";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.4.27",
+    title: "Lighter on your PC",
+    date: "2026-08-02",
+    hero: bearImage,
+    newFeatures: [
+      "Cubbly is a lot smaller. The download dropped from 117 MB to 106 MB, and the installed app went from 372 MB to 311 MB.",
+      "Leftover update downloads are now cleaned up automatically — they could quietly pile up to hundreds of megabytes and never go away.",
+      "Group calls show each person's ping on their tile, so you can see exactly whose connection is struggling instead of guessing.",
+    ],
+    bugFixes: [
+      "Fixed the big one: after declining or answering a call, your app could stop receiving any further calls until you restarted it. Calls now keep coming through all session.",
+      "Group call rings are much more reliable and no longer get dropped on the way to you.",
+      "Deafen now silences screen share audio too, not just microphones.",
+      "Stopping a screen share from Windows' own \"Stop sharing\" bar now really stops it. In group calls it could even start sharing a different window by mistake.",
+      "Starting and stopping a screen share is far more dependable — the messages that set it up are no longer silently lost.",
+      "Ping now reflects the connection actually carrying your call, and group calls show the weakest link instead of an average.",
+      "Manual input sensitivity works again while you're talking, and your mic no longer stays muted after switching back to automatic.",
+      "Fullscreen no longer covers a perfectly good screen share with \"Waiting for video…\" just because nothing on screen is moving.",
+      "Game capture no longer freezes for the rest of the session after a hiccup.",
+      "Messages can no longer appear out of order, and older messages no longer get skipped when scrolling up through a busy chat.",
+      "Fixed messages from the previous conversation briefly showing in the one you just opened.",
+      "The fullscreen volume slider now remembers your setting the moment you open a share instead of snapping back to 100%.",
+      "Hanging up now fully closes an incoming screen share instead of leaving it running in the background.",
+      "Restored the background video on the sign-up screen in the desktop app.",
+    ],
+  },
   {
     version: "0.4.26",
     title: "Game streaming fixes",

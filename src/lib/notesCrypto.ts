@@ -136,34 +136,49 @@ function openDb(): Promise<IDBDatabase> {
   });
 }
 
+// Every helper opens its own connection; each one must also close it. Left
+// open, the connections accumulate for the session and — because an open
+// connection blocks a version change — a future schema bump would hang.
 async function idbGet(key: string): Promise<CryptoKey | null> {
   const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, "readonly");
-    const req = tx.objectStore(STORE).get(key);
-    req.onsuccess = () => resolve((req.result as CryptoKey) ?? null);
-    req.onerror = () => reject(req.error);
-  });
+  try {
+    return await new Promise<CryptoKey | null>((resolve, reject) => {
+      const tx = db.transaction(STORE, "readonly");
+      const req = tx.objectStore(STORE).get(key);
+      req.onsuccess = () => resolve((req.result as CryptoKey) ?? null);
+      req.onerror = () => reject(req.error);
+    });
+  } finally {
+    try { db.close(); } catch { /* ignore */ }
+  }
 }
 
 async function idbSet(key: string, value: CryptoKey): Promise<void> {
   const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, "readwrite");
-    tx.objectStore(STORE).put(value, key);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE, "readwrite");
+      tx.objectStore(STORE).put(value, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } finally {
+    try { db.close(); } catch { /* ignore */ }
+  }
 }
 
 async function idbDelete(key: string): Promise<void> {
   const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, "readwrite");
-    tx.objectStore(STORE).delete(key);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE, "readwrite");
+      tx.objectStore(STORE).delete(key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } finally {
+    try { db.close(); } catch { /* ignore */ }
+  }
 }
 
 const TRUST_LS_KEY = (userId: string) => `cubbly:notes-trust:${userId}`;

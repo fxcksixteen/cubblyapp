@@ -82,6 +82,16 @@ Napi::Value StartCapture(const Napi::CallbackInfo& info) {
 
   auto capture = std::make_unique<cubbly::WindowCapture>();
 
+  // Register the TSFN BEFORE Start(). Start() calls session_.StartCapture(),
+  // after which WGC may deliver FrameArrived on a thread-pool thread at any
+  // moment — and the frame callback below looks the handle up in g_callbacks.
+  // Publishing the entry only after Start() returned left a window where the
+  // very first frames were silently discarded.
+  {
+    std::lock_guard<std::mutex> lk(g_mutex);
+    g_callbacks.emplace(handle, tsfn);
+  }
+
   std::string err;
   bool ok = capture->Start(
       hwnd,
@@ -122,6 +132,10 @@ Napi::Value StartCapture(const Napi::CallbackInfo& info) {
       err);
 
   if (!ok) {
+    {
+      std::lock_guard<std::mutex> lk(g_mutex);
+      g_callbacks.erase(handle);
+    }
     tsfn.Release();
     Napi::Error::New(env, err.empty() ? "Capture start failed" : err)
         .ThrowAsJavaScriptException();
@@ -131,7 +145,6 @@ Napi::Value StartCapture(const Napi::CallbackInfo& info) {
   {
     std::lock_guard<std::mutex> lk(g_mutex);
     g_captures.emplace(handle, std::move(capture));
-    g_callbacks.emplace(handle, std::move(tsfn));
   }
 
   return Napi::Number::New(env, handle);

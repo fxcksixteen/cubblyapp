@@ -387,9 +387,15 @@ async function parseRoblox() {
     [...tail.matchAll(/GameName[\s"':=]+"?([^"\r\n,}]+)"?/gi)].pop() ||
     [...tail.matchAll(/Connecting to game '([^']+)'/gi)].pop() ||
     [...tail.matchAll(/joinGamePost\w*.*?place[= ]"?([A-Za-z0-9 _:'\-]+)"?/gi)].pop();
+  // NOTE: the "gap" quantifiers below are BOUNDED (`[^]{0,2000}?`) on purpose.
+  // `tail` here is up to 8 concatenated log tails (~768 KB) and an unbounded
+  // lazy `[^]*?` makes each occurrence of the leading literal scan the entire
+  // remainder of the string — quadratic work on the Electron MAIN thread,
+  // which is exactly the thread that must not block during a call. The keys we
+  // want always sit within a few hundred bytes of the marker.
   const placeIdMatches = [
     ...tail.matchAll(/place[Ii]d[:=\s"']+(\d{5,})/g),
-    ...tail.matchAll(/Report\s+game_join_loadtime[^]*?placeid[:=\s"']+(\d{5,})/gi),
+    ...tail.matchAll(/Report\s+game_join_loadtime[^]{0,2000}?placeid[:=\s"']+(\d{5,})/gi),
     ...tail.matchAll(/!\s*Joining game[^\n]*?place\s+(\d{5,})/gi),
     ...tail.matchAll(/GameJoinUtil[^\n]*?placeId[:=\s]+(\d{5,})/gi),
     ...tail.matchAll(/Joining game [^\n]*?(\d{9,})/gi),
@@ -399,7 +405,7 @@ async function parseRoblox() {
   const placeIdMatch = placeIdMatches[placeIdMatches.length - 1] || null;
   const universeMatch =
     [...tail.matchAll(/universe[Ii]d[:=\s"']+(\d{5,})/g)].pop() ||
-    [...tail.matchAll(/game_join_loadtime[^]*?universeid[:=\s"']+(\d{5,})/gi)].pop();
+    [...tail.matchAll(/game_join_loadtime[^]{0,2000}?universeid[:=\s"']+(\d{5,})/gi)].pop();
   const serverTypeMatch = [...tail.matchAll(/serverType[\s"':=]+"?([A-Za-z_]+)/gi)].pop();
   const studio = /RobloxStudio/i.test(logPath);
 

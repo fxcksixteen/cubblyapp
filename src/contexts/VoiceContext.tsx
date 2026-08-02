@@ -13,6 +13,9 @@ import {
 import { usePeerGains } from "@/lib/peerGain";
 import { armRemoteAudio } from "@/lib/iosAudioUnlock";
 import { STUN_FALLBACK_SERVERS, sanitizeIceServersForSession } from "@/lib/webrtcIce";
+import { getSelectedCandidatePair, getRelayHost } from "@/lib/webrtcStats";
+import { broadcastToTopic, broadcastToTopicWithRetry, voiceGlobalTopic } from "@/lib/realtimeBroadcast";
+import { deliverLegacyGroupRing } from "@/lib/legacyGroupRingBridge";
 import { toast } from "@/hooks/use-toast";
 import { startAutomaticScreenEncoding, setEncoderClamp } from "@/lib/screenShareEncoding";
 
@@ -731,6 +734,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const [audioLevel, setAudioLevel] = useState(0);
   const [remoteAudioLevel, setRemoteAudioLevel] = useState(0);
   const [callEvents, setCallEvents] = useState<CallEvent[]>([]);
+  /** Latest callEvents, so endCall can pick the target event without doing
+   *  side effects inside a state updater. */
+  const callEventsRef = useRef<CallEvent[]>([]);
   const [currentCallEventId, setCurrentCallEventId] = useState<string | null>(null);
   const activeCallRef = useRef<ActiveCall | null>(null);
   const currentCallEventIdRef = useRef<string | null>(null);
@@ -741,6 +747,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const [remoteScreenStream, setRemoteScreenStream] = useState<MediaStream | null>(null);
+  // Mirrors of the two above. `track.onended` handlers and other long-lived
+  // callbacks must not read share state out of a render closure — see
+  // stopScreenShare().
+  const screenStreamRef = useRef<MediaStream | null>(null);
+  const isScreenSharingRef = useRef(false);
+  useEffect(() => { screenStreamRef.current = screenStream; }, [screenStream]);
+  useEffect(() => { isScreenSharingRef.current = isScreenSharing; }, [isScreenSharing]);
+  /** Always-current stopScreenShare, for callbacks installed at share start. */
+  const stopScreenShareRef = useRef<() => void>(() => {});
   const screenEncodingCleanupRef = useRef<(() => void) | null>(null);
   // v0.3.17: play the screenshare start/stop SFX for the OTHER peer too —
   // previously only the user who initiated/ended the share heard it.
@@ -771,6 +786,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => { activeCallRef.current = activeCall; }, [activeCall]);
   useEffect(() => { currentCallEventIdRef.current = currentCallEventId; }, [currentCallEventId]);
+  useEffect(() => { callEventsRef.current = callEvents; }, [callEvents]);
 
   // Same idea for screensharing — when this is true, ActivityContext stops
   // running `tasklist` polls entirely so the heavy IPC doesn't compete with
@@ -813,6 +829,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   // in the logs but no tracks ever flow" failure: the connection never gets a
   // usable candidate pair and just sits there until the share is stopped.
   const pendingScreenIceRef = useRef<{ in: RTCIceCandidateInit[]; out: RTCIceCandidateInit[] }>({ in: [], out: [] });
+  /** Answer we produced for the current incoming share, so a retried/duplicate
+   *  screen-offer can be satisfied by re-sending it instead of rebuilding the
+   *  incoming PC (which blanks a working stream). */
+  const lastScreenAnswerRef = useRef<{ shareId: string; answer: RTCSessionDescriptionInit } | null>(null);
   /** Cleanup fn for an active native (WASAPI) per-window audio capture, if any. */
   const nativeWindowAudioStopRef = useRef<(() => void) | null>(null);
   /** Cleanup fn for an active native (WGC) per-window video capture, if any. */
@@ -1071,20 +1091,52 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   // and made peers hear chopped-up audio.
   const lastGateStateRef = useRef<boolean>(true);
   const gateTimerRef = useRef<number | null>(null);
+  /** Gate value a pending debounce timer will apply, or null when idle. */
+  const gatePendingRef = useRef<boolean | null>(null);
+  const clearGateTimer = useCallback(() => {
+    if (gateTimerRef.current) { window.clearTimeout(gateTimerRef.current); gateTimerRef.current = null; }
+    gatePendingRef.current = null;
+  }, []);
   useEffect(() => {
-    if (!localStream || settings.autoSensitivity || !activeCall) return;
-    if (activeCall.isMuted || activeCall.isDeafened) return;
+    // v0.4.27: this effect used to cancel its own pending timer in the cleanup
+    // that React runs on EVERY dependency change. `audioLevel` updates at
+    // 10 Hz, so the 150 ms debounce was torn down and restarted every 100 ms
+    // and the gate could only ever fire while the level sat perfectly still —
+    // i.e. manual sensitivity effectively did nothing while you were talking.
+    // The timer now survives dep changes and is only cancelled when the target
+    // state actually changes (or the gate is disabled).
+    if (!localStream || settings.autoSensitivity || !activeCall || activeCall.isMuted || activeCall.isDeafened) {
+      clearGateTimer();
+      // Never leave the mic gated off when the gate stops applying — flipping
+      // to auto-sensitivity (or deafening) while gated would otherwise strand
+      // track.enabled === false and silence the user for the rest of the call.
+      if (!lastGateStateRef.current) {
+        lastGateStateRef.current = true;
+        if (localStream && activeCall && !activeCall.isMuted && !activeCall.isDeafened) {
+          localStream.getAudioTracks().forEach(t => { t.enabled = true; });
+        }
+      }
+      return;
+    }
     const shouldTransmit = audioLevel >= settings.sensitivityThreshold;
-    if (shouldTransmit === lastGateStateRef.current) return;
+    if (shouldTransmit === lastGateStateRef.current) {
+      // Level bounced back before the debounce elapsed — drop the pending flip.
+      if (gatePendingRef.current !== null) clearGateTimer();
+      return;
+    }
+    if (gatePendingRef.current === shouldTransmit) return; // already scheduled
     if (gateTimerRef.current) window.clearTimeout(gateTimerRef.current);
+    gatePendingRef.current = shouldTransmit;
     gateTimerRef.current = window.setTimeout(() => {
+      gateTimerRef.current = null;
+      gatePendingRef.current = null;
       lastGateStateRef.current = shouldTransmit;
       localStream.getAudioTracks().forEach(t => { t.enabled = shouldTransmit; });
     }, 150);
-    return () => {
-      if (gateTimerRef.current) { window.clearTimeout(gateTimerRef.current); gateTimerRef.current = null; }
-    };
-  }, [audioLevel, settings.sensitivityThreshold, settings.autoSensitivity, localStream, activeCall]);
+  }, [audioLevel, settings.sensitivityThreshold, settings.autoSensitivity, localStream, activeCall, clearGateTimer]);
+
+  // Cancel any pending gate flip on unmount.
+  useEffect(() => clearGateTimer, [clearGateTimer]);
 
   const startAudioLevelMonitor = useCallback((stream: MediaStream) => {
     const ctx = new AudioContext();
@@ -1126,7 +1178,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const stopAudioLevelMonitor = useCallback(() => {
     try { window.clearInterval(animFrameRef.current as unknown as number); } catch {}
     try { cancelAnimationFrame(animFrameRef.current); } catch {}
-    audioContextRef.current?.close();
+    // close() rejects with InvalidStateError if the context is already closed
+    // (endCall can run twice — e.g. hangup + peer-leave crossing). Unhandled,
+    // that surfaced as a console rejection during every double teardown.
+    try { audioContextRef.current?.close().catch(() => {}); } catch {}
     audioContextRef.current = null;
     analyserRef.current = null;
     setAudioLevel(0);
@@ -1559,31 +1614,17 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
   const broadcastIncomingCallDismiss = useCallback(async (conversationId: string, callEventId?: string) => {
     if (!user) return;
-    const channel = supabase.channel(`voice-global:${user.id}`);
-    await new Promise<void>((resolve) => {
-      let settled = false;
-      const cleanup = () => {
-        if (settled) return;
-        settled = true;
-        try { supabase.removeChannel(channel); } catch {}
-        resolve();
-      };
-      // v0.4.0: hard timeout — if SUBSCRIBED never fires (network blip) the
-      // channel would leak forever. Force cleanup after 2s no matter what.
-      const hardTimer = setTimeout(cleanup, 2000);
-      channel.subscribe((status) => {
-        voiceTrace("dm.channel.status", { conversationId, status });
-        if (status === "SUBSCRIBED") {
-          channel.send({
-            type: "broadcast",
-            event: "incoming-call-dismiss",
-            payload: { conversationId, callEventId, userId: user.id },
-          }).finally(() => {
-            setTimeout(() => { clearTimeout(hardTimer); cleanup(); }, 250);
-          });
-        }
-      });
+    // v0.4.27 — CRITICAL FIX. This used to `supabase.channel(voice-global:<self>)`
+    // → subscribe → send → removeChannel. Because channel() dedupes by topic it
+    // got back the app's OWN long-lived incoming-call channel, and the trailing
+    // removeChannel unsubscribed + tore it down. Net effect: accepting or
+    // declining a single call permanently stopped this device from receiving
+    // any further incoming calls (the owning effect never re-runs), for both
+    // 1:1 AND group rings. Now sent over REST with no join and no teardown.
+    const res = await broadcastToTopic(voiceGlobalTopic(user.id), "incoming-call-dismiss", {
+      conversationId, callEventId, userId: user.id,
     });
+    voiceTrace("dm.dismiss.broadcast", { conversationId, ok: res.ok, error: res.error });
   }, [user]);
 
   const peerLooksLiveInCall = useCallback(async (callEventId: string, peerUserId?: string | null, freshMs = 25_000): Promise<boolean> => {
@@ -2410,6 +2451,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           screenPcOutRef.current = null;
           try { screenPcInRef.current?.close(); } catch {}
           screenPcInRef.current = null;
+          lastScreenAnswerRef.current = null;
           setRemoteStream(null);
           setRemoteScreenStream(null);
           setRemoteVideoStream(null);
@@ -2475,6 +2517,30 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         }
 
         if (payload.type === "screen-offer") {
+          // v0.4.27 — IDEMPOTENCE. The offer is now sent with retries (and
+          // Supabase realtime can re-deliver a broadcast on its own), so the
+          // same shareId can arrive more than once. Rebuilding the incoming PC
+          // on a duplicate tore down a working stream and blanked the viewer.
+          // Instead: recognise the duplicate, and re-send the answer we
+          // already produced — if the sharer is retrying, the thing that went
+          // missing was almost certainly our answer.
+          const liveIn = screenPcInRef.current;
+          if (
+            liveIn && payload.shareId &&
+            (liveIn as any).__cubblyShareId === payload.shareId &&
+            liveIn.signalingState !== "closed"
+          ) {
+            const cached = lastScreenAnswerRef.current;
+            if (cached?.shareId === payload.shareId) {
+              void sendSignalReliably(channel, {
+                type: "screen-answer",
+                sdp: cached.answer,
+                senderId: user.id,
+                shareId: payload.shareId,
+              }, "screen-answer(resend)");
+            }
+            return;
+          }
           // v0.3.21: when a peer stops + restarts their share within the same
           // call, a fresh `screen-offer` arrives. Close any prior incoming PC
           // and clear remoteScreenStream first, otherwise the new offer/answer
@@ -2520,6 +2586,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             }
           };
           screenPcInRef.current = screenPc;
+          (screenPc as any).__cubblyShareId = payload.shareId ?? null;
           // v0.4.17 — echo the sender's shareId back on the answer so the
           // sharer can drop late/duplicate answers from prior attempts. Also
           // wrap in try/catch so a stray offer (state-mismatch) never becomes
@@ -2533,16 +2600,19 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             }
             const answer = await screenPc.createAnswer();
             await screenPc.setLocalDescription(answer);
-            channel.send({
-              type: "broadcast",
-              event: "voice-signal",
-              payload: {
-                type: "screen-answer",
-                sdp: answer,
-                senderId: user.id,
-                shareId: payload.shareId,
-              },
-            });
+            if (payload.shareId) {
+              lastScreenAnswerRef.current = { shareId: payload.shareId, answer };
+            }
+            // v0.4.27 — reliable send. A dropped answer is one of the two ways
+            // a share "starts" for the sharer and never appears for the
+            // viewer; the receiver already drops duplicates via the shareId +
+            // `signalingState !== "have-local-offer"` guards below.
+            void sendSignalReliably(channel, {
+              type: "screen-answer",
+              sdp: answer,
+              senderId: user.id,
+              shareId: payload.shareId,
+            }, "screen-answer");
           } catch (e) {
             console.warn("[Voice] screen-offer handling failed (ignored):", e);
           }
@@ -2584,11 +2654,19 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           // role "in" came from peer's incoming PC → goes to our OUT PC.
           // role "out" came from peer's outgoing PC → goes to our IN PC.
           // Missing role (legacy) → try out first, then in.
-          const slot: "in" | "out" = payload.role === "in" ? "out" : "in";
           const target =
             payload.role === "in" ? screenPcOutRef.current :
             payload.role === "out" ? screenPcInRef.current :
             (screenPcOutRef.current || screenPcInRef.current);
+          // The buffer slot MUST match whichever PC `target` resolved to.
+          // For legacy (role-less) candidates the slot was hardcoded to "in"
+          // while target could be the OUT pc, so a buffered candidate was
+          // later flushed into the wrong connection. Role-tagged candidates —
+          // i.e. everything from v0.4.20 on — are unaffected either way.
+          const slot: "in" | "out" =
+            payload.role === "in" ? "out" :
+            payload.role === "out" ? "in" :
+            (screenPcOutRef.current ? "out" : "in");
           // Buffer until the PC exists AND has a remote description — adding a
           // candidate before either is ready throws and loses the candidate.
           if (!target || !target.remoteDescription) {
@@ -2608,6 +2686,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           setRemoteScreenStream(null);
           screenPcInRef.current?.close();
           screenPcInRef.current = null;
+          lastScreenAnswerRef.current = null;
           pendingScreenIceRef.current.in = [];
         }
 
@@ -2891,26 +2970,18 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       // handled: if the peer isn't really live, `otherActive` is false
       // above and we fall into the new-call branch, which DOES ring.
       if (!isJoiningExisting) {
-        const recipientGlobalChannel = supabase.channel(`voice-global:${peerId}`);
-        recipientGlobalChannel.subscribe(async (status) => {
-          if (status === "SUBSCRIBED") {
-            console.log(`[Voice] 📡 Sending incoming-call notification to peer (new-call)`);
-            recipientGlobalChannel.send({
-              type: "broadcast",
-              event: "incoming-call",
-              payload: {
-                targetId: peerId,
-                conversationId,
-                callerId: user.id,
-                callerName: user.user_metadata?.display_name || "User",
-                callerAvatarUrl,
-                callEventId,
-              },
-            });
-            setTimeout(() => {
-              supabase.removeChannel(recipientGlobalChannel);
-            }, 3000);
-          }
+        // v0.4.27 — REST broadcast: no join, no teardown. Two overlapping calls
+        // to the same peer used to share one channel instance (channel() dedupes
+        // by topic) and the first one's removeChannel could kill the second
+        // mid-send. It also drops the subscribe→publish race the old path had.
+        console.log(`[Voice] 📡 Sending incoming-call notification to peer (new-call)`);
+        void broadcastToTopicWithRetry(voiceGlobalTopic(peerId), "incoming-call", {
+          targetId: peerId,
+          conversationId,
+          callerId: user.id,
+          callerName: user.user_metadata?.display_name || "User",
+          callerAvatarUrl,
+          callEventId,
         });
       }
 
@@ -3419,6 +3490,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       }
 
       if (!stream) throw new Error("Screen capture produced no stream");
+      screenStreamRef.current = stream;
+      isScreenSharingRef.current = true;
       setScreenStream(stream);
       setIsScreenSharing(true);
       playSound("screenshareStart", { volume: 0.4 });
@@ -3522,7 +3595,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           const sender = localPc.addTrack(track, stream);
           if (track.kind === "video") applyScreenBitrate(sender, maxBitrate, encodingOpts);
           if (track.kind === "audio") applyScreenAudioBitrate(sender);
-          track.onended = () => { stopScreenShare(); };
+          track.onended = () => { stopScreenShareRef.current(); };
         });
 
         const offer = await localPc.createOffer();
@@ -3542,8 +3615,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
 
-      // Normal call: send via signaling channel
-      if (!channelRef.current) return;
+      // Normal call: send via signaling channel. Without a channel there is no
+      // way to publish the share, so throw into the catch below instead of
+      // returning — a bare return left the capture running and the UI stuck in
+      // "sharing" with nothing on the wire.
+      if (!channelRef.current) throw new Error("no signaling channel for screen share");
 
       // v0.3.21: defense — close any stale outgoing PC from a prior share so
       // we never end up with two screen-out PCs racing each other (peer would
@@ -3583,12 +3659,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           }
         } catch {}
       }
-      videoTrack.onended = () => { stopScreenShare(); };
+      videoTrack.onended = () => { stopScreenShareRef.current(); };
 
       audioTracks.forEach((atrack) => {
         const sender = screenPc.addTrack(atrack, stream);
         applyScreenAudioBitrate(sender);
-        atrack.onended = () => { stopScreenShare(); };
+        atrack.onended = () => { stopScreenShareRef.current(); };
       });
 
       screenPc.onicecandidate = (event) => {
@@ -3626,11 +3702,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         });
       }
 
-      channelRef.current.send({
-        type: "broadcast",
-        event: "voice-signal",
-        payload: { type: "screen-offer", sdp: offer, senderId: user.id, shareId },
-      });
+      // v0.4.27 — reliable send. An un-awaited channel.send is silently
+      // dropped client-side during a burst (the exact reason
+      // sendSignalReliably exists for the voice path), and a lost screen-offer
+      // is the "I'm sharing but they see nothing" bug. Safe to retry now that
+      // the receiver recognises a duplicate shareId and re-answers instead of
+      // rebuilding its incoming PC.
+      void sendSignalReliably(channelRef.current, {
+        type: "screen-offer", sdp: offer, senderId: user.id, shareId,
+      }, "screen-offer");
 
     } catch (e) {
       console.error("Failed to start screen share:", e);
@@ -3646,6 +3726,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       }
       try { screenPcOutRef.current?.close(); } catch {}
       screenPcOutRef.current = null;
+      screenStreamRef.current = null;
+      isScreenSharingRef.current = false;
       setScreenStream(null);
       setIsScreenSharing(false);
     }
@@ -3658,15 +3740,28 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const stopScreenShare = useCallback(() => {
     screenEncodingCleanupRef.current?.();
     screenEncodingCleanupRef.current = null;
+    // v0.4.27: read the live stream/flag from refs, NOT from the render
+    // closure. `track.onended` handlers are installed while starting a share,
+    // so they captured a `stopScreenShare` from the render where screenStream
+    // was still null — meaning that when the user hit Windows' own "Stop
+    // sharing" bar (or the shared window closed), `screenStream?.getTracks()`
+    // was null and the capture tracks were NEVER stopped. The share state
+    // reset but the OS kept capturing (and share audio kept flowing).
+    const activeStream = screenStreamRef.current;
     // v0.3.21: only play the stop SFX if we were ACTUALLY sharing. Previously
     // endCall() always invoked stopScreenShare() during teardown, so users
     // heard "stream end" + "leave call" stacked even when they were never
     // sharing in the first place.
-    const wasSharing = isScreenSharing || !!screenStream;
+    const wasSharing = isScreenSharingRef.current || !!activeStream;
+    // Clear synchronously so a second entry (video AND audio track both fire
+    // `onended` when a share is stopped from the OS bar) is a no-op instead of
+    // a doubled stop sound.
+    screenStreamRef.current = null;
+    isScreenSharingRef.current = false;
     if (wasSharing) {
       try { playSound("screenshareStop", { volume: 0.4 }); } catch {}
     }
-    screenStream?.getTracks().forEach(t => t.stop());
+    activeStream?.getTracks().forEach(t => t.stop());
     setScreenStream(null);
     setIsScreenSharing(false);
     // NOTE: do NOT clear remoteScreenStream here — that belongs to the peer's
@@ -3703,13 +3798,17 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     pendingScreenIceRef.current.out = [];
 
     if (channelRef.current && user) {
-      channelRef.current.send({
-        type: "broadcast",
-        event: "voice-signal",
-        payload: { type: "screen-stop", senderId: user.id },
-      });
+      // Reliable: a dropped screen-stop leaves the viewer staring at a frozen
+      // last frame until they leave the call. Duplicates are a no-op on the
+      // receiving side.
+      void sendSignalReliably(channelRef.current, {
+        type: "screen-stop", senderId: user.id,
+      }, "screen-stop");
     }
-  }, [screenStream, isScreenSharing, user]);
+  }, [user]);
+
+  // Keep the stop-share ref current for `track.onended` handlers.
+  useEffect(() => { stopScreenShareRef.current = stopScreenShare; }, [stopScreenShare]);
 
   const endCall = useCallback(() => {
     console.log("[Voice] 🔴 endCall — remote hangup:", isRemoteHangup.current);
@@ -3729,63 +3828,69 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     // otherwise the other person stays in the call and the chat-thread "Join"
     // pill keeps working for re-joiners (Discord behavior).
     const myUserId = user?.id;
-    setCallEvents(prev => {
-      const updated = [...prev];
-      for (let i = updated.length - 1; i >= 0; i--) {
-        if (updated[i].state === "ongoing") {
-          const evt = updated[i];
-          // Mark our own participant row left first, then check if anyone
-          // else is still in. Do this in an async chain so we don't race.
-          if (myUserId) {
-            (async () => {
-              try {
-                // 1) Mark our own row as left.
-                await supabase
-                  .from("call_participants")
-                  .update({ left_at: endedAt })
-                  .eq("call_event_id", evt.id)
-                  .eq("user_id", myUserId)
-                  .is("left_at", null);
+    // v0.4.27: the DB work below used to live INSIDE a `setCallEvents` updater.
+    // React treats updaters as pure and may invoke them more than once for a
+    // single update (it always does under StrictMode), so the participant-left
+    // UPDATE and the `end_call_event_if_stale` RPC could fire twice per hangup.
+    // The updater also returned a fresh array without changing anything, forcing
+    // a pointless re-render. Read the target event from a ref and do the async
+    // work out here instead.
+    const ongoing = [...callEventsRef.current].reverse().find(e => e.state === "ongoing");
+    if (myUserId && ongoing) {
+      void (async () => {
+        try {
+          // 1) Mark our own row as left.
+          await supabase
+            .from("call_participants")
+            .update({ left_at: endedAt })
+            .eq("call_event_id", ongoing.id)
+            .eq("user_id", myUserId)
+            .is("left_at", null);
 
-                // 2) Let the SERVER decide whether to end the event. The RPC
-                // checks live participants with a freshness window so we don't
-                // race the database into "ended" while a peer is still in the
-                // call (which made Rejoin start a brand-new event instead of
-                // dropping us back into the original one).
-                try {
-                  await (supabase as any).rpc("end_call_event_if_stale", {
-                    _call_event_id: evt.id,
-                    _stale_seconds: 30,
-                  });
-                } catch (e) {
-                  console.warn("[Voice] end_call_event_if_stale RPC failed:", e);
-                }
-
-                // 3) Re-read the event state — only flip our local copy when
-                // the server actually ended it. Avoids the leaver's UI showing
-                // "ended" while the peer is still live.
-                const { data: ev } = await supabase
-                  .from("call_events")
-                  .select("state, ended_at")
-                  .eq("id", evt.id)
-                  .maybeSingle();
-                if (ev?.state === "ended") {
-                  setCallEvents(curr => curr.map(e => e.id === evt.id
-                    ? { ...e, state: "ended", endedAt: ev.ended_at || endedAt }
-                    : e));
-                }
-              } catch (e) {
-                console.warn("[Voice] endCall participant cleanup failed:", e);
-              }
-            })();
+          // 2) Let the SERVER decide whether to end the event. The RPC checks
+          // live participants with a freshness window so we don't race the
+          // database into "ended" while a peer is still in the call (which made
+          // Rejoin start a brand-new event instead of dropping us back into the
+          // original one).
+          try {
+            await (supabase as any).rpc("end_call_event_if_stale", {
+              _call_event_id: ongoing.id,
+              _stale_seconds: 30,
+            });
+          } catch (e) {
+            console.warn("[Voice] end_call_event_if_stale RPC failed:", e);
           }
-          break;
+
+          // 3) Re-read the event state — only flip our local copy when the
+          // server actually ended it. Avoids the leaver's UI showing "ended"
+          // while the peer is still live.
+          const { data: ev } = await supabase
+            .from("call_events")
+            .select("state, ended_at")
+            .eq("id", ongoing.id)
+            .maybeSingle();
+          if (ev?.state === "ended") {
+            setCallEvents(curr => curr.map(e => e.id === ongoing.id
+              ? { ...e, state: "ended", endedAt: ev.ended_at || endedAt }
+              : e));
+          }
+        } catch (e) {
+          console.warn("[Voice] endCall participant cleanup failed:", e);
         }
-      }
-      return updated;
-    });
+      })();
+    }
 
     stopScreenShare();
+    // v0.4.27: also close the INCOMING screen PC. stopScreenShare deliberately
+    // only closes our outgoing one (the peer's share must survive us stopping
+    // ours), but at endCall the whole call is going away — leaving it open
+    // kept a live video decoder + relay traffic running for the rest of the
+    // session while the UI showed nothing.
+    try { screenPcInRef.current?.close(); } catch {}
+    screenPcInRef.current = null;
+    lastScreenAnswerRef.current = null;
+    pendingScreenIceRef.current.in = [];
+    pendingScreenIceRef.current.out = [];
     setRemoteScreenStream(null);
 
     // Stop local camera
@@ -4127,8 +4232,21 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     if (!user) return;
-    const globalChannel = supabase.channel(`voice-global:${user.id}`);
+    // Sole owner of this topic since v0.4.27 (group rings moved to
+    // groupGlobalTopic). The removeChannel in this effect's cleanup is the ONE
+    // legitimate teardown of it — nothing else may remove this topic.
+    const globalChannel = supabase.channel(voiceGlobalTopic(user.id));
     globalChannel
+      // COMPAT: remove once >=0.4.27 is broadly installed. Group rings moved to
+      // `group-global:<uid>` in 0.4.27, but a 0.4.26 caller still publishes them
+      // here. We own this topic, so we bind the legacy event on OUR channel and
+      // hand it to GroupCallContext rather than letting it open a second
+      // instance of this topic (channel() dedupes by topic — that shared
+      // instance is exactly what the 0.4.27 split removed). GroupCallContext
+      // de-duplicates against its own group-global delivery.
+      .on("broadcast", { event: "group-incoming-call" }, ({ payload }) => {
+        deliverLegacyGroupRing(payload);
+      })
       .on("broadcast", { event: "incoming-call" }, async ({ payload }) => {
         // v0.3.12: read live state through refs so we don't have to resubscribe
         // this channel on every call state change (which was creating a
@@ -4298,32 +4416,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       if (!pc) return;
       try {
         const stats = await pc.getStats();
-        // Prefer the NOMINATED pair (the one the browser actually picked).
-        // If multiple succeed, prefer non-relay (TURN adds round-trip cost,
-        // ~+80-120ms in our PA↔AT case). This stops the sidebar from showing
-        // a 200ms relay number when a P2P host pair is also available.
-        let bestRtt: number | null = null;
-        let bestIsRelay = true;
-        let bestNominated = false;
-        stats.forEach((report: any) => {
-          if (report.type !== "candidate-pair" || report.state !== "succeeded") return;
-          if (typeof report.currentRoundTripTime !== "number") return;
-          const local = stats.get(report.localCandidateId) as any;
-          const remote = stats.get(report.remoteCandidateId) as any;
-          const isRelay = local?.candidateType === "relay" || remote?.candidateType === "relay";
-          const nominated = !!report.nominated;
-          // Prefer: nominated > non-relay > anything.
-          const better =
-            bestRtt == null ||
-            (nominated && !bestNominated) ||
-            (nominated === bestNominated && !isRelay && bestIsRelay);
-          if (better) {
-            bestRtt = report.currentRoundTripTime;
-            bestIsRelay = isRelay;
-            bestNominated = nominated;
-          }
-        });
-        if (bestRtt != null) setPing(Math.round(bestRtt * 1000));
+        // v0.4.27: read the pair the transport actually selected instead of
+        // guessing. The previous heuristic preferred a non-relay pair whenever
+        // one had reached "succeeded" — but Chromium keeps unused and
+        // post-ICE-restart pairs in that state, so a relayed call could report
+        // the RTT of a direct path that was carrying nothing.
+        const selected = getSelectedCandidatePair(stats);
+        if (selected?.rttMs != null) setPing(selected.rttMs);
       } catch {
         /* ignore */
       }
@@ -4348,17 +4447,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     };
     try {
       const stats = await pc.getStats();
-      // Pick best candidate pair, same logic as ping poll
-      let bestPair: any = null;
-      let bestRank = -1;
-      stats.forEach((r: any) => {
-        if (r.type !== "candidate-pair" || r.state !== "succeeded") return;
-        const local = stats.get(r.localCandidateId) as any;
-        const remote = stats.get(r.remoteCandidateId) as any;
-        const isRelay = local?.candidateType === "relay" || remote?.candidateType === "relay";
-        const rank = (r.nominated ? 10 : 0) + (!isRelay ? 5 : 0) + (typeof r.currentRoundTripTime === "number" ? 1 : 0);
-        if (rank > bestRank) { bestRank = rank; bestPair = { r, local, remote, isRelay }; }
-      });
+      // Same authoritative pair resolution as the ping poll — see
+      // getSelectedCandidatePair for why the old "best succeeded pair"
+      // heuristic reported a path that wasn't carrying media.
+      const selected = getSelectedCandidatePair(stats);
       let inbound: any = null, outbound: any = null, inboundCodec: any = null, outboundCodec: any = null;
       stats.forEach((r: any) => {
         if (r.type === "inbound-rtp" && r.kind === "audio") inbound = r;
@@ -4367,19 +4459,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       if (inbound?.codecId) inboundCodec = stats.get(inbound.codecId);
       if (outbound?.codecId) outboundCodec = stats.get(outbound.codecId);
 
-      const local = bestPair?.local;
-      const remote = bestPair?.remote;
-      // Try to extract TURN server hostname from configured ICE servers when relayed
-      let turnServerHost: string | undefined;
-      if (bestPair?.isRelay) {
-        const turn = (iceServersRef.current || []).find((s: any) =>
-          (Array.isArray(s.urls) ? s.urls : [s.urls]).some((u: string) => u?.startsWith("turn:") || u?.startsWith("turns:"))
-        ) as any;
-        if (turn) {
-          const url: string = Array.isArray(turn.urls) ? turn.urls[0] : turn.urls;
-          turnServerHost = url.replace(/^turns?:/, "").split("?")[0];
-        }
-      }
+      const local = selected?.local;
+      const remote = selected?.remote;
+      // v0.4.27: report the relay ICE ACTUALLY selected. This used to take the
+      // first TURN entry from our own configured list — i.e. always the locally
+      // preferred region — even when the selected pair relayed through the
+      // PEER's TURN server in a different region.
+      const turnServerHost = getRelayHost(selected) ?? undefined;
       return {
         localCandidateType: local?.candidateType || "—",
         remoteCandidateType: remote?.candidateType || "—",
@@ -4388,9 +4474,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         localAddress: maskAddr(local?.address || local?.ip),
         remoteAddress: maskAddr(remote?.address || remote?.ip),
         relayProtocol: local?.relayProtocol,
-        isRelay: !!bestPair?.isRelay,
-        nominated: !!bestPair?.r?.nominated,
-        currentRttMs: typeof bestPair?.r?.currentRoundTripTime === "number" ? Math.round(bestPair.r.currentRoundTripTime * 1000) : null,
+        isRelay: !!selected?.isRelay,
+        nominated: !!selected?.pair?.nominated,
+        currentRttMs: selected?.rttMs ?? null,
         connectionState: pc.connectionState,
         iceConnectionState: pc.iceConnectionState,
         iceGatheringState: pc.iceGatheringState,

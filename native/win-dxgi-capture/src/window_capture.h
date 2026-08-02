@@ -83,6 +83,9 @@ class WindowCapture {
 
   FrameCallback callback_;
   std::atomic<bool> running_{false};
+  // Separate from running_: the item-Closed handler clears running_ when the
+  // captured window goes away, but teardown must still happen exactly once.
+  std::atomic<bool> stopped_{false};
   // Serializes OnFrameArrived's texture/buffer access against Stop()'s
   // teardown. Stop() never holds this while revoking the event handler, so
   // revoke() waiting on an in-flight callback can never deadlock against it.
