@@ -224,6 +224,19 @@ export function getEncoderClamp(sender: RTCRtpSender): EncoderClamp | null {
   return encoderClamps.get(sender) ?? null;
 }
 
+/**
+ * v0.4.27 — lift a clamp applied on a false positive.
+ *
+ * There was previously no way to remove a clamp at all: the detector set one
+ * on a SINGLE software reading and the WeakMap entry lived for the sender's
+ * lifetime, so a share that briefly reported OpenH264 while Media Foundation
+ * was still initialising ran the rest of its life at 720p30/3Mbps on a GPU
+ * with working NVENC. Callers apply hysteresis before calling this.
+ */
+export function clearEncoderClamp(sender: RTCRtpSender): boolean {
+  return encoderClamps.delete(sender);
+}
+
 async function applyEncoding(
   sender: RTCRtpSender,
   bitrate: number,

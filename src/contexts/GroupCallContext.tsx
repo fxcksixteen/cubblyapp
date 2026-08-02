@@ -1711,7 +1711,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
             if (p.encodings?.length) { (p.encodings[0] as any).scalabilityMode = "L1T3"; void vSender.setParameters(p); }
           } catch {}
         }
-        logScreenEncoderImplementation(pc, "GroupCall", vSender);
+        logScreenEncoderImplementation(pc, "GroupCall", vSender, profile.degradationPreference);
         screenEncodingCleanupRef.current.get(peerId)?.();
         screenEncodingCleanupRef.current.set(peerId, startAutomaticScreenEncoding(vSender, pc, {
           ...localScreenEncodingRef.current,

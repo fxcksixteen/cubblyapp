@@ -18,7 +18,7 @@ import { getSelectedCandidatePair, getRelayHost } from "@/lib/webrtcStats";
 import { broadcastToTopic, broadcastToTopicWithRetry, voiceGlobalTopic } from "@/lib/realtimeBroadcast";
 import { deliverLegacyGroupRing } from "@/lib/legacyGroupRingBridge";
 import { toast } from "@/hooks/use-toast";
-import { startAutomaticScreenEncoding, setEncoderClamp } from "@/lib/screenShareEncoding";
+import { startAutomaticScreenEncoding, setEncoderClamp, clearEncoderClamp } from "@/lib/screenShareEncoding";
 import {
   profileForMode, modeFromCaptureRate, modeFromSourceKind,
   getStoredShareMode, setStoredShareMode,
@@ -292,12 +292,25 @@ export function addScreenVideoTransceiver(
  * over to software permanently), so this re-checks every 10 s for the life
  * of the connection instead of sampling twice and going quiet.
  */
+/** Encoder implementations libwebrtc reports for its software encoders. */
+export const SOFTWARE_ENCODER_RE = /libvpx|libaom|openh264|SimulcastEncoderAdapter \(libvpx/i;
+/** Consecutive software readings required before clamping. */
+export const SOFTWARE_SAMPLES_TO_CLAMP = 3;
+/** Consecutive hardware readings required to lift a clamp (once per share). */
+export const HARDWARE_SAMPLES_TO_UNCLAMP = 3;
+/** Delay before the first probe — MF/NVENC init is async and can take seconds. */
+export const ENCODER_FIRST_PROBE_MS = 6000;
+
 export function logScreenEncoderImplementation(
   pc: RTCPeerConnection,
   label: string = "Voice",
   sender?: RTCRtpSender,
+  degradationPreference: RTCDegradationPreference = "maintain-framerate",
 ) {
   let clamped = false;
+  let unclampedOnce = false;
+  let softwareStreak = 0;
+  let hardwareStreak = 0;
   let lastImpl: string | null = null;
   const check = async () => {
     try {
@@ -312,35 +325,58 @@ export function logScreenEncoderImplementation(
           if (r.codecId && codecMap.has(r.codecId)) codec = codecMap.get(r.codecId) || null;
         }
       });
+      const isSW = impl ? SOFTWARE_ENCODER_RE.test(impl) : null;
       if (impl && impl !== lastImpl) {
         lastImpl = impl;
-        const isSW = /libvpx|libaom|openh264|SimulcastEncoderAdapter \(libvpx/i.test(impl);
-        const tag = isSW ? "⚠️ SOFTWARE" : "✅ hardware";
-        console.log(`[${label}] 🎞️ encoder in use → ${tag} · ${impl} · ${codec || "unknown codec"}`);
-        if (isSW && sender && !clamped) {
+        console.log(`[${label}] 🎞️ encoder in use → ${isSW ? "⚠️ SOFTWARE" : "✅ hardware"} · ${impl} · ${codec || "unknown codec"}`);
+      }
+      if (isSW === null) return; // no reading yet
+
+      // v0.4.27 — HYSTERESIS. This used to clamp on a single software reading
+      // taken 2.5s into the share, and then refuse to ever lift it. Chromium
+      // starts encoding on the software fallback while the Media Foundation
+      // transform initialises asynchronously (and re-inits on every resolution
+      // change), so a machine with perfectly good NVENC reported OpenH264 once
+      // and then ran the whole share at 720p30/3Mbps.
+      if (isSW) {
+        hardwareStreak = 0;
+        softwareStreak++;
+        if (softwareStreak >= SOFTWARE_SAMPLES_TO_CLAMP && sender && !clamped) {
           clamped = true;
           const srcHeight = sender.track?.getSettings?.().height || 1080;
           const clamp = {
             maxFramerate: 30,
             minScale: Math.max(1, srcHeight / 720),
             maxBitrate: 3_000_000,
+            degradationPreference,
           };
           setEncoderClamp(sender, clamp);
           console.warn(
-            `[${label}] SOFTWARE encoder detected — clamping share to ≤720p/30fps/3Mbps ` +
-            `(src ${srcHeight}p, scale ${clamp.minScale.toFixed(2)}). ` +
-            `Sticky for this share; restart the share to retry hardware.`
+            `[${label}] SOFTWARE encoder confirmed over ${softwareStreak} samples — clamping to ` +
+            `≤720p/30fps/3Mbps (src ${srcHeight}p, scale ${clamp.minScale.toFixed(2)}).`
           );
-        } else if (isSW) {
-          console.warn(`[${label}] Screenshare is on a SOFTWARE encoder — game streams will look worse. Check GPU flags / driver.`);
-        } else if (clamped) {
-          console.log(`[${label}] hardware encoder returned, keeping clamp until share restarts (avoids encoder flip-flop)`);
         }
+        return;
+      }
+
+      // Hardware reading.
+      softwareStreak = 0;
+      hardwareStreak++;
+      if (clamped && sender && !unclampedOnce && hardwareStreak >= HARDWARE_SAMPLES_TO_UNCLAMP) {
+        clamped = false;
+        unclampedOnce = true; // one recovery per share, then latch
+        clearEncoderClamp(sender);
+        console.log(
+          `[${label}] hardware encoder confirmed over ${hardwareStreak} samples — lifting clamp ` +
+          `(one recovery per share; a genuinely flip-flopping encoder stays clamped after this)`
+        );
       }
     } catch {}
   };
-  window.setTimeout(check, 2500);
-  window.setTimeout(check, 8000);
+  // First probe deliberately AFTER the encoder has had time to settle. At 2.5s
+  // it reliably caught the transient software fallback on a hardware machine.
+  window.setTimeout(check, ENCODER_FIRST_PROBE_MS);
+  window.setTimeout(check, ENCODER_FIRST_PROBE_MS + 2500);
   const interval = window.setInterval(() => {
     if (pc.connectionState === "closed" || (sender && sender.track?.readyState === "ended")) {
       window.clearInterval(interval);
@@ -3741,7 +3777,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
       // v0.4.18 — surface which encoder (HW vs SW) Chromium picked so we can
       // tell at a glance whether a bad-looking stream is a codec-path issue.
-      logScreenEncoderImplementation(screenPc, "Voice", videoSenderRef);
+      logScreenEncoderImplementation(screenPc, "Voice", videoSenderRef, profile.degradationPreference);
 
       if (videoSenderRef) {
         screenEncodingCleanupRef.current?.();

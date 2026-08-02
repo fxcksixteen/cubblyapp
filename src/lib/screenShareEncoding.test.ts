@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { calculatePerPeerScreenBudget, nextScreenBitrate, setEncoderClamp, getEncoderClamp } from "./screenShareEncoding";
+import { calculatePerPeerScreenBudget, nextScreenBitrate, setEncoderClamp, getEncoderClamp, clearEncoderClamp } from "./screenShareEncoding";
+import { SOFTWARE_ENCODER_RE, SOFTWARE_SAMPLES_TO_CLAMP, ENCODER_FIRST_PROBE_MS } from "@/contexts/VoiceContext";
 
 const healthy = {
   bitrate: 3_000_000,
@@ -76,5 +77,63 @@ describe("setEncoderClamp", () => {
     expect(enc.maxFramerate).toBeLessThanOrEqual(30);
     expect(enc.maxBitrate).toBeLessThanOrEqual(2_500_000);
     expect(enc.scaleResolutionDownBy).toBeGreaterThanOrEqual(2);
+  });
+});
+describe("encoder clamp lifecycle (v0.4.27 hysteresis)", () => {
+  const fakeSender = () => ({
+    getParameters: () => ({ encodings: [{ rid: "f" }] }),
+    setParameters: async () => {},
+    track: { getSettings: () => ({ height: 1080 }) },
+  }) as unknown as RTCRtpSender;
+
+  it("a clamp can be cleared — before 0.4.27 there was no way to lift one", () => {
+    const s = fakeSender();
+    setEncoderClamp(s, { maxFramerate: 30, minScale: 1.5, maxBitrate: 3_000_000 });
+    expect(getEncoderClamp(s)).not.toBeNull();
+    expect(clearEncoderClamp(s)).toBe(true);
+    expect(getEncoderClamp(s)).toBeNull();
+  });
+
+  it("clearing an unclamped sender is a harmless no-op", () => {
+    expect(clearEncoderClamp(fakeSender())).toBe(false);
+  });
+
+  it("requires several consecutive software samples before clamping", () => {
+    // Mirrors the detector's streak logic.
+    let softwareStreak = 0, clamped = false;
+    const feed = (impl: string) => {
+      if (SOFTWARE_ENCODER_RE.test(impl)) {
+        if (++softwareStreak >= SOFTWARE_SAMPLES_TO_CLAMP) clamped = true;
+      } else softwareStreak = 0;
+    };
+    // The exact reported sequence: one transient OpenH264, then NVENC.
+    feed("OpenH264");
+    expect(clamped).toBe(false); // 0.4.26 clamped right here
+    feed("MediaFoundationVideoEncodeAccelerator (NVIDIA H.264 Encoder MFT)");
+    feed("MediaFoundationVideoEncodeAccelerator (NVIDIA H.264 Encoder MFT)");
+    expect(clamped).toBe(false);
+    expect(softwareStreak).toBe(0);
+  });
+
+  it("clamps when software really is sustained", () => {
+    let softwareStreak = 0, clamped = false;
+    for (let i = 0; i < SOFTWARE_SAMPLES_TO_CLAMP; i++) {
+      if (SOFTWARE_ENCODER_RE.test("OpenH264")) {
+        if (++softwareStreak >= SOFTWARE_SAMPLES_TO_CLAMP) clamped = true;
+      }
+    }
+    expect(clamped).toBe(true);
+  });
+
+  it("recognises the real implementation strings from the field", () => {
+    expect(SOFTWARE_ENCODER_RE.test("OpenH264")).toBe(true);
+    expect(SOFTWARE_ENCODER_RE.test("libvpx")).toBe(true);
+    expect(SOFTWARE_ENCODER_RE.test("SimulcastEncoderAdapter (libvpx, libvpx)")).toBe(true);
+    expect(SOFTWARE_ENCODER_RE.test("MediaFoundationVideoEncodeAccelerator (NVIDIA H.264 Encoder MFT)")).toBe(false);
+  });
+
+  it("probes only after the encoder has had time to settle", () => {
+    // 2.5s reliably caught Media Foundation mid-initialisation.
+    expect(ENCODER_FIRST_PROBE_MS).toBeGreaterThanOrEqual(5000);
   });
 });
