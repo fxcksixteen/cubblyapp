@@ -269,7 +269,11 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
                       payload: details.payload,
                       updated_at: new Date().toISOString(),
                     },
-                    { onConflict: "user_id" },
+                    // v0.4.27 — activity_details is PRIMARY KEY (user_id, game_key).
+                    // "user_id" alone matches no unique constraint, so Postgres
+                    // rejected every upsert with 400 and rich game presence (map,
+                    // score, KDA, Roblox experience) was NEVER saved for anyone.
+                    { onConflict: "user_id,game_key" },
                   );
                 }
               } else if (isRoblox) {

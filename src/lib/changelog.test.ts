@@ -31,3 +31,19 @@ describe("changelog", () => {
     expect(new Set(versions).size).toBe(versions.length);
   });
 });
+
+// Guard for the activity_details upsert: the table is PRIMARY KEY
+// (user_id, game_key), and an onConflict naming only user_id matches no unique
+// constraint — Postgres 400s and rich presence silently never saves.
+describe("activity_details upsert conflict target", () => {
+  it("names the full composite key", async () => {
+    const fs = await import("fs");
+    const src = fs.readFileSync("src/contexts/ActivityContext.tsx", "utf8");
+    // Scope to the activity_details upsert specifically — user_activities is
+    // PRIMARY KEY (user_id) and its onConflict: "user_id" is correct.
+    const block = src.slice(src.indexOf('from("activity_details").upsert'));
+    const m = block.match(/onConflict:\s*"([^"]+)"/);
+    expect(m, "no onConflict found for the activity_details upsert").not.toBeNull();
+    expect(m![1].split(",").map((x) => x.trim()).sort()).toEqual(["game_key", "user_id"]);
+  });
+});
