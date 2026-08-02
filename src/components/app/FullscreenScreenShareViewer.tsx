@@ -77,8 +77,17 @@ const FullscreenScreenShareViewer = ({ stream, sharerName, type = "screen", isLo
     );
   };
 
+  // v0.4.26 — "no frames yet" indicator. A fresh <video> element shows pure
+  // black until the FIRST frame after srcObject attach arrives. Remote tracks
+  // deliver nothing while muted (share starting up, sharer's window static,
+  // share renegotiating), which users read as "fullscreen is broken". Track
+  // frame arrival explicitly and show a waiting hint instead of silent black.
+  const [waitingForFrames, setWaitingForFrames] = useState(true);
+
   // Wire the visible <video> for picture only — its audio stays muted because
   // the audible playback is owned by the shared <audio> element above.
+  // Re-runs whenever the stream prop changes (parents now resolve the CURRENT
+  // stream each render, so a share renegotiation swaps it live).
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
@@ -86,6 +95,41 @@ const FullscreenScreenShareViewer = ({ stream, sharerName, type = "screen", isLo
     v.muted = true;
     v.volume = 1;
     v.play().catch(() => {});
+    setWaitingForFrames(true);
+
+    // First-frame detection: requestVideoFrameCallback fires per composited
+    // frame; fall back to `loadeddata` where rVFC is unavailable.
+    let cancelled = false;
+    let stallTimer: number | null = null;
+    const anyV = v as any;
+    if (typeof anyV.requestVideoFrameCallback === "function") {
+      const onFrame = () => {
+        if (cancelled) return;
+        setWaitingForFrames(false);
+        // Keep watching: if frames stop for >2s (track muted mid-share),
+        // surface the waiting hint again instead of freezing silently.
+        if (stallTimer !== null) window.clearTimeout(stallTimer);
+        stallTimer = window.setTimeout(() => { if (!cancelled) setWaitingForFrames(true); }, 2000);
+        anyV.requestVideoFrameCallback(onFrame);
+      };
+      anyV.requestVideoFrameCallback(onFrame);
+    } else {
+      const onLoaded = () => { if (!cancelled) setWaitingForFrames(false); };
+      v.addEventListener("loadeddata", onLoaded, { once: true });
+    }
+
+    // A muted remote track that un-mutes = frames resumed after a stall or a
+    // renegotiation. Nudge playback — some Chromium builds need a play() kick
+    // after a track transitions muted -> unmuted on an already-attached sink.
+    const track = stream.getVideoTracks()[0];
+    const onUnmute = () => { v.play().catch(() => {}); };
+    track?.addEventListener("unmute", onUnmute);
+
+    return () => {
+      cancelled = true;
+      if (stallTimer !== null) window.clearTimeout(stallTimer);
+      track?.removeEventListener("unmute", onUnmute);
+    };
   }, [stream]);
 
   // Apply volume/mute. Below 100%: element.volume directly. Above 100%:
@@ -232,13 +276,17 @@ const FullscreenScreenShareViewer = ({ stream, sharerName, type = "screen", isLo
     else { v.play().catch(() => {}); }
   }, [previewPaused, isLocal]);
 
-  // v0.4.22 — auto-exit fullscreen when the share actually ends. Previously
-  // the watcher was left staring at a black rectangle because nothing closed
-  // the viewer once the sharer stopped. We watch every video track on the
-  // stream for `ended`, plus `removetrack` on the stream itself, and bail out
-  // as soon as no live video track remains.
+  // v0.4.22 — auto-exit fullscreen when the share actually ends.
+  //
+  // v0.4.26 — DEBOUNCED. The parents now swap the `stream` prop live when a
+  // share renegotiates; the old stream's track goes dead a beat before the
+  // new stream arrives via re-render. Closing instantly on a dead track
+  // kicked the viewer out of fullscreen on every renegotiation. Now the
+  // track must stay dead for 2.5 s continuously before we bail — a stream
+  // swap resets the countdown (this effect re-runs on the new stream).
   useEffect(() => {
     let closed = false;
+    let deadSince: number | null = null;
     const bail = () => {
       if (closed) return;
       closed = true;
@@ -246,20 +294,26 @@ const FullscreenScreenShareViewer = ({ stream, sharerName, type = "screen", isLo
     };
     const check = () => {
       const live = stream.getVideoTracks().some((t) => t.readyState === "live");
-      if (!live) bail();
+      if (live) {
+        deadSince = null;
+        return;
+      }
+      if (deadSince === null) deadSince = Date.now();
+      else if (Date.now() - deadSince >= 2500) bail();
     };
     const tracks = stream.getVideoTracks();
     tracks.forEach((t) => {
-      t.addEventListener("ended", bail);
+      t.addEventListener("ended", check);
     });
     stream.addEventListener("removetrack", check as EventListener);
-    // Safety net for browsers that don't fire `ended` on remote tracks.
-    const poll = window.setInterval(check, 1000);
+    // Poll as a safety net for browsers that don't fire `ended` on remote
+    // tracks; also drives the debounce countdown.
+    const poll = window.setInterval(check, 500);
     check();
     return () => {
       closed = true;
       window.clearInterval(poll);
-      tracks.forEach((t) => t.removeEventListener("ended", bail));
+      tracks.forEach((t) => t.removeEventListener("ended", check));
       stream.removeEventListener("removetrack", check as EventListener);
     };
   }, [stream, onClose]);
@@ -338,6 +392,19 @@ const FullscreenScreenShareViewer = ({ stream, sharerName, type = "screen", isLo
             if (!isLocal) setCtxMenu({ x: e.clientX, y: e.clientY });
           }}
         />
+
+        {/* v0.4.26 — honest feedback while no frames are arriving (share
+            starting, sharer's window static, renegotiation in flight)
+            instead of an unexplained black screen. */}
+        {waitingForFrames && !previewPaused && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 pointer-events-none">
+            <img src={cubblyLogo} alt="" className="h-12 w-12 rounded-xl opacity-80 animate-pulse" />
+            <p className="text-sm font-semibold text-white/85">Waiting for video…</p>
+            <p className="text-[11px] text-white/50 max-w-xs text-center px-4">
+              {sharerName}'s stream is connecting or paused. This clears as soon as frames arrive.
+            </p>
+          </div>
+        )}
 
         {isLocal && previewPaused && (
           <div

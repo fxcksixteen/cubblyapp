@@ -134,10 +134,23 @@ const ServerVoicePanel = ({ conversationId }: Props) => {
   const volumeApi = { getUserVolume, setUserVolume, isUserMuted, setUserMuted };
   const [selfAvatar, setSelfAvatar] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  // v0.4.26 — no MediaStream snapshot in state: shares renegotiate and replace
+  // the stream object, so the viewer resolves the CURRENT stream every render.
   const [fullscreenView, setFullscreenView] = useState<{
-    stream: MediaStream; name: string; type: "screen" | "cam"; isLocal?: boolean; peerId?: string;
+    name: string; type: "screen" | "cam"; isLocal?: boolean; peerId?: string;
   } | null>(null);
   const [volumeMenu, setVolumeMenu] = useState<{ userId: string; name: string; x: number; y: number } | null>(null);
+
+  const fullscreenStream: MediaStream | null = fullscreenView
+    ? (fullscreenView.isLocal
+        ? localScreenStream
+        : fullscreenView.type === "screen"
+          ? peers.find(p => p.userId === fullscreenView.peerId)?.screenStream ?? null
+          : peers.find(p => p.userId === fullscreenView.peerId)?.videoStream ?? null) ?? null
+    : null;
+  useEffect(() => {
+    if (fullscreenView && !fullscreenStream) setFullscreenView(null);
+  }, [fullscreenView, fullscreenStream]);
 
   useEffect(() => {
     if (!user) return;
@@ -195,7 +208,6 @@ const ServerVoicePanel = ({ conversationId }: Props) => {
               onClick={() =>
                 sp.screenStream &&
                 setFullscreenView({
-                  stream: sp.screenStream,
                   name: sp.displayName,
                   type: "screen",
                   peerId: sp.userId,
@@ -234,7 +246,7 @@ const ServerVoicePanel = ({ conversationId }: Props) => {
             <button
               type="button"
               onClick={() =>
-                setFullscreenView({ stream: localScreenStream, name: displayName, type: "screen", isLocal: true })
+                setFullscreenView({ name: displayName, type: "screen", isLocal: true })
               }
               className="absolute top-3 right-3 flex h-9 w-9 items-center justify-center rounded-md bg-black/60 text-white opacity-0 group-hover:opacity-100 hover:bg-black/80 transition-opacity"
               title="Fullscreen"
@@ -284,7 +296,7 @@ const ServerVoicePanel = ({ conversationId }: Props) => {
               videoStream={p.videoStream || null}
               onMaximize={
                 p.videoStream
-                  ? () => setFullscreenView({ stream: p.videoStream!, name: p.displayName, type: "cam" })
+                  ? () => setFullscreenView({ name: p.displayName, type: "cam", peerId: p.userId })
                   : undefined
               }
               onContextMenu={(e) => {
@@ -392,9 +404,9 @@ const ServerVoicePanel = ({ conversationId }: Props) => {
           onClose={() => setVolumeMenu(null)}
         />
       )}
-      {fullscreenView && (
+      {fullscreenView && fullscreenStream && (
         <FullscreenScreenShareViewer
-          stream={fullscreenView.stream}
+          stream={fullscreenStream}
           sharerName={fullscreenView.name}
           type={fullscreenView.type}
           isLocal={fullscreenView.isLocal}

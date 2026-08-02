@@ -209,8 +209,23 @@ const GroupCallPanel = ({ conversationId }: Props) => {
   const [elapsed, setElapsed] = useState(0);
   const [selfAvatar, setSelfAvatar] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [fullscreenView, setFullscreenView] = useState<{ stream: MediaStream; name: string; type: "screen" | "cam"; isLocal?: boolean; peerId?: string } | null>(null);
+  // v0.4.26 — no MediaStream snapshot in state: shares renegotiate and replace
+  // the stream object, so the viewer resolves the CURRENT stream every render.
+  const [fullscreenView, setFullscreenView] = useState<{ name: string; type: "screen" | "cam"; isLocal?: boolean; peerId?: string } | null>(null);
   const [volumeMenu, setVolumeMenu] = useState<{ userId: string; name: string; x: number; y: number } | null>(null);
+
+  // Resolve the fullscreen selection against CURRENT state each render, and
+  // close the viewer if that stream is gone entirely (share/cam ended).
+  const fullscreenStream: MediaStream | null = fullscreenView
+    ? (fullscreenView.isLocal
+        ? localScreenStream
+        : fullscreenView.type === "screen"
+          ? peers.find(p => p.userId === fullscreenView.peerId)?.screenStream ?? null
+          : peers.find(p => p.userId === fullscreenView.peerId)?.videoStream ?? null) ?? null
+    : null;
+  useEffect(() => {
+    if (fullscreenView && !fullscreenStream) setFullscreenView(null);
+  }, [fullscreenView, fullscreenStream]);
 
   useEffect(() => {
     if (!user) return;
@@ -259,7 +274,7 @@ const GroupCallPanel = ({ conversationId }: Props) => {
         <ScreenShareViewer
           key={sp.userId}
           peer={sp}
-          onMaximize={() => sp.screenStream && setFullscreenView({ stream: sp.screenStream, name: sp.displayName, type: "screen", peerId: sp.userId })}
+          onMaximize={() => sp.screenStream && setFullscreenView({ name: sp.displayName, type: "screen", peerId: sp.userId })}
         />
       ))}
       {activeCall.isScreenSharing && localScreenStream && (
@@ -270,7 +285,7 @@ const GroupCallPanel = ({ conversationId }: Props) => {
           />
           <button
             type="button"
-            onClick={() => setFullscreenView({ stream: localScreenStream, name: displayName, type: "screen", isLocal: true })}
+            onClick={() => setFullscreenView({ name: displayName, type: "screen", isLocal: true })}
             className="absolute top-2 right-2 flex h-8 w-8 items-center justify-center rounded-md bg-black/60 text-white opacity-0 group-hover:opacity-100 hover:bg-black/80 transition-opacity"
             title="Fullscreen"
           >
@@ -302,7 +317,7 @@ const GroupCallPanel = ({ conversationId }: Props) => {
             // gate on `isVideoOn` boolean alone; that signal can lag/miss and
             // hides the tile even though frames are arriving.
             videoStream={p.videoStream || null}
-            onMaximize={p.videoStream ? () => setFullscreenView({ stream: p.videoStream!, name: p.displayName, type: "cam" }) : undefined}
+            onMaximize={p.videoStream ? () => setFullscreenView({ name: p.displayName, type: "cam", peerId: p.userId }) : undefined}
             onContextMenu={(e) => { e.preventDefault(); setVolumeMenu({ userId: p.userId, name: p.displayName, x: e.clientX, y: e.clientY }); }}
           />
         ))}
@@ -386,9 +401,9 @@ const GroupCallPanel = ({ conversationId }: Props) => {
           onClose={() => setVolumeMenu(null)}
         />
       )}
-      {fullscreenView && (
+      {fullscreenView && fullscreenStream && (
         <FullscreenScreenShareViewer
-          stream={fullscreenView.stream}
+          stream={fullscreenStream}
           sharerName={fullscreenView.name}
           type={fullscreenView.type}
           isLocal={fullscreenView.isLocal}
