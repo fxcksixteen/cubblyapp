@@ -51,101 +51,16 @@ export function nextScreenBitrate(sample: ScreenCongestionSample): { bitrate: nu
   return { bitrate: sample.bitrate, cleanSamples, reason: "hold" };
 }
 
+/** Fraction of the target the encoder opens at before ramping up. */
+export const RAMP_START_FRACTION = 0.35;
+/** Controller ticks (2s each) over which the ramp reaches the target. */
+export const RAMP_STEPS = 4;
+/** Per-tick multiplier while ramping. */
+export const RAMP_STEP_FACTOR = 1.35;
+
 export function calculatePerPeerScreenBudget(totalBitrate: number, peerCount: number) {
   return Math.max(500_000, Math.round(totalBitrate / Math.max(1, peerCount)));
 }
-
-/**
- * Discord-style SDP munging for the video m-line(s): raises the encoder's
- * initial bitrate + max ceiling so Chromium's Google Congestion Control does
- * NOT cold-start at ~300 kbps and slowly ramp for 10-15 s (the exact reason
- * every screenshare starts blurry then "stabilizes" after ~15 s).
- *
- *  - `b=AS:` sets the SDP-advertised max for the video m-section.
- *  - `x-google-start-bitrate` / `-min-bitrate` / `-max-bitrate` are honored by
- *    libwebrtc's VP8/VP9/H.264/AV1 encoders and short-circuit the slow-start.
- *
- * Safe to run on any local SDP — no-ops when there's no video m-line and
- * ignored by remote endpoints that don't recognize the fmtp params.
- */
-export function patchScreenShareVideoSdp(
-  sdp: string | undefined | null,
-  opts: { startKbps: number; minKbps: number; maxKbps: number },
-): string {
-  if (!sdp) return sdp || "";
-  const startKbps = Math.max(300, Math.round(opts.startKbps));
-  const minKbps = Math.max(150, Math.round(opts.minKbps));
-  const maxKbps = Math.max(startKbps, Math.round(opts.maxKbps));
-
-  const eol = sdp.includes("\r\n") ? "\r\n" : "\n";
-  const lines = sdp.split(/\r?\n/);
-
-  // Pass 1: insert b=AS/TIAS after the c= line of each video section, and
-  // record video payload types for fmtp patching.
-  let inVideo = false;
-  const videoPayloads = new Set<string>();
-  const out: string[] = [];
-  for (const line of lines) {
-    if (line.startsWith("m=")) {
-      inVideo = line.startsWith("m=video");
-      out.push(line);
-      if (inVideo) {
-        const parts = line.split(" ");
-        parts.slice(3).forEach((p) => videoPayloads.add(p));
-      }
-      continue;
-    }
-    if (inVideo && line.startsWith("c=")) {
-      out.push(line);
-      out.push(`b=AS:${maxKbps}`);
-      out.push(`b=TIAS:${maxKbps * 1000}`);
-      continue;
-    }
-    out.push(line);
-  }
-
-  // Pass 2: patch existing a=fmtp lines for video PTs.
-  const seenFmtp = new Set<string>();
-  const patched = out.map((line) => {
-    const m = line.match(/^a=fmtp:(\d+) (.*)$/);
-    if (!m || !videoPayloads.has(m[1])) return line;
-    const existing = m[2]
-      .split(";")
-      .map((s) => s.trim())
-      .filter((s) => s && !/^x-google-(start|min|max)-bitrate=/i.test(s));
-    existing.push(
-      `x-google-start-bitrate=${startKbps}`,
-      `x-google-min-bitrate=${minKbps}`,
-      `x-google-max-bitrate=${maxKbps}`,
-    );
-    seenFmtp.add(m[1]);
-    return `a=fmtp:${m[1]} ${existing.join(";")}`;
-  });
-
-  // Pass 3: for any video PT without an fmtp line, append one at the end of
-  // the video m-section.
-  const paramStr = `x-google-start-bitrate=${startKbps};x-google-min-bitrate=${minKbps};x-google-max-bitrate=${maxKbps}`;
-  const finalOut: string[] = [];
-  let bufSectionVideo = false;
-  let buffer: string[] = [];
-  const flush = () => {
-    if (bufSectionVideo) {
-      videoPayloads.forEach((pt) => {
-        if (!seenFmtp.has(pt)) buffer.push(`a=fmtp:${pt} ${paramStr}`);
-      });
-    }
-    finalOut.push(...buffer);
-    buffer = [];
-  };
-  for (const line of patched) {
-    if (line.startsWith("m=")) { flush(); bufSectionVideo = line.startsWith("m=video"); }
-    buffer.push(line);
-  }
-  flush();
-
-  return finalOut.join(eol);
-}
-
 
 /**
  * v0.4.22 — keep voice ahead of the screen encoder.
@@ -287,7 +202,14 @@ export function startAutomaticScreenEncoding(
   // Chromium, or RTT sitting > 150 ms above baseline for 4+ samples).
   const peerCount = () => Math.max(1, target.getPeerCount?.() ?? 1);
   const perPeerTarget = () => calculatePerPeerScreenBudget(target.targetBitrate, peerCount());
-  let bitrate = Math.round(perPeerTarget() * 0.65);
+  // v0.4.27 — RAMP, don't slam. This used to force-apply 65% of the target on
+  // the very first tick: for a 1440p60 share that is ~5.9 Mbps pushed onto a
+  // link whose capacity is still unknown, which is what spiked call ping the
+  // moment a share started. Voice and screenshare are separate
+  // PeerConnections with independent bandwidth estimates, so nothing arbitrates
+  // between them — the only safe move is to start modest and climb.
+  let bitrate = Math.round(perPeerTarget() * RAMP_START_FRACTION);
+  let rampStepsLeft = RAMP_STEPS;
   let scale = Math.max(1, target.baseScale);
   const bitrateFloor = () => Math.min(900_000, Math.max(350_000, Math.round(perPeerTarget() * 0.25)));
   let cleanSamples = 0;
@@ -406,6 +328,12 @@ export function startAutomaticScreenEncoding(
       const baselineRtt = rttWindow.length ? Math.min(...rttWindow) : 0;
       const now = Date.now();
       const cooling = now - lastAdjustAt < COOLDOWN_MS;
+      // Climb toward the target while the link looks healthy. Congestion
+      // handling below can still cut at any point during the ramp.
+      if (rampStepsLeft > 0) {
+        rampStepsLeft--;
+        bitrate = Math.min(perPeerTarget(), Math.round(bitrate * RAMP_STEP_FACTOR));
+      }
       const decision = nextScreenBitrate({
         bitrate,
         targetBitrate: perPeerTarget(),
@@ -419,6 +347,9 @@ export function startAutomaticScreenEncoding(
       });
       cleanSamples = decision.cleanSamples;
       if ((!cooling || decision.reason !== "probe") && decision.bitrate !== bitrate) {
+        // Congestion beat the ramp to it — stop climbing and let the normal
+        // probe path find the ceiling from below.
+        if (decision.bitrate < bitrate) rampStepsLeft = 0;
         bitrate = decision.bitrate;
         lastAdjustAt = now;
       }

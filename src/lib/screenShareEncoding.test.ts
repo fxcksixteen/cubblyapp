@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculatePerPeerScreenBudget, nextScreenBitrate, setEncoderClamp, getEncoderClamp, clearEncoderClamp } from "./screenShareEncoding";
+import { calculatePerPeerScreenBudget, nextScreenBitrate, setEncoderClamp, getEncoderClamp, clearEncoderClamp, RAMP_START_FRACTION, RAMP_STEPS, RAMP_STEP_FACTOR } from "./screenShareEncoding";
 import { SOFTWARE_ENCODER_RE, SOFTWARE_SAMPLES_TO_CLAMP, ENCODER_FIRST_PROBE_MS } from "@/contexts/VoiceContext";
 
 const healthy = {
@@ -135,5 +135,28 @@ describe("encoder clamp lifecycle (v0.4.27 hysteresis)", () => {
   it("probes only after the encoder has had time to settle", () => {
     // 2.5s reliably caught Media Foundation mid-initialisation.
     expect(ENCODER_FIRST_PROBE_MS).toBeGreaterThanOrEqual(5000);
+  });
+});
+
+describe("start-bitrate ramp (v0.4.27)", () => {
+  it("opens well below the target instead of slamming it", () => {
+    expect(RAMP_START_FRACTION).toBeLessThan(0.5);
+  });
+
+  it("reaches the target within a few seconds of ticks", () => {
+    const target = 6_000_000;
+    let bitrate = target * RAMP_START_FRACTION;
+    for (let i = 0; i < RAMP_STEPS; i++) bitrate = Math.min(target, bitrate * RAMP_STEP_FACTOR);
+    expect(bitrate).toBeCloseTo(target, -4); // at target after the ramp
+    expect(RAMP_STEPS * 2).toBeLessThanOrEqual(10); // <=10s at a 2s tick
+  });
+
+  it("never exceeds the target while ramping", () => {
+    const target = 3_000_000;
+    let bitrate = target * RAMP_START_FRACTION;
+    for (let i = 0; i < RAMP_STEPS * 3; i++) {
+      bitrate = Math.min(target, bitrate * RAMP_STEP_FACTOR);
+      expect(bitrate).toBeLessThanOrEqual(target);
+    }
   });
 });
