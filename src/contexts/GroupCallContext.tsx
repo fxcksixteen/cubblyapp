@@ -719,7 +719,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
           if (p.encodings?.length) { (p.encodings[0] as any).scalabilityMode = "L1T3"; void sender.setParameters(p); }
         } catch {}
       }
-      logScreenEncoderImplementation(pc, "GroupCall");
+      logScreenEncoderImplementation(pc, "GroupCall", sender);
       if (localScreenEncodingRef.current) {
         screenEncodingCleanupRef.current.set(peerId, startAutomaticScreenEncoding(sender, pc, {
           ...localScreenEncodingRef.current,
@@ -1692,7 +1692,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
             if (p.encodings?.length) { (p.encodings[0] as any).scalabilityMode = "L1T3"; void vSender.setParameters(p); }
           } catch {}
         }
-        logScreenEncoderImplementation(pc, "GroupCall");
+        logScreenEncoderImplementation(pc, "GroupCall", vSender);
         screenEncodingCleanupRef.current.get(peerId)?.();
         screenEncodingCleanupRef.current.set(peerId, startAutomaticScreenEncoding(vSender, pc, {
           ...localScreenEncodingRef.current,

@@ -178,12 +178,53 @@ export function prioritizeVoiceOverScreen(screenPc: RTCPeerConnection, voicePc?:
   } catch {}
 }
 
+/**
+ * v0.4.26 — hard ceilings for senders stuck on a SOFTWARE encoder.
+ *
+ * Measured in the wild (Valorant share, 2026-08-02 logs): Chromium picked
+ * NVENC for ordinary windows but fell back to OpenH264 for the game window,
+ * and OpenH264 at 1080p60 devoured the CPU the game was already fighting
+ * for — unwatchable stream, choppy share audio, the sender lagging in their
+ * own call. The adaptive controller alone reacts far too slowly (and never
+ * touches fps) because it was tuned for a hardware encoder.
+ *
+ * The clamp lives HERE, inside applyEncoding, because the adaptive
+ * controller re-applies parameters every 2 s — a one-shot setParameters from
+ * the detector would be silently overwritten on the next tick.
+ *
+ * Sticky per share on purpose: un-clamping when hardware "comes back" can
+ * flip the encoder again (parameter changes re-init it), and an oscillating
+ * share is worse than a stable 720p30 one.
+ */
+export interface EncoderClamp {
+  maxFramerate: number;
+  minScale: number;
+  maxBitrate: number;
+}
+const encoderClamps = new WeakMap<RTCRtpSender, EncoderClamp>();
+
+export function setEncoderClamp(sender: RTCRtpSender, clamp: EncoderClamp) {
+  encoderClamps.set(sender, clamp);
+  // Push it immediately rather than waiting for the controller's next tick.
+  void applyEncoding(sender, clamp.maxBitrate, clamp.maxFramerate, clamp.minScale).catch(() => {});
+}
+
+export function getEncoderClamp(sender: RTCRtpSender): EncoderClamp | null {
+  return encoderClamps.get(sender) ?? null;
+}
+
 async function applyEncoding(
   sender: RTCRtpSender,
   bitrate: number,
   fps: number,
   scale: number,
 ) {
+  const clamp = encoderClamps.get(sender);
+  if (clamp) {
+    bitrate = Math.min(bitrate, clamp.maxBitrate);
+    fps = Math.min(fps, clamp.maxFramerate);
+    scale = Math.max(scale, clamp.minScale);
+  }
   const params = sender.getParameters();
   if (!params.encodings?.length) params.encodings = [{}];
   // v0.4.18 — with simulcast, tune the `f` (full) layer explicitly. Fall

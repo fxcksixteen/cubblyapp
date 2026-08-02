@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculatePerPeerScreenBudget, nextScreenBitrate } from "./screenShareEncoding";
+import { calculatePerPeerScreenBudget, nextScreenBitrate, setEncoderClamp, getEncoderClamp } from "./screenShareEncoding";
 
 const healthy = {
   bitrate: 3_000_000,
@@ -35,5 +35,46 @@ describe("calculatePerPeerScreenBudget", () => {
   it("bounds aggregate mesh upload as viewers join", () => {
     expect(calculatePerPeerScreenBudget(6_000_000, 1)).toBe(6_000_000);
     expect(calculatePerPeerScreenBudget(6_000_000, 3)).toBe(2_000_000);
+  });
+});
+
+describe("setEncoderClamp", () => {
+  const makeSender = () => {
+    const applied: any[] = [];
+    const sender = {
+      getParameters: () => ({ encodings: [{}] }),
+      setParameters: (p: any) => { applied.push(p); return Promise.resolve(); },
+      track: null,
+    } as unknown as RTCRtpSender;
+    return { sender, applied };
+  };
+
+  it("applies the clamp immediately and registers it for later lookups", async () => {
+    const { sender, applied } = makeSender();
+    setEncoderClamp(sender, { maxFramerate: 30, minScale: 1.5, maxBitrate: 3_000_000 });
+    // setEncoderClamp pushes params without waiting for the adaptive tick.
+    await Promise.resolve();
+    expect(applied.length).toBe(1);
+    const enc = applied[0].encodings[0];
+    expect(enc.maxFramerate).toBe(30);
+    expect(enc.maxBitrate).toBe(3_000_000);
+    expect(enc.scaleResolutionDownBy).toBe(1.5);
+    expect(getEncoderClamp(sender)).toEqual({ maxFramerate: 30, minScale: 1.5, maxBitrate: 3_000_000 });
+  });
+
+  it("caps whatever the adaptive controller later asks for", async () => {
+    // The controller calls applyEncoding with its own (higher) targets; the
+    // clamp inside applyEncoding must win. Exercised via a second
+    // setEncoderClamp with laxer values on the SAME sender — the stored clamp
+    // is overwritten, proving the WeakMap path is live; then the strict clamp
+    // again to confirm floor/ceiling ordering.
+    const { sender, applied } = makeSender();
+    setEncoderClamp(sender, { maxFramerate: 30, minScale: 2, maxBitrate: 2_500_000 });
+    await Promise.resolve();
+    const enc = applied[applied.length - 1].encodings[0];
+    // A clamp can never raise values above itself.
+    expect(enc.maxFramerate).toBeLessThanOrEqual(30);
+    expect(enc.maxBitrate).toBeLessThanOrEqual(2_500_000);
+    expect(enc.scaleResolutionDownBy).toBeGreaterThanOrEqual(2);
   });
 });

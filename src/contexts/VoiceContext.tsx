@@ -14,7 +14,7 @@ import { usePeerGains } from "@/lib/peerGain";
 import { armRemoteAudio } from "@/lib/iosAudioUnlock";
 import { STUN_FALLBACK_SERVERS, sanitizeIceServersForSession } from "@/lib/webrtcIce";
 import { toast } from "@/hooks/use-toast";
-import { startAutomaticScreenEncoding } from "@/lib/screenShareEncoding";
+import { startAutomaticScreenEncoding, setEncoderClamp } from "@/lib/screenShareEncoding";
 
 type ParticipantStatePatch = {
   is_muted?: boolean;
@@ -265,15 +265,31 @@ export function addScreenVideoTransceiver(
 }
 
 /**
- * After `setLocalDescription` runs, poll the sender's stats once and log
- * which encoder implementation Chromium actually picked. Loud warning if
- * we're on a software encoder — that's the single biggest source of choppy
- * game streams and we want it visible in the console, not silently failing.
+ * After `setLocalDescription` runs, watch which encoder implementation
+ * Chromium actually picked — and RESPOND when it's a software one.
+ *
+ * v0.4.26: this used to only console.warn. Observed in production
+ * (2026-08-02, Valorant share): NVENC works for ordinary windows but the
+ * game window lands on OpenH264, and OpenH264 at 1080p60 fights the game
+ * for CPU — stream unwatchable, share audio choppy/late, the sender lags in
+ * their own call. When `sender` is provided and a software encoder is
+ * detected, we clamp that sender to ≤720p / 30 fps / 3 Mbps via
+ * setEncoderClamp (enforced inside applyEncoding so the adaptive controller
+ * can't overwrite it). OpenH264 at 720p30 is cheap enough to coexist with a
+ * game and looks better than a starved 1080p60.
+ *
+ * Chromium can also fall back MID-share (the encoder re-inits on every
+ * capture resolution change, and a re-init under GPU/driver pressure fails
+ * over to software permanently), so this re-checks every 10 s for the life
+ * of the connection instead of sampling twice and going quiet.
  */
 export function logScreenEncoderImplementation(
   pc: RTCPeerConnection,
   label: string = "Voice",
+  sender?: RTCRtpSender,
 ) {
+  let clamped = false;
+  let lastImpl: string | null = null;
   const check = async () => {
     try {
       const stats = await pc.getStats();
@@ -287,16 +303,42 @@ export function logScreenEncoderImplementation(
           if (r.codecId && codecMap.has(r.codecId)) codec = codecMap.get(r.codecId) || null;
         }
       });
-      if (impl) {
+      if (impl && impl !== lastImpl) {
+        lastImpl = impl;
         const isSW = /libvpx|libaom|openh264|SimulcastEncoderAdapter \(libvpx/i.test(impl);
         const tag = isSW ? "⚠️ SOFTWARE" : "✅ hardware";
         console.log(`[${label}] 🎞️ encoder in use → ${tag} · ${impl} · ${codec || "unknown codec"}`);
-        if (isSW) console.warn(`[${label}] Screenshare is on a SOFTWARE encoder — game streams will look worse. Check GPU flags / driver.`);
+        if (isSW && sender && !clamped) {
+          clamped = true;
+          const srcHeight = sender.track?.getSettings?.().height || 1080;
+          const clamp = {
+            maxFramerate: 30,
+            minScale: Math.max(1, srcHeight / 720),
+            maxBitrate: 3_000_000,
+          };
+          setEncoderClamp(sender, clamp);
+          console.warn(
+            `[${label}] SOFTWARE encoder detected — clamping share to ≤720p/30fps/3Mbps ` +
+            `(src ${srcHeight}p, scale ${clamp.minScale.toFixed(2)}). ` +
+            `Sticky for this share; restart the share to retry hardware.`
+          );
+        } else if (isSW) {
+          console.warn(`[${label}] Screenshare is on a SOFTWARE encoder — game streams will look worse. Check GPU flags / driver.`);
+        } else if (clamped) {
+          console.log(`[${label}] hardware encoder returned, keeping clamp until share restarts (avoids encoder flip-flop)`);
+        }
       }
     } catch {}
   };
   window.setTimeout(check, 2500);
   window.setTimeout(check, 8000);
+  const interval = window.setInterval(() => {
+    if (pc.connectionState === "closed" || (sender && sender.track?.readyState === "ended")) {
+      window.clearInterval(interval);
+      return;
+    }
+    void check();
+  }, 10_000);
 }
 
 
@@ -3571,7 +3613,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
       // v0.4.18 — surface which encoder (HW vs SW) Chromium picked so we can
       // tell at a glance whether a bad-looking stream is a codec-path issue.
-      logScreenEncoderImplementation(screenPc, "Voice");
+      logScreenEncoderImplementation(screenPc, "Voice", videoSenderRef);
 
       if (videoSenderRef) {
         screenEncodingCleanupRef.current?.();
