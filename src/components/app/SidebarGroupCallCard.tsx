@@ -187,6 +187,8 @@ const SidebarGroupCallCard = ({ fallbackServerInfo = null }: Props = {}) => {
           setShowSharePicker(false);
           toggleScreenShare(type, {
             sourceId: (options as any)?.sourceId,
+            sourceName: (options as any)?.sourceName,
+            contentMode: (options as any)?.contentMode,
             audio: (options as any)?.audio,
             fps: (options as any)?.fps,
             quality: (options as any)?.quality,

@@ -1,13 +1,14 @@
 import { useState, useEffect } from "react";
-import { Monitor, AppWindow, Globe, X, Volume2, VolumeX, Film, ArrowLeft, AlertCircle } from "lucide-react";
+import { Monitor, AppWindow, Globe, X, Volume2, VolumeX, Film, ArrowLeft, AlertCircle, Gamepad2, FileText, Wand2 } from "lucide-react";
 import { useVoice } from "@/contexts/VoiceContext";
+import { type ShareContentModeSetting } from "@/lib/shareContentMode";
 
 export type ScreenShareType = "screen" | "window" | "tab";
 
 interface ScreenSharePickerProps {
   isOpen: boolean;
   onClose: () => void;
-  onSelect: (type: ScreenShareType, options: { audio: boolean; fps: number; quality: string; sourceId?: string }) => void;
+  onSelect: (type: ScreenShareType, options: { audio: boolean; fps: number; quality: string; sourceId?: string; sourceName?: string; contentMode?: ShareContentModeSetting }) => void;
 }
 
 interface DesktopSource {
@@ -51,6 +52,9 @@ const ScreenSharePicker = ({ isOpen, onClose, onSelect }: ScreenSharePickerProps
   const [shareAudio, setShareAudio] = useState(true);
   const [fps, setFps] = useState(30);
   const [quality, setQuality] = useState("auto");
+  // v0.4.27 — motion vs static tuning. "auto" measures the window's actual
+  // change rate once at share start; the explicit choices skip that.
+  const [contentMode, setContentMode] = useState<ShareContentModeSetting>("auto");
 
   // Electron source picking state
   const [pickingType, setPickingType] = useState<ScreenShareType | null>(null);
@@ -80,7 +84,7 @@ const ScreenSharePicker = ({ isOpen, onClose, onSelect }: ScreenSharePickerProps
   const handleTypeSelect = async (type: ScreenShareType) => {
     if (!isElectron) {
       // Browser: just pass type through, browser handles picker natively
-      onSelect(type, { audio: shareAudio, fps, quality });
+      onSelect(type, { audio: shareAudio, fps, quality, contentMode });
       return;
     }
 
@@ -94,7 +98,7 @@ const ScreenSharePicker = ({ isOpen, onClose, onSelect }: ScreenSharePickerProps
         const screens = allSources.filter(s => s.id.startsWith("screen:"));
         if (screens.length === 1) {
           // Only one monitor — share it directly
-          onSelect(type, { audio: shareAudio, fps, quality, sourceId: screens[0].id });
+          onSelect(type, { audio: shareAudio, fps, quality, sourceId: screens[0].id, sourceName: screens[0].name, contentMode });
           return;
         }
         setDesktopSources(screens);
@@ -123,7 +127,7 @@ const ScreenSharePicker = ({ isOpen, onClose, onSelect }: ScreenSharePickerProps
   };
 
   const handleSourceSelect = (source: DesktopSource) => {
-    onSelect(pickingType || "screen", { audio: shareAudio, fps, quality, sourceId: source.id });
+    onSelect(pickingType || "screen", { audio: shareAudio, fps, quality, sourceId: source.id, sourceName: source.name, contentMode });
   };
 
   const renderSourcePicker = () => {
@@ -286,6 +290,36 @@ const ScreenSharePicker = ({ isOpen, onClose, onSelect }: ScreenSharePickerProps
             {/* Settings section */}
             <div className="px-4 pb-4 space-y-3">
               <div className="h-px" style={{ backgroundColor: "var(--app-border)" }} />
+
+              {/* v0.4.27 — content mode. Motion and static content want opposite
+                  encoder settings; a single global choice makes one of them bad. */}
+              <div className="rounded-xl px-4 py-3" style={{ backgroundColor: "var(--app-bg-secondary)" }}>
+                <p className="text-sm font-semibold mb-2" style={{ color: "var(--app-text-primary)" }}>Optimize for</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {([
+                    { id: "auto" as const, label: "Auto", Icon: Wand2, hint: "Detects motion vs text" },
+                    { id: "motion" as const, label: "Motion", Icon: Gamepad2, hint: "Games and video — smooth" },
+                    { id: "detail" as const, label: "Text", Icon: FileText, hint: "Documents and code — sharp" },
+                  ]).map(({ id, label, Icon, hint }) => {
+                    const active = contentMode === id;
+                    return (
+                      <button
+                        key={id}
+                        onClick={() => setContentMode(id)}
+                        title={hint}
+                        className="flex flex-col items-center gap-1 rounded-lg px-2 py-2 transition-colors"
+                        style={{
+                          backgroundColor: active ? "rgba(59,165,92,0.16)" : "var(--app-bg-tertiary)",
+                          border: `1px solid ${active ? "#3ba55c" : "transparent"}`,
+                        }}
+                      >
+                        <Icon className="h-4 w-4" style={{ color: active ? "#3ba55c" : "var(--app-text-secondary)" }} />
+                        <span className="text-[11px] font-semibold" style={{ color: active ? "#3ba55c" : "var(--app-text-secondary)" }}>{label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
               {/* Audio toggle */}
               <button

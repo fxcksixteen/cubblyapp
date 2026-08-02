@@ -5,6 +5,13 @@ export interface AutomaticScreenEncoding {
   baseScale: number;
   voicePc?: RTCPeerConnection | null;
   getPeerCount?: () => number;
+  /**
+   * v0.4.27 — driven by the share's content mode (see lib/shareContentMode).
+   * "maintain-framerate" keeps games smooth by dropping resolution;
+   * "maintain-resolution" keeps text sharp by dropping frame rate. Hardcoding
+   * the former is what made shared documents unreadable.
+   */
+  degradationPreference?: RTCDegradationPreference;
 }
 
 export interface ScreenCongestionSample {
@@ -200,13 +207,17 @@ export interface EncoderClamp {
   maxFramerate: number;
   minScale: number;
   maxBitrate: number;
+  /** Preserved so the clamp doesn't stomp the content mode's preference. */
+  degradationPreference?: RTCDegradationPreference;
 }
 const encoderClamps = new WeakMap<RTCRtpSender, EncoderClamp>();
 
 export function setEncoderClamp(sender: RTCRtpSender, clamp: EncoderClamp) {
   encoderClamps.set(sender, clamp);
   // Push it immediately rather than waiting for the controller's next tick.
-  void applyEncoding(sender, clamp.maxBitrate, clamp.maxFramerate, clamp.minScale).catch(() => {});
+  // Degradation preference is deliberately omitted here — it belongs to the
+  // share's content mode, and the controller re-applies it on its next tick.
+  void applyEncoding(sender, clamp.maxBitrate, clamp.maxFramerate, clamp.minScale, clamp.degradationPreference).catch(() => {});
 }
 
 export function getEncoderClamp(sender: RTCRtpSender): EncoderClamp | null {
@@ -218,6 +229,7 @@ async function applyEncoding(
   bitrate: number,
   fps: number,
   scale: number,
+  degradationPreference: RTCDegradationPreference = "maintain-framerate",
 ) {
   const clamp = encoderClamps.get(sender);
   if (clamp) {
@@ -234,7 +246,7 @@ async function applyEncoding(
   target.maxBitrate = Math.round(bitrate);
   target.maxFramerate = Math.round(fps);
   target.scaleResolutionDownBy = Math.max(1, +scale.toFixed(2));
-  (params as any).degradationPreference = "maintain-framerate";
+  (params as any).degradationPreference = degradationPreference;
   await sender.setParameters(params);
 }
 
@@ -286,6 +298,7 @@ export function startAutomaticScreenEncoding(
   // share. Now: a warm-up window where we never downshift, two consecutive
   // pressure samples before any backoff, a cooldown between adjustments, and
   // setParameters only when the value actually moved.
+  const degradation: RTCDegradationPreference = target.degradationPreference ?? "maintain-framerate";
   const COOLDOWN_MS = 3_000;
   let lastAdjustAt = 0;
   let appliedBitrate = 0;
@@ -297,7 +310,7 @@ export function startAutomaticScreenEncoding(
     if (!force && !bitrateMoved && !scaleMoved) return;
     appliedBitrate = bitrate;
     appliedScale = scale;
-    await applyEncoding(sender, bitrate, target.targetFps, scale).catch(() => {});
+    await applyEncoding(sender, bitrate, target.targetFps, scale, degradation).catch(() => {});
   };
   // Start AT the target instead of discovering it: the first apply is forced
   // so the very first frames are already full quality.

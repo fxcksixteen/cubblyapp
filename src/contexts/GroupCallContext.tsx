@@ -40,6 +40,11 @@ import { STUN_FALLBACK_SERVERS, sanitizeIceServersForSession } from "@/lib/webrt
 import { getSelectedCandidatePair } from "@/lib/webrtcStats";
 import { broadcastToTopic, broadcastToTopicWithRetry, voiceGlobalTopic, groupGlobalTopic } from "@/lib/realtimeBroadcast";
 import { setLegacyGroupRingHandler } from "@/lib/legacyGroupRingBridge";
+import {
+  profileForMode, modeFromCaptureRate, modeFromSourceKind,
+  getStoredShareMode, setStoredShareMode,
+  type ShareContentMode, type ShareContentModeSetting,
+} from "@/lib/shareContentMode";
 import { AutomaticScreenEncoding, startAutomaticScreenEncoding } from "@/lib/screenShareEncoding";
 
 import {
@@ -118,7 +123,7 @@ interface GroupCallContextType {
   toggleMute: () => void;
   toggleDeafen: () => void;
   toggleVideo: () => Promise<void>;
-  toggleScreenShare: (type?: "screen" | "window" | "tab", options?: { audio?: boolean; fps?: number; quality?: string; sourceId?: string }) => Promise<void>;
+  toggleScreenShare: (type?: "screen" | "window" | "tab", options?: { audio?: boolean; fps?: number; quality?: string; sourceId?: string; sourceName?: string; contentMode?: ShareContentModeSetting }) => Promise<void>;
   /** Local camera stream (for self-tile preview). */
   localVideoStream: MediaStream | null;
   /** Local screenshare stream (for self-tile preview). */
@@ -1442,7 +1447,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
    * Same per-source audio strategy on Electron (Chromium loopback only for
    * full-screen picks, native WASAPI addon for window/tab picks).
    */
-  const toggleScreenShare = useCallback(async (type?: "screen" | "window" | "tab", options?: { audio?: boolean; fps?: number; quality?: string; sourceId?: string }) => {
+  const toggleScreenShare = useCallback(async (type?: "screen" | "window" | "tab", options?: { audio?: boolean; fps?: number; quality?: string; sourceId?: string; sourceName?: string; contentMode?: ShareContentModeSetting }) => {
     if (!activeCall || !user) return;
     if (!activeCall.isScreenSharing) {
       const shareSettings = loadScreenShareSettings();
@@ -1468,6 +1473,8 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
       };
 
       let stream: MediaStream;
+      /** Native capture rate at start-up; drives "auto" content mode. */
+      let measuredCaptureFps: number | null = null;
       try {
         const api = (window as any).electronAPI;
         if (api?.isElectron) {
@@ -1532,6 +1539,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
             stream = new MediaStream([nativeVideo.videoTrack]);
             nativeWindowVideoStopRef.current = nativeVideo.stop;
             nativeWindowVideoStatsRef.current = nativeVideo.getStats || null;
+            measuredCaptureFps = nativeVideo.measuredCaptureFps ?? null;
             try { await api.clearSelectedShareSource?.(); } catch {}
             console.log("[GroupCall] 🎯 Native WGC window capture attached to share");
           } else {
@@ -1598,12 +1606,26 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
 
-      // One automatic mixed-content mode for games, video, and text.
-      const hint = "motion";
+      // v0.4.27 — resolve the content mode ONCE, before configuring the
+      // encoder. Mirrors the DM path; see lib/shareContentMode.
+      const modeSetting: ShareContentModeSetting =
+        options?.contentMode ?? getStoredShareMode(options?.sourceName);
+      let contentMode: ShareContentMode;
+      if (modeSetting === "motion" || modeSetting === "detail") {
+        contentMode = modeSetting;
+        setStoredShareMode(options?.sourceName, modeSetting);
+      } else if (measuredCaptureFps != null) {
+        contentMode = modeFromCaptureRate(measuredCaptureFps);
+      } else {
+        contentMode = modeFromSourceKind(options?.sourceId);
+      }
+      const profile = profileForMode(contentMode, effectiveFps);
+      const hint = profile.contentHint;
+      console.log(`[GroupCall] 🎯 share content mode: ${contentMode} → hint=${hint}, degradation=${profile.degradationPreference}, fpsCap=${profile.maxFps}`);
 
       // v0.4.11: low-power clamp mirrored from DM path — HW-accel-off
       // machines cannot sustain 1080p60 @ multi-Mbps VP9 in software.
-      let clampedFps = effectiveFps;
+      let clampedFps = Math.min(effectiveFps, profile.maxFps);
       let clampedQuality = effectiveQuality;
       let clampedRes = res;
       let lowPowerCap: number | null = null;
@@ -1656,6 +1678,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         targetFps: fpsCap,
         targetHeight,
         baseScale: scaleResolutionDownBy,
+        degradationPreference: profile.degradationPreference,
       };
       localScreenTrackRef.current = videoTrack;
       setLocalScreenStream(stream);
@@ -1677,8 +1700,9 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         void applyScreenBitrate(vSender, maxBitrate, {
           maxFramerate: fpsCap,
           scaleResolutionDownBy,
-          preferMotion: true,
+          preferMotion: contentMode === "motion",
           ultra: true,
+          degradationPreference: profile.degradationPreference,
         });
         const chosen = preferScreenShareCodec(tx);
         if (chosen && /vp9/i.test(chosen)) {
@@ -1692,6 +1716,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         screenEncodingCleanupRef.current.set(peerId, startAutomaticScreenEncoding(vSender, pc, {
           ...localScreenEncodingRef.current,
           getPeerCount: () => Math.max(1, pcsRef.current.size),
+          degradationPreference: profile.degradationPreference,
         }));
 
         const audioSenders: RTCRtpSender[] = [];

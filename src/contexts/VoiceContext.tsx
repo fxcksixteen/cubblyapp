@@ -8,6 +8,7 @@ import {
   startNativeWindowVideoStream,
   couldUseNativeWindowVideo,
   NATIVE_CAPTURE_FPS_CEILING,
+  NATIVE_CAPTURE_MAX_HEIGHT,
   type NativeWindowVideoStats,
 } from "@/lib/nativeWindowVideo";
 import { usePeerGains } from "@/lib/peerGain";
@@ -18,6 +19,11 @@ import { broadcastToTopic, broadcastToTopicWithRetry, voiceGlobalTopic } from "@
 import { deliverLegacyGroupRing } from "@/lib/legacyGroupRingBridge";
 import { toast } from "@/hooks/use-toast";
 import { startAutomaticScreenEncoding, setEncoderClamp } from "@/lib/screenShareEncoding";
+import {
+  profileForMode, modeFromCaptureRate, modeFromSourceKind,
+  getStoredShareMode, setStoredShareMode,
+  type ShareContentMode, type ShareContentModeSetting,
+} from "@/lib/shareContentMode";
 
 type ParticipantStatePatch = {
   is_muted?: boolean;
@@ -361,6 +367,8 @@ export async function applyScreenBitrate(
     preferMotion?: boolean;
     /** "ultra" = balanced degradation + VP9 temporal scalability (L1T3). */
     ultra?: boolean;
+    /** v0.4.27 — from the share's content mode; see lib/shareContentMode. */
+    degradationPreference?: RTCDegradationPreference;
   },
 ) {
   try {
@@ -386,7 +394,7 @@ export async function applyScreenBitrate(
     // delayed output on every preset. Discord ships maintain-framerate.
     // We also drop VP9 L1T3 SVC on Ultra — with software encode it adds
     // 20–30% CPU cost for no viewer-side win when peers decode in SW.
-    (params as any).degradationPreference = "maintain-framerate";
+    (params as any).degradationPreference = opts?.degradationPreference ?? "maintain-framerate";
     await sender.setParameters(params);
   } catch (e) {
     console.warn("[Voice] Could not set screen encoding bitrate:", e);
@@ -586,7 +594,7 @@ interface VoiceContextType {
   isScreenSharing: boolean;
   screenStream: MediaStream | null;
   remoteScreenStream: MediaStream | null;
-  startScreenShare: (type?: "screen" | "window" | "tab", options?: { audio?: boolean; fps?: number; quality?: string; sourceId?: string }) => Promise<void>;
+  startScreenShare: (type?: "screen" | "window" | "tab", options?: { audio?: boolean; fps?: number; quality?: string; sourceId?: string; sourceName?: string; contentMode?: ShareContentModeSetting }) => Promise<void>;
   stopScreenShare: () => void;
   /** Round-trip latency in ms (polled from RTCPeerConnection.getStats during active call). 0 when not in a call. */
   ping: number;
@@ -3317,7 +3325,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const screenLoopbackPcRef = useRef<{ local: RTCPeerConnection; remote: RTCPeerConnection } | null>(null);
 
   // Screen sharing
-  const startScreenShare = useCallback(async (type?: "screen" | "window" | "tab", options?: { audio?: boolean; fps?: number; quality?: string; sourceId?: string }) => {
+  const startScreenShare = useCallback(async (type?: "screen" | "window" | "tab", options?: { audio?: boolean; fps?: number; quality?: string; sourceId?: string; sourceName?: string; contentMode?: ShareContentModeSetting }) => {
     if (!user || !activeCall) return;
 
     const BOT_ID = "00000000-0000-0000-0000-000000000001";
@@ -3347,6 +3355,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       sampleRate: 48000,
     };
 
+    /** Native capture rate observed at start-up; drives "auto" content mode. */
+    let measuredCaptureFps: number | null = null;
     let stream: MediaStream | null = null;
     try {
 
@@ -3419,6 +3429,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           stream = new MediaStream([nativeVideo.videoTrack]);
           nativeWindowVideoStopRef.current = nativeVideo.stop;
           nativeWindowVideoStatsRef.current = nativeVideo.getStats || null;
+          measuredCaptureFps = nativeVideo.measuredCaptureFps ?? null;
           try { await api.clearSelectedShareSource?.(); } catch {}
           console.log("[Voice] 🎯 Native WGC window capture attached to share");
         } else {
@@ -3496,12 +3507,36 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       setIsScreenSharing(true);
       playSound("screenshareStart", { volume: 0.4 });
 
-      const hint = "motion";
+      // ---- v0.4.27: resolve the content mode ONCE, before the encoder is
+      // configured. Motion and static content want opposite settings, and both
+      // were previously hardcoded to the motion pair — which is why sharing a
+      // text document came out pixelated. Never re-resolved mid-share:
+      // changing contentHint/degradationPreference re-initialises the encoder.
+      const modeSetting: ShareContentModeSetting =
+        options?.contentMode ?? getStoredShareMode(options?.sourceName);
+      let contentMode: ShareContentMode;
+      if (modeSetting === "motion" || modeSetting === "detail") {
+        contentMode = modeSetting;
+        setStoredShareMode(options?.sourceName, modeSetting);
+      } else if (measuredCaptureFps != null) {
+        contentMode = modeFromCaptureRate(measuredCaptureFps);
+      } else {
+        contentMode = modeFromSourceKind(options?.sourceId);
+      }
+      const profile = profileForMode(contentMode, effectiveFps);
+      const hint = profile.contentHint;
+      console.log(
+        `[Voice] 🎯 share content mode: ${contentMode} (${modeSetting}` +
+        `${measuredCaptureFps != null ? `, measured ${measuredCaptureFps.toFixed(1)}fps` : ""}) ` +
+        `→ hint=${profile.contentHint}, degradation=${profile.degradationPreference}, fpsCap=${profile.maxFps}`
+      );
 
       // Low-power clamp: if hardware acceleration is off (Electron setting)
       // or the app has flagged itself into cubbly-low-power, cap resolution/
       // fps/bitrate so the software encoder can actually keep up.
-      let clampedFps = effectiveFps;
+      // Static content is capped at 30fps by the profile — past that we'd be
+      // spending bitrate on duplicate frames of a still page.
+      let clampedFps = Math.min(effectiveFps, profile.maxFps);
       let clampedQuality = effectiveQuality;
       let clampedRes = res;
       let lowPowerCap: number | null = null;
@@ -3514,6 +3549,23 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         lowPowerCap = 2_500_000;
         console.log(`[Voice] 🔻 low-power screenshare clamp → ${clampedQuality}@${clampedFps}fps, ≤2.5 Mbps`);
       }
+
+      // v0.4.27 — never target above the SOURCE resolution, and do it BEFORE
+      // the bitrate ladder is chosen. Native capture caps at
+      // NATIVE_CAPTURE_MAX_HEIGHT (1080), so a user set to 1440p was picking
+      // the 1440p tier (9 Mbps @60) for a 1080p picture: bitrate budgeted for
+      // pixels that do not exist, and an encoder asked to upscale.
+      const requestedHeight = clampedRes?.height ?? 1080;
+      const sourceHeight =
+        stream.getVideoTracks()[0]?.getSettings?.().height
+        || (nativeWindowVideoStopRef.current ? NATIVE_CAPTURE_MAX_HEIGHT : 0);
+      if (sourceHeight > 0 && requestedHeight > sourceHeight) {
+        const tier = sourceHeight >= 1440 ? "1440p" : sourceHeight >= 1080 ? "1080p" : sourceHeight >= 720 ? "720p" : "480p";
+        console.log(`[Voice] 🖥️ requested ${requestedHeight}p but source is ${sourceHeight}p — targeting ${tier}`);
+        clampedQuality = tier;
+        clampedRes = resolutionMap[tier] ?? clampedRes;
+      }
+      const targetHeight = clampedRes?.height ?? Math.min(requestedHeight, sourceHeight || requestedHeight);
 
       const isHighFps = clampedFps >= 50;
       // v0.4.18 — game-friendly ceilings (Discord Nitro parity). Previous
@@ -3529,11 +3581,10 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       const baseFor = resBitrateBase[clampedQuality] ?? 4_000_000;
       const maxBitrate = lowPowerCap ? Math.min(baseFor, lowPowerCap) : baseFor;
 
-      const targetHeight = clampedRes?.height ?? 1080;
       const fpsCap =
         targetHeight <= 480 ? Math.max(20, Math.min(clampedFps, 24)) :
         clampedFps;
-      console.log(`[Voice] 🖥️ screenshare requested ${effectiveFps}fps @ ${targetHeight}p → negotiating ${fpsCap}fps`);
+      console.log(`[Voice] 🖥️ screenshare requested ${effectiveFps}fps @ ${requestedHeight}p → negotiating ${fpsCap}fps @ ${targetHeight}p (${(maxBitrate/1e6).toFixed(1)} Mbps ceiling)`);
 
       // applyConstraints is a no-op on most desktop capture sources — kept
       // as a hint only. Real downscaling happens via scaleResolutionDownBy
@@ -3561,8 +3612,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       const encodingOpts = {
         scaleResolutionDownBy,
         maxFramerate: fpsCap,
-        preferMotion: true,
+        preferMotion: contentMode === "motion",
         ultra: true,
+        degradationPreference: profile.degradationPreference,
       };
 
 
@@ -3699,6 +3751,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           targetHeight,
           baseScale: scaleResolutionDownBy,
           voicePc: pcRef.current,
+          degradationPreference: profile.degradationPreference,
         });
       }
 
