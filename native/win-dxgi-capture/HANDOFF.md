@@ -9,18 +9,25 @@ Status: **working and shipped-ready, capped at 30fps.**
 
 ## NEXT PIECE OF WORK
 
-**Main-side throttling on renderer acknowledgement.** This is the single change
-that unlocks 60fps.
+**Two-machine transport test for the game-share ping spike.** The pipeline
+side is done (see below); what remains unproven is transport. The sender
+pushes a continuous ~5.7 Mbps of screenshare video while the game itself is
+using the same uplink; on a typical home connection that is enough to cause
+queuing delay (bufferbloat) — ping spikes for the game AND the call. Loopback
+benchmarks cannot reproduce this (RTT pinned at ~1 ms); it needs two machines
+on a real network, watching `candidate-pair.currentRoundTripTime` and
+`remote-inbound-rtp` audio jitter while a game saturates the sender's uplink.
+Candidate mitigations if confirmed: lower default screenshare bitrate when a
+game share is active, or expose a "game mode" bitrate preset.
 
-Today `electron/main.cjs` calls `webContents.send("window-video-frame", frame)`
-for every paced frame with no regard for whether the renderer is draining them.
-There is no flow control anywhere in the pipeline. When the renderer is starved,
-the IPC queue grows without bound (measured below: 20+ second latency).
-
-The fix: have the renderer acknowledge frames, and have main drop new frames
-while more than N (probably 1-2) are un-acked, instead of firing blindly.
-Once that exists, raise `NATIVE_CAPTURE_FPS_CEILING` in
-`src/lib/nativeWindowVideo.ts` and re-run the CPU-contention measurement.
+**DONE (2026-08-02): main-side throttling on renderer acks.** Implemented in
+v0.4.24 (ack channel `window-video-frame-ack`, max 1 un-acked frame in main)
+and verified under 99% GPU saturation: at 60fps, 2632/2639 frames delivered,
+7 dropped at the ack gate, received == written, e2e p50 16.8 ms, audio jitter
+0.1 ms on the shared peer connection, memory flat. The queue-collapse failure
+documented below (p50 20 s) is gone. The 60fps ceiling raise is therefore now
+evidence-backed on a strong machine; the pre-ack collapse numbers below are
+kept for history.
 
 ---
 
@@ -401,6 +408,36 @@ for the encoder, and `app.getAppMetrics()` for per-process memory. Rebuilding
 something equivalent is a few hundred lines.
 
 ---
+
+## Bug-2 measurement (2026-08-02, GPU-saturation runs)
+
+45 s runs, capturing a 1900x1060 WebGL burner window holding the GPU at 99%
+(the game analog), real preload/contextBridge, VP9 + audio on one
+RTCPeerConnection at 6 Mbps. Baseline = same rig, idle GPU.
+
+| | idle 30fps | load 30fps | load 60fps |
+|---|---|---|---|
+| native capture fps | 59.6 | 58.7 | 58.6 |
+| sent over IPC | 29.8fps / 88.7 MB/s | 29.8fps / 88.6 MB/s | 58.4fps / 174 MB/s |
+| ack-gate drops | 0 | 0 | 7 |
+| received == written | yes | yes | yes |
+| e2e p50 / p99 (ms) | 15.6 / 19.0 | 18.0 / 20.2 | 16.8 / 19.9 |
+| encoder fps / avg encode | 30 / 4.8 ms | 30 / 3.1 ms | 59 / 2.5 ms |
+| audio jitter (shared pc) | 0.42 ms | 0.06 ms | 0.10 ms |
+| burner (game) fps cost | — | 177→159 (~10%) | 176→159 (~10%) |
+
+Conclusions: with the ack gate + native ≤1080p downsampling + bounded TSFN
+queue, GPU saturation does NOT degrade the pipeline; capture costs the game
+~10% fps; audio is not starved inside the pipeline. `qualityLimitationReason`
+stayed `bandwidth` (never `cpu`) — encoder output resolution collapsed to
+471x263 under load at 6 Mbps, but loopback BWE magnitudes are not trustworthy
+(see caveat above). NOT measured: real-network transport (the ping symptom).
+
+Historical note for readers of the user-facing bug: the v0.4.19–0.4.21 builds
+users actually ran had NONE of these guards active — no ack gate, no height
+cap (a 1440p game window shipped ~5.5 MB/frame), and the v0.4.22–0.4.24 C++
+guards existed in source but the shipped prebuilt binary predated them. The
+"unwatchable stream" matches the documented no-flow-control collapse.
 
 ## Known gaps
 
