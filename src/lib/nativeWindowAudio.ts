@@ -17,7 +17,23 @@ export interface NativeWindowAudioHandle {
 }
 
 export const NATIVE_AUDIO_TARGET_LEAD_SECONDS = 0.045;
-export const NATIVE_AUDIO_MAX_LEAD_SECONDS = 0.22;
+/**
+ * v0.4.27 — 0.10s, was 0.22s.
+ *
+ * PCM blocks are scheduled at `nextStartTime += buffer.duration`. The WASAPI
+ * capture clock and the AudioContext clock run independently, so the schedule
+ * drifts ahead of playback and the added latency climbs until this ceiling
+ * trips a hard resync back to TARGET_LEAD. That makes share-audio delay a
+ * sawtooth between the target and this cap — at 0.22s the worst case was ~220ms
+ * of self-inflicted delay ON TOP of network, encode and jitter buffer, which is
+ * why share audio was audibly behind the picture.
+ *
+ * Halving the ceiling halves the worst case for one constant. It does NOT fix
+ * the underlying drift — that needs real rate compensation rather than a
+ * periodic resync, which is deferred to 0.4.28 because getting it wrong
+ * produces audible artefacts.
+ */
+export const NATIVE_AUDIO_MAX_LEAD_SECONDS = 0.10;
 
 export function shouldResyncNativeAudio(nextStartTime: number, currentTime: number, capturedAtMs?: number, nowMs = performance.timeOrigin + performance.now()) {
   const staleCapture = typeof capturedAtMs === "number" && nowMs - capturedAtMs > 250;
