@@ -117,6 +117,53 @@ async function fetchRobloxPlaceName(placeId) {
   }
 }
 
+/**
+ * Index of the LAST occurrence of any of `patterns` in `text`, or -1.
+ *
+ * Ordering matters more than presence when reading a game log: "loaded map X"
+ * and "returned to menu" can both appear in the same tail, and only whichever
+ * came LAST describes where the player is now. Before v0.4.28 the parsers just
+ * asked "does this line appear anywhere?", which is why a player sitting in a
+ * menu was still reported as being in a match on that map.
+ */
+function lastIndexOfAny(text, patterns) {
+  let best = -1;
+  for (const re of patterns) {
+    const rx = new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g");
+    let m;
+    while ((m = rx.exec(text)) !== null) {
+      if (m.index > best) best = m.index;
+      if (m.index === rx.lastIndex) rx.lastIndex++;
+    }
+  }
+  return best;
+}
+
+/**
+ * VALORANT ships internal map codenames in its logs, not the names players
+ * know. Reporting "Duality" to someone's friends is meaningless.
+ */
+const VALORANT_MAP_NAMES = {
+  ascent: "Ascent",
+  duality: "Bind",
+  bonsai: "Split",
+  triad: "Haven",
+  port: "Icebox",
+  foxtrot: "Breeze",
+  canyon: "Fracture",
+  pitt: "Pearl",
+  jam: "Lotus",
+  juliett: "Sunset",
+  infinity: "Abyss",
+  rook: "Corrode",
+  range: "The Range",
+};
+function valorantMapName(raw) {
+  if (!raw) return null;
+  const key = String(raw).toLowerCase();
+  return VALORANT_MAP_NAMES[key] || raw;
+}
+
 // ---------- LEAGUE OF LEGENDS (LCU REST) -------------------------------------
 // The Riot client exposes a localhost HTTPS API with a self-signed cert. We
 // discover the port + token from lockfile, then ask for the current champion
@@ -258,8 +305,30 @@ function parseValorant() {
     console.log("[game-details] valorant: log found but nothing parseable — no details");
     return null;
   }
+
+  // v0.4.28 — lobby vs match. Whichever marker appears LAST wins: a map-load
+  // followed by a return-to-menu means the player is in the menu now, on no
+  // map. Previously any map-load anywhere in the tail reported "in a match".
+  const enteredAt = lastIndexOfAny(tail, [
+    /LogMapLoad: Loading map/i,
+    /Loading map .*Maps\//i,
+  ]);
+  const leftAt = lastIndexOfAny(tail, [
+    /Returning to (?:the )?(?:main )?menu/i,
+    /LogMapLoad: Loading map .*MainMenu/i,
+    /Unloading map/i,
+    /LogShooterGameState: Match (?:ended|complete)/i,
+  ]);
+  const inMatch = enteredAt >= 0 && enteredAt > leftAt;
+
+  if (!inMatch) {
+    // Honest: we know VALORANT is open and we know they are not on a map.
+    // We do NOT claim a map, agent or score from a match that already ended.
+    return { status: "In lobby" };
+  }
+
   return {
-    map: mapMatch?.[1] ?? null,
+    map: valorantMapName(mapMatch?.[1] ?? null),
     mode: queueMatch?.[1] ?? null,
     agent: agentMatch?.[1] ?? null,
     score: scoreMatch ? `${scoreMatch[1]}-${scoreMatch[2]}` : null,
@@ -501,4 +570,6 @@ async function getGameDetails(identifier) {
   }
 }
 
-module.exports = { getGameDetails };
+// lastIndexOfAny / valorantMapName are exported for unit tests — they encode
+// real decisions (marker ordering, codename mapping) worth pinning down.
+module.exports = { getGameDetails, lastIndexOfAny, valorantMapName };
