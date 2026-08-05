@@ -32,14 +32,18 @@ export interface NativeWindowVideoHandle {
   /** Renderer-side instrumentation; null when the native path wasn't used. */
   getStats?: () => NativeWindowVideoStats | null;
   /**
-   * v0.4.27 — frames per second observed during the settle window, i.e. how
-   * often the captured window's content actually CHANGED. WGC only emits on
-   * change, so a game sits near the capture cap and a static document sits
-   * near zero. Used once, before the encoder is configured, to resolve the
-   * share's content mode (see lib/shareContentMode). null when the sample
-   * window was too short to be meaningful.
+   * Frames per second observed during the start-up settle window.
+   * WGC only emits on content change, so this measures how much the captured
+   * window is actually doing.
    */
   measuredCaptureFps?: number | null;
+  /**
+   * v0.4.28 — LIVE rolling capture rate over the last few seconds. The
+   * adaptive controller polls this every tick to notice when the content
+   * changes character mid-share (a video starts playing in a browser tab, a
+   * game returns to a menu) and re-tune the encoder for it.
+   */
+  getLiveCaptureFps?: () => number | null;
 }
 
 export interface NativeWindowVideoOptions {
@@ -62,7 +66,7 @@ export interface NativeWindowVideoOptions {
   maxHeight?: number;
 }
 
-const NONE: NativeWindowVideoHandle = { videoTrack: null, stop: () => {}, getStats: () => null, measuredCaptureFps: null };
+const NONE: NativeWindowVideoHandle = { videoTrack: null, stop: () => {}, getStats: () => null, measuredCaptureFps: null, getLiveCaptureFps: () => null };
 
 /**
  * How long to count native frame arrivals for before deciding motion vs static.
@@ -230,6 +234,8 @@ export async function startNativeWindowVideoStream(
       if (generator.readyState !== "live") { acknowledge(); return; }
       const now = performance.now();
       received++;
+      arrivalTimes.push(now);
+      if (arrivalTimes.length > 600) arrivalTimes.shift();
       bytesReceived += frame?.data?.byteLength || frame?.data?.length || 0;
 
       if (writeInFlight) { droppedBackpressure++; acknowledge(); return; }
@@ -280,6 +286,17 @@ export async function startNativeWindowVideoStream(
       console.debug("[NativeWindowVideo] frame decode failed:", e);
     }
   });
+
+  // Rolling window of recent frame arrival times, for the live rate above.
+  const arrivalTimes: number[] = [];
+  const LIVE_WINDOW_MS = 4000;
+  const getLiveCaptureFps = (): number | null => {
+    const cutoff = performance.now() - LIVE_WINDOW_MS;
+    while (arrivalTimes.length && arrivalTimes[0] < cutoff) arrivalTimes.shift();
+    // Need a little history before the number means anything.
+    if (performance.now() - t0 < LIVE_WINDOW_MS / 2) return null;
+    return (arrivalTimes.length / LIVE_WINDOW_MS) * 1000;
+  };
 
   const getStats = (): NativeWindowVideoStats => {
     const sorted = [...endToEndUs].sort((a, b) => a - b);
@@ -351,5 +368,5 @@ export async function startNativeWindowVideoStream(
     return NONE;
   }
 
-  return { videoTrack: generator as MediaStreamTrack, stop, getStats, measuredCaptureFps };
+  return { videoTrack: generator as MediaStreamTrack, stop, getStats, measuredCaptureFps, getLiveCaptureFps };
 }

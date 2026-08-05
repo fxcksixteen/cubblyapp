@@ -19,11 +19,6 @@ import { broadcastToTopic, broadcastToTopicWithRetry, voiceGlobalTopic } from "@
 import { deliverLegacyGroupRing } from "@/lib/legacyGroupRingBridge";
 import { toast } from "@/hooks/use-toast";
 import { startAutomaticScreenEncoding, setEncoderClamp, clearEncoderClamp } from "@/lib/screenShareEncoding";
-import {
-  profileForMode, modeFromCaptureRate, modeFromSourceKind,
-  getStoredShareMode, setStoredShareMode,
-  type ShareContentMode, type ShareContentModeSetting,
-} from "@/lib/shareContentMode";
 
 type ParticipantStatePatch = {
   is_muted?: boolean;
@@ -156,39 +151,52 @@ export function preferScreenShareCodec(transceiver: RTCRtpTransceiver | null | u
     const lowPower = typeof document !== "undefined"
       && document.documentElement.classList.contains("cubbly-low-power");
 
-    // v0.4.18 — Chromium exposes several H.264 codec entries. If we let it
-    // pick a High-profile one, libwebrtc silently falls back to the software
-    // OpenH264 encoder — NVENC/MFT/QuickSync/VideoToolbox only accept
-    // Constrained-Baseline/Baseline with packetization-mode=1. Rank those
-    // FIRST among H.264, and drop High-profile entries entirely on desktop
-    // so Chromium can never route around us into software.
-    const isBaselineH264 = (c: any) => {
-      const fmtp = (c.sdpFmtpLine || "").toLowerCase();
-      // 42e0xx / 4200xx = Constrained Baseline; 4200xx = Baseline.
-      const isBaseline = /profile-level-id=42[e04]0[0-9a-f]{2}/i.test(fmtp)
-        || /profile-level-id=4200[0-9a-f]{2}/i.test(fmtp);
-      const pktMode1 = /packetization-mode=1/.test(fmtp);
-      return isBaseline && pktMode1;
+    // ── v0.4.28: profile-aware ranking for SCREEN CONTENT ──────────────────
+    //
+    // What this replaced, and why it mattered: we used to FILTER the codec list
+    // down to Constrained Baseline H.264 only, on the stated belief that
+    // "NVENC/MFT/QuickSync only accept Constrained-Baseline". That is not true —
+    // NVENC defaults to High and the Media Foundation H.264 encoder supports
+    // Main and High. The restriction cost us the two H.264 tools that matter
+    // most for screen content:
+    //
+    //   • CABAC entropy coding (Baseline is stuck on CAVLC) — worth roughly
+    //     10-15% bitrate at equal quality.
+    //   • the 8x8 transform (a High-profile tool) — this is the one that keeps
+    //     sharp edges and text legible instead of smeared.
+    //
+    // Shared text was therefore being encoded with the single worst H.264
+    // profile for text, on every share, regardless of hardware.
+    //
+    // Nothing is filtered out now. Everything Chromium offers stays available
+    // as a fallback; we only express a PREFERENCE order.
+    const h264Profile = (c: any): number => {
+      // profile_idc is the first byte of profile-level-id.
+      // 64 = High, 4d = Main, 42 = (Constrained) Baseline.
+      const m = /profile-level-id=([0-9a-f]{2})/i.exec(c.sdpFmtpLine || "");
+      const idc = m ? m[1].toLowerCase() : "";
+      if (idc === "64") return 0; // High — CABAC + 8x8 transform
+      if (idc === "4d") return 1; // Main — CABAC
+      return 2;                   // Baseline — CAVLC, no 8x8
     };
+    // packetization-mode=1 allows fragmented NALs; mode 0 caps payload size and
+    // is a real throughput handicap at high resolutions.
+    const pktMode1 = (c: any) => /packetization-mode=1/.test(c.sdpFmtpLine || "") ? 0 : 1;
 
-    let pool = caps.codecs as any[];
-    if (isElectron && !lowPower) {
-      // Keep only HW-compatible H.264 entries; keep all other codecs.
-      pool = pool.filter((c: any) => {
-        const m = (c.mimeType || "").toLowerCase();
-        if (m !== "video/h264") return true;
-        return isBaselineH264(c);
-      });
-    }
-
+    const pool = caps.codecs as any[];
     const rank = (mime: string): number => {
       const m = mime.toLowerCase();
       if (lowPower) {
+        // Software encode only: VP8 is the cheapest thing that still looks OK.
         if (m === "video/vp8") return 0;
         if (m === "video/h264") return 1;
         if (m === "video/vp9") return 2;
         if (m === "video/av1") return 3;
       } else if (isElectron) {
+        // H.264 first for the hardware encoder (NVENC/QuickSync/AMF), but now
+        // allowed to negotiate High/Main. VP9 is a close second: its
+        // screen-content coding tools beat H.264 on static text, but it rarely
+        // has hardware encode, so it stays behind for games.
         if (m === "video/h264") return 0;
         if (m === "video/vp9") return 1;
         if (m === "video/vp8") return 2;
@@ -201,16 +209,14 @@ export function preferScreenShareCodec(transceiver: RTCRtpTransceiver | null | u
       }
       return 9;
     };
-    // Secondary sort: among H.264 entries with the same rank, put baseline
-    // packetization-mode=1 first so browser-mode too gets the HW-friendly
-    // profile at the head.
+    // Order: codec family, then (for H.264) best profile, then packetization.
     const codecs = [...pool].sort((a: any, b: any) => {
       const d = rank(a.mimeType) - rank(b.mimeType);
       if (d !== 0) return d;
       if ((a.mimeType || "").toLowerCase() === "video/h264") {
-        const ab = isBaselineH264(a) ? 0 : 1;
-        const bb = isBaselineH264(b) ? 0 : 1;
-        return ab - bb;
+        const p = h264Profile(a) - h264Profile(b);
+        if (p !== 0) return p;
+        return pktMode1(a) - pktMode1(b);
       }
       return 0;
     });
@@ -639,7 +645,7 @@ interface VoiceContextType {
   isScreenSharing: boolean;
   screenStream: MediaStream | null;
   remoteScreenStream: MediaStream | null;
-  startScreenShare: (type?: "screen" | "window" | "tab", options?: { audio?: boolean; fps?: number; quality?: string; sourceId?: string; sourceName?: string; contentMode?: ShareContentModeSetting }) => Promise<void>;
+  startScreenShare: (type?: "screen" | "window" | "tab", options?: { audio?: boolean; fps?: number; quality?: string; sourceId?: string; sourceName?: string }) => Promise<void>;
   stopScreenShare: () => void;
   /** Round-trip latency in ms (polled from RTCPeerConnection.getStats during active call). 0 when not in a call. */
   ping: number;
@@ -892,6 +898,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const nativeWindowVideoStopRef = useRef<(() => void) | null>(null);
   /** Instrumentation accessor for the active native video capture, if any. */
   const nativeWindowVideoStatsRef = useRef<(() => NativeWindowVideoStats | null) | null>(null);
+  /** Live native capture rate, polled by the adaptive controller. */
+  const nativeLiveFpsRef = useRef<(() => number | null) | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   // v0.3.11: track which conversation channelRef belongs to so setupSignaling
   // never accidentally hands back a stale channel from a previous call to a
@@ -3370,7 +3378,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const screenLoopbackPcRef = useRef<{ local: RTCPeerConnection; remote: RTCPeerConnection } | null>(null);
 
   // Screen sharing
-  const startScreenShare = useCallback(async (type?: "screen" | "window" | "tab", options?: { audio?: boolean; fps?: number; quality?: string; sourceId?: string; sourceName?: string; contentMode?: ShareContentModeSetting }) => {
+  const startScreenShare = useCallback(async (type?: "screen" | "window" | "tab", options?: { audio?: boolean; fps?: number; quality?: string; sourceId?: string; sourceName?: string }) => {
     if (!user || !activeCall) return;
 
     const BOT_ID = "00000000-0000-0000-0000-000000000001";
@@ -3475,6 +3483,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           nativeWindowVideoStopRef.current = nativeVideo.stop;
           nativeWindowVideoStatsRef.current = nativeVideo.getStats || null;
           measuredCaptureFps = nativeVideo.measuredCaptureFps ?? null;
+          nativeLiveFpsRef.current = nativeVideo.getLiveCaptureFps ?? null;
           try { await api.clearSelectedShareSource?.(); } catch {}
           console.log("[Voice] 🎯 Native WGC window capture attached to share");
         } else {
@@ -3552,36 +3561,17 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       setIsScreenSharing(true);
       playSound("screenshareStart", { volume: 0.4 });
 
-      // ---- v0.4.27: resolve the content mode ONCE, before the encoder is
-      // configured. Motion and static content want opposite settings, and both
-      // were previously hardcoded to the motion pair — which is why sharing a
-      // text document came out pixelated. Never re-resolved mid-share:
-      // changing contentHint/degradationPreference re-initialises the encoder.
-      const modeSetting: ShareContentModeSetting =
-        options?.contentMode ?? getStoredShareMode(options?.sourceName);
-      let contentMode: ShareContentMode;
-      if (modeSetting === "motion" || modeSetting === "detail") {
-        contentMode = modeSetting;
-        setStoredShareMode(options?.sourceName, modeSetting);
-      } else if (measuredCaptureFps != null) {
-        contentMode = modeFromCaptureRate(measuredCaptureFps);
-      } else {
-        contentMode = modeFromSourceKind(options?.sourceId);
-      }
-      const profile = profileForMode(contentMode, effectiveFps);
-      const hint = profile.contentHint;
-      console.log(
-        `[Voice] 🎯 share content mode: ${contentMode} (${modeSetting}` +
-        `${measuredCaptureFps != null ? `, measured ${measuredCaptureFps.toFixed(1)}fps` : ""}) ` +
-        `→ hint=${profile.contentHint}, degradation=${profile.degradationPreference}, fpsCap=${profile.maxFps}`
-      );
+      // v0.4.28 — no mode is chosen here. startAutomaticScreenEncoding
+      // measures the content continuously and re-tunes itself; we only
+      // need a sane starting hint. "detail" is the safe opening choice:
+      // a wrongly-sharp game self-corrects within a few seconds, a
+      // wrongly-smeared document is what users actually complain about.
+      const hint = "detail";
 
       // Low-power clamp: if hardware acceleration is off (Electron setting)
       // or the app has flagged itself into cubbly-low-power, cap resolution/
       // fps/bitrate so the software encoder can actually keep up.
-      // Static content is capped at 30fps by the profile — past that we'd be
-      // spending bitrate on duplicate frames of a still page.
-      let clampedFps = Math.min(effectiveFps, profile.maxFps);
+      let clampedFps = effectiveFps;
       let clampedQuality = effectiveQuality;
       let clampedRes = res;
       let lowPowerCap: number | null = null;
@@ -3657,9 +3647,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       const encodingOpts = {
         scaleResolutionDownBy,
         maxFramerate: fpsCap,
-        preferMotion: contentMode === "motion",
+        preferMotion: false,
         ultra: true,
-        degradationPreference: profile.degradationPreference,
       };
 
 
@@ -3787,7 +3776,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
       // v0.4.18 — surface which encoder (HW vs SW) Chromium picked so we can
       // tell at a glance whether a bad-looking stream is a codec-path issue.
-      logScreenEncoderImplementation(screenPc, "Voice", videoSenderRef, profile.degradationPreference);
+      logScreenEncoderImplementation(screenPc, "Voice", videoSenderRef);
 
       if (videoSenderRef) {
         screenEncodingCleanupRef.current?.();
@@ -3797,7 +3786,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           targetHeight,
           baseScale: scaleResolutionDownBy,
           voicePc: pcRef.current,
-          degradationPreference: profile.degradationPreference,
+          track: videoTrack,
+          getNativeCaptureFps: () => nativeLiveFpsRef.current?.() ?? null,
         });
       }
 
@@ -3891,6 +3881,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       try { nativeWindowVideoStopRef.current(); } catch {}
       nativeWindowVideoStopRef.current = null;
       nativeWindowVideoStatsRef.current = null;
+      nativeLiveFpsRef.current = null;
     }
 
     // Clean up screen loopback peers

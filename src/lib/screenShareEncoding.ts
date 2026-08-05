@@ -1,3 +1,5 @@
+import { createContentClassifier, profileFor, type ScreenContentClass } from "./screenContentMode";
+
 export interface AutomaticScreenEncoding {
   targetBitrate: number;
   targetFps: number;
@@ -6,12 +8,22 @@ export interface AutomaticScreenEncoding {
   voicePc?: RTCPeerConnection | null;
   getPeerCount?: () => number;
   /**
-   * v0.4.27 — driven by the share's content mode (see lib/shareContentMode).
-   * "maintain-framerate" keeps games smooth by dropping resolution;
-   * "maintain-resolution" keeps text sharp by dropping frame rate. Hardcoding
-   * the former is what made shared documents unreadable.
+   * Initial degradation preference. From v0.4.28 the controller re-evaluates
+   * this every tick from measured content (see lib/screenContentMode), so this
+   * is only the starting point.
    */
   degradationPreference?: RTCDegradationPreference;
+  /**
+   * v0.4.28 — the shared video track, so the controller can re-apply
+   * `contentHint` when the content class changes.
+   */
+  track?: MediaStreamTrack | null;
+  /**
+   * v0.4.28 — measured native capture rate, in frames/sec, or null when the
+   * native path isn't in use (full-screen capture / getDisplayMedia). WGC only
+   * emits on content change, so this is a direct content-activity measurement.
+   */
+  getNativeCaptureFps?: () => number | null;
 }
 
 export interface ScreenCongestionSample {
@@ -233,7 +245,24 @@ export function startAutomaticScreenEncoding(
   // share. Now: a warm-up window where we never downshift, two consecutive
   // pressure samples before any backoff, a cooldown between adjustments, and
   // setParameters only when the value actually moved.
-  const degradation: RTCDegradationPreference = target.degradationPreference ?? "maintain-framerate";
+  // v0.4.28 — content class is measured continuously, not chosen by the user.
+  const classifier = createContentClassifier("mixed");
+  let profile = profileFor(classifier.current, target.targetFps);
+  let degradation: RTCDegradationPreference = target.degradationPreference ?? profile.degradationPreference;
+  let fpsTarget = Math.min(target.targetFps, profile.maxFps);
+  const applyContentProfile = (cls: ScreenContentClass) => {
+    profile = profileFor(cls, target.targetFps);
+    degradation = profile.degradationPreference;
+    fpsTarget = Math.min(target.targetFps, profile.maxFps);
+    // contentHint steers libwebrtc's own encoder tuning; re-applying it on a
+    // live track is how a browser that starts playing a video gets re-tuned
+    // without restarting the share.
+    try { if (target.track) (target.track as any).contentHint = profile.contentHint; } catch { /* ignore */ }
+    console.log(
+      `[ScreenShare] content is now ${cls} → hint=${profile.contentHint}, ` +
+      `degradation=${profile.degradationPreference}, fps<=${profile.maxFps}`
+    );
+  };
   const COOLDOWN_MS = 3_000;
   let lastAdjustAt = 0;
   let appliedBitrate = 0;
@@ -245,7 +274,7 @@ export function startAutomaticScreenEncoding(
     if (!force && !bitrateMoved && !scaleMoved) return;
     appliedBitrate = bitrate;
     appliedScale = scale;
-    await applyEncoding(sender, bitrate, target.targetFps, scale, degradation).catch(() => {});
+    await applyEncoding(sender, bitrate, fpsTarget, scale, degradation).catch(() => {});
   };
   // Start AT the target instead of discovering it: the first apply is forced
   // so the very first frames are already full quality.
@@ -265,6 +294,7 @@ export function startAutomaticScreenEncoding(
 
   const interval = window.setInterval(async () => {
     if (stopped || pc.connectionState === "closed") return;
+    let force = false;
     try {
       const stats = await pc.getStats();
       const voiceStats = target.voicePc && target.voicePc !== pc
@@ -326,6 +356,14 @@ export function startAutomaticScreenEncoding(
         if (rttWindow.length > 20) rttWindow.shift();
       }
       const baselineRtt = rttWindow.length ? Math.min(...rttWindow) : 0;
+      // v0.4.28 — measure content activity and re-tune if the class changed.
+      // Prefer the native capture rate (WGC emits only on content change, so it
+      // IS the content-activity signal); fall back to the encoder's own fps.
+      const nativeFps = target.getNativeCaptureFps?.() ?? null;
+      const observedFps = nativeFps != null && nativeFps >= 0 ? nativeFps : fps;
+      const switched = classifier.observe(observedFps);
+      if (switched) { applyContentProfile(switched); force = true; }
+
       const now = Date.now();
       const cooling = now - lastAdjustAt < COOLDOWN_MS;
       // Climb toward the target while the link looks healthy. Congestion
@@ -374,7 +412,7 @@ export function startAutomaticScreenEncoding(
         // except by way of the slower bitrate-probe path below.
         scale = Math.max(target.baseScale, scale / 1.15);
       }
-      await update();
+      await update(force);
       if (import.meta.env.DEV) {
         console.debug("[ScreenShare] transport", { bitrate: Math.round(bitrate), availableOutgoingBitrate, rttMs: Math.round(rttMs), baselineRtt: Math.round(baselineRtt), loss, scale, peers: peerCount(), reason: decision.reason });
       }

@@ -40,11 +40,6 @@ import { STUN_FALLBACK_SERVERS, sanitizeIceServersForSession } from "@/lib/webrt
 import { getSelectedCandidatePair } from "@/lib/webrtcStats";
 import { broadcastToTopic, broadcastToTopicWithRetry, voiceGlobalTopic, groupGlobalTopic } from "@/lib/realtimeBroadcast";
 import { setLegacyGroupRingHandler } from "@/lib/legacyGroupRingBridge";
-import {
-  profileForMode, modeFromCaptureRate, modeFromSourceKind,
-  getStoredShareMode, setStoredShareMode,
-  type ShareContentMode, type ShareContentModeSetting,
-} from "@/lib/shareContentMode";
 import { AutomaticScreenEncoding, startAutomaticScreenEncoding } from "@/lib/screenShareEncoding";
 
 import {
@@ -123,7 +118,7 @@ interface GroupCallContextType {
   toggleMute: () => void;
   toggleDeafen: () => void;
   toggleVideo: () => Promise<void>;
-  toggleScreenShare: (type?: "screen" | "window" | "tab", options?: { audio?: boolean; fps?: number; quality?: string; sourceId?: string; sourceName?: string; contentMode?: ShareContentModeSetting }) => Promise<void>;
+  toggleScreenShare: (type?: "screen" | "window" | "tab", options?: { audio?: boolean; fps?: number; quality?: string; sourceId?: string; sourceName?: string }) => Promise<void>;
   /** Local camera stream (for self-tile preview). */
   localVideoStream: MediaStream | null;
   /** Local screenshare stream (for self-tile preview). */
@@ -469,6 +464,8 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
   const nativeWindowVideoStopRef = useRef<(() => void) | null>(null);
   /** Instrumentation accessor for the active native video capture, if any. */
   const nativeWindowVideoStatsRef = useRef<(() => NativeWindowVideoStats | null) | null>(null);
+  /** Live native capture rate, polled by the adaptive controller. */
+  const nativeLiveFpsRef = useRef<(() => number | null) | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const callEventIdRef = useRef<string | null>(null);
   const callConvIdRef = useRef<string | null>(null);
@@ -1447,7 +1444,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
    * Same per-source audio strategy on Electron (Chromium loopback only for
    * full-screen picks, native WASAPI addon for window/tab picks).
    */
-  const toggleScreenShare = useCallback(async (type?: "screen" | "window" | "tab", options?: { audio?: boolean; fps?: number; quality?: string; sourceId?: string; sourceName?: string; contentMode?: ShareContentModeSetting }) => {
+  const toggleScreenShare = useCallback(async (type?: "screen" | "window" | "tab", options?: { audio?: boolean; fps?: number; quality?: string; sourceId?: string; sourceName?: string }) => {
     if (!activeCall || !user) return;
     if (!activeCall.isScreenSharing) {
       const shareSettings = loadScreenShareSettings();
@@ -1540,6 +1537,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
             nativeWindowVideoStopRef.current = nativeVideo.stop;
             nativeWindowVideoStatsRef.current = nativeVideo.getStats || null;
             measuredCaptureFps = nativeVideo.measuredCaptureFps ?? null;
+            nativeLiveFpsRef.current = nativeVideo.getLiveCaptureFps ?? null;
             try { await api.clearSelectedShareSource?.(); } catch {}
             console.log("[GroupCall] 🎯 Native WGC window capture attached to share");
           } else {
@@ -1606,26 +1604,14 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
 
-      // v0.4.27 — resolve the content mode ONCE, before configuring the
-      // encoder. Mirrors the DM path; see lib/shareContentMode.
-      const modeSetting: ShareContentModeSetting =
-        options?.contentMode ?? getStoredShareMode(options?.sourceName);
-      let contentMode: ShareContentMode;
-      if (modeSetting === "motion" || modeSetting === "detail") {
-        contentMode = modeSetting;
-        setStoredShareMode(options?.sourceName, modeSetting);
-      } else if (measuredCaptureFps != null) {
-        contentMode = modeFromCaptureRate(measuredCaptureFps);
-      } else {
-        contentMode = modeFromSourceKind(options?.sourceId);
-      }
-      const profile = profileForMode(contentMode, effectiveFps);
-      const hint = profile.contentHint;
-      console.log(`[GroupCall] 🎯 share content mode: ${contentMode} → hint=${hint}, degradation=${profile.degradationPreference}, fpsCap=${profile.maxFps}`);
+      // v0.4.28 — no mode is chosen here. startAutomaticScreenEncoding
+      // measures the content continuously and re-tunes itself; we only
+      // need a sane starting hint.
+      const hint = "detail";
 
       // v0.4.11: low-power clamp mirrored from DM path — HW-accel-off
       // machines cannot sustain 1080p60 @ multi-Mbps VP9 in software.
-      let clampedFps = Math.min(effectiveFps, profile.maxFps);
+      let clampedFps = effectiveFps;
       let clampedQuality = effectiveQuality;
       let clampedRes = res;
       let lowPowerCap: number | null = null;
@@ -1678,7 +1664,6 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         targetFps: fpsCap,
         targetHeight,
         baseScale: scaleResolutionDownBy,
-        degradationPreference: profile.degradationPreference,
       };
       localScreenTrackRef.current = videoTrack;
       setLocalScreenStream(stream);
@@ -1703,9 +1688,8 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
         void applyScreenBitrate(vSender, maxBitrate, {
           maxFramerate: fpsCap,
           scaleResolutionDownBy,
-          preferMotion: contentMode === "motion",
+          preferMotion: false,
           ultra: true,
-          degradationPreference: profile.degradationPreference,
         });
         const chosen = preferScreenShareCodec(tx);
         if (chosen && /vp9/i.test(chosen)) {
@@ -1714,12 +1698,13 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
             if (p.encodings?.length) { (p.encodings[0] as any).scalabilityMode = "L1T3"; void vSender.setParameters(p); }
           } catch {}
         }
-        logScreenEncoderImplementation(pc, "GroupCall", vSender, profile.degradationPreference);
+        logScreenEncoderImplementation(pc, "GroupCall", vSender);
         screenEncodingCleanupRef.current.get(peerId)?.();
         screenEncodingCleanupRef.current.set(peerId, startAutomaticScreenEncoding(vSender, pc, {
           ...localScreenEncodingRef.current,
           getPeerCount: () => Math.max(1, pcsRef.current.size),
-          degradationPreference: profile.degradationPreference,
+          track: videoTrack,
+          getNativeCaptureFps: () => nativeLiveFpsRef.current?.() ?? null,
         }));
 
         const audioSenders: RTCRtpSender[] = [];
