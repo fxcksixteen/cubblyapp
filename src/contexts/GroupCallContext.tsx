@@ -38,8 +38,7 @@ import { usePeerGains } from "@/lib/peerGain";
 import { armRemoteAudio } from "@/lib/iosAudioUnlock";
 import { STUN_FALLBACK_SERVERS, sanitizeIceServersForSession } from "@/lib/webrtcIce";
 import { getSelectedCandidatePair } from "@/lib/webrtcStats";
-import { broadcastToTopic, broadcastToTopicWithRetry, voiceGlobalTopic, groupGlobalTopic } from "@/lib/realtimeBroadcast";
-import { setLegacyGroupRingHandler } from "@/lib/legacyGroupRingBridge";
+import { broadcastToTopicWithRetry, groupGlobalTopic } from "@/lib/realtimeBroadcast";
 import { AutomaticScreenEncoding, startAutomaticScreenEncoding } from "@/lib/screenShareEncoding";
 
 import {
@@ -311,14 +310,7 @@ async function applyRealtimeAudioParams(sender: RTCRtpSender, bitrate = 128_000)
  * listener.
  */
 async function ringMemberWithRetry(mid: string, payload: Record<string, unknown>, attempt = 0): Promise<void> {
-  const [primary] = await Promise.all([
-    // Dedicated group topic — split from voice-global so the Voice and
-    // GroupCall providers stop sharing one RealtimeChannel instance.
-    broadcastToTopicWithRetry(groupGlobalTopic(mid), "group-incoming-call", payload),
-    // COMPAT: clients on 0.4.26 and older still listen for group rings on
-    // voice-global:<uid>. Safe to delete once >=0.4.27 is broadly installed.
-    broadcastToTopic(voiceGlobalTopic(mid), "group-incoming-call", payload),
-  ]);
+  const primary = await broadcastToTopicWithRetry(groupGlobalTopic(mid), "group-incoming-call", payload);
   if (!primary.ok) groupTrace("ring.failed", { mid, attempt, error: primary.error });
 }
 
@@ -1850,13 +1842,7 @@ export const GroupCallProvider = ({ children }: { children: ReactNode }) => {
     ch.on("broadcast", { event: "group-incoming-call" }, ({ payload }) => handleGroupRing(payload));
     ch.subscribe();
 
-    // COMPAT: remove once >=0.4.27 is broadly installed. Lets a 0.4.26 caller —
-    // which only publishes to voice-global:<uid> — still ring us. VoiceContext
-    // owns that topic and forwards the payload; we never touch its channel.
-    const unregisterLegacy = setLegacyGroupRingHandler(handleGroupRing);
-
     return () => {
-      unregisterLegacy();
       supabase.removeChannel(ch);
     };
   }, [user]);

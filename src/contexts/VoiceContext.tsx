@@ -16,7 +16,6 @@ import { armRemoteAudio } from "@/lib/iosAudioUnlock";
 import { STUN_FALLBACK_SERVERS, sanitizeIceServersForSession } from "@/lib/webrtcIce";
 import { getSelectedCandidatePair, getRelayHost } from "@/lib/webrtcStats";
 import { broadcastToTopic, broadcastToTopicWithRetry, voiceGlobalTopic } from "@/lib/realtimeBroadcast";
-import { deliverLegacyGroupRing } from "@/lib/legacyGroupRingBridge";
 import { toast } from "@/hooks/use-toast";
 import { startAutomaticScreenEncoding, setEncoderClamp, clearEncoderClamp } from "@/lib/screenShareEncoding";
 
@@ -4337,16 +4336,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     // legitimate teardown of it — nothing else may remove this topic.
     const globalChannel = supabase.channel(voiceGlobalTopic(user.id));
     globalChannel
-      // COMPAT: remove once >=0.4.27 is broadly installed. Group rings moved to
-      // `group-global:<uid>` in 0.4.27, but a 0.4.26 caller still publishes them
-      // here. We own this topic, so we bind the legacy event on OUR channel and
-      // hand it to GroupCallContext rather than letting it open a second
-      // instance of this topic (channel() dedupes by topic — that shared
-      // instance is exactly what the 0.4.27 split removed). GroupCallContext
-      // de-duplicates against its own group-global delivery.
-      .on("broadcast", { event: "group-incoming-call" }, ({ payload }) => {
-        deliverLegacyGroupRing(payload);
-      })
       .on("broadcast", { event: "incoming-call" }, async ({ payload }) => {
         // v0.3.12: read live state through refs so we don't have to resubscribe
         // this channel on every call state change (which was creating a
