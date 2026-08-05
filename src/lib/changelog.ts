@@ -23,9 +23,27 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.4.27";
+export const CURRENT_VERSION = "0.4.28";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.4.28",
+    title: "Screen sharing, properly",
+    date: "2026-08-03",
+    hero: bearImage,
+    newFeatures: [
+      "Screen sharing is dramatically sharper. Cubbly had been encoding every share with the lowest-quality settings its encoder offers — that is why shared text came out pixelated no matter how good your PC was. It now uses the best your hardware actually supports.",
+      "Cubbly optimizes each share automatically for whatever you are sharing. Games and video stay smooth, documents and code stay sharp and readable, and a browser with a video playing gets both at once. There is nothing to choose — it works it out while you share and adjusts as the content changes.",
+      "Sharing your screen no longer spikes your ping. The share now travels on the same connection as your voice instead of competing with it for bandwidth.",
+      "You can tag @everyone in group chats.",
+    ],
+    bugFixes: [
+      "Activities are accurate again. Cubbly was showing \"In match\" for everything you opened, including Steam and browsers. It now only reports a game when it can actually read one, tells the difference between sitting in a lobby and being in a match, and shows real VALORANT map names instead of internal codenames.",
+      "Screen share audio is closer to in sync and no longer slowly drifts out of it the longer you share.",
+      "Calls no longer get stuck when two people start or rejoin at the exact same moment.",
+      "Stale game details no longer follow you around — quitting a game and opening something else no longer keeps showing the old game's info.",
+    ],
+  },
   {
     version: "0.4.27",
     title: "Screen sharing that actually looks good",
