@@ -392,7 +392,13 @@ export function logScreenEncoderImplementation(
   window.setTimeout(check, ENCODER_FIRST_PROBE_MS);
   window.setTimeout(check, ENCODER_FIRST_PROBE_MS + 2500);
   const interval = window.setInterval(() => {
-    if (pc.connectionState === "closed" || (sender && sender.track?.readyState === "ended")) {
+    // v0.4.28 — `!sender.track` is now a stop condition. On the separate-PC
+    // path the connection was closed when a share ended, which killed this
+    // probe. A BUNDLED share rides the voice PC, which stays open for the whole
+    // call, and stopping it only does replaceTrack(null) — so without this the
+    // probe would keep polling getStats every 10s for the rest of the call.
+    const senderIdle = sender ? (!sender.track || sender.track.readyState === "ended") : false;
+    if (pc.connectionState === "closed" || senderIdle) {
       window.clearInterval(interval);
       return;
     }
@@ -883,6 +889,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   /** Whether the remote peer can receive a bundled share. Defaults to false so
    *  a peer that never advertises it keeps the separate-PC path. */
   const peerSupportsBundledShareRef = useRef(false);
+  /** True while OUR share is riding on the voice PC rather than its own. */
+  const bundledShareActiveRef = useRef(false);
 
   const iceServersRef = useRef<RTCIceServer[]>(STUN_ONLY_SERVERS);
   const pcRef = useRef<RTCPeerConnection | null>(null);
@@ -2630,6 +2638,15 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           outgoingCallMetaRef.current = null;
           peerAcceptedCallEventRef.current = null;
           shouldOfferForCallRef.current = true;
+          // v0.4.28 — the voice PC just closed, so the pre-allocated bundled
+          // transceivers on it are dead. Clear them and the peer-capability
+          // flag: the rejoiner may be an older client, and a stale `true` here
+          // would let a share bundle onto a connection they cannot route.
+          // createPeerConnection re-allocates them for the new PC.
+          bundledShareActiveRef.current = false;
+          bundledScreenVideoTxRef.current = null;
+          bundledScreenAudioTxRef.current = null;
+          peerSupportsBundledShareRef.current = false;
           outgoingCandidateBuffer.current = [];
           incomingCandidateQueue.current = [];
           remoteDescriptionSet.current = false;
@@ -2833,6 +2850,17 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           } catch (e) {
             console.error("Failed to add screen ICE candidate:", e);
           }
+          return;
+        }
+
+        // v0.4.28 — peer's share is on the voice connection. The tracks arrive
+        // through that PC's ontrack; these notices only bound the UI state so a
+        // viewer isn't left on a dead frame after they stop.
+        if (payload.type === "screen-bundled-start") {
+          return;
+        }
+        if (payload.type === "screen-bundled-stop") {
+          setRemoteScreenStream(null);
           return;
         }
 
@@ -3795,6 +3823,61 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
 
+      const videoTrackForShare = stream.getVideoTracks()[0];
+      const audioTracksForShare = stream.getAudioTracks();
+
+      // ── v0.4.28: BUNDLED PATH ────────────────────────────────────────────
+      // If the peer can receive it, put the share on the voice connection so
+      // both share one bandwidth estimate instead of two congestion
+      // controllers fighting over the uplink. The transceivers were allocated
+      // when the PC was built, so this is a track swap — no renegotiation.
+      const voicePc = pcRef.current;
+      const bundleVideoTx = bundledScreenVideoTxRef.current;
+      if (
+        peerSupportsBundledShareRef.current &&
+        voicePc && voicePc.connectionState !== "closed" &&
+        bundleVideoTx
+      ) {
+        console.log("[Voice] 🎯 bundling screenshare onto the voice connection (shared bandwidth estimate)");
+        await bundleVideoTx.sender.replaceTrack(videoTrackForShare);
+        try { bundleVideoTx.direction = "sendrecv"; } catch { /* ignore */ }
+        const bundleAudioTx = bundledScreenAudioTxRef.current;
+        if (bundleAudioTx && audioTracksForShare[0]) {
+          await bundleAudioTx.sender.replaceTrack(audioTracksForShare[0]);
+          try { bundleAudioTx.direction = "sendrecv"; } catch { /* ignore */ }
+          void applyScreenAudioBitrate(bundleAudioTx.sender);
+        }
+        bundledShareActiveRef.current = true;
+
+        const bundledSender = bundleVideoTx.sender;
+        void applyScreenBitrate(bundledSender, maxBitrate, encodingOpts);
+        logScreenEncoderImplementation(voicePc, "Voice", bundledSender);
+        screenEncodingCleanupRef.current?.();
+        screenEncodingCleanupRef.current = startAutomaticScreenEncoding(bundledSender, voicePc, {
+          targetBitrate: maxBitrate,
+          targetFps: fpsCap,
+          targetHeight,
+          baseScale: scaleResolutionDownBy,
+          // Same connection now, so there is no separate voice PC to weigh
+          // against — one estimate covers both.
+          voicePc: null,
+          track: videoTrackForShare,
+          getNativeCaptureFps: () => nativeLiveFpsRef.current?.() ?? null,
+        });
+
+        videoTrackForShare.onended = () => { stopScreenShareRef.current(); };
+        audioTracksForShare.forEach((t) => { t.onended = () => { stopScreenShareRef.current(); }; });
+
+        // Tell the peer to expect it on the voice connection rather than
+        // waiting for a screen-offer that will never come.
+        if (channelRef.current) {
+          void sendSignalReliably(channelRef.current, {
+            type: "screen-bundled-start", senderId: user.id,
+          }, "screen-bundled-start");
+        }
+        return;
+      }
+
       // Normal call: send via signaling channel. Without a channel there is no
       // way to publish the share, so throw into the catch below instead of
       // returning — a bare return left the capture running and the UI stuck in
@@ -3812,8 +3895,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       const screenPc = new RTCPeerConnection({ iceServers: iceServersRef.current });
       screenPcOutRef.current = screenPc;
 
-      const videoTrack = stream.getVideoTracks()[0];
-      const audioTracks = stream.getAudioTracks();
+      const videoTrack = videoTrackForShare;
+      const audioTracks = audioTracksForShare;
 
       // v0.4.27 — SINGLE layer. A 1:1 DM call is peer-to-peer with no SFU, so
       // the extra simulcast layers had nothing to select them: pure wasted
@@ -3986,6 +4069,21 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       screenLoopbackPcRef.current = null;
     }
 
+    // v0.4.28 — if the share was riding on the voice connection, detach the
+    // tracks instead of closing anything: that PC is the CALL. replaceTrack(null)
+    // leaves the m-lines in place for the next share, still without
+    // renegotiation.
+    if (bundledShareActiveRef.current) {
+      bundledShareActiveRef.current = false;
+      void bundledScreenVideoTxRef.current?.sender.replaceTrack(null).catch(() => {});
+      void bundledScreenAudioTxRef.current?.sender.replaceTrack(null).catch(() => {});
+      if (channelRef.current && user) {
+        void sendSignalReliably(channelRef.current, {
+          type: "screen-bundled-stop", senderId: user.id,
+        }, "screen-bundled-stop");
+      }
+    }
+
     // Only close OUR outgoing screen PC. Incoming peer share stays untouched.
     screenPcOutRef.current?.close();
     screenPcOutRef.current = null;
@@ -4083,6 +4181,11 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     try { screenPcInRef.current?.close(); } catch {}
     screenPcInRef.current = null;
     lastScreenAnswerRef.current = null;
+    // Bundled senders die with the voice PC; just clear the flags.
+    bundledShareActiveRef.current = false;
+    bundledScreenVideoTxRef.current = null;
+    bundledScreenAudioTxRef.current = null;
+    peerSupportsBundledShareRef.current = false;
     pendingScreenIceRef.current.in = [];
     pendingScreenIceRef.current.out = [];
     setRemoteScreenStream(null);
