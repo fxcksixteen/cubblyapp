@@ -23,10 +23,21 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.4.28";
+export const CURRENT_VERSION = "0.4.29";
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.4.29",
+    title: "Call audio hotfix",
+    date: "2026-08-06",
+    hero: bearImage,
+    newFeatures: [],
+    bugFixes: [
+      "Fixed one-way audio in calls. In 0.4.28 you could end up hearing the other person while they could not hear you, or the other way round. Calls are back to normal.",
+      "A custom status no longer stays visible after you go offline or set yourself invisible.",
+      "Note: the 0.4.28 change that put screen sharing on the same connection as your voice has been rolled back for now, since it caused the audio problem above. Screen sharing quality is unaffected - only the ping improvement is on hold while we redo it safely.",
+    ],
+  },  {
     version: "0.4.28",
     title: "Screen sharing, properly",
     date: "2026-08-03",

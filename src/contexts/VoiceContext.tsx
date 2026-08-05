@@ -392,13 +392,7 @@ export function logScreenEncoderImplementation(
   window.setTimeout(check, ENCODER_FIRST_PROBE_MS);
   window.setTimeout(check, ENCODER_FIRST_PROBE_MS + 2500);
   const interval = window.setInterval(() => {
-    // v0.4.28 — `!sender.track` is now a stop condition. On the separate-PC
-    // path the connection was closed when a share ended, which killed this
-    // probe. A BUNDLED share rides the voice PC, which stays open for the whole
-    // call, and stopping it only does replaceTrack(null) — so without this the
-    // probe would keep polling getStats every 10s for the rest of the call.
-    const senderIdle = sender ? (!sender.track || sender.track.readyState === "ended") : false;
-    if (pc.connectionState === "closed" || senderIdle) {
+    if (pc.connectionState === "closed" || (sender && sender.track?.readyState === "ended")) {
       window.clearInterval(interval);
       return;
     }
@@ -491,12 +485,6 @@ export function patchScreenShareOpusSdp(sdp: string): string {
     }
   );
 }
-
-/**
- * Stream-id prefix marking a bundled screenshare on the voice PeerConnection,
- * so the receiver can route it without relying on m-line order.
- */
-export const BUNDLED_SCREEN_STREAM_PREFIX = "cubbly-screen-";
 
 const STUN_ONLY_SERVERS: RTCIceServer[] = STUN_FALLBACK_SERVERS;
 
@@ -882,15 +870,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const [remoteVideoStream, setRemoteVideoStream] = useState<MediaStream | null>(null);
   const localVideoStreamRef = useRef<MediaStream | null>(null);
   const videoTransceiverRef = useRef<RTCRtpTransceiver | null>(null);
-  /** v0.4.28 — pre-allocated screenshare senders on the VOICE pc (see
-   *  createPeerConnection). Used only when the peer advertises support. */
-  const bundledScreenVideoTxRef = useRef<RTCRtpTransceiver | null>(null);
-  const bundledScreenAudioTxRef = useRef<RTCRtpTransceiver | null>(null);
-  /** Whether the remote peer can receive a bundled share. Defaults to false so
-   *  a peer that never advertises it keeps the separate-PC path. */
-  const peerSupportsBundledShareRef = useRef(false);
-  /** True while OUR share is riding on the voice PC rather than its own. */
-  const bundledShareActiveRef = useRef(false);
 
   const iceServersRef = useRef<RTCIceServer[]>(STUN_ONLY_SERVERS);
   const pcRef = useRef<RTCPeerConnection | null>(null);
@@ -1424,48 +1403,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       const remote = event.streams[0] || new MediaStream([event.track]);
       console.log(`[Voice] 🎵 ontrack: kind=${event.track.kind}, label=${event.track.label}, enabled=${event.track.enabled}, hasStream=${!!event.streams[0]}`);
 
-      // v0.4.28 — a bundled screenshare arrives on THIS connection now, so
-      // video is no longer automatically the camera. Route by the labelled
-      // stream id (order-independent, unlike m-line position). Without this a
-      // bundled share renders as the peer's webcam.
-      const isBundledScreen = typeof remote?.id === "string"
-        && remote.id.startsWith(BUNDLED_SCREEN_STREAM_PREFIX);
-      if (isBundledScreen) {
-        try { (event.receiver as any).playoutDelayHint = 0.05; } catch { /* ignore */ }
-        try { (event.receiver as any).jitterBufferTarget = 50; } catch { /* ignore */ }
-        if (event.track.kind === "audio") {
-          // Share audio: reuse the same element/gain plumbing the separate-PC
-          // path uses, so per-peer volume and deafen behave identically.
-          const peerUserId = peerIdRef.current;
-          if (peerUserId) {
-            let el = document.querySelector<HTMLAudioElement>(
-              `audio[data-cubbly-peer="${peerUserId}"][data-cubbly-kind="screen"]`,
-            );
-            const isNew = !el;
-            if (!el) {
-              el = document.createElement("audio");
-              (el as any).__cubblyRemote = true;
-              document.body.appendChild(el);
-            }
-            el.srcObject = remote;
-            if (isNew) armRemoteAudio(el, { volume: settings.outputVolume / 100 });
-            else el.play().catch(() => {});
-            attachPeerGain(peerUserId, remote, el, "screen");
-          }
-          return;
-        }
-        // A pre-allocated transceiver with no track yet still fires ontrack in
-        // some Chromium versions; only surface the stream once it can produce
-        // frames, otherwise the viewer opens on a permanently black rectangle.
-        const publish = () => setRemoteScreenStream(remote);
-        if (!event.track.muted) publish();
-        event.track.addEventListener("unmute", publish);
-        event.track.addEventListener("ended", () => setRemoteScreenStream(null));
-        return;
-      }
-
       if (isVideo) {
-        // Camera video. (A bundled screenshare was routed above.)
+        // The main PC carries the camera video — screen share uses a separate PC (screenPcRef)
         setRemoteVideoStream(remote);
         event.track.onended = () => setRemoteVideoStream(null);
         // When a peer enables camera AFTER initial connect, the track arrives
@@ -1650,40 +1589,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     } catch (e) {
       console.warn("[Voice] Failed to add video transceiver:", e);
       videoTransceiverRef.current = null;
-    }
-
-    // ── v0.4.28: pre-allocated SCREENSHARE transceivers on the voice PC ──────
-    //
-    // Screenshare currently runs on its own RTCPeerConnection, which means two
-    // independent congestion controllers competing for one uplink with nothing
-    // arbitrating between them — that is why starting a share spikes call ping.
-    // Putting the share on THIS connection gives both a single bandwidth
-    // estimate.
-    //
-    // Pre-allocated rather than renegotiated, deliberately. The obvious
-    // approach — add tracks when a share starts, then createOffer — is unsafe
-    // on this path: the peer's `offer` handler has several branches, and a
-    // renegotiation offer arriving while their `pc` is momentarily null (which
-    // happens during a rejoin) lands on the incoming-call branch and rings them
-    // mid-conversation. The DM path also has no polite-peer glare handling, so
-    // two peers sharing at once could deadlock negotiation.
-    //
-    // So we mirror what the camera already does: allocate the m-lines up front
-    // and swap tracks in with replaceTrack. No renegotiation, no glare, no
-    // phantom rings.
-    //
-    // The outbound stream carries a labelled id so the receiver can tell screen
-    // from camera without depending on m-line ordering — the same mechanism
-    // GroupCallContext already uses.
-    try {
-      const label = new MediaStream();
-      Object.defineProperty(label, "id", { value: `${BUNDLED_SCREEN_STREAM_PREFIX}${user?.id ?? "self"}` });
-      bundledScreenVideoTxRef.current = pc.addTransceiver("video", { direction: "sendrecv", streams: [label] });
-      bundledScreenAudioTxRef.current = pc.addTransceiver("audio", { direction: "sendrecv", streams: [label] });
-    } catch (e) {
-      console.warn("[Voice] Failed to pre-allocate bundled screenshare transceivers:", e);
-      bundledScreenVideoTxRef.current = null;
-      bundledScreenAudioTxRef.current = null;
     }
 
     pcRef.current = pc;
@@ -1926,7 +1831,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       console.log("[Voice] 🔁 PC already exists — re-broadcasting pending offer for late joiner");
       await sendSignalReliably(channel, {
         type: "offer",
-        bundledShare: true,
         sdp: pendingOfferRef.current.offer,
         senderId: user.id,
         senderName: user.user_metadata?.display_name || "User",
@@ -2025,7 +1929,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
     await sendSignalReliably(channel, {
       type: "offer",
-      bundledShare: true,
       sdp: offer,
       senderId: user.id,
       senderName: user.user_metadata?.display_name || "User",
@@ -2299,7 +2202,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               console.log("[Voice] 🔁 Duplicate offer retry received — re-sending cached answer", payload.callEventId);
               await sendAnswerWithRetry(
                 channel,
-                { type: "answer", bundledShare: true, sdp: cachedAnswer.answer, senderId: user.id, callEventId: cachedAnswer.callEventId },
+                { type: "answer", sdp: cachedAnswer.answer, senderId: user.id, callEventId: cachedAnswer.callEventId },
                 () => pcRef.current,
                 "answer(duplicate-offer)",
               );
@@ -2386,7 +2289,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               sdp = setHighQualityOpus(sdp);
               answer.sdp = sdp;
               await pc.setLocalDescription(answer);
-              await sendSignalReliably(channel, { type: "answer", bundledShare: true, sdp: answer, senderId: user.id, callEventId: payload.callEventId || currentCallEventIdRef.current }, "answer(re-offer)");
+              await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id, callEventId: payload.callEventId || currentCallEventIdRef.current }, "answer(re-offer)");
               if (offerDedupeKey) {
                 const evtId = payload.callEventId || currentCallEventIdRef.current;
                 if (evtId) lastAnswerRef.current = { offerKey: offerDedupeKey, callEventId: evtId, answer };
@@ -2411,7 +2314,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
               await sendAnswerWithRetry(
                 channel,
-                { type: "answer", bundledShare: true, sdp: answer, senderId: user.id, callEventId: payload.callEventId || currentCallEventIdRef.current },
+                { type: "answer", sdp: answer, senderId: user.id, callEventId: payload.callEventId || currentCallEventIdRef.current },
                 () => pcRef.current,
                 "answer(accepted-offer)",
               );
@@ -2501,7 +2404,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
               await sendAnswerWithRetry(
                 channel,
-                { type: "answer", bundledShare: true, sdp: answer, senderId: user.id, callEventId: payload.callEventId || currentCallEventIdRef.current },
+                { type: "answer", sdp: answer, senderId: user.id, callEventId: payload.callEventId || currentCallEventIdRef.current },
                 () => pcRef.current,
                 "answer(rejoin)",
               );
@@ -2543,12 +2446,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             callEventId: payload.callEventId,
           });
           return;
-        }
-
-        // v0.4.28 — remember whether the peer can receive a bundled share.
-        // Absent flag => older client => keep the separate-PC path.
-        if (payload.type === "offer" || payload.type === "answer") {
-          peerSupportsBundledShareRef.current = payload.bundledShare === true;
         }
 
         if (payload.type === "answer" && pc) {
@@ -2668,15 +2565,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           outgoingCallMetaRef.current = null;
           peerAcceptedCallEventRef.current = null;
           shouldOfferForCallRef.current = true;
-          // v0.4.28 — the voice PC just closed, so the pre-allocated bundled
-          // transceivers on it are dead. Clear them and the peer-capability
-          // flag: the rejoiner may be an older client, and a stale `true` here
-          // would let a share bundle onto a connection they cannot route.
-          // createPeerConnection re-allocates them for the new PC.
-          bundledShareActiveRef.current = false;
-          bundledScreenVideoTxRef.current = null;
-          bundledScreenAudioTxRef.current = null;
-          peerSupportsBundledShareRef.current = false;
           outgoingCandidateBuffer.current = [];
           incomingCandidateQueue.current = [];
           remoteDescriptionSet.current = false;
@@ -2880,17 +2768,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           } catch (e) {
             console.error("Failed to add screen ICE candidate:", e);
           }
-          return;
-        }
-
-        // v0.4.28 — peer's share is on the voice connection. The tracks arrive
-        // through that PC's ontrack; these notices only bound the UI state so a
-        // viewer isn't left on a dead frame after they stop.
-        if (payload.type === "screen-bundled-start") {
-          return;
-        }
-        if (payload.type === "screen-bundled-stop") {
-          setRemoteScreenStream(null);
           return;
         }
 
@@ -3399,7 +3276,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           console.log("[acceptDiag] accept.fastpath.answered", acceptedCall.callEventId);
           await sendAnswerWithRetry(
             channel,
-            { type: "answer", bundledShare: true, sdp: answer, senderId: user.id, callEventId: acceptedCall.callEventId },
+            { type: "answer", sdp: answer, senderId: user.id, callEventId: acceptedCall.callEventId },
             () => pcRef.current,
             "answer(accept-direct)",
           );
@@ -3853,61 +3730,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
 
-      const videoTrackForShare = stream.getVideoTracks()[0];
-      const audioTracksForShare = stream.getAudioTracks();
-
-      // ── v0.4.28: BUNDLED PATH ────────────────────────────────────────────
-      // If the peer can receive it, put the share on the voice connection so
-      // both share one bandwidth estimate instead of two congestion
-      // controllers fighting over the uplink. The transceivers were allocated
-      // when the PC was built, so this is a track swap — no renegotiation.
-      const voicePc = pcRef.current;
-      const bundleVideoTx = bundledScreenVideoTxRef.current;
-      if (
-        peerSupportsBundledShareRef.current &&
-        voicePc && voicePc.connectionState !== "closed" &&
-        bundleVideoTx
-      ) {
-        console.log("[Voice] 🎯 bundling screenshare onto the voice connection (shared bandwidth estimate)");
-        await bundleVideoTx.sender.replaceTrack(videoTrackForShare);
-        try { bundleVideoTx.direction = "sendrecv"; } catch { /* ignore */ }
-        const bundleAudioTx = bundledScreenAudioTxRef.current;
-        if (bundleAudioTx && audioTracksForShare[0]) {
-          await bundleAudioTx.sender.replaceTrack(audioTracksForShare[0]);
-          try { bundleAudioTx.direction = "sendrecv"; } catch { /* ignore */ }
-          void applyScreenAudioBitrate(bundleAudioTx.sender);
-        }
-        bundledShareActiveRef.current = true;
-
-        const bundledSender = bundleVideoTx.sender;
-        void applyScreenBitrate(bundledSender, maxBitrate, encodingOpts);
-        logScreenEncoderImplementation(voicePc, "Voice", bundledSender);
-        screenEncodingCleanupRef.current?.();
-        screenEncodingCleanupRef.current = startAutomaticScreenEncoding(bundledSender, voicePc, {
-          targetBitrate: maxBitrate,
-          targetFps: fpsCap,
-          targetHeight,
-          baseScale: scaleResolutionDownBy,
-          // Same connection now, so there is no separate voice PC to weigh
-          // against — one estimate covers both.
-          voicePc: null,
-          track: videoTrackForShare,
-          getNativeCaptureFps: () => nativeLiveFpsRef.current?.() ?? null,
-        });
-
-        videoTrackForShare.onended = () => { stopScreenShareRef.current(); };
-        audioTracksForShare.forEach((t) => { t.onended = () => { stopScreenShareRef.current(); }; });
-
-        // Tell the peer to expect it on the voice connection rather than
-        // waiting for a screen-offer that will never come.
-        if (channelRef.current) {
-          void sendSignalReliably(channelRef.current, {
-            type: "screen-bundled-start", senderId: user.id,
-          }, "screen-bundled-start");
-        }
-        return;
-      }
-
       // Normal call: send via signaling channel. Without a channel there is no
       // way to publish the share, so throw into the catch below instead of
       // returning — a bare return left the capture running and the UI stuck in
@@ -3925,8 +3747,8 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       const screenPc = new RTCPeerConnection({ iceServers: iceServersRef.current });
       screenPcOutRef.current = screenPc;
 
-      const videoTrack = videoTrackForShare;
-      const audioTracks = audioTracksForShare;
+      const videoTrack = stream.getVideoTracks()[0];
+      const audioTracks = stream.getAudioTracks();
 
       // v0.4.27 — SINGLE layer. A 1:1 DM call is peer-to-peer with no SFU, so
       // the extra simulcast layers had nothing to select them: pure wasted
@@ -4099,21 +3921,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       screenLoopbackPcRef.current = null;
     }
 
-    // v0.4.28 — if the share was riding on the voice connection, detach the
-    // tracks instead of closing anything: that PC is the CALL. replaceTrack(null)
-    // leaves the m-lines in place for the next share, still without
-    // renegotiation.
-    if (bundledShareActiveRef.current) {
-      bundledShareActiveRef.current = false;
-      void bundledScreenVideoTxRef.current?.sender.replaceTrack(null).catch(() => {});
-      void bundledScreenAudioTxRef.current?.sender.replaceTrack(null).catch(() => {});
-      if (channelRef.current && user) {
-        void sendSignalReliably(channelRef.current, {
-          type: "screen-bundled-stop", senderId: user.id,
-        }, "screen-bundled-stop");
-      }
-    }
-
     // Only close OUR outgoing screen PC. Incoming peer share stays untouched.
     screenPcOutRef.current?.close();
     screenPcOutRef.current = null;
@@ -4211,11 +4018,6 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     try { screenPcInRef.current?.close(); } catch {}
     screenPcInRef.current = null;
     lastScreenAnswerRef.current = null;
-    // Bundled senders die with the voice PC; just clear the flags.
-    bundledShareActiveRef.current = false;
-    bundledScreenVideoTxRef.current = null;
-    bundledScreenAudioTxRef.current = null;
-    peerSupportsBundledShareRef.current = false;
     pendingScreenIceRef.current.in = [];
     pendingScreenIceRef.current.out = [];
     setRemoteScreenStream(null);
@@ -4513,7 +4315,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           channelRef.current?.send({
             type: "broadcast",
             event: "voice-signal",
-            payload: { type: "offer", bundledShare: true, sdp: offer, senderId: user?.id, callerAvatarUrl: outgoingCallMetaRef.current?.callerAvatarUrl },
+            payload: { type: "offer", sdp: offer, senderId: user?.id, callerAvatarUrl: outgoingCallMetaRef.current?.callerAvatarUrl },
           });
         }
       } catch (e) {
