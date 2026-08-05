@@ -2324,10 +2324,40 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
 
 
+          // v0.4.28 — GLARE. A re-offer used to be accepted ONLY when signaling
+          // was stable; if our own offer was already outstanding the incoming
+          // one was silently dropped, and since both sides behave the same way
+          // in a collision NEITHER recovers — both sit waiting for an answer
+          // that never comes.
+          //
+          // Full Perfect Negotiation isn't warranted here: this connection has
+          // no onnegotiationneeded handler and never renegotiates on its own,
+          // so a collision needs both peers to initiate in the same instant
+          // (simultaneous call or rejoin). What it does need is a tie-break.
+          //
+          // Politeness is derived from the two user ids, so both sides compute
+          // the same answer with no extra signaling: the lower id yields. The
+          // polite peer rolls its own offer back and accepts theirs; the
+          // impolite peer ignores and its offer stands.
+          const collided = !!pc && !acceptedCall && pc.signalingState === "have-local-offer";
+          const isPolite = !!user?.id && !!payload.senderId && user.id < payload.senderId;
+          if (collided && !isPolite) {
+            console.log("[Voice] 🥊 offer glare — impolite peer, keeping our offer");
+            return;
+          }
+          if (collided && isPolite && pc) {
+            try {
+              console.log("[Voice] 🤝 offer glare — polite peer, rolling back to accept theirs");
+              await pc.setLocalDescription({ type: "rollback" } as RTCSessionDescriptionInit);
+            } catch (e) {
+              console.warn("[Voice] rollback failed, ignoring their offer:", e);
+              return;
+            }
+          }
+
           // Re-offer mid-call (e.g. peer enabled camera and renegotiated).
-          // If we already have a connected PC and signaling is stable, accept
-          // the new offer and answer it. This is the Perfect-Negotiation path
-          // that makes "turning camera on after connect" actually work.
+          // Accept and answer once signaling is stable — either it already was,
+          // or the rollback above just made it so.
           if (pc && !acceptedCall && pc.signalingState === "stable") {
             try {
               console.log("[Voice] 🔁 Re-offer received mid-call — renegotiating");
