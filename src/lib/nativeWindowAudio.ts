@@ -40,6 +40,60 @@ export function shouldResyncNativeAudio(nextStartTime: number, currentTime: numb
   return staleCapture || nextStartTime - currentTime > NATIVE_AUDIO_MAX_LEAD_SECONDS;
 }
 
+/* ──────────────────────────────────────────────────────────────────────────
+   v0.4.28 — DRIFT COMPENSATION
+
+   The WASAPI capture clock and the AudioContext clock are independent crystals.
+   They are never exactly equal, so scheduling each block at
+   `nextStartTime += buffer.duration` accumulates error in one direction for as
+   long as the share runs.
+
+   Until now the only correction was the hard resync above: let the error grow
+   to MAX_LEAD, then jump back to TARGET_LEAD. That made share-audio delay a
+   sawtooth — it climbed continuously and then snapped, audibly, every time.
+   Lowering the ceiling in 0.4.27 halved the amplitude but kept the shape.
+
+   This replaces it with a proportional correction. We measure the lead every
+   block, compare it to the target, and nudge each block's PLAYBACK RATE by a
+   fraction of a percent to walk the error back to zero. At <=0.5% the pitch
+   shift is well below the threshold of audibility (a semitone is ~6%), so the
+   correction is continuous and inaudible instead of periodic and jarring.
+
+   The hard resync remains as a backstop for real discontinuities — the capture
+   stalling, the window closing, the machine sleeping — where no rate nudge
+   could ever catch up.
+   ────────────────────────────────────────────────────────────────────────── */
+
+/** Maximum playback-rate correction. 0.5% is far below audible pitch shift. */
+export const MAX_RATE_CORRECTION = 0.005;
+/** Lead error below this is left alone — chasing it would add jitter. */
+export const RATE_DEADBAND_SECONDS = 0.008;
+/**
+ * Proportional gain: how aggressively error is converted into rate correction.
+ * Tuned so a 50ms error produces roughly half the maximum correction, which
+ * walks it out over a few seconds rather than instantly.
+ */
+export const RATE_CORRECTION_GAIN = 0.05;
+
+/**
+ * Playback rate for the next block given how far ahead of the target the
+ * schedule has drifted.
+ *
+ * @param leadSeconds how far ahead of `currentTime` the next block is queued
+ * @param targetLead  where we want that to sit
+ * @returns a rate near 1.0 — >1 plays slightly faster to burn off a lead,
+ *          <1 slightly slower to let playback catch up to a deficit.
+ */
+export function driftCorrectedRate(leadSeconds: number, targetLead = NATIVE_AUDIO_TARGET_LEAD_SECONDS): number {
+  const error = leadSeconds - targetLead;
+  if (Math.abs(error) <= RATE_DEADBAND_SECONDS) return 1;
+  const correction = Math.max(
+    -MAX_RATE_CORRECTION,
+    Math.min(MAX_RATE_CORRECTION, error * RATE_CORRECTION_GAIN),
+  );
+  return 1 + correction;
+}
+
 export async function startNativeWindowAudioStream(sourceId: string): Promise<NativeWindowAudioHandle> {
   const api = (window as any).electronAPI;
   if (!api?.startWindowAudioCapture) {
@@ -146,10 +200,21 @@ export async function startNativeWindowAudioStream(sourceId: string): Promise<Na
       } else if (nextStartTime < now) {
         nextStartTime = now + NATIVE_AUDIO_TARGET_LEAD_SECONDS;
       }
+      // Continuous drift correction: nudge this block's rate so the schedule
+      // walks back toward the target lead instead of sawtoothing between the
+      // target and the resync ceiling.
+      const lead = nextStartTime - now;
+      const rate = driftCorrectedRate(lead);
+      try { src.playbackRate.value = rate; } catch { /* ignore */ }
+      if (import.meta.env.DEV && pcmFramesReceived % 200 === 0) {
+        console.debug("[NativeWindowAudio] lead", (lead * 1000).toFixed(0) + "ms", "rate", rate.toFixed(5));
+      }
       scheduledSources.add(src);
       src.onended = () => scheduledSources.delete(src);
       src.start(nextStartTime);
-      nextStartTime += audioBuf.duration;
+      // Advance by the block's REAL duration at the corrected rate — that is
+      // what the context will actually consume.
+      nextStartTime += audioBuf.duration / rate;
     } catch (e) {
       console.warn("[NativeWindowAudio] PCM frame decode failed:", e);
     }
