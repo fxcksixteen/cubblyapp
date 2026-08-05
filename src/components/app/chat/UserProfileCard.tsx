@@ -60,7 +60,7 @@ interface WishlistEntry {
 
 const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage, startExpanded = false }: UserProfileCardProps) => {
   const { user, onlineUserIds } = useAuth();
-  const { getActivity, getActivityDetails } = useActivity();
+  const { getActivity, getActivityDetailsFor } = useActivity();
   const navigate = useNavigate();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [friendshipStatus, setFriendshipStatus] = useState<string | null>(null);
@@ -73,7 +73,8 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
   const effectiveStatus = getEffectivePresenceStatus(userId, profile?.status, onlineUserIds);
   const isUserOnline = isOwnProfile || userId === "00000000-0000-0000-0000-000000000001" || onlineUserIds.has(userId);
   const userActivity = getActivity(userId);
-  const userActivityDetails = getActivityDetails(userId);
+  // Guarded: only use details whose game_key matches THIS activity.
+  const userActivityDetails = getActivityDetailsFor(userId, userActivity?.name);
   const userActivityLabel = activityLabel(userActivity, isUserOnline);
   const customStatus = useCustomStatus(userId);
 

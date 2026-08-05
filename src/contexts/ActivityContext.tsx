@@ -13,6 +13,37 @@ export interface UserActivity {
   privacy_visible: boolean;
 }
 
+/**
+ * v0.4.28 — does this details row actually belong to the activity being shown?
+ *
+ * `activity_details` rows are keyed (user_id, game_key), but the lookup map is
+ * keyed by user alone. Without this check a leftover row from the last game
+ * renders under whatever the user is doing NOW — which is exactly how launching
+ * Steam after a Valorant session ended up displaying "In match".
+ *
+ * Deliberately an explicit table rather than fuzzy matching: a wrong match here
+ * shows a stranger's game details on the wrong activity, so unknown keys fail
+ * closed and simply render no details.
+ */
+const GAME_KEY_ALIASES: Record<string, string[]> = {
+  "lol": ["league of legends", "leagueclient", "league"],
+  "valorant": ["valorant"],
+  "marvel-rivals": ["marvel rivals", "marvelrivals", "marvel"],
+  "fortnite": ["fortnite"],
+  "roblox": ["roblox", "robloxplayer", "robloxstudio"],
+};
+
+export function detailsMatchActivity(
+  gameKey: string | null | undefined,
+  activityName: string | null | undefined,
+): boolean {
+  if (!gameKey || !activityName) return false;
+  const aliases = GAME_KEY_ALIASES[gameKey.toLowerCase()];
+  if (!aliases) return false; // unknown key -> fail closed
+  const name = activityName.toLowerCase();
+  return aliases.some((a) => name.includes(a));
+}
+
 /** Rich per-game presence payload (Phase 6). Lives in `activity_details`. */
 export interface ActivityDetails {
   user_id: string;
@@ -29,6 +60,8 @@ interface ActivityContextType {
   /** Get activity for a specific user */
   getActivity: (userId: string) => UserActivity | undefined;
   getActivityDetails: (userId: string) => ActivityDetails | undefined;
+  /** Details ONLY if the stored game_key matches the activity being rendered. */
+  getActivityDetailsFor: (userId: string, activityName: string | null | undefined) => ActivityDetails | undefined;
   /** My current activity sharing toggle (controls broadcasting + visibility to others) */
   shareActivity: boolean;
   setShareActivity: (enabled: boolean) => Promise<void>;
@@ -44,6 +77,7 @@ const ActivityContext = createContext<ActivityContextType>({
   activityDetails: new Map(),
   getActivity: () => undefined,
   getActivityDetails: () => undefined,
+  getActivityDetailsFor: () => undefined,
   shareActivity: true,
   setShareActivity: async () => {},
   myGames: [],
@@ -142,8 +176,14 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
     const fetchAllDetails = async () => {
       const { data } = await supabase.from("activity_details").select("*");
       if (!data) return;
+      // Keep only the newest row per user. A user can legitimately have rows
+      // for several game_keys; consumers must still verify the key matches the
+      // activity being rendered (see detailsMatchActivity).
       const map = new Map<string, ActivityDetails>();
-      data.forEach((d: any) => map.set(d.user_id, d));
+      data.forEach((d: any) => {
+        const prev = map.get(d.user_id);
+        if (!prev || String(d.updated_at) > String(prev.updated_at)) map.set(d.user_id, d);
+      });
       setActivityDetails(map);
     };
     fetchAllDetails();
@@ -276,10 +316,16 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
                     { onConflict: "user_id,game_key" },
                   );
                 }
-              } else if (isRoblox) {
-                // No usable parse → we cannot claim they're in an experience.
-                // Roblox running with no fresh join logs means the launcher.
-                effective = { ...detected, type: "software" };
+              } else {
+                // v0.4.28 — no parser matched, or it honestly reported "I don't
+                // know". Either way we must CLEAR any details row we wrote
+                // earlier, otherwise the last game's payload keeps rendering
+                // under whatever the user is doing now. This is why launching
+                // Steam after a session of Valorant showed "In match".
+                if (isRoblox) {
+                  // Roblox running with no fresh join logs means the launcher.
+                  effective = { ...detected, type: "software" };
+                }
                 if (lastDetailsKeyRef.current !== null) {
                   lastDetailsKeyRef.current = null;
                   await supabase.from("activity_details").delete().eq("user_id", user.id);
@@ -437,6 +483,10 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
         activityDetails,
         getActivity: (userId: string) => activities.get(userId),
         getActivityDetails: (userId: string) => activityDetails.get(userId),
+        getActivityDetailsFor: (userId: string, activityName: string | null | undefined) => {
+          const d = activityDetails.get(userId);
+          return d && detailsMatchActivity(d.game_key, activityName) ? d : undefined;
+        },
         shareActivity,
         setShareActivity,
         myGames,

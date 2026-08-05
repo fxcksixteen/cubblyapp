@@ -15,12 +15,13 @@ const isElectron = typeof window !== "undefined" && (window as any).electronAPI?
 
 const SidebarActivityCard = () => {
   const { user } = useAuth();
-  const { getActivity, getActivityDetails, shareActivity } = useActivity();
+  const { getActivity, getActivityDetailsFor, shareActivity } = useActivity();
 
   if (!user || !isElectron || !shareActivity) return null;
   const act = getActivity(user.id);
   if (!act?.name) return null;
-  const det = getActivityDetails(user.id);
+  // Guarded: only use details whose game_key matches THIS activity.
+  const det = getActivityDetailsFor(user.id, act.name);
 
   const isSoftware = act.details === "software" || act.activity_type === "using";
 

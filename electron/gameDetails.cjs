@@ -6,6 +6,15 @@
  * if a parser fails, callers simply get no rich details and the activity
  * stays as a plain "Playing X" card. NEVER throw out of here, and NEVER
  * spawn long-running children — this gets called once per activity tick.
+ *
+ * HARD RULE (v0.4.28): a parser that cannot read or understand its log returns
+ * NULL. It must never invent a status.
+ *
+ * Every parser used to `return { status: "In match" }` on that path — i.e. it
+ * claimed the player was in a match at exactly the moment it knew nothing at
+ * all. Those payloads were invisible until v0.4.27 fixed the upsert that had
+ * been silently rejecting every write; the moment writes started working, the
+ * lie surfaced as "In match" under every activity, including Steam.
  */
 const fs = require("fs");
 const path = require("path");
@@ -231,7 +240,7 @@ function parseValorant() {
     "VALORANT", "Saved", "Logs", "ShooterGame.log",
   );
   const tail = tailFile(logPath, 128 * 1024);
-  if (!tail) { console.log("[game-details] valorant: no log at", logPath); return { status: "In match" }; }
+  if (!tail) { console.log("[game-details] valorant: no log at", logPath); return null; }
   // Try to grab the most recent map + queue + score lines. Riot changes these
   // formats between patches, so try multiple variants.
   const mapMatch =
@@ -246,8 +255,8 @@ function parseValorant() {
     [...tail.matchAll(/CharacterID[:=\s"']+([A-Za-z_0-9]+)/g)].pop();
   const scoreMatch = [...tail.matchAll(/RoundResultsScore[^0-9-]*([0-9]+)[^0-9]+([0-9]+)/g)].pop();
   if (!mapMatch && !queueMatch && !agentMatch && !scoreMatch) {
-    console.log("[game-details] valorant: log found but no matches — publishing minimal payload");
-    return { status: "In match" };
+    console.log("[game-details] valorant: log found but nothing parseable — no details");
+    return null;
   }
   return {
     map: mapMatch?.[1] ?? null,
@@ -274,9 +283,9 @@ function parseMarvelRivals() {
     logPath = preferred || newestFileIn(base, (n) => n.endsWith(".log"));
     if (logPath) break;
   }
-  if (!logPath) { console.log("[game-details] marvel-rivals: no log directory found"); return { status: "In match" }; }
+  if (!logPath) { console.log("[game-details] marvel-rivals: no log directory found"); return null; }
   const tail = tailFile(logPath, 96 * 1024);
-  if (!tail) return { status: "In match" };
+  if (!tail) return null;
 
   const mapMatch =
     [...tail.matchAll(/LoadLevel.*?Maps\/[^\/]+\/([A-Za-z_0-9]+)/g)].pop() ||
@@ -288,8 +297,8 @@ function parseMarvelRivals() {
     [...tail.matchAll(/GameMode[:=]\s*([A-Za-z_0-9]+)/g)].pop() ||
     [...tail.matchAll(/MatchType[:=\s"']+([A-Za-z_0-9]+)/g)].pop();
   if (!mapMatch && !heroMatch && !modeMatch) {
-    console.log("[game-details] marvel-rivals: log found but no matches — publishing minimal payload");
-    return { status: "In match" };
+    console.log("[game-details] marvel-rivals: log found but nothing parseable — no details");
+    return null;
   }
 
   return {
@@ -307,7 +316,7 @@ function parseFortnite() {
     "FortniteGame", "Saved", "Logs", "FortniteGame.log",
   );
   const tail = tailFile(logPath, 96 * 1024);
-  if (!tail) { console.log("[game-details] fortnite: no log at", logPath); return { status: "In match" }; }
+  if (!tail) { console.log("[game-details] fortnite: no log at", logPath); return null; }
   const playlistMatch =
     [...tail.matchAll(/Playlist[:=]\s*([A-Za-z_0-9]+)/g)].pop() ||
     [...tail.matchAll(/PlaylistName[:=\s"']+([A-Za-z_0-9]+)/g)].pop() ||
@@ -319,8 +328,8 @@ function parseFortnite() {
     [...tail.matchAll(/PlayerKills[:=]\s*(\d+)/g)].pop() ||
     [...tail.matchAll(/TeamKills[:=\s"']+(\d+)/g)].pop();
   if (!playlistMatch && !placementMatch && !killsMatch) {
-    console.log("[game-details] fortnite: log found but no matches — publishing minimal payload");
-    return { status: "In match" };
+    console.log("[game-details] fortnite: log found but nothing parseable — no details");
+    return null;
   }
 
   return {
