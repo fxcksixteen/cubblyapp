@@ -249,7 +249,13 @@ export function startAutomaticScreenEncoding(
   const classifier = createContentClassifier("mixed");
   let profile = profileFor(classifier.current, target.targetFps);
   let degradation: RTCDegradationPreference = target.degradationPreference ?? profile.degradationPreference;
-  let fpsTarget = Math.min(target.targetFps, profile.maxFps);
+  // IMPORTANT: do NOT apply the starting class's fps cap before anything has
+  // been measured. The opening class is "mixed", whose cap is 30 — applying it
+  // up front meant every game share opened at 30fps and only reached the
+  // user's 60 once the classifier had confirmed motion a few samples later.
+  // Balanced degradation is a safe opening posture; a reduced frame rate is
+  // not. The cap starts applying from the first real classification.
+  let fpsTarget = target.targetFps;
   const applyContentProfile = (cls: ScreenContentClass) => {
     profile = profileFor(cls, target.targetFps);
     degradation = profile.degradationPreference;
@@ -302,6 +308,8 @@ export function startAutomaticScreenEncoding(
         : null;
       let loss = 0;
       let fps = target.targetFps;
+      // Whether `fps` above is a real measurement or still the requested value.
+      let fpsMeasured = false;
       let cpuLimited = false;
       let bandwidthLimited = false;
       let rttMs = 0;
@@ -319,7 +327,7 @@ export function startAutomaticScreenEncoding(
           if (typeof report.roundTripTime === "number") rttMs = report.roundTripTime * 1000;
         }
         if (report.type === "outbound-rtp" && report.kind === "video") {
-          fps = report.framesPerSecond ?? fps;
+          if (typeof report.framesPerSecond === "number") { fps = report.framesPerSecond; fpsMeasured = true; }
           const id = String(report.id ?? report.ssrc ?? "0");
           const frames = report.framesEncoded ?? 0;
           const encodeTime = report.totalEncodeTime ?? 0;
@@ -360,9 +368,17 @@ export function startAutomaticScreenEncoding(
       // Prefer the native capture rate (WGC emits only on content change, so it
       // IS the content-activity signal); fall back to the encoder's own fps.
       const nativeFps = target.getNativeCaptureFps?.() ?? null;
-      const observedFps = nativeFps != null && nativeFps >= 0 ? nativeFps : fps;
-      const switched = classifier.observe(observedFps);
-      if (switched) { applyContentProfile(switched); force = true; }
+      const observedFps = nativeFps != null && nativeFps >= 0
+        ? nativeFps
+        : (fpsMeasured ? fps : null);
+      // Never classify on a guess. Until a real measurement exists the
+      // classifier is not fed at all, so it holds its starting class instead of
+      // reading the REQUESTED frame rate as though the content were moving that
+      // fast — which classified every share as full motion for its first ticks.
+      if (observedFps != null) {
+        const switched = classifier.observe(observedFps);
+        if (switched) { applyContentProfile(switched); force = true; }
+      }
 
       const now = Date.now();
       const cooling = now - lastAdjustAt < COOLDOWN_MS;

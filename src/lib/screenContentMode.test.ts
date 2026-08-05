@@ -101,3 +101,24 @@ describe("createContentClassifier", () => {
     expect(changed).toBe("motion"); // no cooldown wait on the first decision
   });
 });
+
+describe("startup behaviour (bug-hunt regressions)", () => {
+  it("the opening class must not be an extreme", () => {
+    // Opening on "static" would make a game a slideshow for its first seconds;
+    // opening on "motion" would smear a document. Mixed is the safe middle.
+    const c = createContentClassifier();
+    expect(c.current).toBe("mixed");
+  });
+
+  it("mixed's fps cap is below a typical game target — hence the startup guard", () => {
+    // This is the value that must NOT be applied before anything is measured
+    // (see the fpsTarget comment in startAutomaticScreenEncoding).
+    expect(profileFor("mixed", 60).maxFps).toBeLessThan(60);
+  });
+
+  it("a classifier fed nothing holds its class rather than drifting", () => {
+    const c = createContentClassifier("motion");
+    expect(c.sampleCount).toBe(0);
+    expect(c.current).toBe("motion");
+  });
+});
