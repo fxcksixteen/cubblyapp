@@ -22,7 +22,7 @@ import SharedNoteMessage, { parseSharedNote } from "./chat/SharedNoteMessage";
 import GroupMembersPanel from "./GroupMembersPanel";
 import { extractFirstUrl } from "@/lib/linkify";
 import { renderMessageBody } from "@/lib/renderMessageBody";
-import { serializeMentions, stripMentionTokens } from "@/lib/mentions";
+import { serializeMentions, stripMentionTokens, EVERYONE_SENTINEL } from "@/lib/mentions";
 import { Button } from "@/components/ui/button";
 import sendIcon from "@/assets/icons/send.svg";
 import folderFileIcon from "@/assets/icons/folder-file.svg";
@@ -184,8 +184,14 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
     if (recipientUserId && !seen.has(recipientUserId) && recipientUserId !== user?.id) {
       out.unshift({ userId: recipientUserId, name: recipientName, avatarUrl: recipientAvatar ?? null });
     }
+    // v0.4.28 — @everyone, GROUPS ONLY. In a 1:1 DM "everyone" is just the
+    // other person, so offering it there would be noise. Pinned to the top:
+    // it's the one entry people go looking for.
+    if (conversation?.is_group) {
+      out.unshift({ userId: EVERYONE_SENTINEL, name: "everyone", avatarUrl: null });
+    }
     return out;
-  }, [messages, recipientUserId, recipientName, recipientAvatar, user?.id]);
+  }, [messages, recipientUserId, recipientName, recipientAvatar, user?.id, conversation?.is_group]);
 
   const { match: mentionMatch, filtered: mentionFiltered } = useMentionAutocomplete({
     value: input,

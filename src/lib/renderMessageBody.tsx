@@ -1,6 +1,6 @@
 import React from "react";
 import { linkifyText } from "@/lib/linkify";
-import { MENTION_REGEX_SOURCE } from "@/lib/mentions";
+import { ANY_MENTION_REGEX_SOURCE } from "@/lib/mentions";
 
 export interface MentionResolver {
   /** Returns the display name to show inside `@Name` chips. */
@@ -24,7 +24,7 @@ export function renderMessageBody(
   resolver: MentionResolver,
 ): React.ReactNode[] {
   if (!text) return [];
-  const re = new RegExp(MENTION_REGEX_SOURCE, "g");
+  const re = new RegExp(ANY_MENTION_REGEX_SOURCE, "g");
   const out: React.ReactNode[] = [];
   let last = 0;
   let m: RegExpExecArray | null;
@@ -32,6 +32,23 @@ export function renderMessageBody(
   while ((m = re.exec(text)) !== null) {
     if (m.index > last) {
       out.push(<React.Fragment key={`t-${key++}`}>{linkifyText(text.slice(last, m.index))}</React.Fragment>);
+    }
+    // m[1] is only set for <@uuid>; @everyone matches the alternation with no
+    // capture group, which is how we tell the two apart.
+    const isEveryone = m[1] === undefined;
+    if (isEveryone) {
+      // Highlighted like a self-mention: @everyone always includes the reader.
+      out.push(
+        <span
+          key={`m-${key++}`}
+          className="inline-flex items-center rounded px-1 py-0.5 font-medium"
+          style={{ backgroundColor: "rgba(250, 166, 26, 0.20)", color: "#faa61a" }}
+        >
+          @everyone
+        </span>,
+      );
+      last = m.index + m[0].length;
+      continue;
     }
     const uid = m[1].toLowerCase();
     const name = resolver.resolve(uid) || "user";

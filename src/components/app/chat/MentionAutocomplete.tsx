@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getProfileColor } from "@/lib/profileColors";
+import { EVERYONE_SENTINEL } from "@/lib/mentions";
 
 export interface MentionCandidate {
   userId: string;
@@ -110,7 +111,17 @@ export const MentionPopup = ({ filtered, activeIndex, onSelect, setActiveIndex }
               color: "var(--app-text-primary, #dbdee1)",
             }}
           >
-            {c.avatarUrl ? (
+            {c.userId === EVERYONE_SENTINEL ? (
+              // @everyone isn't a person — give it its own mark so it reads as
+              // "notify the whole group" rather than a member called everyone.
+              <div
+                className="flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold"
+                style={{ backgroundColor: "rgba(250,166,26,0.22)", color: "#faa61a" }}
+                aria-hidden
+              >
+                @
+              </div>
+            ) : c.avatarUrl ? (
               <img src={c.avatarUrl} alt={c.name} className="h-6 w-6 rounded-full object-cover" />
             ) : (
               <div
@@ -121,6 +132,11 @@ export const MentionPopup = ({ filtered, activeIndex, onSelect, setActiveIndex }
               </div>
             )}
             <span className="truncate">{c.name}</span>
+            {c.userId === EVERYONE_SENTINEL && (
+              <span className="ml-auto shrink-0 text-[10px]" style={{ color: "var(--app-text-secondary, #949ba4)" }}>
+                Notifies the whole group
+              </span>
+            )}
           </button>
         );
       })}
