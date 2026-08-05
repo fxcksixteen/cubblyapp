@@ -486,6 +486,12 @@ export function patchScreenShareOpusSdp(sdp: string): string {
   );
 }
 
+/**
+ * Stream-id prefix marking a bundled screenshare on the voice PeerConnection,
+ * so the receiver can route it without relying on m-line order.
+ */
+export const BUNDLED_SCREEN_STREAM_PREFIX = "cubbly-screen-";
+
 const STUN_ONLY_SERVERS: RTCIceServer[] = STUN_FALLBACK_SERVERS;
 
 /**
@@ -870,6 +876,13 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const [remoteVideoStream, setRemoteVideoStream] = useState<MediaStream | null>(null);
   const localVideoStreamRef = useRef<MediaStream | null>(null);
   const videoTransceiverRef = useRef<RTCRtpTransceiver | null>(null);
+  /** v0.4.28 — pre-allocated screenshare senders on the VOICE pc (see
+   *  createPeerConnection). Used only when the peer advertises support. */
+  const bundledScreenVideoTxRef = useRef<RTCRtpTransceiver | null>(null);
+  const bundledScreenAudioTxRef = useRef<RTCRtpTransceiver | null>(null);
+  /** Whether the remote peer can receive a bundled share. Defaults to false so
+   *  a peer that never advertises it keeps the separate-PC path. */
+  const peerSupportsBundledShareRef = useRef(false);
 
   const iceServersRef = useRef<RTCIceServer[]>(STUN_ONLY_SERVERS);
   const pcRef = useRef<RTCPeerConnection | null>(null);
@@ -1403,8 +1416,48 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       const remote = event.streams[0] || new MediaStream([event.track]);
       console.log(`[Voice] 🎵 ontrack: kind=${event.track.kind}, label=${event.track.label}, enabled=${event.track.enabled}, hasStream=${!!event.streams[0]}`);
 
+      // v0.4.28 — a bundled screenshare arrives on THIS connection now, so
+      // video is no longer automatically the camera. Route by the labelled
+      // stream id (order-independent, unlike m-line position). Without this a
+      // bundled share renders as the peer's webcam.
+      const isBundledScreen = typeof remote?.id === "string"
+        && remote.id.startsWith(BUNDLED_SCREEN_STREAM_PREFIX);
+      if (isBundledScreen) {
+        try { (event.receiver as any).playoutDelayHint = 0.05; } catch { /* ignore */ }
+        try { (event.receiver as any).jitterBufferTarget = 50; } catch { /* ignore */ }
+        if (event.track.kind === "audio") {
+          // Share audio: reuse the same element/gain plumbing the separate-PC
+          // path uses, so per-peer volume and deafen behave identically.
+          const peerUserId = peerIdRef.current;
+          if (peerUserId) {
+            let el = document.querySelector<HTMLAudioElement>(
+              `audio[data-cubbly-peer="${peerUserId}"][data-cubbly-kind="screen"]`,
+            );
+            const isNew = !el;
+            if (!el) {
+              el = document.createElement("audio");
+              (el as any).__cubblyRemote = true;
+              document.body.appendChild(el);
+            }
+            el.srcObject = remote;
+            if (isNew) armRemoteAudio(el, { volume: settings.outputVolume / 100 });
+            else el.play().catch(() => {});
+            attachPeerGain(peerUserId, remote, el, "screen");
+          }
+          return;
+        }
+        // A pre-allocated transceiver with no track yet still fires ontrack in
+        // some Chromium versions; only surface the stream once it can produce
+        // frames, otherwise the viewer opens on a permanently black rectangle.
+        const publish = () => setRemoteScreenStream(remote);
+        if (!event.track.muted) publish();
+        event.track.addEventListener("unmute", publish);
+        event.track.addEventListener("ended", () => setRemoteScreenStream(null));
+        return;
+      }
+
       if (isVideo) {
-        // The main PC carries the camera video — screen share uses a separate PC (screenPcRef)
+        // Camera video. (A bundled screenshare was routed above.)
         setRemoteVideoStream(remote);
         event.track.onended = () => setRemoteVideoStream(null);
         // When a peer enables camera AFTER initial connect, the track arrives
@@ -1589,6 +1642,40 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     } catch (e) {
       console.warn("[Voice] Failed to add video transceiver:", e);
       videoTransceiverRef.current = null;
+    }
+
+    // ── v0.4.28: pre-allocated SCREENSHARE transceivers on the voice PC ──────
+    //
+    // Screenshare currently runs on its own RTCPeerConnection, which means two
+    // independent congestion controllers competing for one uplink with nothing
+    // arbitrating between them — that is why starting a share spikes call ping.
+    // Putting the share on THIS connection gives both a single bandwidth
+    // estimate.
+    //
+    // Pre-allocated rather than renegotiated, deliberately. The obvious
+    // approach — add tracks when a share starts, then createOffer — is unsafe
+    // on this path: the peer's `offer` handler has several branches, and a
+    // renegotiation offer arriving while their `pc` is momentarily null (which
+    // happens during a rejoin) lands on the incoming-call branch and rings them
+    // mid-conversation. The DM path also has no polite-peer glare handling, so
+    // two peers sharing at once could deadlock negotiation.
+    //
+    // So we mirror what the camera already does: allocate the m-lines up front
+    // and swap tracks in with replaceTrack. No renegotiation, no glare, no
+    // phantom rings.
+    //
+    // The outbound stream carries a labelled id so the receiver can tell screen
+    // from camera without depending on m-line ordering — the same mechanism
+    // GroupCallContext already uses.
+    try {
+      const label = new MediaStream();
+      Object.defineProperty(label, "id", { value: `${BUNDLED_SCREEN_STREAM_PREFIX}${user?.id ?? "self"}` });
+      bundledScreenVideoTxRef.current = pc.addTransceiver("video", { direction: "sendrecv", streams: [label] });
+      bundledScreenAudioTxRef.current = pc.addTransceiver("audio", { direction: "sendrecv", streams: [label] });
+    } catch (e) {
+      console.warn("[Voice] Failed to pre-allocate bundled screenshare transceivers:", e);
+      bundledScreenVideoTxRef.current = null;
+      bundledScreenAudioTxRef.current = null;
     }
 
     pcRef.current = pc;
@@ -1831,6 +1918,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       console.log("[Voice] 🔁 PC already exists — re-broadcasting pending offer for late joiner");
       await sendSignalReliably(channel, {
         type: "offer",
+        bundledShare: true,
         sdp: pendingOfferRef.current.offer,
         senderId: user.id,
         senderName: user.user_metadata?.display_name || "User",
@@ -1929,6 +2017,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
     await sendSignalReliably(channel, {
       type: "offer",
+      bundledShare: true,
       sdp: offer,
       senderId: user.id,
       senderName: user.user_metadata?.display_name || "User",
@@ -2202,7 +2291,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               console.log("[Voice] 🔁 Duplicate offer retry received — re-sending cached answer", payload.callEventId);
               await sendAnswerWithRetry(
                 channel,
-                { type: "answer", sdp: cachedAnswer.answer, senderId: user.id, callEventId: cachedAnswer.callEventId },
+                { type: "answer", bundledShare: true, sdp: cachedAnswer.answer, senderId: user.id, callEventId: cachedAnswer.callEventId },
                 () => pcRef.current,
                 "answer(duplicate-offer)",
               );
@@ -2259,7 +2348,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
               sdp = setHighQualityOpus(sdp);
               answer.sdp = sdp;
               await pc.setLocalDescription(answer);
-              await sendSignalReliably(channel, { type: "answer", sdp: answer, senderId: user.id, callEventId: payload.callEventId || currentCallEventIdRef.current }, "answer(re-offer)");
+              await sendSignalReliably(channel, { type: "answer", bundledShare: true, sdp: answer, senderId: user.id, callEventId: payload.callEventId || currentCallEventIdRef.current }, "answer(re-offer)");
               if (offerDedupeKey) {
                 const evtId = payload.callEventId || currentCallEventIdRef.current;
                 if (evtId) lastAnswerRef.current = { offerKey: offerDedupeKey, callEventId: evtId, answer };
@@ -2284,7 +2373,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
               await sendAnswerWithRetry(
                 channel,
-                { type: "answer", sdp: answer, senderId: user.id, callEventId: payload.callEventId || currentCallEventIdRef.current },
+                { type: "answer", bundledShare: true, sdp: answer, senderId: user.id, callEventId: payload.callEventId || currentCallEventIdRef.current },
                 () => pcRef.current,
                 "answer(accepted-offer)",
               );
@@ -2374,7 +2463,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
 
               await sendAnswerWithRetry(
                 channel,
-                { type: "answer", sdp: answer, senderId: user.id, callEventId: payload.callEventId || currentCallEventIdRef.current },
+                { type: "answer", bundledShare: true, sdp: answer, senderId: user.id, callEventId: payload.callEventId || currentCallEventIdRef.current },
                 () => pcRef.current,
                 "answer(rejoin)",
               );
@@ -2416,6 +2505,12 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
             callEventId: payload.callEventId,
           });
           return;
+        }
+
+        // v0.4.28 — remember whether the peer can receive a bundled share.
+        // Absent flag => older client => keep the separate-PC path.
+        if (payload.type === "offer" || payload.type === "answer") {
+          peerSupportsBundledShareRef.current = payload.bundledShare === true;
         }
 
         if (payload.type === "answer" && pc) {
@@ -3246,7 +3341,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           console.log("[acceptDiag] accept.fastpath.answered", acceptedCall.callEventId);
           await sendAnswerWithRetry(
             channel,
-            { type: "answer", sdp: answer, senderId: user.id, callEventId: acceptedCall.callEventId },
+            { type: "answer", bundledShare: true, sdp: answer, senderId: user.id, callEventId: acceptedCall.callEventId },
             () => pcRef.current,
             "answer(accept-direct)",
           );
@@ -4285,7 +4380,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
           channelRef.current?.send({
             type: "broadcast",
             event: "voice-signal",
-            payload: { type: "offer", sdp: offer, senderId: user?.id, callerAvatarUrl: outgoingCallMetaRef.current?.callerAvatarUrl },
+            payload: { type: "offer", bundledShare: true, sdp: offer, senderId: user?.id, callerAvatarUrl: outgoingCallMetaRef.current?.callerAvatarUrl },
           });
         }
       } catch (e) {
