@@ -156,6 +156,44 @@ export const steamHeaderUrl = (appId: number) =>
   `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${appId}/capsule_184x69.jpg`;
 
 /**
+ * Dynamic Steam library index (desktop only).
+ *
+ * Electron scans the local Steam install (`libraryfolders.vdf` +
+ * `appmanifest_*.acf`) and hands us `{ appId, name, exeNames[] }` for every
+ * installed game. We index it by lowercased name and by every executable
+ * basename we found inside the install folder, so ANY installed Steam game
+ * resolves to its official Steam capsule art with no curated entry needed.
+ */
+export type SteamLibraryEntry = { appId: number; name: string; exeNames?: string[] };
+
+const steamLibraryIndex = new Map<string, number>();
+
+export function registerSteamLibrary(entries: SteamLibraryEntry[] | null | undefined) {
+  if (!Array.isArray(entries)) return;
+  for (const entry of entries) {
+    if (!entry || !Number.isFinite(entry.appId)) continue;
+    const keys = [entry.name, ...(entry.exeNames || [])];
+    for (const raw of keys) {
+      const key = String(raw || "").toLowerCase().trim().replace(/\.exe$/, "");
+      if (key) steamLibraryIndex.set(key, entry.appId);
+    }
+  }
+}
+
+/** Resolve a Steam app id from the scanned library (name or process name). */
+export function lookupSteamAppId(name?: string | null, processName?: string | null): number | null {
+  const candidates = [name, processName]
+    .filter(Boolean)
+    .map((v) => v!.toLowerCase().trim().replace(/\.exe$/, ""));
+  for (const key of candidates) {
+    if (STEAM_APP_IDS[key]) return STEAM_APP_IDS[key];
+    const dynamic = steamLibraryIndex.get(key);
+    if (dynamic) return dynamic;
+  }
+  return null;
+}
+
+/**
  * Curated icon lookup — checks both the activity name and the process name.
  * Returns null if no curated icon exists.
  */
@@ -167,11 +205,9 @@ export function lookupCuratedIcon(name?: string | null, processName?: string | n
   return null;
 }
 
-/** Steam fallback URL — null if no known mapping. */
+/** Steam fallback URL — null if no known mapping (curated map or scanned library). */
 export function lookupSteamIcon(name?: string | null, processName?: string | null): string | null {
-  const candidates = [name, processName].filter(Boolean).map((v) => v!.toLowerCase().trim());
-  for (const key of candidates) {
-    if (STEAM_APP_IDS[key]) return steamHeaderUrl(STEAM_APP_IDS[key]);
-  }
-  return null;
+  const appId = lookupSteamAppId(name, processName);
+  return appId ? steamHeaderUrl(appId) : null;
 }
+
