@@ -95,17 +95,16 @@ final class PresenceService: ObservableObject {
             }
         }
 
-        // Server-side heartbeat — keeps `profiles.last_seen_at` fresh so
-        // OTHER clients (web/desktop) see iOS as online via the same
-        // `online_user_ids()` RPC they use. Without this, an iOS user on a
-        // flaky websocket can appear offline to peers even though presence
-        // is fine on this device.
-        Task { [weak self] in
+        // Server-side heartbeat — keeps this device's `user_sessions` row
+        // fresh so OTHER clients (web/desktop) see iOS as online via the same
+        // `online_user_ids()` RPC they use. The heartbeat only writes when it
+        // gets our session key, so the device must be registered first.
+        await SessionTracker.shared.register(userID: userID)
+        heartbeatDBTask?.cancel()
+        heartbeatDBTask = Task { [weak self] in
             while !Task.isCancelled {
-                guard let self else { return }
-                _ = try? await SupabaseManager.shared.client
-                    .rpc("presence_heartbeat")
-                    .execute()
+                guard self != nil else { return }
+                await SessionTracker.shared.heartbeat()
                 try? await Task.sleep(nanoseconds: 30_000_000_000)
             }
         }
