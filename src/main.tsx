@@ -24,6 +24,9 @@ console.log(`%c🧸 Cubbly v${APP_VERSION} (pre-alpha)`, "color: hsl(32, 80%, 50
 // In Electron, also log the REAL packaged app version so we can immediately
 // tell when an old installer is still running stale code.
 const electronApi = (window as any).electronAPI;
+// v0.4.31: desktop build disables text/icon selection app-wide except on
+// opted-in surfaces (see .cb-selectable in index.css).
+if (electronApi?.isElectron) document.documentElement.classList.add("cb-electron");
 if (electronApi?.getAppVersion) {
   electronApi.getAppVersion().then((v: string | null) => {
     console.log(

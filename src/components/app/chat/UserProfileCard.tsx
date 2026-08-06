@@ -326,7 +326,7 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
             </p>
             <p className="text-[15px] text-[#949ba4]">@{profile?.username || displayName.toLowerCase()}</p>
             {customStatus && (
-              <p className="mt-2 text-sm text-[#dbdee1] flex items-center gap-1.5 break-words">
+              <p className="cb-selectable mt-2 text-sm text-[#dbdee1] flex items-center gap-1.5 break-words">
                 {customStatus.emoji && <span className="cubbly-keep-animation">{customStatus.emoji}</span>}
                 {customStatus.text && <span>{customStatus.text}</span>}
               </p>
@@ -346,7 +346,7 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
             {profile?.bio && (
               <div className="mt-3 rounded-lg bg-[#1e1f22] p-3">
                 <p className="text-xs font-semibold text-[#949ba4] uppercase tracking-wide mb-1">About Me</p>
-                <p className="text-sm text-[#dbdee1] leading-relaxed whitespace-pre-wrap break-words">{profile.bio}</p>
+                <p className="cb-selectable text-sm text-[#dbdee1] leading-relaxed whitespace-pre-wrap break-words">{profile.bio}</p>
               </div>
             )}
 
@@ -578,7 +578,7 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
         </p>
         <p className="text-sm text-[#949ba4]">@{profile?.username || displayName.toLowerCase()}</p>
         {customStatus && (
-          <p className="mt-1.5 text-xs text-[#dbdee1] flex items-center gap-1.5 break-words">
+          <p className="cb-selectable mt-1.5 text-xs text-[#dbdee1] flex items-center gap-1.5 break-words">
             {customStatus.emoji && <span className="cubbly-keep-animation">{customStatus.emoji}</span>}
             {customStatus.text && <span>{customStatus.text}</span>}
           </p>
@@ -595,7 +595,7 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
           </div>
         )}
         {profile?.bio && (
-          <p className="mt-2 text-xs text-[#dbdee1] leading-relaxed line-clamp-3 whitespace-pre-wrap break-words">{profile.bio}</p>
+          <p className="cb-selectable mt-2 text-xs text-[#dbdee1] leading-relaxed line-clamp-3 whitespace-pre-wrap break-words">{profile.bio}</p>
         )}
       </div>
 

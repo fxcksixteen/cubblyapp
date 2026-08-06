@@ -34,6 +34,9 @@ import { supabase } from "@/integrations/supabase/client";
 import CreateGroupModal from "@/components/app/CreateGroupModal";
 import GroupAvatar from "@/components/app/GroupAvatar";
 import friendsIcon from "@/assets/icons/friends.svg";
+import shopIcon from "@/assets/icons/shop.svg";
+import notesIcon from "@/assets/icons/notes.svg";
+import honeyIcon from "@/assets/icons/honey.svg";
 import MobileBottomNav from "@/components/app/mobile/MobileBottomNav";
 import MobileChatHeader from "@/components/app/mobile/MobileChatHeader";
 import MobileCallOverlay from "@/components/app/mobile/MobileCallOverlay";
@@ -126,6 +129,15 @@ const AppLayout = () => {
       .map(([conversationId, info]) => ({ conversationId, info }))
       .sort((a, b) => (b.info.lastMessageAt || "").localeCompare(a.info.lastMessageAt || ""));
   }, [unreadByConv]);
+
+  // v0.4.31: Discord-style taskbar/tray badge on the desktop app — total of
+  // unread DM/mention messages plus incoming friend requests.
+  useEffect(() => {
+    const api = (window as any).electronAPI;
+    if (!api?.setUnreadBadge) return;
+    const totalUnread = Array.from(unreadByConv.values()).reduce((sum, u: any) => sum + (u?.count || 0), 0);
+    api.setUnreadBadge(totalUnread + incomingPendingCount);
+  }, [unreadByConv, incomingPendingCount]);
 
   useEffect(() => {
     if (location.pathname === "/@me" || location.pathname === "/@me/") {
@@ -315,14 +327,20 @@ const AppLayout = () => {
       // bar above it should NOT show the friends tabs.
       return null;
     }
+    const titleWithIcon = (icon: string, label: string, invert = true) => (
+      <div className="flex items-center gap-2">
+        <img src={icon} alt="" className={`h-5 w-5 ${invert ? "invert opacity-60" : ""}`} decoding="sync" />
+        <span className="font-semibold" style={{ color: "var(--app-text-primary)" }}>{label}</span>
+      </div>
+    );
     if (isShop) {
-      return <span className="font-semibold" style={{ color: "var(--app-text-primary)" }}>Shop</span>;
+      return titleWithIcon(shopIcon, "Shop");
     }
     if (isNotes) {
-      return <span className="font-semibold" style={{ color: "var(--app-text-primary)" }}>Private Notes</span>;
+      return titleWithIcon(notesIcon, "Private Notes");
     }
     if (isHoney) {
-      return <span className="font-semibold" style={{ color: "var(--app-text-primary)" }}>Honey</span>;
+      return titleWithIcon(honeyIcon, "Honey", false);
     }
     if (isRequests) {
       return <span className="font-semibold" style={{ color: "var(--app-text-primary)" }}>Message Requests</span>;

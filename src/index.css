@@ -840,3 +840,35 @@ html.cubbly-low-power
   0% { opacity: 0; transform: translateX(-14px); }
   100% { opacity: 1; transform: translateX(0); }
 }
+
+/* ── v0.4.31 — Desktop app text selection policy ──────────────
+   In the Electron desktop build nothing is selectable by default
+   (icons, buttons, labels, sidebars). Only explicitly opted-in
+   surfaces — chat message text, personal notes, bios and custom
+   statuses — allow selection via .cb-selectable. */
+html.cb-electron,
+html.cb-electron body {
+  user-select: none;
+  -webkit-user-select: none;
+}
+html.cb-electron .cb-selectable,
+html.cb-electron .cb-selectable *,
+html.cb-electron [data-cb-selectable],
+html.cb-electron [data-cb-selectable] * {
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: auto;
+}
+/* Inputs must always remain usable */
+html.cb-electron input,
+html.cb-electron textarea,
+html.cb-electron [contenteditable="true"] {
+  user-select: text;
+  -webkit-user-select: text;
+}
+/* Icons/images are never selectable or draggable, anywhere */
+img, svg {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
+}
