@@ -89,10 +89,31 @@ final class CallStore: ObservableObject {
     /// call so retry tasks know to stop.
     private var sdpExchangeStarted: Bool = false
 
+    /// Deterministic WebRTC role for the current call (web parity).
+    /// The side that rang is the offerer; the side that accepted answers.
+    /// Without this, crossed `ready-for-offer` retries create offer glare and
+    /// both ends sit in have-local-offer forever — the "stuck on Calling" bug.
+    private var isCallerRole: Bool = false
+    /// Set when the peer broadcasts `peer-accepted`. While non-nil the 30s
+    /// ring timeout must not flip us to "Not in call" — they picked up, we're
+    /// just still finishing the media handshake.
+    private var peerAcceptedCallEventId: UUID?
+    /// Guards `endCall()` so teardown (and the leave sound) runs exactly once
+    /// per call. Both the in-app End button and CallKit's CXEndCallAction
+    /// reach `endCall()`, which is why hangups used to double-play.
+    private var isEndingCall: Bool = false
+
     /// The user ID signaling is currently attached for. Used to skip redundant
     /// re-attaches during Supabase token refreshes, which would otherwise
     /// replace the active signaling channel and silently break in-progress calls.
     private var attachedUserId: UUID?
+
+    /// Single tagged log line for every step of the handshake so iOS and web
+    /// traces can be read side by side.
+    private func trace(_ step: String, _ detail: String = "") {
+        let evt = currentCallEventId?.uuidString.lowercased().prefix(8) ?? "--------"
+        print("[CallTrace] \(step) evt=\(evt) state=\(state) role=\(isCallerRole ? "caller" : "callee") \(detail)")
+    }
 
     private init() {}
 
