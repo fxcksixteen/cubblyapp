@@ -25,6 +25,7 @@ struct ShopView: View {
 
     @State private var activeTab: Tab = .all
     @State private var showCoinsInfo = false
+    @State private var showGemsInfo = false
     @State private var notEnoughItem: ShopStore.Item?
     @State private var confirmPurchaseItem: ShopStore.Item?
 
