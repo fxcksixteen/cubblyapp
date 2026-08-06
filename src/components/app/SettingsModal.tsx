@@ -815,7 +815,10 @@ const SettingsModal = ({ isOpen, onClose, initialCategory = null }: SettingsModa
                             borderTop: idx === 0 ? "none" : "1px solid var(--app-border)",
                           }}
                         >
-                          <span>{item.label}</span>
+                          <span className="flex items-center gap-2.5 min-w-0">
+                            <CategoryIcon id={item.id} className="opacity-80" />
+                            <span className="truncate">{item.label}</span>
+                          </span>
                           <ChevronRight className="h-4 w-4 shrink-0" style={{ color: "var(--app-text-secondary)" }} />
                         </button>
                       ))}
