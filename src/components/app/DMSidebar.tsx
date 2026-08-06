@@ -333,9 +333,9 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
             const dmStatusLine = dmCustomStatus
               ? `${dmCustomStatus.emoji ? `${dmCustomStatus.emoji} ` : ""}${dmCustomStatus.text}`.trim()
               : null;
-            const subtitle = conv.is_group
-              ? `${conv.members.length + 1} members`
-              : dmActivityLabel || dmStatusLine;
+            // Subtitle: when a user has both an activity and a custom status,
+            // RotatingSubtitle cycles between them every 3s.
+
             return (
               <ContextMenu key={conv.id}>
                 <ContextMenuTrigger asChild>
