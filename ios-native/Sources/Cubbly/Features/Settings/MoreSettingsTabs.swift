@@ -49,9 +49,9 @@ struct MoreSettingsTabView: View {
             case .devices:       return "settings-devices"
             case .gamingMode:    return "settings-gaming"
             case .keybinds:      return "settings-keybinds"
-            case .languageTime:  return nil
-            case .advanced:      return nil
-            case .updateLogs:    return nil
+            case .languageTime:  return "settings-language"
+            case .advanced:      return "settings-advanced"
+            case .updateLogs:    return "settings-updates"
             }
         }
     }

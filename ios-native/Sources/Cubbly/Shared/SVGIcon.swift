@@ -129,6 +129,10 @@ struct SVGIcon: View {
         case "settings-devices":           return "desktopcomputer"
         case "settings-gaming":            return "gamecontroller.fill"
         case "settings-keybinds":          return "keyboard"
+        case "settings-language":          return "globe"
+        case "settings-advanced":          return "wrench.and.screwdriver.fill"
+        case "settings-updates":           return "arrow.triangle.2.circlepath"
+        case "settings-account":           return "shield.fill"
         default:                             return "questionmark.circle"
         }
     }
