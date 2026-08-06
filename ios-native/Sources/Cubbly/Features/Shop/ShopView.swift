@@ -8,6 +8,7 @@ struct ShopView: View {
     @EnvironmentObject private var session: SessionStore
     @ObservedObject private var shop = ShopStore.shared
     @ObservedObject private var coins = CoinsStore.shared
+    @ObservedObject private var gems = GemsStore.shared
 
     enum Tab: String, CaseIterable, Identifiable {
         case all, name_color, theme, badge
