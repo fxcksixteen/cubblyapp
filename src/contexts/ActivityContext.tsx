@@ -444,6 +444,7 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
 
     return () => {
       cancelled = true;
+      clearInterval(steamTimer);
       if (pollTimerRef.current) clearInterval(pollTimerRef.current);
       pollTimerRef.current = null;
       window.removeEventListener("cubbly:realtime-media-load-change", handleRealtimeLoadChange);
