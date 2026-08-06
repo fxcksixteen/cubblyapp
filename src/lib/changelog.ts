@@ -23,10 +23,24 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.4.29";
+export const CURRENT_VERSION = "0.4.30";
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.4.30",
+    title: "Settings, Steam and sharper shares",
+    date: "2026-08-06",
+    hero: bearImage,
+    newFeatures: [
+      "Every settings tab now has its own icon.",
+      "Cubbly detects any Steam game you play automatically and shows its official artwork.",
+      "Grand Theft Auto V now has its own activity icon.",
+      "Fresh circular Cubbly app icon on your taskbar, Start menu and installer.",
+    ],
+    bugFixes: [
+      "Screen shares now start at, and stay at, the quality you picked instead of easing up to it.",
+    ],
+  },  {
     version: "0.4.29",
     title: "Call audio hotfix",
     date: "2026-08-06",
