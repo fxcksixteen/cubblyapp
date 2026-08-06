@@ -32,7 +32,11 @@ final class CallSignaling {
         case peerVideo(senderId: UUID, isVideoOn: Bool)
         /// Sent by a peer who's joining an already-ongoing call. The other
         /// side should respond with a fresh `offer` instead of re-ringing.
-        case readyForOffer(senderId: UUID)
+        case readyForOffer(senderId: UUID, callEventId: UUID?)
+        /// Web/desktop parity: broadcast by the callee the moment they press
+        /// Accept, before any SDP work. Tells the caller "they picked up" so
+        /// the ring can stop and the offer can be pushed immediately.
+        case peerAccepted(senderId: UUID, callEventId: UUID?)
     }
 
     private let client: SupabaseClient
