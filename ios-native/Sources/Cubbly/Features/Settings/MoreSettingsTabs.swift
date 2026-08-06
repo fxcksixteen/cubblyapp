@@ -37,6 +37,23 @@ struct MoreSettingsTabView: View {
             case .updateLogs:    return "sparkles"
             }
         }
+
+        /// Bundled SVG icon name (`Resources/Icons/*.svg`) when the tab uses a
+        /// custom Cubbly glyph instead of an SF Symbol.
+        var svgIcon: String? {
+            switch self {
+            case .accessibility: return nil   // keeps the SF Symbol
+            case .chat:          return "settings-chat"
+            case .contentSocial: return "settings-social"
+            case .dataPrivacy:   return "settings-privacy"
+            case .devices:       return "settings-devices"
+            case .gamingMode:    return "settings-gaming"
+            case .keybinds:      return "settings-keybinds"
+            case .languageTime:  return nil
+            case .advanced:      return nil
+            case .updateLogs:    return nil
+            }
+        }
     }
 
     let mode: Mode
@@ -76,11 +93,17 @@ struct MoreSettingsTabView: View {
 
     private var header: some View {
         HStack(spacing: 10) {
-            Image(systemName: mode.icon)
-                .font(.system(size: 22))
-                .foregroundStyle(Theme.Colors.primary)
-                .frame(width: 40, height: 40)
-                .background(Theme.Colors.bgSecondary, in: Circle())
+            Group {
+                if let svg = mode.svgIcon {
+                    SVGIcon(name: svg, size: 22, tint: Theme.Colors.primary)
+                } else {
+                    Image(systemName: mode.icon)
+                        .font(.system(size: 22))
+                        .foregroundStyle(Theme.Colors.primary)
+                }
+            }
+            .frame(width: 40, height: 40)
+            .background(Theme.Colors.bgSecondary, in: Circle())
             Text(mode.title)
                 .font(.cubbly(20, .heavy))
                 .foregroundStyle(Theme.Colors.textPrimary)
