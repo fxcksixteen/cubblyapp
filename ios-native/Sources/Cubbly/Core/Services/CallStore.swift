@@ -943,14 +943,17 @@ final class CallStore: ObservableObject {
     private var lastJoinerOfferEventId: UUID?
     private var lastJoinerOfferSentAt: Date = .distantPast
     private func respondToPeerJoining(callEventId: UUID?) async {
-        let peerHasLeft = (state == .calling && voiceClient == nil && startedAt == nil && !isCallerRole)
-        if !isCallerRole && state == .connected {
+        // Answerer side: never offer while we're waiting on the caller's
+        // offer. The only time an answerer may offer is when the other side
+        // dropped out of the call and is now rejoining us.
+        if !isCallerRole && !peerLeftWaiting {
             trace("readyForOffer.ignored", "answerer role")
             return
         }
-        if !isCallerRole && !peerHasLeft && state != .calling {
-            trace("readyForOffer.ignored", "answerer role, not waiting")
-            return
+        if !isCallerRole {
+            // We're taking over as the offerer for this rejoin.
+            isCallerRole = true
+            peerLeftWaiting = false
         }
         let sameEvent = callEventId == nil || callEventId == lastJoinerOfferEventId
         if sameEvent && Date().timeIntervalSince(lastJoinerOfferSentAt) < 1.0 && sdpExchangeStarted {
