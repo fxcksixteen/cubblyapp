@@ -326,7 +326,7 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
             </p>
             <p className="text-[15px] text-[#949ba4]">@{profile?.username || displayName.toLowerCase()}</p>
             {customStatus && (
-              <p className="mt-2 text-sm text-[#dbdee1] flex items-center gap-1.5 break-words">
+              <p className="cb-selectable mt-2 text-sm text-[#dbdee1] flex items-center gap-1.5 break-words">
                 {customStatus.emoji && <span className="cubbly-keep-animation">{customStatus.emoji}</span>}
                 {customStatus.text && <span>{customStatus.text}</span>}
               </p>
@@ -578,7 +578,7 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
         </p>
         <p className="text-sm text-[#949ba4]">@{profile?.username || displayName.toLowerCase()}</p>
         {customStatus && (
-          <p className="mt-1.5 text-xs text-[#dbdee1] flex items-center gap-1.5 break-words">
+          <p className="cb-selectable mt-1.5 text-xs text-[#dbdee1] flex items-center gap-1.5 break-words">
             {customStatus.emoji && <span className="cubbly-keep-animation">{customStatus.emoji}</span>}
             {customStatus.text && <span>{customStatus.text}</span>}
           </p>

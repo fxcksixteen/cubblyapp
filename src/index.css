@@ -852,7 +852,9 @@ html.cb-electron body {
   -webkit-user-select: none;
 }
 html.cb-electron .cb-selectable,
-html.cb-electron .cb-selectable * {
+html.cb-electron .cb-selectable *,
+html.cb-electron [data-cb-selectable],
+html.cb-electron [data-cb-selectable] * {
   user-select: text;
   -webkit-user-select: text;
   cursor: auto;
