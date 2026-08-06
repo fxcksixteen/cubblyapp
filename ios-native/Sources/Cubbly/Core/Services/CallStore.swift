@@ -220,8 +220,18 @@ final class CallStore: ObservableObject {
         self.startedAt = nil
         self.isMinimized = false
         self.sdpExchangeStarted = false
+        self.isCallerRole = true
+        self.peerAcceptedCallEventId = nil
+        self.isEndingCall = false
+        // Configure the CALL audio session BEFORE starting the ring tone.
+        // Doing it the other way round (as we used to) meant the ring player
+        // was created on the ambient session and then torn down a beat later
+        // when WebRTC took the session over — the ringtone audibly died after
+        // about a second even though we were still ringing.
+        configureAudioSession()
         SoundService.shared.playLooping(.outgoingRing)
         CallKitService.shared.startOutgoing(handleName: peerName)
+        trace("caller.start")
 
         // 1) Join + WAIT FOR JOIN ACK on the per-call channel BEFORE we ring.
         //    Without this, supabase-swift fires our subsequent broadcasts
