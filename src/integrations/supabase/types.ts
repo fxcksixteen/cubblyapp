@@ -1703,6 +1703,10 @@ export type Database = {
         Args: { _conversation_id: string }
         Returns: undefined
       }
+      meets_required_tier: {
+        Args: { _required: string; _user_id: string }
+        Returns: boolean
+      }
       online_user_ids: {
         Args: { _window_seconds?: number }
         Returns: {
