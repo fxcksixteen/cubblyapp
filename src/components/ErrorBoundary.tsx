@@ -1,4 +1,5 @@
 import { Component, ReactNode } from "react";
+import cubblyBear from "@/assets/cubbly-bear.png";
 
 interface Props {
   children: ReactNode;
