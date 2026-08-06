@@ -485,7 +485,7 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
             {!isOwnProfile && (
               <MutualsTabs
                 userId={userId}
-                onOpenServer={(serverId) => { onClose(); navigate(`/@me/servers/${serverId}`); }}
+                onOpenServer={(serverId) => { onClose(); navigate(`/@me/server/${serverId}`); }}
               />
             )}
 
