@@ -37,6 +37,23 @@ struct MoreSettingsTabView: View {
             case .updateLogs:    return "sparkles"
             }
         }
+
+        /// Bundled SVG icon name (`Resources/Icons/*.svg`) when the tab uses a
+        /// custom Cubbly glyph instead of an SF Symbol.
+        var svgIcon: String? {
+            switch self {
+            case .accessibility: return nil   // keeps the SF Symbol
+            case .chat:          return "settings-chat"
+            case .contentSocial: return "settings-social"
+            case .dataPrivacy:   return "settings-privacy"
+            case .devices:       return "settings-devices"
+            case .gamingMode:    return "settings-gaming"
+            case .keybinds:      return "settings-keybinds"
+            case .languageTime:  return nil
+            case .advanced:      return nil
+            case .updateLogs:    return nil
+            }
+        }
     }
 
     let mode: Mode
