@@ -228,7 +228,10 @@ export function startAutomaticScreenEncoding(
   let bitrate = Math.round(perPeerTarget() * RAMP_START_FRACTION);
   let rampStepsLeft = RAMP_STEPS;
   let scale = Math.max(1, target.baseScale);
-  const bitrateFloor = () => Math.min(900_000, Math.max(350_000, Math.round(perPeerTarget() * 0.25)));
+  // v0.4.30 — the floor is what the stream looks like when the network hiccups.
+  // 25% of target (min 350 kbps) is a slideshow for a game share; hold at least
+  // 40% of the user's pick so a picked quality stays recognisably that quality.
+  const bitrateFloor = () => Math.min(2_200_000, Math.max(700_000, Math.round(perPeerTarget() * 0.4)));
   let cleanSamples = 0;
   let cpuSamples = 0;
   let lastLost = 0;
@@ -416,8 +419,11 @@ export function startAutomaticScreenEncoding(
       // Preserve motion cadence under a constrained uplink: step resolution
       // down before touching the requested frame rate, then restore it slowly.
       const bitrateRatio = bitrate / Math.max(1, perPeerTarget());
-      if (bitrateRatio < 0.45) {
-        scale = Math.min(Math.max(target.baseScale, 2.5), scale * 1.2);
+      // v0.4.30 — only drop resolution when the budget really collapsed, and
+      // never below half of the picked height (was 2.5x = a 1080p pick landing
+      // at ~432p).
+      if (bitrateRatio < 0.35) {
+        scale = Math.min(Math.max(target.baseScale, 2), scale * 1.2);
       } else if (decision.reason === "probe" && scale > target.baseScale) {
         scale = Math.max(target.baseScale, scale / 1.1);
       }
