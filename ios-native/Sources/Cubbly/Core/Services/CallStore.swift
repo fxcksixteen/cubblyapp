@@ -551,10 +551,19 @@ final class CallStore: ObservableObject {
     // MARK: - End call
 
     func endCall() async {
+        // Both the in-app End button and CallKit's CXEndCallAction land here
+        // (the button ends the CallKit call, which calls back into us). Without
+        // this guard the whole teardown ran twice and the leave sound played
+        // twice on every single hangup.
+        if isEndingCall { return }
+        if state == .idle && currentCallEventId == nil && conversationId == nil { return }
+        isEndingCall = true
+        trace("endCall")
         stopHeartbeat()
         stopRingTimeouts()
         stopHandshakeRetries()
         sdpExchangeStarted = false
+        peerAcceptedCallEventId = nil
         let conv = conversationId
         if let signaling = signaling, conv != nil {
             // v0.2.27 parity: soft-leave so the call_event stays ongoing for
