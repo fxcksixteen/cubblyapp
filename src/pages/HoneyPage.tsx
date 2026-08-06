@@ -128,6 +128,9 @@ export default function HoneyPage() {
           src={honey3d}
           alt=""
           aria-hidden
+          decoding="sync"
+          fetchPriority="high"
+
           className="pointer-events-none absolute right-2 md:right-10 top-6 md:top-10 h-56 w-56 md:h-72 md:w-72 z-10 select-none"
           style={{
             animation: "honey-bob 5s ease-in-out infinite alternate",
