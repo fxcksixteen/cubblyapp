@@ -75,6 +75,7 @@ final class SessionStore: ObservableObject {
                 }
             } else {
                 state = .signedOut
+                await CallStore.shared.detach()
                 await PresenceService.shared.stop()
                 await CoinsStore.shared.stop()
                 await ShopStore.shared.stop()
@@ -84,6 +85,7 @@ final class SessionStore: ObservableObject {
         case .signedOut:
             state = .signedOut
             currentProfile = nil
+            await CallStore.shared.detach()
             await PresenceService.shared.stop()
             await CoinsStore.shared.stop()
             await ShopStore.shared.stop()
@@ -109,6 +111,7 @@ final class SessionStore: ObservableObject {
         // clear auth, so the UI can route to Login immediately and we don't
         // leave realtime sockets / a live call dangling.
         await CallStore.shared.endCall()
+        await CallStore.shared.detach()
         await PresenceService.shared.stop()
         currentProfile = nil
 
@@ -130,6 +133,23 @@ final class SessionStore: ObservableObject {
     func setLocalStatus(_ status: String) {
         if var profile = currentProfile {
             profile.status = status
+            currentProfile = profile
+        }
+    }
+
+    /// Optimistically update the cached avatar URL after a successful upload
+    /// so the UI reflects the new image immediately.
+    func setLocalAvatarURL(_ url: String) {
+        if var profile = currentProfile {
+            profile.avatarURL = url
+            currentProfile = profile
+        }
+    }
+
+    /// Optimistically update the cached banner URL after a successful upload.
+    func setLocalBannerURL(_ url: String) {
+        if var profile = currentProfile {
+            profile.bannerURL = url
             currentProfile = profile
         }
     }

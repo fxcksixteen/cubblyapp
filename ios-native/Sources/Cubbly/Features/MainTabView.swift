@@ -63,8 +63,15 @@ struct MainTabView: View {
         // leaving everyone looking offline. Restart it whenever the app
         // returns to the foreground so iOS matches web/desktop.
         .onChange(of: scenePhase) { _, newPhase in
-            if newPhase == .active, let uid = session.currentUserID {
-                Task { await PresenceService.shared.start(userID: uid, force: true) }
+            switch newPhase {
+            case .active:
+                if let uid = session.currentUserID {
+                    Task { await PresenceService.shared.start(userID: uid, force: true) }
+                }
+            case .background:
+                Task { await PresenceService.shared.goBackground() }
+            default:
+                break
             }
         }
         // Notification tap → switch to Home so DMListView's deep-link
