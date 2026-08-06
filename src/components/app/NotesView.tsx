@@ -1951,6 +1951,7 @@ const NoteEditor = ({ note, onBack, onRequestDelete, onShare }: { note: NoteRow;
         <div
           ref={bodyRef}
           contentEditable
+          data-cb-selectable=""
           autoCapitalize="sentences"
           autoCorrect="on"
           spellCheck
