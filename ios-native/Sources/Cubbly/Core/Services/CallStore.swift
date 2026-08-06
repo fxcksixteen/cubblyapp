@@ -263,13 +263,11 @@ final class CallStore: ObservableObject {
             print("[Call] failed to insert call_event:", error)
         }
 
-        // Activate audio session up front for outgoing tone.
-        configureAudioSession()
-
         if let evtId = currentCallEventId {
             await ensureOwnParticipantRow(callEventId: evtId)
             startHeartbeat()
         }
+        trace("caller.callEventReady")
 
         // 3) NOW ring the peer. Channel is joined, event row exists, our
         //    participant row is live — the ring will reliably arrive and the
@@ -285,10 +283,10 @@ final class CallStore: ObservableObject {
                 callerName: myName,
                 callerAvatarUrl: myAvatar
             )
+            trace("caller.ringSent")
         }
         startOutgoingRingTimeout()
         startCallerFallbackOffer()
-        print("[Call] ⏳ Waiting for peer to send ready-for-offer…")
     }
 
     // MARK: - Join an already-ongoing call (no new ring, no duplicate event)
