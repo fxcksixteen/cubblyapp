@@ -243,16 +243,16 @@ private struct PurchaseConfirmSheet: View {
 
                 HStack(spacing: 8) {
                     HStack(spacing: 5) {
-                        BundledAssetImage(name: "coin-stack")
+                        BundledAssetImage(name: item.isGemItem ? "gem" : "coin-stack")
                             .frame(width: 18, height: 18)
-                        Text("\(item.price)")
+                        Text("\(item.effectivePrice)")
                             .font(.cubbly(15, .heavy))
                             .foregroundStyle(Theme.Colors.textPrimary)
                             .monospacedDigit()
                     }
                     .padding(.horizontal, 12).padding(.vertical, 6)
                     .background(Theme.Colors.bgSecondary, in: Capsule())
-                    Text("After: \(balance - item.price) coins")
+                    Text("After: \(balance - item.effectivePrice) \(currencyWord)")
                         .font(.cubbly(11))
                         .foregroundStyle(Theme.Colors.textMuted)
                         .monospacedDigit()
@@ -262,7 +262,7 @@ private struct PurchaseConfirmSheet: View {
 
                 VStack(spacing: 10) {
                     Button(action: onConfirm) {
-                        Text("Buy for \(item.price) coins")
+                        Text("Buy for \(item.effectivePrice) \(currencyWord)")
                             .font(.cubbly(15, .heavy))
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity).padding(.vertical, 13)
