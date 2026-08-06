@@ -26,10 +26,50 @@ import ShopItemsGrid from "./settings/ShopItemsGrid";
 import BillingSettings from "./settings/BillingSettings";
 import { CURRENT_VERSION } from "@/lib/changelog";
 import { useEntitlements } from "@/hooks/useEntitlements";
+import settingsAccountIcon from "@/assets/icons/settings-account.svg";
+import settingsSocialIcon from "@/assets/icons/settings-social.svg";
+import settingsPrivacyIcon from "@/assets/icons/settings-privacy.svg";
+import settingsNotificationsIcon from "@/assets/icons/settings-notifications.svg";
+import settingsDevicesIcon from "@/assets/icons/settings-devices.svg";
+import settingsAppearanceIcon from "@/assets/icons/settings-appearance.svg";
+import settingsVoiceIcon from "@/assets/icons/settings-voice.svg";
+import settingsChatIcon from "@/assets/icons/settings-chat.svg";
+import settingsKeybindsIcon from "@/assets/icons/settings-keybinds.svg";
+import settingsLanguageIcon from "@/assets/icons/settings-language.svg";
+import settingsAdvancedIcon from "@/assets/icons/settings-advanced.svg";
+import settingsActivityIcon from "@/assets/icons/settings-activity.svg";
+import settingsGamingIcon from "@/assets/icons/settings-gaming.svg";
+import settingsUpdatesIcon from "@/assets/icons/settings-updates.svg";
 
 const APP_VERSION = CURRENT_VERSION;
 
 export type SettingsCategory = "my-account" | "content-social" | "data-privacy" | "notifications" | "appearance" | "accessibility" | "voice-video" | "devices" | "chat" | "keybinds" | "language-time" | "advanced" | "activity-privacy" | "gaming-mode" | "update-logs" | "billing";
+
+/** Custom Cubbly glyphs shown to the left of each settings tab title. */
+const CATEGORY_ICONS: Partial<Record<SettingsCategory, string>> = {
+  "my-account": settingsAccountIcon,
+  "content-social": settingsSocialIcon,
+  "data-privacy": settingsPrivacyIcon,
+  "notifications": settingsNotificationsIcon,
+  "devices": settingsDevicesIcon,
+  "appearance": settingsAppearanceIcon,
+  "voice-video": settingsVoiceIcon,
+  "chat": settingsChatIcon,
+  "keybinds": settingsKeybindsIcon,
+  "language-time": settingsLanguageIcon,
+  "advanced": settingsAdvancedIcon,
+  "activity-privacy": settingsActivityIcon,
+  "gaming-mode": settingsGamingIcon,
+  "update-logs": settingsUpdatesIcon,
+};
+
+/** Renders the tab glyph. SVGs are solid black, so `invert` tints them light. */
+const CategoryIcon = ({ id, className = "" }: { id: SettingsCategory; className?: string }) => {
+  const src = CATEGORY_ICONS[id];
+  if (!src) return null;
+  return <img src={src} alt="" aria-hidden className={`h-[18px] w-[18px] shrink-0 invert ${className}`} />;
+};
+
 
 const settingsSections = [
   {
