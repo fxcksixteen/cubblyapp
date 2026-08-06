@@ -403,14 +403,16 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                           <BellOff className="h-3 w-3 shrink-0 opacity-100" style={{ filter: "none" }} />
                         )}
                       </p>
-                      {subtitle && (
-                        <p
-                          className="truncate text-[11px] leading-tight"
-                          style={{ color: dmActivity?.name ? "#3ba55c" : "var(--app-text-secondary, #949ba4)" }}
-                        >
-                          {subtitle}
-                        </p>
-                      )}
+                      <RotatingSubtitle
+                        lines={[
+                          dmActivityLabel
+                            ? { key: "activity", text: dmActivityLabel, color: "#3ba55c" }
+                            : null,
+                          dmStatusLine ? { key: "status", text: dmStatusLine } : null,
+                          conv.is_group ? { key: "members", text: `${conv.members.length + 1} members` } : null,
+                        ]}
+                      />
+
                     </div>
                     {isMobile ? (
                       // Mobile: persistent ⋮ that opens the existing context menu.
