@@ -345,7 +345,6 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
                         if ((activeTab === "online" || activeTab === "all") && (label || csLine)) {
                           return (
                             <RotatingSubtitle
-                              className="text-xs"
                               lines={[
                                 label ? { key: "activity", text: label, color: "#3ba55c" } : null,
                                 csLine ? { key: "status", text: csLine } : null,
