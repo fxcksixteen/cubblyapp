@@ -226,6 +226,7 @@ final class CallStore: ObservableObject {
         self.isCallerRole = true
         self.peerAcceptedCallEventId = nil
         self.isEndingCall = false
+        self.peerLeftWaiting = false
         // Configure the CALL audio session BEFORE starting the ring tone.
         // Doing it the other way round (as we used to) meant the ring player
         // was created on the ambient session and then torn down a beat later
@@ -381,6 +382,7 @@ final class CallStore: ObservableObject {
         self.isCallerRole = false
         self.peerAcceptedCallEventId = nil
         self.isEndingCall = false
+        self.peerLeftWaiting = false
         configureAudioSession()
         CallKitService.shared.startOutgoing(handleName: peerName)
         await signaling.joinCallChannel(conversationId: convId)
@@ -523,6 +525,7 @@ final class CallStore: ObservableObject {
         self.isCallerRole = false
         self.peerAcceptedCallEventId = nil
         self.isEndingCall = false
+        self.peerLeftWaiting = false
         incomingRingTimeoutTask?.cancel(); incomingRingTimeoutTask = nil
         SoundService.shared.stopLooping(.incomingCall)
         configureAudioSession()
@@ -643,6 +646,7 @@ final class CallStore: ObservableObject {
         isMinimized = false
         ringTimedOut = false
         isCallerRole = false
+        peerLeftWaiting = false
         pendingRemoteIce.removeAll()
         pendingScreenIce.removeAll()
         isEndingCall = false
