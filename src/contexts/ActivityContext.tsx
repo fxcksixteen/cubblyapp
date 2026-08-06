@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState, ReactNode, useC
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { detectGame } from "@/lib/knownGames";
+import { registerSteamLibrary, type SteamLibraryEntry } from "@/lib/activityIcons";
 
 export interface UserActivity {
   user_id: string;
