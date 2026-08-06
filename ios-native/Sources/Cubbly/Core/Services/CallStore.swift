@@ -102,6 +102,9 @@ final class CallStore: ObservableObject {
     /// per call. Both the in-app End button and CallKit's CXEndCallAction
     /// reach `endCall()`, which is why hangups used to double-play.
     private var isEndingCall: Bool = false
+    /// True while we're alone in a call the peer left. Only then may an
+    /// answerer take over the offerer role for the peer's rejoin.
+    private var peerLeftWaiting: Bool = false
 
     /// The user ID signaling is currently attached for. Used to skip redundant
     /// re-attaches during Supabase token refreshes, which would otherwise
