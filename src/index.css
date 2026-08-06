@@ -830,3 +830,13 @@ html.cubbly-low-power
   0% { opacity: 0; transform: translateY(6px); }
   100% { opacity: 1; transform: translateY(0); }
 }
+
+/* v0.4.31 — profile card mutual friends/servers tab slide */
+@keyframes cubbly-mutuals-slide-left {
+  0% { opacity: 0; transform: translateX(14px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+@keyframes cubbly-mutuals-slide-right {
+  0% { opacity: 0; transform: translateX(-14px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
