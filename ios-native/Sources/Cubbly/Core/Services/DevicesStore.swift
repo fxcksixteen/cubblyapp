@@ -35,7 +35,7 @@ final class DevicesStore: ObservableObject {
                 .from("user_sessions")
                 .select("id,session_key,device_label,platform,is_desktop_app,is_mobile,last_seen_at,created_at")
                 .eq("user_id", value: userId.uuidString)
-                .is("revoked_at", value: nil)
+                .filter("revoked_at", operator: "is", value: "null")
                 .order("last_seen_at", ascending: false)
                 .execute()
                 .value
