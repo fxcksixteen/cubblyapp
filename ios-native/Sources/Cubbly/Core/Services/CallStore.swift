@@ -639,8 +639,10 @@ final class CallStore: ObservableObject {
         isDeafened = false
         isMinimized = false
         ringTimedOut = false
+        isCallerRole = false
         pendingRemoteIce.removeAll()
         pendingScreenIce.removeAll()
+        isEndingCall = false
     }
 
     // MARK: - 30s ring timeouts (Discord parity)
@@ -653,8 +655,15 @@ final class CallStore: ObservableObject {
                 guard let self = self else { return }
                 guard self.state == .calling || self.state == .ringing else { return }
                 SoundService.shared.stopLooping(.outgoingRing)
+                // The peer told us they picked up — don't tell the user
+                // "Not in call" just because the media handshake is still
+                // finishing. Keep waiting instead.
+                if self.peerAcceptedCallEventId != nil {
+                    self.trace("caller.ringTimeout.suppressed", "peer already accepted")
+                    return
+                }
                 self.ringTimedOut = true
-                print("[Call] ⏰ 30s ring timeout — peer didn't answer; staying in call alone")
+                self.trace("caller.ringTimeout")
             }
         }
     }
