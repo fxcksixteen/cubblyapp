@@ -1047,7 +1047,7 @@ const ChatView = ({ conversationId, recipientName, recipientAvatar, recipientUse
                               const firstUrl = extractFirstUrl(text);
                               return (
                                 <>
-                                  <p className={`text-[15px] leading-relaxed whitespace-pre-wrap break-words ${msg.status === "sending" ? "opacity-50" : ""}`} style={{ color: "var(--app-text-primary, #dbdee1)" }}>
+                                  <p className={`cb-selectable text-[15px] leading-relaxed whitespace-pre-wrap break-words ${msg.status === "sending" ? "opacity-50" : ""}`} style={{ color: "var(--app-text-primary, #dbdee1)" }}>
                                     {renderMessageBody(text, mentionResolver)}
                                   </p>
                                   {firstUrl ? <LinkPreview url={firstUrl} /> : null}
