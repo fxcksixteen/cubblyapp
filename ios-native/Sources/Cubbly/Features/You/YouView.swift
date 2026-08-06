@@ -220,24 +220,24 @@ struct YouView: View {
                 .foregroundStyle(Theme.Colors.textSecondary)
 
             VStack(spacing: 0) {
-                row(icon: "bell.fill", label: "Notifications") {
+                row(icon: "bell.fill", svg: "settings-notifications", label: "Notifications") {
                     showingNotificationSettings = true
                 }
                 divider
-                row(icon: "headphones", label: "Voice & Video") {
+                row(icon: "headphones", svg: "settings-voice", label: "Voice & Video") {
                     showingVoiceVideoSettings = true
                 }
                 divider
-                row(icon: "gamecontroller.fill", label: "Activity Privacy") {
+                row(icon: "gamecontroller.fill", svg: "settings-activity", label: "Activity Privacy") {
                     showingActivityPrivacy = true
                 }
                 divider
-                row(icon: "paintbrush.pointed.fill", label: "Appearance") {
+                row(icon: "paintbrush.pointed.fill", svg: "settings-appearance", label: "Appearance") {
                     showingAppearance = true
                 }
                 divider
                 ForEach(MoreSettingsTabView.Mode.allCases) { tab in
-                    row(icon: tab.icon, label: tab.title) {
+                    row(icon: tab.icon, svg: tab.svgIcon, label: tab.title) {
                         moreTab = tab
                     }
                     divider
