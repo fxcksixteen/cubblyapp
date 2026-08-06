@@ -18,6 +18,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("set-selected-share-source", sourceId, wantAudio),
   clearSelectedShareSource: () => ipcRenderer.invoke("clear-selected-share-source"),
   isElectron: true,
+  /** v0.4.31: taskbar/tray unread badge (mentions + DMs + friend requests). */
+  setUnreadBadge: (count) => ipcRenderer.send("set-unread-badge", count),
 
   // Activity / process scanning
   getRunningProcesses: () => ipcRenderer.invoke("get-running-processes"),

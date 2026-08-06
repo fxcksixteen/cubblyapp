@@ -376,6 +376,10 @@ function pruneUpdaterCache() {
 }
 
 let mainWindow;
+/** v0.4.31: tray + close-to-tray state. */
+let tray = null;
+let isQuitting = false;
+let unreadBadgeCount = 0;
 let appIconImage = null;
 /** True once the auto-updater listeners + periodic check have been installed. */
 let updaterWired = false;
