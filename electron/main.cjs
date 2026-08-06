@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, Menu, ipcMain, desktopCapturer, dialog, Notification, nativeImage, protocol, session } = require("electron");
+const { app, BrowserWindow, shell, Menu, Tray, ipcMain, desktopCapturer, dialog, Notification, nativeImage, protocol, session } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { exec } = require("child_process");
@@ -491,6 +491,17 @@ function createWindow() {
   });
   mainWindow.on("unmaximize", () => {
     mainWindow.webContents.send("window-maximize-changed", false);
+  });
+
+  // v0.4.31: Discord-style close-to-tray. Closing the window hides it; the
+  // app keeps running in the system tray. Real quit only via tray menu
+  // ("Quit Cubbly") or app.quit() setting isQuitting.
+  mainWindow.on("close", (e) => {
+    if (!isQuitting) {
+      e.preventDefault();
+      mainWindow.hide();
+      if (process.platform === "darwin") { try { app.dock?.hide(); } catch (_) {} }
+    }
   });
 
   mainWindow.on("closed", () => {
@@ -1508,12 +1519,97 @@ function installDisplayMediaHandler() {
 app.whenReady().then(() => {
   installDisplayMediaHandler();
   createWindow();
+  createTray();
   // Deferred so it never competes with window creation for I/O on startup, but
   // still ahead of the updater's first check at +4s (and guarded by
   // updateDownloadInProgress for the hourly checks after that).
   setTimeout(() => { try { pruneUpdaterCache(); } catch (_) {} }, 2000);
 });
-app.on("window-all-closed", () => { app.quit(); });
+app.on("window-all-closed", () => {
+  // v0.4.31: do NOT quit — Cubbly lives in the tray until the user picks
+  // "Quit Cubbly" from the tray context menu.
+  if (process.platform !== "darwin" && isQuitting) app.quit();
+});
+app.on("before-quit", () => { isQuitting = true; });
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
+
+
+// ─────────────────────────────────────────────────────────────
+// v0.4.31 — System tray + taskbar unread badge
+// ─────────────────────────────────────────────────────────────
+
+/** Bring the window back from the tray. */
+function showMainWindow() {
+  if (!mainWindow) { createWindow(); return; }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  if (!mainWindow.isVisible()) mainWindow.show();
+  mainWindow.focus();
+  if (process.platform === "darwin") { try { app.dock?.show(); } catch (_) {} }
+}
+
+function createTray() {
+  if (tray) return;
+  try {
+    let img = getAppIconImage();
+    if (!img || img.isEmpty()) return;
+    if (process.platform === "darwin") img = img.resize({ width: 18, height: 18 });
+    tray = new Tray(img);
+    tray.setToolTip("Cubbly");
+    refreshTrayMenu();
+    tray.on("click", () => {
+      if (process.platform === "darwin") return; // macOS: left click opens menu
+      if (mainWindow?.isVisible() && mainWindow.isFocused()) mainWindow.hide();
+      else showMainWindow();
+    });
+    tray.on("double-click", showMainWindow);
+  } catch (e) {
+    log.warn("[tray] failed to create tray:", e?.message || e);
+  }
+}
+
+function refreshTrayMenu() {
+  if (!tray) return;
+  const label = unreadBadgeCount > 0
+    ? `Open Cubbly (${unreadBadgeCount > 99 ? "99+" : unreadBadgeCount})`
+    : "Open Cubbly";
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label, click: showMainWindow },
+    { type: "separator" },
+    { label: "Quit Cubbly", click: () => { isQuitting = true; app.quit(); } },
+  ]));
+  tray.setToolTip(unreadBadgeCount > 0 ? `Cubbly — ${unreadBadgeCount} unread` : "Cubbly");
+}
+
+/** Draw a Discord-style red blob with the unread count for the taskbar. */
+function makeBadgeImage(count) {
+  const text = count > 9 ? "9+" : String(count);
+  const size = 32;
+  const fontSize = text.length > 1 ? 16 : 20;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">
+  <circle cx="16" cy="16" r="15" fill="#ed4245"/>
+  <text x="16" y="16" fill="#ffffff" font-family="Segoe UI, Arial, sans-serif"
+        font-size="${fontSize}" font-weight="bold" text-anchor="middle"
+        dominant-baseline="central">${text}</text>
+</svg>`;
+  return nativeImage.createFromDataURL("data:image/svg+xml;base64," + Buffer.from(svg).toString("base64"));
+}
+
+function applyUnreadBadge(count) {
+  unreadBadgeCount = Math.max(0, Number(count) || 0);
+  try {
+    if (process.platform === "win32" && mainWindow && !mainWindow.isDestroyed()) {
+      if (unreadBadgeCount > 0) {
+        mainWindow.setOverlayIcon(makeBadgeImage(unreadBadgeCount), `${unreadBadgeCount} unread`);
+      } else {
+        mainWindow.setOverlayIcon(null, "");
+      }
+    } else {
+      app.setBadgeCount(unreadBadgeCount);
+    }
+  } catch (e) { log.warn("[badge] failed:", e?.message || e); }
+  refreshTrayMenu();
+}
+
+ipcMain.on("set-unread-badge", (_evt, count) => applyUnreadBadge(count));
