@@ -214,6 +214,8 @@ private struct PurchaseConfirmSheet: View {
     let onConfirm: () -> Void
     let onCancel: () -> Void
 
+    private var currencyWord: String { item.isGemItem ? "gems" : "coins" }
+
     var body: some View {
         ZStack {
             Theme.Colors.bgTertiary.ignoresSafeArea()
