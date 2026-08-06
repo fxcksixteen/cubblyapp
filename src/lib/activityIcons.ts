@@ -19,10 +19,10 @@ import gtaVIconAsset from "@/assets/gta5.png.asset.json";
 // asset-pointer icons still load on friend cards / Active Now / chips.
 const isElectronRuntime =
   typeof window !== "undefined" && !!(window as any).electronAPI;
-const fortniteIconUrl =
-  isElectronRuntime && fortniteIconAsset.url.startsWith("/")
-    ? `https://web.cubbly.app${fortniteIconAsset.url}`
-    : fortniteIconAsset.url;
+const assetUrl = (url: string) =>
+  isElectronRuntime && url.startsWith("/") ? `https://web.cubbly.app${url}` : url;
+const fortniteIconUrl = assetUrl(fortniteIconAsset.url);
+const gtaVIconUrl = assetUrl(gtaVIconAsset.url);
 
 /** Direct image URLs for popular games & software. Keyed by lowercased name OR process name. */
 export const CURATED_ICONS: Record<string, string> = {
