@@ -182,7 +182,11 @@ final class CallSignaling {
             let v = payload["isVideoOn"]?.boolValue ?? false
             onEvent?(.peerVideo(senderId: senderId, isVideoOn: v))
         case "ready-for-offer":
-            onEvent?(.readyForOffer(senderId: senderId))
+            let evt = payload["callEventId"]?.stringValue.flatMap(UUID.init)
+            onEvent?(.readyForOffer(senderId: senderId, callEventId: evt))
+        case "peer-accepted":
+            let evt = payload["callEventId"]?.stringValue.flatMap(UUID.init)
+            onEvent?(.peerAccepted(senderId: senderId, callEventId: evt))
         default: break
         }
     }
