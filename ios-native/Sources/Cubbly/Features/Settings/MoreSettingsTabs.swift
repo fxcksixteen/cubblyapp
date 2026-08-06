@@ -93,11 +93,17 @@ struct MoreSettingsTabView: View {
 
     private var header: some View {
         HStack(spacing: 10) {
-            Image(systemName: mode.icon)
-                .font(.system(size: 22))
-                .foregroundStyle(Theme.Colors.primary)
-                .frame(width: 40, height: 40)
-                .background(Theme.Colors.bgSecondary, in: Circle())
+            Group {
+                if let svg = mode.svgIcon {
+                    SVGIcon(name: svg, size: 22, tint: Theme.Colors.primary)
+                } else {
+                    Image(systemName: mode.icon)
+                        .font(.system(size: 22))
+                        .foregroundStyle(Theme.Colors.primary)
+                }
+            }
+            .frame(width: 40, height: 40)
+            .background(Theme.Colors.bgSecondary, in: Circle())
             Text(mode.title)
                 .font(.cubbly(20, .heavy))
                 .foregroundStyle(Theme.Colors.textPrimary)
