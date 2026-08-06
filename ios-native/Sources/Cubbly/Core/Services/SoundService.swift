@@ -64,24 +64,72 @@ final class SoundService {
         if dndActive && !force { return }
         stopLooping(sound)
         guard let url = url(for: sound) else { return }
+        // Call rings play on top of the live call session (playAndRecord /
+        // voiceChat). That session routes to the earpiece at a very low level,
+        // which is why the outgoing ring used to sound like it faded out after
+        // a second — it was still looping, just inaudible. Push it to the
+        // speaker and keep the session hot for as long as we're ringing.
+        let isRing = (sound == .incomingCall || sound == .outgoingRing)
+        if isRing { activateRingRoute() }
         do {
             let player = try AVAudioPlayer(contentsOf: url)
             player.numberOfLoops = -1
-            player.volume = volume
+            player.volume = isRing ? max(volume, 0.8) : volume
             player.prepareToPlay()
             player.play()
             loopingPlayers[sound] = player
+            if isRing { startRingWatchdog(sound) }
         } catch {
             print("[SoundService] loop failed for \(sound.rawValue):", error)
         }
     }
 
     func stopLooping(_ sound: Sound) {
+        ringWatchdogs[sound]?.cancel()
+        ringWatchdogs.removeValue(forKey: sound)
         loopingPlayers[sound]?.stop()
         loopingPlayers.removeValue(forKey: sound)
     }
 
     // MARK: - Internals
+
+    private var ringWatchdogs: [Sound: Task<Void, Never>] = [:]
+
+    /// Keeps the ring audible for its whole duration. An audio-session
+    /// interruption (WebRTC activating its own session, a route change when
+    /// AirPods connect, CallKit taking the session) silently stops an
+    /// AVAudioPlayer — it never resumes on its own, which read as the ring
+    /// "fading out" while the call was still ringing.
+    private func startRingWatchdog(_ sound: Sound) {
+        ringWatchdogs[sound]?.cancel()
+        ringWatchdogs[sound] = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 700_000_000)
+                if Task.isCancelled { return }
+                guard let self = self else { return }
+                guard let player = self.loopingPlayers[sound] else { return }
+                if !player.isPlaying {
+                    self.activateRingRoute()
+                    player.currentTime = 0
+                    player.play()
+                }
+            }
+        }
+    }
+
+    private func activateRingRoute() {
+        let session = AVAudioSession.sharedInstance()
+        do {
+            if session.category != .playAndRecord {
+                try session.setCategory(.playAndRecord, mode: .voiceChat,
+                                        options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP])
+            }
+            try session.setActive(true, options: [])
+            try? session.overrideOutputAudioPort(.speaker)
+        } catch {
+            print("[SoundService] ring route failed:", error)
+        }
+    }
 
     private func configureAudioSession() {
         do {
