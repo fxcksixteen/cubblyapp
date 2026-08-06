@@ -906,7 +906,7 @@ const SettingsModal = ({ isOpen, onClose, initialCategory = null }: SettingsModa
                   <button
                     key={item.id}
                     onClick={() => setActiveCategory(item.id)}
-                    className="cubbly-3d-nav mb-1 flex w-full rounded-xl px-3 py-2.5 text-sm font-semibold transition-all duration-150"
+                    className="cubbly-3d-nav mb-1 flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition-all duration-150"
                     style={activeCategory === item.id
                       ? { backgroundColor: "var(--app-active)", color: "var(--app-text-primary)" }
                       : { color: "var(--app-text-secondary)" }}
@@ -923,7 +923,8 @@ const SettingsModal = ({ isOpen, onClose, initialCategory = null }: SettingsModa
                       }
                     }}
                   >
-                    {item.label}
+                    <CategoryIcon id={item.id} className={activeCategory === item.id ? "" : "opacity-70"} />
+                    <span className="truncate">{item.label}</span>
                   </button>
                 ))}
               </div>
