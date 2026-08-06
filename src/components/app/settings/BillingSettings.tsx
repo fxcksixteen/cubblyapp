@@ -190,7 +190,7 @@ const BillingSettings = () => {
               <Perk label="Personal notes" value={ent.maxNotes === null ? "Unlimited" : String(ent.maxNotes)} />
               <Perk label="Attachment cap" value={`${ent.attachmentCapMB} MB`} />
               <Perk label="Message length" value={`${ent.messageCapChars.toLocaleString()} chars`} />
-              <Perk label="Monthly gems" value={ent.monthlyGems > 0 ? `+${ent.monthlyGems}` : "—"} />
+              <Perk label="Monthly gems" value={!ent.loaded ? "…" : ent.monthlyGems > 0 ? `+${ent.monthlyGems}` : "—"} />
             </div>
           </Card>
         </div>
