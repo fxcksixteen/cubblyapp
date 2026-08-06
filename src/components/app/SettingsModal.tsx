@@ -62,13 +62,14 @@ const CATEGORY_ICONS: Partial<Record<SettingsCategory, string>> = {
   "activity-privacy": settingsActivityIcon,
   "gaming-mode": settingsGamingIcon,
   "update-logs": settingsUpdatesIcon,
+  "billing": settingsBillingIcon,
 };
 
 /** Renders the tab glyph. SVGs are solid black, so `invert` tints them light. */
 const CategoryIcon = ({ id, className = "" }: { id: SettingsCategory; className?: string }) => {
   const src = CATEGORY_ICONS[id];
   if (!src) return null;
-  return <img src={src} alt="" aria-hidden className={`h-[18px] w-[18px] shrink-0 invert ${className}`} />;
+  return <img src={src} alt="" aria-hidden className={`h-[22px] w-[22px] shrink-0 invert ${className}`} />;
 };
 
 
