@@ -1272,7 +1272,7 @@ private struct DiscordStyleBubble: View {
                     swipeOffset = max(-80, h)
                     if -h >= replyThreshold && !didFireReplyHaptic {
                         didFireReplyHaptic = true
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        AppSettingsStore.shared.haptic(.medium)
                     }
                 }
                 .onEnded { value in
