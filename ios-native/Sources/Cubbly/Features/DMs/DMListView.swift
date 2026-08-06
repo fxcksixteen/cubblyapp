@@ -1,0 +1,630 @@
+import SwiftUI
+import Supabase
+import Realtime
+
+/// Home tab — Discord-style DM list with a server rail on the left. Uses a
+/// shared ConversationsCache so navigating into a chat and back doesn't
+/// trigger a flash-of-loading; the cached list shows immediately and a
+/// silent background refresh updates last-message previews.
+struct DMListView: View {
+    @EnvironmentObject private var session: SessionStore
+    @EnvironmentObject private var presence: PresenceService
+    @ObservedObject private var lastChat = LastChatStore.shared
+    @ObservedObject private var cache = ConversationsCache.shared
+    @ObservedObject private var dmPrefs = DMPreferencesStore.shared
+
+    @State private var errorMessage: String?
+    @State private var search: String = ""
+    @State private var openConversation: ConversationSummary?
+    @State private var showNewChat = false
+    @State private var didInitialLoad = false
+    @State private var msgChannel: RealtimeChannelV2?
+    @State private var convChannel: RealtimeChannelV2?
+    @State private var profilePopupUserID: UUID?
+    @State private var showNotes = false
+    @State private var quickMenuConversation: ConversationSummary?
+
+    private func conversation_otherUser(_ conv: ConversationSummary) -> Profile? {
+        conv.otherUser
+    }
+
+    var body: some View {
+        NavigationStack {
+            HStack(spacing: 0) {
+                ServerRail()
+                Rectangle().fill(Theme.Colors.divider).frame(width: 1)
+
+                VStack(spacing: 0) {
+                    header
+                    searchBar
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 8)
+                    FriendsStrip(
+                        onOpen: { conv in openConversation = conv },
+                        onNoExistingDM: { _ in showNewChat = true }
+                    )
+                    .environmentObject(session)
+                    .environmentObject(presence)
+                    PersonalNotesRow { showNotes = true }
+                        .padding(.bottom, 4)
+                    content
+                }
+                .frame(maxWidth: .infinity)
+                .background(Theme.Colors.bgPrimary)
+            }
+            .background(Theme.Colors.bgPrimary)
+            .navigationDestination(isPresented: $showNotes) {
+                NotesView()
+                    .environmentObject(session)
+            }
+            .navigationDestination(item: $openConversation) { conv in
+                ChatView(conversation: conv)
+                    .environmentObject(session)
+                    .environmentObject(presence)
+            }
+            .onChange(of: openConversation?.id) { _, newID in
+                if let id = newID {
+                    lastChat.lastConversationID = id
+                    // Sole driver of chat tab-bar hiding — no more
+                    // onAppear/onDisappear in ChatView that can desync.
+                    ChromeStore.shared.pushHidden()
+                } else {
+                    // Chat was popped — force-reset so the tab bar always
+                    // reappears, regardless of how fast the user navigated.
+                    ChromeStore.shared.resetForRoot()
+                }
+            }
+            // (Left-swipe to reopen last chat removed — it was competing
+            // with the NavigationStack's interactive push/pop gesture.)
+            // Deep-link: tapping a push notification posts this name with
+            // the conversation_id. Resolve to a ConversationSummary and
+            // push it onto the sidebar's NavigationStack.
+            .onReceive(NotificationCenter.default.publisher(for: .cubblyOpenConversation)) { note in
+                guard let raw = note.userInfo?["conversation_id"] as? String,
+                      let uuid = UUID(uuidString: raw) else { return }
+                if let conv = cache.conversations.first(where: { $0.id == uuid }) {
+                    openConversation = conv
+                } else {
+                    // Cache miss — refresh, then push once available.
+                    Task {
+                        await load(silently: true)
+                        if let conv = cache.conversations.first(where: { $0.id == uuid }) {
+                            await MainActor.run { openConversation = conv }
+                        }
+                    }
+                }
+            }
+            .sheet(isPresented: $showNewChat) {
+                NewChatSheet { newID in
+                    Task {
+                        await load(silently: false)
+                        if let conv = cache.conversations.first(where: { $0.id == newID }) {
+                            openConversation = conv
+                        }
+                    }
+                }
+                .environmentObject(session)
+            }
+            .sheet(item: Binding(
+                get: { profilePopupUserID.map { IdentifiedUUID(id: $0) } },
+                set: { profilePopupUserID = $0?.id }
+            )) { wrapper in
+                ProfilePopupView(userID: wrapper.id)
+                    .environmentObject(presence)
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
+            }
+            .sheet(item: $quickMenuConversation) { conv in
+                let peerID = conv.otherUser?.userID
+                DMQuickMenuSheet(
+                    conversation: conv,
+                    isPinned: peerID.map { dmPrefs.isPinned($0) } ?? false,
+                    onOpen: { openConversation = conv },
+                    onViewProfile: {
+                        if let other = conv.otherUser { profilePopupUserID = other.userID }
+                    },
+                    onCloseDM: {
+                        if let me = session.currentUserID, let peer = peerID {
+                            Task { await dmPrefs.setHidden(userID: me, peer: peer, hidden: true) }
+                        }
+                    },
+                    onTogglePin: {
+                        if let me = session.currentUserID, let peer = peerID {
+                            Task { await dmPrefs.togglePin(userID: me, peer: peer) }
+                        }
+                    },
+                    onMarkAsRead: {
+                        Task { try? await ConversationsRepository().markRead(conversationID: conv.id) }
+                        UnreadCountsStore.shared.clearLocal(conversationID: conv.id)
+                    },
+                    onMuteToggle: {
+                        if let me = session.currentUserID, let peer = peerID {
+                            Task { await dmPrefs.toggleMute(userID: me, peer: peer) }
+                        }
+                    },
+                    onCopyID: {
+                        UIPasteboard.general.string = conv.id.uuidString
+                    }
+                )
+                // Half-sheet by default, drag up for full — matches Discord's
+                // long-press quick menu and avoids the iOS 26 full-cover look.
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(Theme.Colors.bgPrimary)
+            }
+            .task {
+                // Defensive: whenever the DM sidebar reappears AND no chat
+                // thread is actively pushed, force-reset the pushed-route
+                // counter so the bottom tab bar is never permanently stuck
+                // hidden after a rapid push/pop.  Guarding on
+                // `openConversation == nil` prevents the reset from firing
+                // during a half-completed interactive swipe-back (where the
+                // DM list becomes partially visible but the chat is still
+                // pushed), which was causing the tab bar to flash in mid-swipe.
+                if openConversation == nil {
+                    ChromeStore.shared.resetForRoot()
+                }
+                if !didInitialLoad {
+                    didInitialLoad = true
+                    await load(silently: !cache.conversations.isEmpty)
+                } else {
+                    await load(silently: true)
+                }
+                if let me = session.currentUserID {
+                    await dmPrefs.loadIfNeeded(userID: me)
+                }
+                await subscribeRealtime()
+            }
+            .onDisappear {
+                Task {
+                    await RealtimeChannelFactory.remove(msgChannel)
+                    await RealtimeChannelFactory.remove(convChannel)
+                    msgChannel = nil
+                    convChannel = nil
+                }
+            }
+            // No pull-to-refresh — matches web/desktop. The strip above is
+            // horizontal-only and realtime + .task already cover refresh.
+
+        }
+    }
+
+
+    private var header: some View {
+        HStack {
+            Text("Messages")
+                .font(.cubbly(24, .heavy))
+                .foregroundStyle(Theme.Colors.textPrimary)
+            Spacer()
+            Button { showNewChat = true } label: {
+                Image(systemName: "square.and.pencil")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .frame(width: 36, height: 36)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 8)
+    }
+
+    private var searchBar: some View {
+        HStack(spacing: 8) {
+            SVGIcon(name: "search", size: 14, tint: Theme.Colors.textMuted)
+            TextField("Search", text: $search)
+                .font(Theme.Fonts.bodySmall)
+                .foregroundStyle(Theme.Colors.textPrimary)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .background(Theme.Colors.bgTertiary)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if cache.conversations.isEmpty && !didInitialLoad {
+            ProgressView().tint(Theme.Colors.primary).frame(maxHeight: .infinity)
+        } else if let errorMessage, cache.conversations.isEmpty {
+            VStack(spacing: 8) {
+                Text(errorMessage)
+                    .font(Theme.Fonts.bodySmall)
+                    .foregroundStyle(Theme.Colors.danger)
+                    .multilineTextAlignment(.center)
+                Button("Try again") { Task { await load(silently: false) } }
+                    .foregroundStyle(Theme.Colors.primary)
+            }
+            .padding()
+            .frame(maxHeight: .infinity)
+        } else if filtered.isEmpty {
+            emptyState
+        } else {
+            List {
+                ForEach(filtered) { conv in
+                    Button { openConversation = conv } label: {
+                        DMRow(conversation: conv,
+                              isHighlighted: conv.id == lastChat.lastConversationID,
+                              presence: presence)
+                    }
+                    .listRowBackground(conv.id == lastChat.lastConversationID
+                                       ? Theme.Colors.bgHover : Theme.Colors.bgPrimary)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 2, leading: 6, bottom: 2, trailing: 6))
+                    // Long-press now opens our branded Cubbly quick-menu
+                    // half-sheet instead of iOS's generic contextMenu, so the
+                    // surface matches the rest of the app (rounded grouped
+                    // cards, Nunito, Cubbly icons).
+                    .simultaneousGesture(
+                        LongPressGesture(minimumDuration: 0.32)
+                            .onEnded { _ in
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                quickMenuConversation = conv
+                            }
+                    )
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(Theme.Colors.bgPrimary)
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 8) {
+            SVGIcon(name: "messages", size: 48, tint: Theme.Colors.textMuted)
+            Text("No conversations yet")
+                .font(Theme.Fonts.heading)
+                .foregroundStyle(Theme.Colors.textPrimary)
+            Text("Tap the new-chat icon in the top right to start one.")
+                .font(Theme.Fonts.bodySmall)
+                .foregroundStyle(Theme.Colors.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 40)
+        }
+        .frame(maxHeight: .infinity)
+    }
+
+    private var filtered: [ConversationSummary] {
+        // Hide conversations the user has dismissed via "Close DM".
+        let visible = cache.conversations.filter { conv in
+            if let peer = conv.otherUser?.userID, dmPrefs.isHidden(peer) { return false }
+            return true
+        }
+        let searched: [ConversationSummary] = {
+            guard !search.isEmpty else { return visible }
+            let q = search.lowercased()
+            return visible.filter {
+                $0.displayName.lowercased().contains(q) ||
+                ($0.lastMessage?.lowercased().contains(q) ?? false)
+            }
+        }()
+        // Pinned conversations sort to the top, preserving recency within each bucket.
+        return searched.sorted { a, b in
+            let ap = a.otherUser.map { dmPrefs.isPinned($0.userID) } ?? false
+            let bp = b.otherUser.map { dmPrefs.isPinned($0.userID) } ?? false
+            if ap != bp { return ap && !bp }
+            return (a.lastMessageAt ?? .distantPast) > (b.lastMessageAt ?? .distantPast)
+        }
+    }
+
+    private func load(silently: Bool) async {
+        guard let userID = session.currentUserID else { return }
+        do {
+            let next = try await ConversationsRepository().listSummaries(currentUserID: userID)
+            let peerIDs = next.compactMap { $0.otherUser?.userID }
+            // Block only on badges: they occupy inline space beside names and
+            // must be present on the first DM-sidebar paint. Name colors can
+            // keep using the existing lazy/debounced path.
+            await UserBadgesStore.shared.preload(peerIDs)
+            for uid in peerIDs {
+                NameColorsStore.shared.request(uid)
+            }
+            cache.conversations = next
+            cache.lastLoaded = Date()
+            errorMessage = nil
+        } catch is CancellationError {
+            errorMessage = nil
+        } catch let urlError as URLError where urlError.code == .cancelled {
+            errorMessage = nil
+        } catch {
+            if !silently {
+                errorMessage = "Couldn't load conversations: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    // MARK: - Realtime
+
+    /// Subscribes to message INSERTs and conversation UPDATEs across all of
+    /// the user's conversations. RLS already restricts what we receive, so we
+    /// don't need a per-conversation filter — every event we get is for a
+    /// conversation we're a participant in. On each event we patch the
+    /// affected `ConversationSummary` in-place (last message + timestamp) and
+    /// resort the list. This mirrors the web app's `useConversations` hook
+    /// and keeps the home tab live without a manual refresh.
+    private func subscribeRealtime() async {
+        guard msgChannel == nil, convChannel == nil else { return }
+        let mc = await RealtimeChannelFactory.make("dm-list-messages")
+        let mInserts = mc.postgresChange(
+            InsertAction.self, schema: "public", table: "messages")
+        Task {
+            for await action in mInserts {
+                guard let row = try? action.decodeRecord(
+                    as: ChatMessageRow.self, decoder: jsonDecoder()) else { continue }
+                await MainActor.run { applyIncomingMessage(row) }
+            }
+        }
+        do { try await mc.subscribeWithError() }
+        catch { print("[DMList] messages channel subscribe failed:", error) }
+        msgChannel = mc
+
+        let cc = await RealtimeChannelFactory.make("dm-list-conversations")
+        let cUpdates = cc.postgresChange(
+            UpdateAction.self, schema: "public", table: "conversations")
+        Task {
+            for await _ in cUpdates {
+                // A bumped conversation usually means a new message; reload silently.
+                await load(silently: true)
+            }
+        }
+        do { try await cc.subscribeWithError() }
+        catch { print("[DMList] conversations channel subscribe failed:", error) }
+        convChannel = cc
+    }
+
+    private func applyIncomingMessage(_ row: ChatMessageRow) {
+        var list = cache.conversations
+        if let idx = list.firstIndex(where: { $0.id == row.conversationID }) {
+            let old = list[idx]
+            let updated = ConversationSummary(
+                id: old.id,
+                isGroup: old.isGroup,
+                name: old.name,
+                pictureURL: old.pictureURL,
+                members: old.members,
+                lastMessage: row.content,
+                lastMessageAt: row.createdAt,
+                updatedAt: row.createdAt
+            )
+            list.remove(at: idx)
+            list.insert(updated, at: 0)
+            cache.conversations = list
+
+            // Sound + local banner for messages from someone else, when the
+            // user isn't already reading that thread.
+            let isMe = row.senderID == session.currentUserID
+            let isActive = NotificationService.shared.activeConversationID == row.conversationID
+            if !isMe && !isActive {
+                if NotificationPreferences.shared.messageSoundEnabled {
+                    SoundService.shared.play(.message)
+                }
+                let senderProfile = old.members.first(where: { $0.userID == row.senderID })
+                let title: String
+                if old.isGroup {
+                    let who = senderProfile?.displayName ?? "Someone"
+                    title = "\(who) • \(old.displayName)"
+                } else {
+                    title = senderProfile?.displayName ?? old.displayName
+                }
+                NotificationService.shared.notifyIncomingMessage(
+                    conversationID: row.conversationID,
+                    title: title,
+                    body: row.content,
+                    threadID: "dm:\(row.conversationID.uuidString)"
+                )
+            }
+        } else {
+            // New conversation we haven't loaded yet — refresh silently.
+            Task { await load(silently: true) }
+        }
+    }
+
+    private func jsonDecoder() -> JSONDecoder {
+        let d = JSONDecoder()
+        d.dateDecodingStrategy = .iso8601
+        return d
+    }
+}
+
+private struct DMRow: View {
+    let conversation: ConversationSummary
+    let isHighlighted: Bool
+    @ObservedObject var presence: PresenceService
+    @ObservedObject private var activity = ActivityService.shared
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ZStack(alignment: .bottomTrailing) {
+                if conversation.isGroup && conversation.pictureURL == nil {
+                    GroupAvatar(members: conversation.members, size: 48)
+                } else {
+                    AvatarView(
+                        url: conversation.avatarURL,
+                        fallbackText: conversation.displayName,
+                        size: 48
+                    )
+                }
+                if let other = conversation.otherUser {
+                    let live = presence.effectiveStatus(for: other.userID, storedStatus: other.status)
+                    StatusDot(
+                        rawStatus: live,
+                        isOnline: presence.isOnline(other.userID),
+                        size: 12,
+                        borderColor: isHighlighted ? Theme.Colors.bgHover : Theme.Colors.bgPrimary
+                    )
+                    .offset(x: 2, y: 2)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    CubblyNameText(
+                        userId: conversation.isGroup ? nil : conversation.otherUser?.userID,
+                        text: conversation.displayName,
+                        font: Theme.Fonts.bodyMedium
+                    )
+                    .lineLimit(1)
+                    .layoutPriority(0)
+                    .frame(minWidth: 0, alignment: .leading)
+                    if !conversation.isGroup, let other = conversation.otherUser {
+                        UserBadgesRow(userID: other.userID, size: 13)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .layoutPriority(1)
+                    }
+                }
+                .onAppear {
+                    if let uid = conversation.otherUser?.userID {
+                        UserBadgesStore.shared.request(uid)
+                        NameColorsStore.shared.request(uid)
+                    }
+                }
+                if let label = activityLabel {
+                    HStack(spacing: 4) {
+                        SVGIcon(name: "activity", size: 12, tint: Theme.Colors.success)
+                        Text(label)
+                            .font(Theme.Fonts.bodySmall)
+                            .foregroundStyle(Theme.Colors.success)
+                            .lineLimit(1)
+                    }
+                } else {
+                    Text(Self.previewText(for: conversation.lastMessage))
+                        .font(Theme.Fonts.bodySmall)
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .lineLimit(1)
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            if let date = conversation.lastMessageAt {
+                Text(RelativeTime.compact(from: date))
+                    .font(.cubbly(11, .semibold))
+                    .foregroundStyle(Theme.Colors.textMuted)
+            }
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 8)
+        .background(isHighlighted ? Theme.Colors.bgHover : Color.clear)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .contentShape(Rectangle())
+    }
+
+    private var activityLabel: String? {
+        guard let other = conversation.otherUser else { return nil }
+        return activity.label(for: other.userID, isOnline: presence.isOnline(other.userID))
+    }
+
+    /// Replace raw `[attachments]…` JSON with a friendly one-liner so the DM
+    /// row doesn't leak a big JSON blob.
+    static func previewText(for raw: String?) -> String {
+        guard let raw, !raw.isEmpty else { return "Say hi 👋" }
+        if let pretty = MessageAttachmentsParser.preview(for: raw) { return pretty }
+        return raw
+    }
+}
+
+// MARK: - Sidebar peek preview
+
+/// Non-interactive visual stand-in for `DMListView`'s content, used as the
+/// side-peek destination when the user drags a chat thread out of view. Pulls
+/// from the shared `ConversationsCache` so it always matches what the real
+/// home tab would render — no network, no subscriptions, no taps.
+struct DMSidebarPreview: View {
+    @ObservedObject private var cache = ConversationsCache.shared
+    @ObservedObject private var lastChat = LastChatStore.shared
+    @ObservedObject private var presence = PresenceService.shared
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ServerRail()
+            Rectangle().fill(Theme.Colors.divider).frame(width: 1)
+
+            VStack(spacing: 0) {
+                HStack {
+                    Text("Messages")
+                        .font(.cubbly(24, .heavy))
+                        .foregroundStyle(Theme.Colors.textPrimary)
+                    Spacer()
+                    Image(systemName: "square.and.pencil")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .frame(width: 36, height: 36)
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 8)
+
+                HStack(spacing: 8) {
+                    SVGIcon(name: "search", size: 14, tint: Theme.Colors.textMuted)
+                    Text("Search")
+                        .font(Theme.Fonts.bodySmall)
+                        .foregroundStyle(Theme.Colors.textMuted)
+                    Spacer()
+                }
+                .padding(.vertical, 8)
+                .padding(.horizontal, 12)
+                .background(Theme.Colors.bgTertiary)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
+
+                PersonalNotesRow(action: {})
+                    .padding(.bottom, 4)
+
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(cache.conversations) { conv in
+                            DMRow(
+                                conversation: conv,
+                                isHighlighted: conv.id == lastChat.lastConversationID,
+                                presence: presence
+                            )
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 2)
+                        }
+                    }
+                }
+                .scrollDisabled(true)
+            }
+            .frame(maxWidth: .infinity)
+            .background(Theme.Colors.bgPrimary)
+        }
+        .background(Theme.Colors.bgPrimary)
+        .allowsHitTesting(false)
+    }
+}
+
+// MARK: - Personal Notes row
+
+/// Single tappable row above the conversation list that opens the user's
+/// encrypted personal notes. Mirrors the Discord-iOS "Personal Notes" entry:
+/// circular icon tile + title only, no card chrome, full-width tap target.
+struct PersonalNotesRow: View {
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(Theme.Colors.bgTertiary)
+                        .frame(width: 40, height: 40)
+                    SVGIcon(name: "notes", size: 20, tint: Theme.Colors.textPrimary)
+                }
+
+                Text("Personal Notes")
+                    .font(Theme.Fonts.bodyMedium)
+                    .foregroundStyle(Theme.Colors.textPrimary)
+                    .lineLimit(1)
+
+                Spacer(minLength: 8)
+            }
+            .padding(.vertical, 10)
+            .padding(.horizontal, 12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}

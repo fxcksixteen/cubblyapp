@@ -60,6 +60,7 @@ final class SessionStore: ObservableObject {
                 // the UI can read live data without each view bootstrapping
                 // its own subscription.
                 await CoinsStore.shared.start(userId: session.user.id)
+                await GemsStore.shared.start(userId: session.user.id)
                 await ShopStore.shared.start(userId: session.user.id)
                 await NameColorsStore.shared.startRealtime()
                 await UserBadgesStore.shared.startRealtime()
@@ -78,6 +79,7 @@ final class SessionStore: ObservableObject {
                 await CallStore.shared.detach()
                 await PresenceService.shared.stop()
                 await CoinsStore.shared.stop()
+                await GemsStore.shared.stop()
                 await ShopStore.shared.stop()
                 await ActivityService.shared.stop()
                 await UnreadCountsStore.shared.stop()
@@ -88,6 +90,7 @@ final class SessionStore: ObservableObject {
             await CallStore.shared.detach()
             await PresenceService.shared.stop()
             await CoinsStore.shared.stop()
+            await GemsStore.shared.stop()
             await ShopStore.shared.stop()
             await ActivityService.shared.stop()
             await UnreadCountsStore.shared.stop()
