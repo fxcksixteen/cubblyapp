@@ -119,6 +119,16 @@ struct SVGIcon: View {
         case "status-invisible":           return "circle"
         case "empty-pending":              return "tray"
         case "empty-blocked":              return "nosign"
+        case "settings-notifications":     return "bell.fill"
+        case "settings-voice":             return "mic.fill"
+        case "settings-activity":          return "gamecontroller.fill"
+        case "settings-appearance":        return "paintbrush.pointed.fill"
+        case "settings-chat":              return "bubble.left.and.bubble.right.fill"
+        case "settings-social":            return "person.2.fill"
+        case "settings-privacy":           return "lock.shield.fill"
+        case "settings-devices":           return "desktopcomputer"
+        case "settings-gaming":            return "gamecontroller.fill"
+        case "settings-keybinds":          return "keyboard"
         default:                             return "questionmark.circle"
         }
     }
