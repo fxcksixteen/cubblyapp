@@ -59,6 +59,23 @@ export const CURATED_ICONS: Record<string, string> = {
   "marvelrivals": marvelRivalsIcon,
   "marvel-win64-shipping": marvelRivalsIcon,
 
+  // --- Rockstar ---
+  "grand theft auto v": gtaVIconUrl,
+  "grand theft auto v enhanced": gtaVIconUrl,
+  "grand theft auto v legacy": gtaVIconUrl,
+  "gta v": gtaVIconUrl,
+  "gta5": gtaVIconUrl,
+  "gtav": gtaVIconUrl,
+  "gta5_enhanced": gtaVIconUrl,
+  "gtavlauncher": gtaVIconUrl,
+  "playgtav": gtaVIconUrl,
+  "gta online": gtaVIconUrl,
+  "fivem": gtaVIconUrl,
+  "fivem_gtaprocess": gtaVIconUrl,
+  "fivem_b2802_gtaprocess": gtaVIconUrl,
+  "ragemp": gtaVIconUrl,
+  "altv": gtaVIconUrl,
+
 
 
   // --- Minecraft ---
