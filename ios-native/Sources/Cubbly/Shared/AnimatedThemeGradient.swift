@@ -206,23 +206,23 @@ struct AnimatedGradientText: View {
         }
     }
 
-    @ViewBuilder
-    private func fill(phase: CGFloat, cycle: Double) -> some ShapeStyle {
+    private func fill(phase: CGFloat, cycle: Double) -> AnyShapeStyle {
         switch style {
         case .conic:
-            AngularGradient(colors: colors + [colors.first ?? .white],
-                            center: .center,
-                            angle: .degrees(cycle * 360))
+            return AnyShapeStyle(AngularGradient(
+                colors: colors + [colors.first ?? .white],
+                center: .center,
+                angle: .degrees(cycle * 360)))
         case .hueshift:
             // Rotate which stop leads so the whole name shifts hue together.
-            LinearGradient(colors: rotated(by: cycle),
-                           startPoint: .leading, endPoint: .trailing)
+            return AnyShapeStyle(LinearGradient(
+                colors: rotated(by: cycle),
+                startPoint: .leading, endPoint: .trailing))
         case .sweep, .pulse:
-            LinearGradient(
+            return AnyShapeStyle(LinearGradient(
                 colors: colors + colors + [colors.first ?? .white],
                 startPoint: UnitPoint(x: phase, y: 0.5),
-                endPoint: UnitPoint(x: phase + 1, y: 0.5)
-            )
+                endPoint: UnitPoint(x: phase + 1, y: 0.5)))
         }
     }
 
