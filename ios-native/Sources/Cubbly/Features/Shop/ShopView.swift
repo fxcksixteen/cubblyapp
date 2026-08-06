@@ -339,9 +339,9 @@ private struct ShopItemCard: View {
 
                 if !isOwned {
                     HStack(spacing: 4) {
-                        BundledAssetImage(name: "coin-stack")
+                        BundledAssetImage(name: item.isGemItem ? "gem" : "coin-stack")
                             .frame(width: 14, height: 14)
-                        Text("\(item.price)")
+                        Text("\(item.effectivePrice)")
                             .font(.cubbly(11, .bold))
                             .foregroundStyle(Theme.Colors.textSecondary)
                             .monospacedDigit()
