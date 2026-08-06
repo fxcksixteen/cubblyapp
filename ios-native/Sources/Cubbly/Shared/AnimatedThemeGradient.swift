@@ -179,23 +179,56 @@ struct AnimatedGradientText: View {
     let colors: [Color]
     var font: Font = .cubbly(16, .heavy)
     var duration: Double = 4
+    /// Motion style from the shop item config. Gem name colors use these to
+    /// look different from each other, matching web/desktop.
+    var style: NameColorsStore.MotionStyle = .sweep
+    /// "Bow" name colors get a little ribbon glyph in front of the name.
+    var bow: Bool = false
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
             let cycle = (t.truncatingRemainder(dividingBy: duration)) / duration
             let phase = CGFloat(cycle) * 2 - 1 // -1 → 1
+            // pulse breathes the whole name instead of scrolling it.
+            let pulse = 0.72 + 0.28 * (sin(cycle * .pi * 2) * 0.5 + 0.5)
 
-            Text(name)
-                .font(font)
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: colors + colors + [colors.first ?? .white],
-                        startPoint: UnitPoint(x: phase, y: 0.5),
-                        endPoint: UnitPoint(x: phase + 1, y: 0.5)
-                    )
-                )
-                .lineLimit(1)
+            HStack(spacing: 3) {
+                if bow {
+                    Text("🎀").font(font)
+                }
+                Text(name)
+                    .font(font)
+                    .foregroundStyle(fill(phase: phase, cycle: cycle))
+                    .opacity(style == .pulse ? pulse : 1)
+                    .lineLimit(1)
+            }
         }
+    }
+
+    @ViewBuilder
+    private func fill(phase: CGFloat, cycle: Double) -> some ShapeStyle {
+        switch style {
+        case .conic:
+            AngularGradient(colors: colors + [colors.first ?? .white],
+                            center: .center,
+                            angle: .degrees(cycle * 360))
+        case .hueshift:
+            // Rotate which stop leads so the whole name shifts hue together.
+            LinearGradient(colors: rotated(by: cycle),
+                           startPoint: .leading, endPoint: .trailing)
+        case .sweep, .pulse:
+            LinearGradient(
+                colors: colors + colors + [colors.first ?? .white],
+                startPoint: UnitPoint(x: phase, y: 0.5),
+                endPoint: UnitPoint(x: phase + 1, y: 0.5)
+            )
+        }
+    }
+
+    private func rotated(by cycle: Double) -> [Color] {
+        guard colors.count > 1 else { return colors }
+        let offset = Int(cycle * Double(colors.count)) % colors.count
+        return Array(colors[offset...] + colors[..<offset]) + [colors[offset]]
     }
 }
