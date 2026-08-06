@@ -63,12 +63,17 @@ export function nextScreenBitrate(sample: ScreenCongestionSample): { bitrate: nu
   return { bitrate: sample.bitrate, cleanSamples, reason: "hold" };
 }
 
-/** Fraction of the target the encoder opens at before ramping up. */
-export const RAMP_START_FRACTION = 0.35;
+/**
+ * Fraction of the target the encoder opens at before ramping up.
+ * v0.4.30 — 0.35 meant a 1080p60 pick looked like 720p for the first ~6 s of
+ * every share. Open close to what the user asked for and reach it in ~4 s;
+ * congestion handling still cuts instantly if the link can't take it.
+ */
+export const RAMP_START_FRACTION = 0.6;
 /** Controller ticks (2s each) over which the ramp reaches the target. */
-export const RAMP_STEPS = 4;
+export const RAMP_STEPS = 3;
 /** Per-tick multiplier while ramping. */
-export const RAMP_STEP_FACTOR = 1.35;
+export const RAMP_STEP_FACTOR = 1.45;
 
 export function calculatePerPeerScreenBudget(totalBitrate: number, peerCount: number) {
   return Math.max(500_000, Math.round(totalBitrate / Math.max(1, peerCount)));
