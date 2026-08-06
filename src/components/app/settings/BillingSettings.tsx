@@ -67,7 +67,7 @@ const BillingSettings = () => {
       // Complimentary plans renew on a rolling monthly basis — make sure the
       // period is rolled forward before we read it, otherwise the UI can show
       // a renewal date that's already in the past.
-      await supabase.rpc("roll_complimentary_subscription").catch(() => undefined);
+      try { await supabase.rpc("roll_complimentary_subscription"); } catch { /* non-fatal */ }
       if (cancelled) return;
       const [s, g, gf] = await Promise.all([
 
