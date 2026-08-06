@@ -485,11 +485,31 @@ final class CallStore: ObservableObject {
             declineIncoming()
             return
         }
+        // Adopt the canonical ongoing call_event for this conversation so we
+        // land in the SAME event as the caller instead of heartbeating into a
+        // parallel one (which is what left both sides "in a call" alone).
+        var acceptedEventId = inc.callEventId
+        if let pref = inc.callEventId {
+            struct CanonParams: Encodable {
+                let _conversation_id: String
+                let _preferred_call_event_id: String
+            }
+            if let canonical: UUID = try? await SupabaseManager.shared.client.rpc(
+                "canonicalize_ongoing_call_event",
+                params: CanonParams(
+                    _conversation_id: inc.conversationId.uuidString,
+                    _preferred_call_event_id: pref.uuidString
+                )
+            ).execute().value {
+                acceptedEventId = canonical
+            }
+        }
+
         self.conversationId = inc.conversationId
         self.peerId = inc.callerId
         self.peerName = inc.callerName
         self.peerAvatarUrl = inc.callerAvatarUrl
-        self.currentCallEventId = inc.callEventId
+        self.currentCallEventId = acceptedEventId
         // Web flips to "calling" while waiting for the offer to arrive — match it.
         self.state = .calling
         self.startedAt = nil
@@ -497,20 +517,28 @@ final class CallStore: ObservableObject {
         self.incoming = nil
         self.ringTimedOut = false
         self.sdpExchangeStarted = false
+        self.isCallerRole = false
+        self.peerAcceptedCallEventId = nil
+        self.isEndingCall = false
         incomingRingTimeoutTask?.cancel(); incomingRingTimeoutTask = nil
         SoundService.shared.stopLooping(.incomingCall)
-        SoundService.shared.play(.message)
         configureAudioSession()
+        SoundService.shared.play(.message)
         await signaling.joinCallChannel(conversationId: inc.conversationId)
-        if let evt = inc.callEventId {
+        if let evt = acceptedEventId {
             await ensureOwnParticipantRow(callEventId: evt)
             startHeartbeat()
         }
-        // Tell the caller we're on the channel and ready for their offer.
-        // We retry until the offer arrives so a single dropped Realtime
-        // packet (common on mobile) doesn't wedge the call forever.
-        startReadyForOfferRetry(callEventId: inc.callEventId)
-        print("[Call] 📡 Sent ready-for-offer to caller (with retry)")
+        // Web/desktop parity: tell the caller we picked up BEFORE any SDP
+        // work. Their ring stops immediately and they push an offer without
+        // waiting on the ready-for-offer round trip.
+        await signaling.broadcast(type: "peer-accepted", payload: [
+            "callEventId": acceptedEventId.map { .string($0.uuidString.lowercased()) } ?? .null
+        ])
+        trace("callee.acceptedSent")
+        // Then ask for the offer, retrying until it lands so a single dropped
+        // Realtime packet (common on mobile) doesn't wedge the call forever.
+        startReadyForOfferRetry(callEventId: acceptedEventId)
     }
 
     func declineIncoming() {
