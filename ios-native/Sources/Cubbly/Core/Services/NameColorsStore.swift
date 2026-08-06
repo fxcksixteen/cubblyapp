@@ -11,10 +11,17 @@ import Realtime
 final class NameColorsStore: ObservableObject {
     static let shared = NameColorsStore()
 
+    /// Motion styles used by the gem name colors on web/desktop. Anything we
+    /// don't recognise falls back to `.sweep`, which is the plain scrolling
+    /// gradient the older animated colors have always used.
+    enum MotionStyle: String, Equatable {
+        case sweep, hueshift, conic, pulse
+    }
+
     enum NameColor: Equatable {
         case staticColor(Color)
         case gradient(from: Color, to: Color)
-        case animated(stops: [Color])
+        case animated(stops: [Color], style: MotionStyle, duration: Double, bow: Bool)
     }
 
     @Published private(set) var colors: [UUID: NameColor?] = [:]
