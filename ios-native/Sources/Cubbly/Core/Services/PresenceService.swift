@@ -22,6 +22,7 @@ final class PresenceService: ObservableObject {
     private var trackedUserID: UUID?
     private var statusRefreshTask: Task<Void, Never>?
     private var heartbeatTask: Task<Void, Never>?
+    private var heartbeatDBTask: Task<Void, Never>?
     private var profileStatusChannel: RealtimeChannelV2?
 
     private init() {}
@@ -117,6 +118,7 @@ final class PresenceService: ObservableObject {
     func stop() async {
         statusRefreshTask?.cancel(); statusRefreshTask = nil
         heartbeatTask?.cancel(); heartbeatTask = nil
+        heartbeatDBTask?.cancel(); heartbeatDBTask = nil
         presenceSubscription?.cancel(); presenceSubscription = nil
         if let ch = channel {
             await ch.untrack()
@@ -162,6 +164,7 @@ final class PresenceService: ObservableObject {
     /// within the server's TTL window (~30s) instead of lingering.
     func goBackground() async {
         heartbeatTask?.cancel(); heartbeatTask = nil
+        heartbeatDBTask?.cancel(); heartbeatDBTask = nil
         statusRefreshTask?.cancel(); statusRefreshTask = nil
         if let ch = channel { await ch.untrack() }
     }
