@@ -152,14 +152,14 @@ struct MoreSettingsTabView: View {
 
     private func loadSubscription(userId: UUID) async {
         do {
-            let row: SubscriptionRow? = try await SupabaseManager.shared.client
+            let rows: [SubscriptionRow] = try await SupabaseManager.shared.client
                 .from("subscriptions")
                 .select("tier,status,interval,current_period_end,cancel_at_period_end,complimentary")
                 .eq("user_id", value: userId.uuidString)
-                .maybeSingle()
+                .limit(1)
                 .execute()
                 .value
-            subscription = row
+            subscription = rows.first
         } catch {
             subscription = nil
         }
