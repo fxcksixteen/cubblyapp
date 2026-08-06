@@ -193,14 +193,16 @@ struct ShopView: View {
         if shop.owned.contains(item.id) {
             Task { await shop.toggleEquip(item) }
         } else {
-            if coins.balance < item.price {
+            let wallet = item.isGemItem ? gems.balance : coins.balance
+            if wallet < item.effectivePrice {
                 notEnoughItem = item
                 return
             }
-            // Discord-style confirmation modal before spending coins.
+            // Discord-style confirmation modal before spending currency.
             confirmPurchaseItem = item
         }
     }
+
 }
 
 // MARK: - Purchase confirmation sheet (Cubbly-branded)
