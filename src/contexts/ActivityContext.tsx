@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState, ReactNode, useC
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { detectGame } from "@/lib/knownGames";
+import { registerSteamLibrary, type SteamLibraryEntry } from "@/lib/activityIcons";
 
 export interface UserActivity {
   user_id: string;
@@ -270,11 +271,26 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
     if (!api?.getRunningProcesses) return;
 
     let cancelled = false;
+    // v0.4.30 — installed Steam games, refreshed lazily (main process caches
+    // the disk scan for 10 minutes so this is cheap).
+    let steamGames: SteamLibraryEntry[] = [];
+    const refreshSteamLibrary = async () => {
+      if (!api.getSteamLibrary) return;
+      try {
+        const lib = (await api.getSteamLibrary()) || [];
+        if (cancelled) return;
+        steamGames = lib;
+        registerSteamLibrary(lib);
+      } catch { /* non-fatal — curated detection still works */ }
+    };
+    void refreshSteamLibrary();
+    const steamTimer = setInterval(refreshSteamLibrary, 10 * 60 * 1000);
+
     const tick = async () => {
       if (cancelled) return;
       try {
         const procs: string[] = (await api.getRunningProcesses()) || [];
-        const detected = detectGame(procs, myGames);
+        const detected = detectGame(procs, myGames, steamGames);
         if (detected) {
           missStreakRef.current = 0;
           currentlyDetectedRef.current = true;
@@ -428,6 +444,7 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
 
     return () => {
       cancelled = true;
+      clearInterval(steamTimer);
       if (pollTimerRef.current) clearInterval(pollTimerRef.current);
       pollTimerRef.current = null;
       window.removeEventListener("cubbly:realtime-media-load-change", handleRealtimeLoadChange);

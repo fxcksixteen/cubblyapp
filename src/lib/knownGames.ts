@@ -273,6 +273,8 @@ function lookupKnown(proc: string): KnownActivity | null {
 export function detectGame(
   runningProcesses: string[],
   userGames: Array<{ process_name: string; display_name: string }>,
+  /** v0.4.30 — installed Steam games, so ANY of them is detected automatically. */
+  steamGames: Array<{ appId: number; name: string; exeNames?: string[] }> = [],
 ): DetectedActivity | null {
   const procSet = new Set(runningProcesses.map((p) => p.toLowerCase().replace(/\.exe$/, "")));
 
@@ -303,8 +305,23 @@ export function detectGame(
     }
   }
 
+  // 3. Any installed Steam game whose executable is running. This makes the
+  // whole Steam library detectable without curating a single entry, and the
+  // Steam display name is what we show (and what the capsule art is keyed on).
+  const NON_GAME_EXE = /^(unins\d*|uninstall|crashhandler|crashreport\w*|launcher_?helper|easyanticheat\w*|battleye\w*|vc_?redist|dxsetup|dotnet\w*|setup)$/i;
+  for (const entry of steamGames) {
+    for (const exe of entry.exeNames || []) {
+      const key = exe.toLowerCase().replace(/\.exe$/, "");
+      if (!key || NON_GAME_EXE.test(key)) continue;
+      if (procSet.has(key)) {
+        return { processName: key, displayName: entry.name, type: "game" };
+      }
+    }
+  }
+
   return softwareMatch;
 }
+
 
 /** Verb to show in UI: "Playing X" for games, "Using X" for software. */
 export function activityVerb(type: ActivityKind | undefined | null): "Playing" | "Using" {

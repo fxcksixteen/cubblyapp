@@ -833,6 +833,17 @@ ipcMain.handle("get-running-processes", async () => {
   catch (e) { log.warn("[activity] process list failed:", e?.message || e); return []; }
 });
 
+// v0.4.30 — installed Steam library index so ANY Steam game is detected by
+// name and illustrated with its official Steam capsule art.
+let steamLibraryMod = null;
+try { steamLibraryMod = require("./steamLibrary.cjs"); }
+catch (e) { log.warn("[activity] steamLibrary module missing:", e?.message || e); }
+ipcMain.handle("get-steam-library", async () => {
+  if (!steamLibraryMod) return [];
+  try { return await steamLibraryMod.scanSteamLibrary(); }
+  catch (e) { log.warn("[activity] steam library scan failed:", e?.message || e); return []; }
+});
+
 // v0.4.0 Phase 6 — rich game presence parsers (Valorant / Marvel Rivals /
 // Fortnite / League of Legends). Returns `{ gameKey, payload }` or null.
 let gameDetailsMod = null;

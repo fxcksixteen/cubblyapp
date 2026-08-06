@@ -12,16 +12,17 @@
  */
 import marvelRivalsIcon from "@/assets/marvel-rivals.png";
 import fortniteIconAsset from "@/assets/fortnite.png.asset.json";
+import gtaVIconAsset from "@/assets/gta5.png.asset.json";
 
 // Electron loads pages via file:// so root-relative /__l5e/ CDN paths can't
 // resolve. Prepend the deployed origin when running in the desktop app so
 // asset-pointer icons still load on friend cards / Active Now / chips.
 const isElectronRuntime =
   typeof window !== "undefined" && !!(window as any).electronAPI;
-const fortniteIconUrl =
-  isElectronRuntime && fortniteIconAsset.url.startsWith("/")
-    ? `https://web.cubbly.app${fortniteIconAsset.url}`
-    : fortniteIconAsset.url;
+const assetUrl = (url: string) =>
+  isElectronRuntime && url.startsWith("/") ? `https://web.cubbly.app${url}` : url;
+const fortniteIconUrl = assetUrl(fortniteIconAsset.url);
+const gtaVIconUrl = assetUrl(gtaVIconAsset.url);
 
 /** Direct image URLs for popular games & software. Keyed by lowercased name OR process name. */
 export const CURATED_ICONS: Record<string, string> = {
@@ -57,6 +58,23 @@ export const CURATED_ICONS: Record<string, string> = {
   "marvel rivals": marvelRivalsIcon,
   "marvelrivals": marvelRivalsIcon,
   "marvel-win64-shipping": marvelRivalsIcon,
+
+  // --- Rockstar ---
+  "grand theft auto v": gtaVIconUrl,
+  "grand theft auto v enhanced": gtaVIconUrl,
+  "grand theft auto v legacy": gtaVIconUrl,
+  "gta v": gtaVIconUrl,
+  "gta5": gtaVIconUrl,
+  "gtav": gtaVIconUrl,
+  "gta5_enhanced": gtaVIconUrl,
+  "gtavlauncher": gtaVIconUrl,
+  "playgtav": gtaVIconUrl,
+  "gta online": gtaVIconUrl,
+  "fivem": gtaVIconUrl,
+  "fivem_gtaprocess": gtaVIconUrl,
+  "fivem_b2802_gtaprocess": gtaVIconUrl,
+  "ragemp": gtaVIconUrl,
+  "altv": gtaVIconUrl,
 
 
 
@@ -156,6 +174,44 @@ export const steamHeaderUrl = (appId: number) =>
   `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${appId}/capsule_184x69.jpg`;
 
 /**
+ * Dynamic Steam library index (desktop only).
+ *
+ * Electron scans the local Steam install (`libraryfolders.vdf` +
+ * `appmanifest_*.acf`) and hands us `{ appId, name, exeNames[] }` for every
+ * installed game. We index it by lowercased name and by every executable
+ * basename we found inside the install folder, so ANY installed Steam game
+ * resolves to its official Steam capsule art with no curated entry needed.
+ */
+export type SteamLibraryEntry = { appId: number; name: string; exeNames?: string[] };
+
+const steamLibraryIndex = new Map<string, number>();
+
+export function registerSteamLibrary(entries: SteamLibraryEntry[] | null | undefined) {
+  if (!Array.isArray(entries)) return;
+  for (const entry of entries) {
+    if (!entry || !Number.isFinite(entry.appId)) continue;
+    const keys = [entry.name, ...(entry.exeNames || [])];
+    for (const raw of keys) {
+      const key = String(raw || "").toLowerCase().trim().replace(/\.exe$/, "");
+      if (key) steamLibraryIndex.set(key, entry.appId);
+    }
+  }
+}
+
+/** Resolve a Steam app id from the scanned library (name or process name). */
+export function lookupSteamAppId(name?: string | null, processName?: string | null): number | null {
+  const candidates = [name, processName]
+    .filter(Boolean)
+    .map((v) => v!.toLowerCase().trim().replace(/\.exe$/, ""));
+  for (const key of candidates) {
+    if (STEAM_APP_IDS[key]) return STEAM_APP_IDS[key];
+    const dynamic = steamLibraryIndex.get(key);
+    if (dynamic) return dynamic;
+  }
+  return null;
+}
+
+/**
  * Curated icon lookup — checks both the activity name and the process name.
  * Returns null if no curated icon exists.
  */
@@ -167,11 +223,9 @@ export function lookupCuratedIcon(name?: string | null, processName?: string | n
   return null;
 }
 
-/** Steam fallback URL — null if no known mapping. */
+/** Steam fallback URL — null if no known mapping (curated map or scanned library). */
 export function lookupSteamIcon(name?: string | null, processName?: string | null): string | null {
-  const candidates = [name, processName].filter(Boolean).map((v) => v!.toLowerCase().trim());
-  for (const key of candidates) {
-    if (STEAM_APP_IDS[key]) return steamHeaderUrl(STEAM_APP_IDS[key]);
-  }
-  return null;
+  const appId = lookupSteamAppId(name, processName);
+  return appId ? steamHeaderUrl(appId) : null;
 }
+

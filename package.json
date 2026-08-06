@@ -1,7 +1,7 @@
 {
   "name": "cubbly",
   "private": true,
-  "version": "0.4.29",
+  "version": "0.4.30",
   "type": "module",
   "main": "electron/main.cjs",
   "build": {
@@ -15,6 +15,7 @@
       "dist/**/*",
       "electron/**/*.cjs",
       "electron/icon.ico",
+      "electron/icon.png",
       "package.json",
       "native/win-audio-capture/index.js",
       "native/win-audio-capture/package.json",
@@ -80,6 +81,7 @@
     "buildDependenciesFromSource": false,
     "asarUnpack": [
       "electron/icon.ico",
+      "electron/icon.png",
       "native/win-audio-capture/**/*",
       "native/win-dxgi-capture/**/*"
     ],
@@ -101,7 +103,10 @@
       "perMachine": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Cubbly"
+      "shortcutName": "Cubbly",
+      "installerIcon": "electron/icon.ico",
+      "uninstallerIcon": "electron/icon.ico",
+      "installerHeaderIcon": "electron/icon.ico"
     },
     "publish": [
       {
