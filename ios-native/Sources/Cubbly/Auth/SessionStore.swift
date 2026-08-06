@@ -79,7 +79,6 @@ final class SessionStore: ObservableObject {
                 await CallStore.shared.detach()
                 await PresenceService.shared.stop()
                 await CoinsStore.shared.stop()
-            await GemsStore.shared.stop()
                 await GemsStore.shared.stop()
                 await ShopStore.shared.stop()
                 await ActivityService.shared.stop()
