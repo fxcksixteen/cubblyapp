@@ -64,7 +64,13 @@ const BillingSettings = () => {
     if (!user) return;
     let cancelled = false;
     (async () => {
+      // Complimentary plans renew on a rolling monthly basis — make sure the
+      // period is rolled forward before we read it, otherwise the UI can show
+      // a renewal date that's already in the past.
+      await supabase.rpc("roll_complimentary_subscription").catch(() => undefined);
+      if (cancelled) return;
       const [s, g, gf] = await Promise.all([
+
         supabase.from("subscriptions").select("tier,status,interval,current_period_end,cancel_at_period_end,stripe_customer_id,complimentary").eq("user_id", user.id).maybeSingle(),
         supabase.from("gems_transactions").select("id,amount,balance_after,reason,created_at").eq("user_id", user.id).order("created_at", { ascending: false }).limit(25),
         supabase.from("gift_transactions").select("id,gift_type,status,sender_id,recipient_id,payload,message,created_at,claimed_at").or(`sender_id.eq.${user.id},recipient_id.eq.${user.id}`).order("created_at", { ascending: false }).limit(50),
