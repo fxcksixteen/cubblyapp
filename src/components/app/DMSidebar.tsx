@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo } from "react";
 import { useCustomStatuses } from "@/hooks/useCustomStatuses";
 import StatusIndicator from "@/components/app/StatusIndicator";
 import GroupAvatar from "@/components/app/GroupAvatar";
+import RotatingSubtitle from "@/components/app/RotatingSubtitle";
+
 import { useAuth } from "@/contexts/AuthContext";
 import { useVoice } from "@/contexts/VoiceContext";
 import { useGroupCall } from "@/contexts/GroupCallContext";
