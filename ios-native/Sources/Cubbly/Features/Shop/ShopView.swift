@@ -604,6 +604,73 @@ private struct CoinsInfoSheet: View {
     }
 }
 
+// MARK: - Gems info sheet
+
+private struct GemsInfoSheet: View {
+    @ObservedObject private var gems = GemsStore.shared
+    @Environment(\.dismiss) private var dismiss
+    @State private var claiming = false
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(spacing: 8) {
+                    BundledAssetImage(name: "gem")
+                        .frame(width: 34, height: 34)
+                    Text("\(gems.balance)")
+                        .font(.cubbly(28, .heavy))
+                        .foregroundStyle(Theme.Colors.textPrimary)
+                    Spacer()
+                }
+                Text("Gems are Cubbly's premium currency. Honey members get a monthly gem drop, and gems unlock the exclusive animated name colors and themes in the Shop.")
+                    .font(Theme.Fonts.bodySmall)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+                Divider().background(Theme.Colors.divider)
+                statRow(label: "Lifetime earned", value: gems.lifetimeEarned)
+                statRow(label: "Lifetime spent", value: gems.lifetimeSpent)
+
+                Button {
+                    claiming = true
+                    Task {
+                        _ = await gems.claimMonthlyDrop()
+                        claiming = false
+                    }
+                } label: {
+                    Text(claiming ? "Checking…" : "Claim monthly gems")
+                        .font(.cubbly(14, .heavy))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity).padding(.vertical, 12)
+                        .background(Theme.Colors.primary, in: RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
+                .disabled(claiming)
+
+                Spacer()
+            }
+            .padding(20)
+            .navigationTitle("Gems")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                        .foregroundStyle(Theme.Colors.primary)
+                }
+            }
+            .background(Theme.Colors.bgPrimary)
+        }
+    }
+
+    private func statRow(label: String, value: Int) -> some View {
+        HStack {
+            Text(label).font(.cubbly(13)).foregroundStyle(Theme.Colors.textSecondary)
+            Spacer()
+            Text("\(value)").font(.cubbly(14, .bold)).foregroundStyle(Theme.Colors.textPrimary).monospacedDigit()
+        }
+    }
+}
+
+
+
 // MARK: - AnyJSON helper
 
 
