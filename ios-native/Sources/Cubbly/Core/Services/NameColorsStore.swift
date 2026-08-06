@@ -170,8 +170,9 @@ struct CubblyNameText: View {
         case .some(.gradient(let from, let to)):
             Text(text).font(font)
                 .foregroundStyle(LinearGradient(colors: [from, to], startPoint: .leading, endPoint: .trailing))
-        case .some(.animated(let stops)):
-            AnimatedGradientText(name: text, colors: stops, font: font)
+        case .some(.animated(let stops, let style, let duration, let bow)):
+            AnimatedGradientText(name: text, colors: stops, font: font,
+                                 duration: duration, style: style, bow: bow)
         default:
             Text(text).font(font).foregroundStyle(fallback)
                 .onAppear { if let id = userId { store.request(id) } }
