@@ -130,6 +130,15 @@ const AppLayout = () => {
       .sort((a, b) => (b.info.lastMessageAt || "").localeCompare(a.info.lastMessageAt || ""));
   }, [unreadByConv]);
 
+  // v0.4.31: Discord-style taskbar/tray badge on the desktop app — total of
+  // unread DM/mention messages plus incoming friend requests.
+  useEffect(() => {
+    const api = (window as any).electronAPI;
+    if (!api?.setUnreadBadge) return;
+    const totalUnread = Array.from(unreadByConv.values()).reduce((sum, u: any) => sum + (u?.count || 0), 0);
+    api.setUnreadBadge(totalUnread + incomingPendingCount);
+  }, [unreadByConv, incomingPendingCount]);
+
   useEffect(() => {
     if (location.pathname === "/@me" || location.pathname === "/@me/") {
       navigate("/@me/online", { replace: true });
