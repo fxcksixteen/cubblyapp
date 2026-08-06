@@ -7,7 +7,7 @@ import SwiftUI
 struct MoreSettingsTabView: View {
     enum Mode: String, Identifiable, CaseIterable {
         case accessibility, chat, contentSocial, dataPrivacy, devices
-        case gamingMode, keybinds, languageTime, advanced, updateLogs
+        case gamingMode, keybinds, languageTime, advanced, updateLogs, billing
         var id: String { rawValue }
         var title: String {
             switch self {
@@ -21,6 +21,7 @@ struct MoreSettingsTabView: View {
             case .languageTime:  return "Language & Time"
             case .advanced:      return "Advanced"
             case .updateLogs:    return "What's New"
+            case .billing:       return "Billing"
             }
         }
         var icon: String {
@@ -35,6 +36,7 @@ struct MoreSettingsTabView: View {
             case .languageTime:  return "globe"
             case .advanced:      return "wrench.adjustable.fill"
             case .updateLogs:    return "sparkles"
+            case .billing:       return "creditcard.fill"
             }
         }
 
@@ -52,6 +54,7 @@ struct MoreSettingsTabView: View {
             case .languageTime:  return "settings-language"
             case .advanced:      return "settings-advanced"
             case .updateLogs:    return "settings-updates"
+            case .billing:       return "settings-billing"
             }
         }
     }
