@@ -52,7 +52,17 @@ export class ErrorBoundary extends Component<Props, State> {
           className="fixed inset-0 z-[10000] flex flex-col items-center justify-center px-6 text-center"
           style={{ backgroundColor: "#96725e", color: "#fff8ee" }}
         >
-          <div className="text-5xl mb-4">🧸</div>
+          <img
+            src={cubblyBear}
+            alt="Cubbly"
+            width={96}
+            height={96}
+            loading="eager"
+            decoding="sync"
+            draggable={false}
+            className="mb-4 h-24 w-24 select-none object-contain"
+          />
+
           <h1 className="text-xl font-bold mb-2">Cubbly hit a snag</h1>
           <p className="text-sm opacity-80 mb-6 max-w-sm">
             Something unexpected happened. A quick reload usually sorts it out.
