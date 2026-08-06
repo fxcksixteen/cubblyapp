@@ -12,6 +12,7 @@
  */
 import marvelRivalsIcon from "@/assets/marvel-rivals.png";
 import fortniteIconAsset from "@/assets/fortnite.png.asset.json";
+import gtaVIconAsset from "@/assets/gta5.png.asset.json";
 
 // Electron loads pages via file:// so root-relative /__l5e/ CDN paths can't
 // resolve. Prepend the deployed origin when running in the desktop app so
