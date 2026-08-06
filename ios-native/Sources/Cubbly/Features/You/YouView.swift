@@ -220,6 +220,10 @@ struct YouView: View {
                 .foregroundStyle(Theme.Colors.textSecondary)
 
             VStack(spacing: 0) {
+                row(icon: "shield.fill", svg: "settings-account", label: "Account") {
+                    showingAccount = true
+                }
+                divider
                 row(icon: "bell.fill", svg: "settings-notifications", label: "Notifications") {
                     showingNotificationSettings = true
                 }
@@ -236,14 +240,11 @@ struct YouView: View {
                     showingAppearance = true
                 }
                 divider
-                ForEach(MoreSettingsTabView.Mode.allCases) { tab in
+                ForEach(Array(MoreSettingsTabView.Mode.allCases.enumerated()), id: \.element) { index, tab in
                     row(icon: tab.icon, svg: tab.svgIcon, label: tab.title) {
                         moreTab = tab
                     }
-                    divider
-                }
-                row(icon: "shield.fill", label: "Account") {
-                    showingAccount = true
+                    if index < MoreSettingsTabView.Mode.allCases.count - 1 { divider }
                 }
             }
             .background(Theme.Colors.bgSecondary)
