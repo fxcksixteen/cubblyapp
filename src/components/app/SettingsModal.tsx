@@ -40,6 +40,7 @@ import settingsAdvancedIcon from "@/assets/icons/settings-advanced.svg";
 import settingsActivityIcon from "@/assets/icons/settings-activity.svg";
 import settingsGamingIcon from "@/assets/icons/settings-gaming.svg";
 import settingsUpdatesIcon from "@/assets/icons/settings-updates.svg";
+import settingsBillingIcon from "@/assets/icons/settings-billing.svg";
 
 const APP_VERSION = CURRENT_VERSION;
 
