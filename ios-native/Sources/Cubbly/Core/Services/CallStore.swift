@@ -1156,11 +1156,17 @@ final class CallStore: ObservableObject {
         // Reset the SDP-exchange flag so a rejoining peer's `ready-for-offer`
         // produces a fresh offer instead of being dropped as a duplicate.
         sdpExchangeStarted = false
+        lastJoinerOfferEventId = nil
+        lastJoinerOfferSentAt = .distantPast
+        // We're now the one waiting, so we're allowed to answer the rejoining
+        // peer's `ready-for-offer` even if we originally answered this call.
+        peerLeftWaiting = true
+        peerAcceptedCallEventId = nil
         // Stay "calling" so UI shows we're waiting alone in the call. The
         // user can either End Call or wait for the peer to rejoin.
         state = .calling
         startedAt = nil
-        print("[Call] 👋 Peer left — staying in call, waiting for rejoin")
+        trace("peerLeft.waitingForRejoin")
     }
 
     private func makeIce(from dict: [String: Any]) -> RTCIceCandidate? {
