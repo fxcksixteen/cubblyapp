@@ -126,7 +126,18 @@ final class NameColorsStore: ObservableObject {
         case "animated":
             if let arr = cfg["stops"] as? [String] {
                 let parsed = arr.compactMap { colorFromHex($0) }
-                if parsed.count >= 2 { return .animated(stops: parsed) }
+                if parsed.count >= 2 {
+                    let style = MotionStyle(rawValue: (cfg["style"] as? String) ?? "sweep") ?? .sweep
+                    // Web stores durations as CSS strings like "4.8s".
+                    let raw = (cfg["duration"] as? String)?
+                        .replacingOccurrences(of: "s", with: "")
+                    let duration = Double(raw ?? "") ?? 4
+                    let bow = (cfg["bow"] as? Bool) ?? false
+                    return .animated(stops: parsed,
+                                     style: style,
+                                     duration: max(duration, 0.5),
+                                     bow: bow)
+                }
             }
         default: break
         }
