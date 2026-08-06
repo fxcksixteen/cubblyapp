@@ -903,26 +903,61 @@ final class CallStore: ObservableObject {
         case .peerVideo(_, let v):
             peerIsVideoOn = v
 
-        case .readyForOffer:
-            // A peer joined via "Join" pill while we were already in this
-            // call. Always treat this as a fresh negotiation request — if
-            // the prior SDP exchange stalled (callee never received the
-            // earlier offer because the channel was joining mid-broadcast,
-            // for example) the new ready-for-offer is how we recover.
-            Task { await respondToPeerJoining() }
+        case .readyForOffer(_, let evtId):
+            // A peer accepted, or joined via the "Join" pill, and is asking us
+            // for an offer. Only the offerer side may answer this — see
+            // `respondToPeerJoining`.
+            Task { await respondToPeerJoining(callEventId: evtId) }
+
+        case .peerAccepted(_, let evtId):
+            // Web/desktop parity: the callee picked up. Stop ringing, adopt
+            // their call_event if it drifted from ours, and push the offer
+            // right away instead of waiting for `ready-for-offer` to arrive.
+            peerAcceptedCallEventId = evtId ?? currentCallEventId
+            if let evtId = evtId, evtId != currentCallEventId, state == .calling {
+                trace("caller.adoptCallEvent", "-> \(evtId.uuidString.lowercased().prefix(8))")
+                currentCallEventId = evtId
+            }
+            SoundService.shared.stopLooping(.outgoingRing)
+            ringTimedOut = false
+            trace("caller.peerAccepted")
+            if isCallerRole {
+                Task { await sendFreshOfferForJoiner() }
+            }
         }
     }
 
     /// Resets per-peer state and sends a brand-new offer over the call
     /// channel. Used whenever a peer asks us for an offer via
-    /// `ready-for-offer`. Idempotent within a 1.5s window so retries from
-    /// the joining peer don't kick a thousand renegotiations.
+    /// `ready-for-offer`.
+    ///
+    /// Two guards matter here:
+    ///  * **Role.** If we're the side that accepted an incoming call we must
+    ///    wait for the caller's offer. Answering a stray `ready-for-offer`
+    ///    puts both ends in have-local-offer (offer glare) and the call hangs
+    ///    on "Calling" forever — this was the main cross-platform failure.
+    ///  * **Per-call-event dedupe.** Retries for the SAME call event are
+    ///    ignored while an offer is in flight, but a request for a different
+    ///    event (a genuine rejoin) always gets a fresh offer. The old blanket
+    ///    1-second window silently swallowed real requests.
+    private var lastJoinerOfferEventId: UUID?
     private var lastJoinerOfferSentAt: Date = .distantPast
-    private func respondToPeerJoining() async {
-        if Date().timeIntervalSince(lastJoinerOfferSentAt) < 1.0 {
-            print("[Call] ⏭ ready-for-offer ignored — sent a fresh offer <1s ago")
+    private func respondToPeerJoining(callEventId: UUID?) async {
+        let peerHasLeft = (state == .calling && voiceClient == nil && startedAt == nil && !isCallerRole)
+        if !isCallerRole && state == .connected {
+            trace("readyForOffer.ignored", "answerer role")
             return
         }
+        if !isCallerRole && !peerHasLeft && state != .calling {
+            trace("readyForOffer.ignored", "answerer role, not waiting")
+            return
+        }
+        let sameEvent = callEventId == nil || callEventId == lastJoinerOfferEventId
+        if sameEvent && Date().timeIntervalSince(lastJoinerOfferSentAt) < 1.0 && sdpExchangeStarted {
+            trace("readyForOffer.deduped")
+            return
+        }
+        lastJoinerOfferEventId = callEventId ?? currentCallEventId
         lastJoinerOfferSentAt = Date()
 
         // If we're connected, just renegotiate over the existing client.
