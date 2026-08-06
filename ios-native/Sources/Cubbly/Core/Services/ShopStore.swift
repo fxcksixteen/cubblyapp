@@ -18,10 +18,20 @@ final class ShopStore: ObservableObject {
         let name: String
         let description: String?
         let price: Int
+        /// Gem price, when the item is bought with the premium currency
+        /// instead of coins. Gem-priced items ignore `price`.
+        let price_gems: Int?
+        let requires_subscription: String?
         let config: AnyJSON?
         let sort_order: Int?
         let is_active: Bool?
+
+        /// True when this item can only be bought with gems.
+        var isGemItem: Bool { (price_gems ?? 0) > 0 }
+        /// Price in whichever currency the item actually uses.
+        var effectivePrice: Int { isGemItem ? (price_gems ?? 0) : price }
     }
+
 
     @Published private(set) var items: [Item] = []
     @Published private(set) var owned: Set<String> = []
