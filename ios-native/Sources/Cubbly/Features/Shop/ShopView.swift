@@ -46,26 +46,33 @@ struct ShopView: View {
             if let uid = session.currentUserID {
                 await shop.start(userId: uid)
                 await coins.start(userId: uid)
+                await gems.start(userId: uid)
             }
         }
         .refreshable {
             await shop.reload()
             await coins.refresh()
+            await gems.refresh()
         }
         .sheet(isPresented: $showCoinsInfo) {
             CoinsInfoSheet().presentationDetents([.medium])
         }
+        .sheet(isPresented: $showGemsInfo) {
+            GemsInfoSheet().presentationDetents([.medium])
+        }
         .alert(item: $notEnoughItem) { item in
-            Alert(
-                title: Text("Not enough coins"),
-                message: Text("You need \((item.price - coins.balance)) more coins."),
+            let isGem = item.isGemItem
+            let missing = item.effectivePrice - (isGem ? gems.balance : coins.balance)
+            return Alert(
+                title: Text(isGem ? "Not enough gems" : "Not enough coins"),
+                message: Text("You need \(missing) more \(isGem ? "gems" : "coins")."),
                 dismissButton: .default(Text("OK"))
             )
         }
         .sheet(item: $confirmPurchaseItem) { item in
             PurchaseConfirmSheet(
                 item: item,
-                balance: coins.balance,
+                balance: item.isGemItem ? gems.balance : coins.balance,
                 displayName: session.currentProfile?.displayName ?? "YourName",
                 onConfirm: {
                     confirmPurchaseItem = nil
