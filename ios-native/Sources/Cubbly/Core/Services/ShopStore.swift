@@ -105,25 +105,37 @@ final class ShopStore: ObservableObject {
         defer { purchasing = nil }
         struct Args: Encodable { let _item_id: String }
         do {
+            // Gem-priced items go through the gems RPC; everything else
+            // still spends coins.
+            let fn = item.isGemItem ? "purchase_shop_item_gems" : "purchase_shop_item"
             _ = try await SupabaseManager.shared.client
-                .rpc("purchase_shop_item", params: Args(_item_id: item.id))
+                .rpc(fn, params: Args(_item_id: item.id))
                 .execute()
             owned.insert(item.id)
             SoundService.shared.play(.message)
-            await CoinsStore.shared.refresh()
+            if item.isGemItem {
+                await GemsStore.shared.refresh()
+            } else {
+                await CoinsStore.shared.refresh()
+            }
             return true
         } catch {
             let msg = "\(error)"
-            if msg.contains("INSUFFICIENT_COINS") {
+            if msg.contains("INSUFFICIENT_GEMS") {
+                lastError = "Not enough gems"
+            } else if msg.contains("INSUFFICIENT_COINS") {
                 lastError = "Not enough coins"
             } else if msg.contains("ALREADY_OWNED") {
                 lastError = "Already owned"
+            } else if msg.contains("SUBSCRIPTION_REQUIRED") {
+                lastError = "This item requires Honey"
             } else {
                 lastError = "Purchase failed"
             }
             return false
         }
     }
+
 
     func toggleEquip(_ item: Item) async {
         struct Args: Encodable { let _item_id: String }
