@@ -94,37 +94,41 @@ struct ShopView: View {
         }
     }
 
-    // MARK: - Header (title + coin pill)
+    // MARK: - Header (title + currency pills)
 
     private var header: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             Text("Shop")
                 .font(.cubbly(22, .heavy))
                 .foregroundStyle(Theme.Colors.textPrimary)
             Spacer()
-            Button {
-                showCoinsInfo = true
-            } label: {
-                HStack(spacing: 6) {
-                    BundledAssetImage(name: "coin-stack")
-                        .frame(width: 20, height: 20)
-                    Text("\(coins.balance)")
-                        .font(.cubbly(14, .bold))
-                        .foregroundStyle(Theme.Colors.textPrimary)
-                        .monospacedDigit()
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(Theme.Colors.bgSecondary)
-                .clipShape(Capsule())
-                .overlay(Capsule().stroke(Theme.Colors.border, lineWidth: 1))
-            }
-            .buttonStyle(.plain)
+            currencyPill(asset: "gem", amount: gems.balance) { showGemsInfo = true }
+            currencyPill(asset: "coin-stack", amount: coins.balance) { showCoinsInfo = true }
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)
         .padding(.bottom, 8)
     }
+
+    private func currencyPill(asset: String, amount: Int, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                BundledAssetImage(name: asset)
+                    .frame(width: 20, height: 20)
+                Text("\(amount)")
+                    .font(.cubbly(14, .bold))
+                    .foregroundStyle(Theme.Colors.textPrimary)
+                    .monospacedDigit()
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Theme.Colors.bgSecondary)
+            .clipShape(Capsule())
+            .overlay(Capsule().stroke(Theme.Colors.border, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+
 
     private var tabsBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
