@@ -255,13 +255,19 @@ struct YouView: View {
         Rectangle().fill(Theme.Colors.border).frame(height: 1).padding(.leading, 50)
     }
 
-    private func row(icon: String, label: String, action: (() -> Void)? = nil) -> some View {
+    private func row(icon: String, svg: String? = nil, label: String, action: (() -> Void)? = nil) -> some View {
         Button { action?() } label: {
             HStack(spacing: 14) {
-                Image(systemName: icon)
-                    .font(.system(size: 16))
-                    .foregroundStyle(Theme.Colors.textSecondary)
-                    .frame(width: 22)
+                Group {
+                    if let svg {
+                        SVGIcon(name: svg, size: 19, tint: Theme.Colors.textSecondary)
+                    } else {
+                        Image(systemName: icon)
+                            .font(.system(size: 16))
+                            .foregroundStyle(Theme.Colors.textSecondary)
+                    }
+                }
+                .frame(width: 22)
                 Text(label)
                     .font(Theme.Fonts.bodyMedium)
                     .foregroundStyle(Theme.Colors.textPrimary)
