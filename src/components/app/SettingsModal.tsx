@@ -69,7 +69,9 @@ const CATEGORY_ICONS: Partial<Record<SettingsCategory, string>> = {
 const CategoryIcon = ({ id, className = "" }: { id: SettingsCategory; className?: string }) => {
   const src = CATEGORY_ICONS[id];
   if (!src) return null;
-  return <img src={src} alt="" aria-hidden className={`h-[22px] w-[22px] shrink-0 invert ${className}`} />;
+  // Icons are eagerly decoded — never lazy — so tabs never render glyph-less.
+  return <img src={src} alt="" aria-hidden decoding="sync" fetchPriority="high" className={`h-[22px] w-[22px] shrink-0 invert ${className}`} />;
+
 };
 
 

@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo } from "react";
 import { useCustomStatuses } from "@/hooks/useCustomStatuses";
 import StatusIndicator from "@/components/app/StatusIndicator";
 import GroupAvatar from "@/components/app/GroupAvatar";
+import RotatingSubtitle from "@/components/app/RotatingSubtitle";
+
 import { useAuth } from "@/contexts/AuthContext";
 import { useVoice } from "@/contexts/VoiceContext";
 import { useGroupCall } from "@/contexts/GroupCallContext";
@@ -333,9 +335,9 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
             const dmStatusLine = dmCustomStatus
               ? `${dmCustomStatus.emoji ? `${dmCustomStatus.emoji} ` : ""}${dmCustomStatus.text}`.trim()
               : null;
-            const subtitle = conv.is_group
-              ? `${conv.members.length + 1} members`
-              : dmActivityLabel || dmStatusLine;
+            // Subtitle: when a user has both an activity and a custom status,
+            // RotatingSubtitle cycles between them every 3s.
+
             return (
               <ContextMenu key={conv.id}>
                 <ContextMenuTrigger asChild>
@@ -403,14 +405,16 @@ const DMSidebar = ({ conversations, activeView, setActiveView, onCloseConversati
                           <BellOff className="h-3 w-3 shrink-0 opacity-100" style={{ filter: "none" }} />
                         )}
                       </p>
-                      {subtitle && (
-                        <p
-                          className="truncate text-[11px] leading-tight"
-                          style={{ color: dmActivity?.name ? "#3ba55c" : "var(--app-text-secondary, #949ba4)" }}
-                        >
-                          {subtitle}
-                        </p>
-                      )}
+                      <RotatingSubtitle
+                        lines={[
+                          dmActivityLabel
+                            ? { key: "activity", text: dmActivityLabel, color: "#3ba55c" }
+                            : null,
+                          dmStatusLine ? { key: "status", text: dmStatusLine } : null,
+                          conv.is_group ? { key: "members", text: `${conv.members.length + 1} members` } : null,
+                        ]}
+                      />
+
                     </div>
                     {isMobile ? (
                       // Mobile: persistent ⋮ that opens the existing context menu.

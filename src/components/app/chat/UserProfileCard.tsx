@@ -22,6 +22,8 @@ import GiftItemModal from "@/components/app/GiftItemModal";
 import StatusIndicator from "@/components/app/StatusIndicator";
 import ActivityCard from "@/components/app/ActivityCard";
 import UserDisplayName from "@/components/app/UserDisplayName";
+import MutualsTabs from "@/components/app/chat/MutualsTabs";
+
 import UserBadges from "@/components/app/UserBadges";
 import { ShopItemPreview } from "@/components/app/shop/ShopItemPreview";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
@@ -480,8 +482,15 @@ const UserProfileCard = ({ userId, displayName, position, onClose, onSendMessage
               </div>
             )}
 
+            {!isOwnProfile && (
+              <MutualsTabs
+                userId={userId}
+                onOpenServer={(serverId) => { onClose(); navigate(`/@me/server/${serverId}`); }}
+              />
+            )}
 
             {/* Actions */}
+
             {!isOwnProfile && (
               <div className="mt-4 flex items-center gap-2">
                 {onSendMessage && (

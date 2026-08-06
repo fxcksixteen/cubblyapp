@@ -90,11 +90,15 @@ const ActivityIcon = ({ name, processName, size = 40, className = "", rounded = 
       alt={name || ""}
       width={size}
       height={size}
-      className={`shrink-0 object-cover ${className}`}
-      style={{ width: size, height: size, borderRadius: rounded, backgroundColor: "rgba(255,255,255,0.04)" }}
+      decoding="sync"
+      // @ts-expect-error - fetchpriority is a valid DOM attribute
+      fetchpriority="high"
+      className={`shrink-0 object-contain ${className}`}
+      style={{ width: size, height: size, backgroundColor: "transparent" }}
       onError={() => setTierIdx((i) => i + 1)}
     />
   );
+
 };
 
 export default ActivityIcon;

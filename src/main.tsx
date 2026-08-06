@@ -4,6 +4,8 @@ import App from "./App.tsx";
 import LoadingSplash from "./components/app/LoadingSplash";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { preloadAllSounds } from "./lib/sounds";
+import { preloadIcons } from "./lib/preloadIcons";
+
 import { registerServiceWorker } from "./lib/pwa";
 import "./index.css";
 import { CURRENT_VERSION } from "./lib/changelog";
@@ -49,6 +51,10 @@ if (electronApi?.getHardwareAcceleration) {
 
 // Preload notification sounds in the background
 preloadAllSounds();
+
+// Warm every icon asset up-front — icons must never pop in / lazy load.
+preloadIcons();
+
 
 // ---- Chunk-load failure recovery ----
 // When a deploy ships new JS but the browser still has an old index.html cached,

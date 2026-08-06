@@ -128,6 +128,9 @@ export default function HoneyPage() {
           src={honey3d}
           alt=""
           aria-hidden
+          decoding="sync"
+          fetchPriority="high"
+
           className="pointer-events-none absolute right-2 md:right-10 top-6 md:top-10 h-56 w-56 md:h-72 md:w-72 z-10 select-none"
           style={{
             animation: "honey-bob 5s ease-in-out infinite alternate",
@@ -218,12 +221,16 @@ export default function HoneyPage() {
               </div>
 
               <ul className="mt-6 space-y-2.5 flex-1">
-                {plan.perks.map((perk) => (
-                  <li key={perk} className="flex items-start gap-2 text-sm text-white/85">
-                    <Check className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" /> {perk}
-                  </li>
-                ))}
+                {plan.perks.map((perk) => {
+                  const label = showAnnual && perk === "500 gems every month" ? "6,000 gems up front" : perk;
+                  return (
+                    <li key={perk} className="flex items-start gap-2 text-sm text-white/85">
+                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" /> {label}
+                    </li>
+                  );
+                })}
               </ul>
+
 
               <button
                 onClick={() => handleSubscribe(plan.tier)}

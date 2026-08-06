@@ -679,7 +679,10 @@ const ShareNoteModal = ({ note, onClose }: { note: NoteRow; onClose: () => void 
   const { conversations } = useConversations();
   const { user } = useAuth();
   const ent = useEntitlements();
-  const honeyLocked = !ent.canShareNoteAdvanced;
+  // Only lock (and only show the upgrade nudge) once entitlements have actually
+  // loaded — otherwise Honey subscribers briefly see the "upgrade" banner.
+  const honeyLocked = ent.loaded && !ent.canShareNoteAdvanced;
+
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [viewOnce, setViewOnce] = useState(false);

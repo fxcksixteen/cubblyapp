@@ -1707,6 +1707,23 @@ export type Database = {
         Args: { _required: string; _user_id: string }
         Returns: boolean
       }
+      mutual_friends: {
+        Args: { _other: string }
+        Returns: {
+          avatar_url: string
+          display_name: string
+          user_id: string
+          username: string
+        }[]
+      }
+      mutual_servers: {
+        Args: { _other: string }
+        Returns: {
+          icon_url: string
+          id: string
+          name: string
+        }[]
+      }
       online_user_ids: {
         Args: { _window_seconds?: number }
         Returns: {

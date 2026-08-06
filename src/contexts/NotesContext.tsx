@@ -586,26 +586,54 @@ export const NotesProvider = ({ children }: { children: React.ReactNode }) => {
     const storagePath = extractNotesStoragePath(att.storagePath || att.storage_path || att.path || (att as any).fullPath || (att as any).full_path || (att as any).key || (att as any).objectKey || (att as any).url || (att as any).signedUrl || (att as any).signed_url);
     if (!storagePath) throw new Error("Missing attachment path");
     if (!isOwnedAttachmentPath(storagePath, user.id)) throw new Error("Attachment does not belong to this vault");
+
+    // The object itself always carries the iv / mime it was uploaded with.
+    // Older note payloads (and the recovery path) can lose those fields, which
+    // used to make us hand back the still-encrypted bytes — that's the
+    // "weird unopenable file" case. Re-read the metadata from storage first.
+    let iv = att.iv || "";
+    let mime = att.mime || "";
+    if (!iv || GENERIC_ATTACHMENT_MIME.has(mime.toLowerCase())) {
+      const slash = storagePath.lastIndexOf("/");
+      const folder = storagePath.slice(0, slash);
+      const fileName = storagePath.slice(slash + 1);
+      const { data: listed } = await supabase.storage
+        .from("notes-attachments")
+        .list(folder, { limit: 1, search: fileName });
+      const match = listed?.find((f) => f.name === fileName);
+      if (match) {
+        const metadata = normalizeStorageMetadata({
+          ...(match.metadata || {}),
+          user_metadata: (match as { user_metadata?: unknown }).user_metadata,
+        });
+        iv = iv || String(metadata.iv || "");
+        if (!mime || GENERIC_ATTACHMENT_MIME.has(mime.toLowerCase())) {
+          mime = String(metadata.mime || metadata.mimetype || metadata.contentType || mime || "");
+        }
+      }
+    }
+
     const { data, error } = await supabase.storage.from("notes-attachments").download(storagePath);
     if (error || !data) throw error || new Error("Download failed");
     const buf = await data.arrayBuffer();
     // Legacy fallback: very old attachments were uploaded unencrypted (no
     // iv was stored). If we have no iv, just return the raw blob so the
     // user can still view their image / video / file.
-    if (!att.iv) {
-      return new Blob([buf], { type: att.mime });
+    if (!iv) {
+      return new Blob([buf], { type: mime || att.mime });
     }
     try {
-      const plain = await decryptBytes(key, att.iv, buf);
-      return new Blob([plain], { type: att.mime });
+      const plain = await decryptBytes(key, iv, buf);
+      return new Blob([plain], { type: mime || att.mime });
     } catch (e) {
       // Decryption failed — most likely a legacy blob that was never
       // encrypted with this key. Fall back to the raw bytes so the user
       // at least sees the original file instead of a broken tile.
       console.warn("[Notes] decrypt failed, serving raw blob:", e);
-      return new Blob([buf], { type: att.mime });
+      return new Blob([buf], { type: mime || att.mime });
     }
   }, [user, key]);
+
 
   const listRecoverableAttachmentsForNote = useCallback(async (noteId: string) => {
     if (!user || !noteId) return [];
