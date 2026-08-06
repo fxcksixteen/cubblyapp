@@ -65,8 +65,22 @@ struct MoreSettingsTabView: View {
     @ObservedObject private var settings = AppSettingsStore.shared
     @ObservedObject private var devicesStore = DevicesStore.shared
     @ObservedObject private var social = SocialPrivacyStore.shared
+    @ObservedObject private var coins = CoinsStore.shared
+    @ObservedObject private var gems = GemsStore.shared
 
     @State private var showResetConfirm = false
+    @State private var subscription: SubscriptionRow?
+    @State private var subscriptionLoaded = false
+
+    /// Mirrors the `subscriptions` row the web Billing tab reads.
+    struct SubscriptionRow: Decodable {
+        let tier: String
+        let status: String
+        let interval: String
+        let current_period_end: String?
+        let cancel_at_period_end: Bool
+        let complimentary: Bool?
+    }
 
     var body: some View {
         NavigationStack {
