@@ -104,6 +104,7 @@ struct MoreSettingsTabView: View {
                 if mode == .contentSocial || mode == .dataPrivacy {
                     await social.load(userId: uid)
                 }
+                if mode == .billing { await loadSubscription(userId: uid) }
             }
         }
     }
