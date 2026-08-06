@@ -144,6 +144,84 @@ struct MoreSettingsTabView: View {
         case .languageTime:   languageTab
         case .advanced:       advancedTab
         case .updateLogs:     updateLogsTab
+        case .billing:        billingTab
+        }
+    }
+
+    // MARK: - Billing
+
+    private func loadSubscription(userId: UUID) async {
+        do {
+            let row: SubscriptionRow? = try await SupabaseManager.shared.client
+                .from("subscriptions")
+                .select("tier,status,interval,current_period_end,cancel_at_period_end,complimentary")
+                .eq("user_id", value: userId.uuidString)
+                .maybeSingle()
+                .execute()
+                .value
+            subscription = row
+        } catch {
+            subscription = nil
+        }
+        subscriptionLoaded = true
+    }
+
+    private var tierLabel: String {
+        switch subscription?.tier {
+        case "honey": return "Cubbly Honey"
+        case "basic": return "Honey Basic"
+        default:      return "Free"
+        }
+    }
+
+    private var renewalText: String {
+        guard let raw = subscription?.current_period_end else { return "—" }
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let date = iso.date(from: raw) ?? ISO8601DateFormatter().date(from: raw)
+        guard let date else { return "—" }
+        let out = DateFormatter()
+        out.dateStyle = .medium
+        return out.string(from: date)
+    }
+
+    private var billingTab: some View {
+        VStack(spacing: 14) {
+            section("Subscription") {
+                VStack(spacing: 10) {
+                    infoRow("Plan", tierLabel)
+                    if let sub = subscription {
+                        infoRow("Status", sub.status.capitalized)
+                        infoRow("Billing", sub.interval.capitalized)
+                        infoRow(sub.cancel_at_period_end ? "Ends on" : "Renews on", renewalText)
+                        if sub.complimentary == true {
+                            noteText("This plan is complimentary — you're not being charged for it.")
+                        }
+                    } else if subscriptionLoaded {
+                        noteText("You're on the free plan. Upgrade to Cubbly Honey from the web app to unlock Honey perks.")
+                    } else {
+                        ProgressView().tint(Theme.Colors.primary)
+                            .frame(maxWidth: .infinity, minHeight: 40)
+                    }
+                }
+            }
+            section("Balances") {
+                VStack(spacing: 10) {
+                    infoRow("Gems", "\(gems.balance)")
+                    infoRow("Coins", "\(coins.balance)")
+                }
+            }
+            section("Manage") {
+                noteText("Subscribing, changing your plan and updating payment methods happen on the web app so Apple's in-app purchase rules aren't involved.")
+                Button {
+                    if let url = URL(string: "https://web.cubbly.app") {
+                        UIApplication.shared.open(url)
+                    }
+                } label: {
+                    actionLabel("Open billing on the web", destructive: false)
+                }
+                .buttonStyle(.plain)
+            }
         }
     }
 
