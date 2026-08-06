@@ -44,6 +44,10 @@ final class SoundService {
 
     func play(_ sound: Sound, force: Bool = false, volume: Float = 0.55) {
         if dndActive && !force { return }
+        // Honour the "In-app sounds" toggle in Settings → Chat. Call rings and
+        // other forced sounds always play so you can't miss a call.
+        if !force, UserDefaults.standard.object(forKey: "settings.inAppSounds") != nil,
+           !UserDefaults.standard.bool(forKey: "settings.inAppSounds") { return }
         guard let url = url(for: sound) else { return }
         do {
             let player = try AVAudioPlayer(contentsOf: url)
