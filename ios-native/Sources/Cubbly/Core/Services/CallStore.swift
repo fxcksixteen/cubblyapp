@@ -373,6 +373,11 @@ final class CallStore: ObservableObject {
         self.state = .calling
         self.isMinimized = false
         self.sdpExchangeStarted = false
+        // Rejoiner is the answerer (web parity): we ask for an offer, we don't
+        // make one. Keeps both ends out of simultaneous have-local-offer.
+        self.isCallerRole = false
+        self.peerAcceptedCallEventId = nil
+        self.isEndingCall = false
         configureAudioSession()
         CallKitService.shared.startOutgoing(handleName: peerName)
         await signaling.joinCallChannel(conversationId: convId)
@@ -382,7 +387,7 @@ final class CallStore: ObservableObject {
         // Ask the live peer for a fresh offer. They'll respond with `offer`,
         // we'll answer in handleVoiceOffer. No ring, no duplicate event.
         startReadyForOfferRetry(callEventId: evt.id)
-        print("[Call] 🔁 Joining existing ongoing call_event:", evt.id.uuidString)
+        trace("rejoin.readyForOffer")
         return true
     }
 
