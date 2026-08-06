@@ -5,6 +5,8 @@ import { useActivity } from "@/contexts/ActivityContext";
 import { Check, X } from "lucide-react";
 import { getProfileColor } from "@/lib/profileColors";
 import { activityLabel, isSoftwareActivity } from "@/lib/activityLabel";
+import RotatingSubtitle from "@/components/app/RotatingSubtitle";
+import { useCustomStatuses } from "@/hooks/useCustomStatuses";
 import messagesHoverIcon from "@/assets/icons/messages-3.svg";
 import searchIcon from "@/assets/icons/search.svg";
 import emptyPendingIcon from "@/assets/icons/empty-pending.svg";
@@ -64,6 +66,11 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
   const { user, onlineUserIds } = useAuth();
   const { getActivity } = useActivity();
   const { friends, pending, blocked, sendFriendRequest, acceptRequest, declineRequest, unblockUser, removeFriend } = useFriends();
+  // v0.4.31: custom statuses for every listed user so the subtitle can cycle
+  // between an activity and a custom status (same behaviour as the DM sidebar).
+  const customStatuses = useCustomStatuses(
+    useMemo(() => [...friends, ...pending, ...blocked].map((f) => f.profile.user_id), [friends, pending, blocked])
+  );
   const [addInput, setAddInput] = useState("");
   const [addStatus, setAddStatus] = useState<{ type: "success" | "error"; msg: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -323,7 +330,30 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
                         const act = getActivity(friendship.profile.user_id);
                         const friendOnline = friendship.profile.user_id === CUBBLY_BOT_ID || onlineUserIds.has(friendship.profile.user_id);
                         const label = activityLabel(act, friendOnline);
-                        if (activeTab !== "pending" && label) {
+                        if (activeTab === "pending") {
+                          return (
+                            <p className="truncate text-xs leading-tight" style={{ color: "var(--app-text-secondary, #949ba4)" }}>
+                              {friendship.addressee_id === user?.id ? "Incoming Friend Request" : "Outgoing Friend Request"}
+                            </p>
+                          );
+                        }
+                        const cs = customStatuses[friendship.profile.user_id];
+                        const csLine = cs
+                          ? `${cs.emoji ? `${cs.emoji} ` : ""}${cs.text}`.trim()
+                          : null;
+                        // Online / All: cycle between activity and custom status every 3s.
+                        if ((activeTab === "online" || activeTab === "all") && (label || csLine)) {
+                          return (
+                            <RotatingSubtitle
+                              className="text-xs"
+                              lines={[
+                                label ? { key: "activity", text: label, color: "#3ba55c" } : null,
+                                csLine ? { key: "status", text: csLine } : null,
+                              ]}
+                            />
+                          );
+                        }
+                        if (label) {
                           return (
                             <p className="truncate text-xs leading-tight" style={{ color: "#3ba55c" }}>
                               {label}
@@ -332,9 +362,7 @@ const FriendsView = ({ activeTab, setActiveTab, onOpenDM, activeNowOpen, setActi
                         }
                         return (
                           <p className="truncate text-xs leading-tight" style={{ color: "var(--app-text-secondary, #949ba4)" }}>
-                            {activeTab === "pending"
-                              ? (friendship.addressee_id === user?.id ? "Incoming Friend Request" : "Outgoing Friend Request")
-                              : getStatusLabel(friendship)}
+                            {getStatusLabel(friendship)}
                           </p>
                         );
                       })()}
