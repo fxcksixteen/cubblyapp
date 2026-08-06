@@ -21,6 +21,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   // Activity / process scanning
   getRunningProcesses: () => ipcRenderer.invoke("get-running-processes"),
+  /** v0.4.30: [{ appId, name, installDir, exeNames[] }] for installed Steam games. */
+  getSteamLibrary: () => ipcRenderer.invoke("get-steam-library"),
   getOpenWindows: () => ipcRenderer.invoke("get-open-windows"),
   pickGameExe: () => ipcRenderer.invoke("pick-game-exe"),
   /** Returns a base64 data URL of the running process .exe / .app icon, or null. */
