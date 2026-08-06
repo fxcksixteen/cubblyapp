@@ -161,6 +161,13 @@ final class ThemeStore: ObservableObject {
         case "theme_sky_dusk":        return [Color(hex: 0x1B2658), Color(hex: 0x4B3A78), Color(hex: 0xE48A5E), Color(hex: 0xF5BE7A)]
         case "theme_snowy_drift":     return [Color(hex: 0x0E1A2C), Color(hex: 0x1B2B45), Color(hex: 0x2C4063)]
         case "theme_moonlit_hills":   return [Color(hex: 0x070A1A), Color(hex: 0x0E1438), Color(hex: 0x1C2455), Color(hex: 0x14213D)]
+        // Gem themes (purchased with gems, not coins)
+        case "theme_cosmic_nebula":   return [Color(hex: 0x4C1D95), Color(hex: 0x1E0B3B), Color(hex: 0x05030F)]
+        case "theme_cyber_grid":      return [Color(hex: 0x050014), Color(hex: 0x0F0330), Color(hex: 0xFF2FBF)]
+        case "theme_volcanic":        return [Color(hex: 0xFF5B1F), Color(hex: 0x7A1502), Color(hex: 0x1A0503)]
+        case "theme_bioluminescent":  return [Color(hex: 0x062A5C), Color(hex: 0x021030), Color(hex: 0x01050F)]
+        case "theme_aurora_borealis": return [Color(hex: 0x01102A), Color(hex: 0x03215A), Color(hex: 0x0B6B6B), Color(hex: 0x0A3F45)]
+        case "theme_sakura_storm":    return [Color(hex: 0x2A0E30), Color(hex: 0x5C1846), Color(hex: 0xC86E94), Color(hex: 0xF4C1A6)]
         default: return []
         }
     }
@@ -179,6 +186,12 @@ final class ThemeStore: ObservableObject {
         case "theme_sky_dusk":        return "sky"
         case "theme_snowy_drift":     return "snowy"
         case "theme_moonlit_hills":   return "hills"
+        case "theme_cosmic_nebula":   return "nebula"
+        case "theme_cyber_grid":      return "cyber"
+        case "theme_volcanic":        return "volcanic"
+        case "theme_bioluminescent":  return "biolume"
+        case "theme_aurora_borealis": return "northern"
+        case "theme_sakura_storm":    return "sakura"
         default: return "default"
         }
     }
