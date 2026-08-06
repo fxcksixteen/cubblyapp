@@ -421,7 +421,11 @@ private struct ShopItemPreview: View {
             } else if sub == "animated" {
                 let stops: [Color] = (cfg["stops"] as? [String])?.compactMap(colorFromHex)
                     ?? [Color(hex: 0x22D3EE), Color(hex: 0xA855F7), Color(hex: 0xEC4899)]
-                AnimatedGradientText(name: nameToShow, colors: stops)
+                let style = NameColorsStore.MotionStyle(rawValue: (cfg["style"] as? String) ?? "sweep") ?? .sweep
+                let duration = (cfg["duration"] as? Double) ?? 4
+                AnimatedGradientText(name: nameToShow, colors: stops,
+                                     duration: duration, style: style,
+                                     bow: (cfg["bow"] as? Bool) ?? false)
             } else {
                 Text(nameToShow).font(.cubbly(16, .heavy)).foregroundStyle(.white)
             }
