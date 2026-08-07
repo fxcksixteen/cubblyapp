@@ -281,7 +281,6 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
         if (cancelled) return;
         steamGames = lib;
         registerSteamLibrary(lib);
-        registerSteamLibrary(lib);
       } catch { /* non-fatal — curated detection still works */ }
     };
     void refreshSteamLibrary();
