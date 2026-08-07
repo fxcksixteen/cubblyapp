@@ -1,5 +1,5 @@
 import searchIcon from "@/assets/icons/search.svg";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { X, Check, LogOut, Pencil, Camera, ChevronLeft, ChevronRight } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
