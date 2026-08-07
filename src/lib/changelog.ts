@@ -23,9 +23,26 @@ export interface ChangelogEntry {
   bugFixes: string[];
 }
 
-export const CURRENT_VERSION = "0.4.30";
+export const CURRENT_VERSION = "0.4.31";
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.4.31",
+    title: "Gaming Mode, your way",
+    date: "2026-08-07",
+    hero: bearImage,
+    newFeatures: [
+      "Search bar in Settings to jump straight to any tab.",
+      "Gaming Mode can now be customized — pick exactly what Cubbly silences while you play.",
+      "Wallpaper Engine is no longer detected as a game.",
+    ],
+    bugFixes: [
+      "Steam game artwork now displays correctly instead of looking cropped or blank.",
+      "Hiding your activity in the sidebar now only hides it for you — friends still see it.",
+      "The Honey tab icon in the top bar now uses the right color.",
+      "Friendlier message when you add someone whose username doesn't exist.",
+    ],
+  },
   {
     version: "0.4.30",
     title: "Settings, Steam and sharper shares",
