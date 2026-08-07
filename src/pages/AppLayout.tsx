@@ -340,7 +340,7 @@ const AppLayout = () => {
       return titleWithIcon(notesIcon, "Private Notes");
     }
     if (isHoney) {
-      return titleWithIcon(honeyIcon, "Honey", false);
+      return titleWithIcon(honeyIcon, "Honey");
     }
     if (isRequests) {
       return <span className="font-semibold" style={{ color: "var(--app-text-primary)" }}>Message Requests</span>;
