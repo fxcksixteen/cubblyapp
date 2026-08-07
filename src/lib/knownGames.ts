@@ -257,6 +257,29 @@ export interface DetectedActivity {
   type: ActivityKind;
 }
 
+/**
+ * Never auto-detected. Wallpaper Engine (and friends) are Steam apps but not
+ * games — users who actually want them shown can add them manually under
+ * Activity Privacy → Your games.
+ */
+export const NEVER_DETECT = [
+  /^wallpaper(32|64|engine)?$/i,
+  /wallpaper\s?engine/i,
+  /^steamwebhelper$/i,
+  /^gameoverlayui$/i,
+  /^steamvr/i,
+  /^vrmonitor$/i,
+  /^ds4windows$/i,
+  /^rtss$/i,
+  /^msiafterburner$/i,
+];
+
+export function isNeverDetect(value?: string | null): boolean {
+  const key = String(value || "").toLowerCase().trim().replace(/\.exe$/, "");
+  if (!key) return true;
+  return NEVER_DETECT.some((re) => re.test(key));
+}
+
 function lookupKnown(proc: string): KnownActivity | null {
   if (KNOWN_GAMES[proc]) return KNOWN_GAMES[proc];
   for (const pat of KNOWN_PATTERNS) {
@@ -295,6 +318,7 @@ export function detectGame(
   // 2. Built-in games (real games beat software)
   let softwareMatch: DetectedActivity | null = null;
   for (const proc of procSet) {
+    if (isNeverDetect(proc)) continue;
     const known = lookupKnown(proc);
     if (!known) continue;
     if (known.type === "game") {
@@ -310,9 +334,10 @@ export function detectGame(
   // Steam display name is what we show (and what the capsule art is keyed on).
   const NON_GAME_EXE = /^(unins\d*|uninstall|crashhandler|crashreport\w*|launcher_?helper|easyanticheat\w*|battleye\w*|vc_?redist|dxsetup|dotnet\w*|setup)$/i;
   for (const entry of steamGames) {
+    if (isNeverDetect(entry.name)) continue;
     for (const exe of entry.exeNames || []) {
       const key = exe.toLowerCase().replace(/\.exe$/, "");
-      if (!key || NON_GAME_EXE.test(key)) continue;
+      if (!key || NON_GAME_EXE.test(key) || isNeverDetect(key)) continue;
       if (procSet.has(key)) {
         return { processName: key, displayName: entry.name, type: "game" };
       }
