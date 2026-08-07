@@ -167,6 +167,23 @@ const SettingsModal = ({ isOpen, onClose, initialCategory = null }: SettingsModa
   // null = category list view (mobile only). On desktop the sidebar is always visible.
   const [activeCategory, setActiveCategory] = useState<SettingsCategory | null>(null);
   const [settingsSearch, setSettingsSearch] = useState("");
+
+  // Filter tabs by label OR by the keywords describing what lives inside them.
+  const filteredSections = useMemo(() => {
+    const q = settingsSearch.trim().toLowerCase();
+    if (!q) return settingsSections;
+    return settingsSections
+      .map((section) => ({
+        ...section,
+        items: section.items.filter((item) => {
+          const haystack = [item.label, section.label, ...(SEARCH_KEYWORDS[item.id] || [])]
+            .join(" ")
+            .toLowerCase();
+          return haystack.includes(q);
+        }),
+      }))
+      .filter((section) => section.items.length > 0);
+  }, [settingsSearch]);
   const { user, signOut } = useAuth();
   const { theme, setTheme } = useTheme();
   const ent = useEntitlements();
