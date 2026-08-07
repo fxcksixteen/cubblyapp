@@ -1,6 +1,6 @@
 import { Switch } from "@/components/ui/switch";
-import { useGamingMode } from "@/contexts/GamingModeContext";
-import { Info } from "lucide-react";
+import { useGamingMode, GAMING_FEATURE_META, GAMING_FEATURE_DEFAULTS } from "@/contexts/GamingModeContext";
+import { Info, RotateCcw } from "lucide-react";
 
 interface GamingModeSettingsProps {
   cardStyle: React.CSSProperties;
@@ -11,8 +11,17 @@ interface GamingModeSettingsProps {
  * interfere with gameplay. UI styled to match the rest of the settings tabs.
  */
 const GamingModeSettings = ({ cardStyle }: GamingModeSettingsProps) => {
-  const { enabled, setEnabled, affectCallsAndShare, setAffectCallsAndShare, isGaming, isSuppressing } =
-    useGamingMode();
+  const {
+    enabled,
+    setEnabled,
+    affectCallsAndShare,
+    setAffectCallsAndShare,
+    features,
+    setFeature,
+    resetFeatures,
+    isGaming,
+    isSuppressing,
+  } = useGamingMode();
 
   const statusLabel = isSuppressing
     ? "Active — suppressing Cubbly for performance."
@@ -24,6 +33,10 @@ const GamingModeSettings = ({ cardStyle }: GamingModeSettingsProps) => {
     : isGaming
       ? "hsl(40 90% 55%)"
       : "hsl(220 8% 50%)";
+
+  const isDefaults = GAMING_FEATURE_META.every(
+    (f) => features[f.key] === GAMING_FEATURE_DEFAULTS[f.key],
+  );
 
   return (
     <div className="space-y-5">
@@ -50,6 +63,57 @@ const GamingModeSettings = ({ cardStyle }: GamingModeSettingsProps) => {
             </p>
           </div>
           <Switch checked={enabled} onCheckedChange={setEnabled} />
+        </div>
+      </div>
+
+      {/* Per-feature customization — only meaningful while Gaming Mode is on */}
+      <div
+        className="rounded-[24px] border p-5"
+        style={{ ...cardStyle, opacity: enabled ? 1 : 0.55, transition: "opacity 0.2s" }}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h2 className="text-lg font-bold" style={{ color: "var(--app-text-primary)" }}>
+              Customize Gaming Mode
+            </h2>
+            <p className="mt-1.5 text-sm" style={{ color: "var(--app-text-secondary)" }}>
+              Pick exactly what Cubbly does while you're in a game. Anything turned off here keeps
+              behaving normally, even with Gaming Mode active.
+            </p>
+          </div>
+          <button
+            onClick={resetFeatures}
+            disabled={!enabled || isDefaults}
+            className="flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition-colors disabled:opacity-40"
+            style={{ color: "var(--app-text-secondary)", backgroundColor: "var(--app-hover)" }}
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            Reset
+          </button>
+        </div>
+
+        <div className="mt-4 space-y-1">
+          {GAMING_FEATURE_META.map((f) => (
+            <div
+              key={f.key}
+              className="flex items-start justify-between gap-4 rounded-2xl px-3 py-3 transition-colors"
+              style={{ backgroundColor: "var(--app-bg-tertiary, rgba(0,0,0,0.15))" }}
+            >
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold" style={{ color: "var(--app-text-primary)" }}>
+                  {f.title}
+                </p>
+                <p className="mt-1 text-xs" style={{ color: "var(--app-text-secondary)" }}>
+                  {f.description}
+                </p>
+              </div>
+              <Switch
+                checked={features[f.key]}
+                onCheckedChange={(v) => setFeature(f.key, v)}
+                disabled={!enabled}
+              />
+            </div>
+          ))}
         </div>
       </div>
 
