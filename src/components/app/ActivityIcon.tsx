@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { lookupCuratedIcon, lookupSteamIcon } from "@/lib/activityIcons";
+import { lookupCuratedIcon, lookupSteamIcon, isSteamArt, onSteamLibraryChange } from "@/lib/activityIcons";
 import { getProfileColor } from "@/lib/profileColors";
 
 interface Props {
@@ -29,6 +29,9 @@ const ActivityIcon = ({ name, processName, size = 40, className = "", rounded = 
   const [tierIdx, setTierIdx] = useState(0);
   const [osIcon, setOsIcon] = useState<string | null>(null);
   const [osIconLoading, setOsIconLoading] = useState(false);
+  // Bumped whenever the local Steam library index grows so a game detected
+  // before the scan finished re-resolves to its official capsule art.
+  const [steamRev, setSteamRev] = useState(0);
 
   // Build the source list once per (name, processName) pair
   useEffect(() => {
@@ -40,7 +43,9 @@ const ActivityIcon = ({ name, processName, size = 40, className = "", rounded = 
     ];
     setTierIdx(0);
     setOsIcon(null);
-  }, [name, processName]);
+  }, [name, processName, steamRev]);
+
+  useEffect(() => onSteamLibraryChange(() => setSteamRev((v) => v + 1)), []);
 
   // When we exhaust tiers 0 + 1, try fetching OS icon (Electron only, once)
   useEffect(() => {
@@ -93,8 +98,14 @@ const ActivityIcon = ({ name, processName, size = 40, className = "", rounded = 
       decoding="sync"
       // @ts-expect-error - fetchpriority is a valid DOM attribute
       fetchpriority="high"
-      className={`shrink-0 object-contain ${className}`}
-      style={{ width: size, height: size, backgroundColor: "transparent" }}
+      draggable={false}
+      className={`shrink-0 ${isSteamArt(currentSrc) ? "object-cover" : "object-contain"} ${className}`}
+      style={{
+        width: size,
+        height: size,
+        backgroundColor: "transparent",
+        borderRadius: isSteamArt(currentSrc) ? rounded : undefined,
+      }}
       onError={() => setTierIdx((i) => i + 1)}
     />
   );
