@@ -12,12 +12,63 @@ import { useActivity } from "@/contexts/ActivityContext";
  *  - `enabled`            → master toggle (ON by default)
  *  - `affectCallsAndShare`→ if FALSE (default), gaming mode will NOT touch
  *                           active voice calls / screen shares even when active
+ *  - `features`           → per-feature opt-outs, only meaningful while enabled
  *
  * Persisted to localStorage so settings stick across sessions.
  */
 
 const LS_ENABLED = "cubbly:gamingMode:enabled";
 const LS_AFFECT_CALLS = "cubbly:gamingMode:affectCalls";
+const LS_FEATURES = "cubbly:gamingMode:features";
+
+export type GamingFeatureKey =
+  | "muteSounds"
+  | "pauseNotifications"
+  | "reduceAnimations"
+  | "throttleScanning"
+  | "hideToasts";
+
+export type GamingFeatures = Record<GamingFeatureKey, boolean>;
+
+export const GAMING_FEATURE_DEFAULTS: GamingFeatures = {
+  muteSounds: true,
+  pauseNotifications: true,
+  reduceAnimations: true,
+  throttleScanning: true,
+  hideToasts: false,
+};
+
+export const GAMING_FEATURE_META: Array<{
+  key: GamingFeatureKey;
+  title: string;
+  description: string;
+}> = [
+  {
+    key: "muteSounds",
+    title: "Mute notification sounds",
+    description: "Silences message, mention and friend-request sounds while you're in a game.",
+  },
+  {
+    key: "pauseNotifications",
+    title: "Pause desktop notifications",
+    description: "Stops OS pop-ups from appearing over your game. They still stack up in Cubbly.",
+  },
+  {
+    key: "reduceAnimations",
+    title: "Minimize animations",
+    description: "Cuts transitions, theme effects and animated decorations to free up GPU time.",
+  },
+  {
+    key: "throttleScanning",
+    title: "Throttle background work",
+    description: "Slows process scanning and background refreshes so nothing competes with your game.",
+  },
+  {
+    key: "hideToasts",
+    title: "Hide in-app pop-ups",
+    description: "Hides Cubbly's own toast messages while gaming. Off by default.",
+  },
+];
 
 interface GamingModeContextValue {
   /** Master switch (ON by default). */
@@ -26,6 +77,10 @@ interface GamingModeContextValue {
   /** Whether suppression should also affect active voice/video/screen calls. OFF by default. */
   affectCallsAndShare: boolean;
   setAffectCallsAndShare: (v: boolean) => void;
+  /** Per-feature switches — only take effect while Gaming Mode is enabled. */
+  features: GamingFeatures;
+  setFeature: (key: GamingFeatureKey, value: boolean) => void;
+  resetFeatures: () => void;
   /** True when the current user is detected as actively playing a game. */
   isGaming: boolean;
   /** True when suppression is currently in effect for general app behavior. */
@@ -39,6 +94,9 @@ const GamingModeContext = createContext<GamingModeContextValue>({
   setEnabled: () => {},
   affectCallsAndShare: false,
   setAffectCallsAndShare: () => {},
+  features: GAMING_FEATURE_DEFAULTS,
+  setFeature: () => {},
+  resetFeatures: () => {},
   isGaming: false,
   isSuppressing: false,
   isSuppressingCalls: false,
@@ -56,6 +114,17 @@ const readBool = (key: string, fallback: boolean): boolean => {
   }
 };
 
+const readFeatures = (): GamingFeatures => {
+  try {
+    const raw = localStorage.getItem(LS_FEATURES);
+    if (!raw) return { ...GAMING_FEATURE_DEFAULTS };
+    const parsed = JSON.parse(raw) as Partial<GamingFeatures>;
+    return { ...GAMING_FEATURE_DEFAULTS, ...parsed };
+  } catch {
+    return { ...GAMING_FEATURE_DEFAULTS };
+  }
+};
+
 export const GamingModeProvider = ({ children }: { children: ReactNode }) => {
   const { user } = useAuth();
   const { getActivity } = useActivity();
@@ -64,6 +133,7 @@ export const GamingModeProvider = ({ children }: { children: ReactNode }) => {
   const [affectCallsAndShare, setAffectCallsAndShareState] = useState<boolean>(() =>
     readBool(LS_AFFECT_CALLS, false)
   );
+  const [features, setFeatures] = useState<GamingFeatures>(readFeatures);
 
   const setEnabled = (v: boolean) => {
     setEnabledState(v);
@@ -73,6 +143,14 @@ export const GamingModeProvider = ({ children }: { children: ReactNode }) => {
     setAffectCallsAndShareState(v);
     try { localStorage.setItem(LS_AFFECT_CALLS, v ? "1" : "0"); } catch {}
   };
+  const persistFeatures = (next: GamingFeatures) => {
+    setFeatures(next);
+    try { localStorage.setItem(LS_FEATURES, JSON.stringify(next)); } catch {}
+  };
+  const setFeature = (key: GamingFeatureKey, value: boolean) => {
+    persistFeatures({ ...features, [key]: value });
+  };
+  const resetFeatures = () => persistFeatures({ ...GAMING_FEATURE_DEFAULTS });
 
   // Derive whether *I* am currently gaming based on my own activity row
   const myActivity = user ? getActivity(user.id) : undefined;
@@ -82,18 +160,18 @@ export const GamingModeProvider = ({ children }: { children: ReactNode }) => {
   const isSuppressingCalls = isSuppressing && affectCallsAndShare;
 
   // Push the suppression flags onto globals so non-React modules (sounds.ts,
-  // notifications.ts) can cheaply check them without subscribing to React.
+  // notifications.ts, ActivityContext) can cheaply check them without
+  // subscribing to React.
   useEffect(() => {
     (window as any).__cubblySuppress = isSuppressing;
     (window as any).__cubblySuppressCalls = isSuppressingCalls;
-    // Add a "reduce motion" body class so heavy animations / transitions
-    // can opt out via CSS while gaming, without React re-renders.
+    (window as any).__cubblyGM = isSuppressing ? features : null;
     try {
       const root = document.documentElement;
-      if (isSuppressing) root.classList.add("cubbly-gaming-mode");
-      else root.classList.remove("cubbly-gaming-mode");
+      root.classList.toggle("cubbly-gaming-mode", isSuppressing && features.reduceAnimations);
+      root.classList.toggle("cubbly-gaming-no-toasts", isSuppressing && features.hideToasts);
     } catch {}
-  }, [isSuppressing, isSuppressingCalls]);
+  }, [isSuppressing, isSuppressingCalls, features]);
 
   const value = useMemo<GamingModeContextValue>(
     () => ({
@@ -101,11 +179,14 @@ export const GamingModeProvider = ({ children }: { children: ReactNode }) => {
       setEnabled,
       affectCallsAndShare,
       setAffectCallsAndShare,
+      features,
+      setFeature,
+      resetFeatures,
       isGaming,
       isSuppressing,
       isSuppressingCalls,
     }),
-    [enabled, affectCallsAndShare, isGaming, isSuppressing, isSuppressingCalls]
+    [enabled, affectCallsAndShare, features, isGaming, isSuppressing, isSuppressingCalls]
   );
 
   return <GamingModeContext.Provider value={value}>{children}</GamingModeContext.Provider>;

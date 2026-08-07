@@ -94,7 +94,7 @@ export function useFriends() {
       .eq("username", username.trim())
       .maybeSingle();
 
-    if (!targetProfile) return { error: "No user found with that username." };
+    if (!targetProfile) return { error: "Hmmm... seems like that person doesn't exist yet, maybe you got a typo?" };
     if (targetProfile.user_id === user.id) return { error: "You can't add yourself!" };
 
     const { error } = await supabase.from("friendships").insert({

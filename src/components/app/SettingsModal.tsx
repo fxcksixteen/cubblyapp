@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import searchIcon from "@/assets/icons/search.svg";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { X, Check, LogOut, Pencil, Camera, ChevronLeft, ChevronRight } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -75,6 +76,27 @@ const CategoryIcon = ({ id, className = "" }: { id: SettingsCategory; className?
 };
 
 
+/** Extra search terms per tab so the settings search finds a tab by what it
+ *  actually contains, not just by its title. */
+const SEARCH_KEYWORDS: Partial<Record<SettingsCategory, string[]>> = {
+  "my-account": ["profile", "username", "email", "password", "avatar", "banner", "bio", "display name"],
+  "content-social": ["friend requests", "dms", "blocked", "who can add me", "message requests"],
+  "data-privacy": ["download data", "delete account", "analytics", "sessions"],
+  notifications: ["sounds", "push", "mentions", "mute", "badge", "desktop alerts"],
+  devices: ["logged in", "sessions", "log out devices"],
+  billing: ["honey", "subscription", "gems", "coins", "plan", "invoice", "payment", "renew", "cancel"],
+  appearance: ["theme", "dark", "light", "colors", "font", "decorations", "background"],
+  accessibility: ["reduce motion", "contrast", "text size", "screen reader"],
+  "voice-video": ["microphone", "camera", "input", "output", "noise suppression", "echo", "screenshare", "call quality"],
+  chat: ["messages", "emoji", "gifs", "links", "spoilers", "typing"],
+  keybinds: ["shortcuts", "push to talk", "hotkeys"],
+  "language-time": ["locale", "timezone", "24 hour", "translation"],
+  advanced: ["hardware acceleration", "gpu", "developer", "logs", "cache"],
+  "activity-privacy": ["game detection", "status", "playing", "your games", "share activity"],
+  "gaming-mode": ["performance", "fps", "suppress", "do not disturb", "game"],
+  "update-logs": ["changelog", "version", "release notes", "whats new"],
+};
+
 const settingsSections = [
   {
     label: "User Settings",
@@ -144,6 +166,24 @@ const SettingsModal = ({ isOpen, onClose, initialCategory = null }: SettingsModa
   const isMobile = useIsMobile();
   // null = category list view (mobile only). On desktop the sidebar is always visible.
   const [activeCategory, setActiveCategory] = useState<SettingsCategory | null>(null);
+  const [settingsSearch, setSettingsSearch] = useState("");
+
+  // Filter tabs by label OR by the keywords describing what lives inside them.
+  const filteredSections = useMemo(() => {
+    const q = settingsSearch.trim().toLowerCase();
+    if (!q) return settingsSections;
+    return settingsSections
+      .map((section) => ({
+        ...section,
+        items: section.items.filter((item) => {
+          const haystack = [item.label, section.label, ...(SEARCH_KEYWORDS[item.id] || [])]
+            .join(" ")
+            .toLowerCase();
+          return haystack.includes(q);
+        }),
+      }))
+      .filter((section) => section.items.length > 0);
+  }, [settingsSearch]);
   const { user, signOut } = useAuth();
   const { theme, setTheme } = useTheme();
   const ent = useEntitlements();
@@ -900,8 +940,45 @@ const SettingsModal = ({ isOpen, onClose, initialCategory = null }: SettingsModa
         onMouseDown={(event) => event.stopPropagation()}
       >
         <aside className="flex w-[280px] flex-shrink-0 flex-col border-r px-4 py-5" style={{ backgroundColor: "var(--app-bg-secondary)", borderColor: "var(--app-border)" }}>
+          <div className="relative mb-4">
+            <img
+              src={searchIcon}
+              alt=""
+              aria-hidden
+              decoding="sync"
+              fetchPriority="high"
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 opacity-60 invert"
+            />
+            <input
+              value={settingsSearch}
+              onChange={(e) => setSettingsSearch(e.target.value)}
+              placeholder="Search settings"
+              aria-label="Search settings"
+              className="w-full rounded-xl border py-2.5 pl-9 pr-8 text-sm font-medium outline-none transition-colors placeholder:font-normal"
+              style={{
+                backgroundColor: "var(--app-bg-tertiary, rgba(0,0,0,0.2))",
+                borderColor: "var(--app-border)",
+                color: "var(--app-text-primary)",
+              }}
+            />
+            {settingsSearch && (
+              <button
+                onClick={() => setSettingsSearch("")}
+                aria-label="Clear settings search"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 transition-colors hover:bg-white/10"
+                style={{ color: "var(--app-text-secondary)" }}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
           <div className="flex-1 overflow-y-auto pr-1">
-            {settingsSections.map((section) => (
+            {filteredSections.length === 0 && (
+              <p className="px-3 py-6 text-center text-sm" style={{ color: "var(--app-text-secondary)" }}>
+                No settings match "{settingsSearch.trim()}".
+              </p>
+            )}
+            {filteredSections.map((section) => (
               <div key={section.label} className="mb-4">
                 <p className="px-3 pb-2 text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: "var(--app-text-secondary)" }}>
                   {section.label}

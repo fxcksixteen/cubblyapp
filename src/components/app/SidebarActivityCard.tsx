@@ -1,7 +1,7 @@
+import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useActivity } from "@/contexts/ActivityContext";
 import { X } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import ActivityCard from "./ActivityCard";
 
 /**
@@ -13,21 +13,40 @@ import ActivityCard from "./ActivityCard";
  */
 const isElectron = typeof window !== "undefined" && (window as any).electronAPI?.isElectron;
 
+const LS_DISMISSED = "cubbly:sidebarActivityDismissed";
+
 const SidebarActivityCard = () => {
   const { user } = useAuth();
   const { getActivity, getActivityDetailsFor, shareActivity } = useActivity();
 
+  // The X only hides the tile locally, for this user's sidebar. It never
+  // touches the published activity — friends and your profile keep showing it.
+  const [dismissed, setDismissed] = useState<string | null>(() => {
+    try { return localStorage.getItem(LS_DISMISSED); } catch { return null; }
+  });
+
+  const act = user ? getActivity(user.id) : undefined;
+  const activityName = act?.name || null;
+
+  // Once the activity changes (new game / session), the tile comes back.
+  useEffect(() => {
+    if (dismissed && activityName && dismissed !== activityName) {
+      setDismissed(null);
+      try { localStorage.removeItem(LS_DISMISSED); } catch { /* ignore */ }
+    }
+  }, [activityName, dismissed]);
+
   if (!user || !isElectron || !shareActivity) return null;
-  const act = getActivity(user.id);
   if (!act?.name) return null;
+  if (dismissed === act.name) return null;
   // Guarded: only use details whose game_key matches THIS activity.
   const det = getActivityDetailsFor(user.id, act.name);
 
   const isSoftware = act.details === "software" || act.activity_type === "using";
 
-  const handleHide = async () => {
-    // Hide just this session — clears the row; will reappear when scanner detects again.
-    await supabase.from("user_activities").delete().eq("user_id", user.id);
+  const handleHide = () => {
+    setDismissed(act.name!);
+    try { localStorage.setItem(LS_DISMISSED, act.name!); } catch { /* ignore */ }
   };
 
   return (
@@ -41,7 +60,7 @@ const SidebarActivityCard = () => {
         trailing={
           <button
             onClick={handleHide}
-            title="Hide activity"
+            title="Hide from my sidebar (others still see your activity)"
             className="rounded p-0.5 transition-colors"
             onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--app-hover, #35373c)")}
             onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "")}

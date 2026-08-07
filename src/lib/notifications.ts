@@ -72,7 +72,12 @@ export function notify(options: NotifyOptions) {
   const prefs = getNotificationPreferences();
   if (!prefs.desktopEnabled) return;
   if (!options.force && dndActive) return;
-  if (!options.force && typeof window !== "undefined" && (window as any).__cubblySuppress) return;
+  if (
+    !options.force &&
+    typeof window !== "undefined" &&
+    (window as any).__cubblySuppress &&
+    (window as any).__cubblyGM?.pauseNotifications !== false
+  ) return;
   if (!options.force && typeof document !== "undefined" && document.hasFocus()) return;
 
   if (isElectron && electronAPI?.showNotification) {

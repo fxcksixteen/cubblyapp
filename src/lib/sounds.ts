@@ -99,6 +99,8 @@ function isGamingSuppressed(key: SoundKey): boolean {
   if (typeof window === "undefined") return false;
   const general = (window as any).__cubblySuppress;
   if (!general) return false;
+  const gm = (window as any).__cubblyGM;
+  if (gm && gm.muteSounds === false) return false;
   if (CALL_SOUNDS.includes(key)) {
     return !!(window as any).__cubblySuppressCalls;
   }

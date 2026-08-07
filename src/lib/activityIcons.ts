@@ -186,16 +186,52 @@ export type SteamLibraryEntry = { appId: number; name: string; exeNames?: string
 
 const steamLibraryIndex = new Map<string, number>();
 
+/** Persisted so friends' Steam art resolves instantly on the next launch. */
+const LS_STEAM_INDEX = "cubbly:steamIndex";
+
+try {
+  const raw = typeof localStorage !== "undefined" ? localStorage.getItem(LS_STEAM_INDEX) : null;
+  if (raw) {
+    const parsed = JSON.parse(raw) as Record<string, number>;
+    for (const [k, v] of Object.entries(parsed)) {
+      if (Number.isFinite(v)) steamLibraryIndex.set(k, v);
+    }
+  }
+} catch { /* corrupt cache — ignore */ }
+
+/** Listeners notified whenever the index grows, so icons re-resolve live. */
+const steamIndexListeners = new Set<() => void>();
+
+export function onSteamLibraryChange(fn: () => void): () => void {
+  steamIndexListeners.add(fn);
+  return () => steamIndexListeners.delete(fn);
+}
+
+/** Monotonic counter — components can use it as an effect dependency. */
+export let steamLibraryVersion = 0;
+
 export function registerSteamLibrary(entries: SteamLibraryEntry[] | null | undefined) {
   if (!Array.isArray(entries)) return;
+  let added = 0;
   for (const entry of entries) {
     if (!entry || !Number.isFinite(entry.appId)) continue;
     const keys = [entry.name, ...(entry.exeNames || [])];
     for (const raw of keys) {
       const key = String(raw || "").toLowerCase().trim().replace(/\.exe$/, "");
-      if (key) steamLibraryIndex.set(key, entry.appId);
+      if (!key || steamLibraryIndex.get(key) === entry.appId) continue;
+      steamLibraryIndex.set(key, entry.appId);
+      added += 1;
     }
   }
+  if (!added) return;
+  steamLibraryVersion += 1;
+  try {
+    localStorage.setItem(
+      LS_STEAM_INDEX,
+      JSON.stringify(Object.fromEntries(steamLibraryIndex.entries())),
+    );
+  } catch { /* quota — non-fatal */ }
+  steamIndexListeners.forEach((fn) => { try { fn(); } catch { /* ignore */ } });
 }
 
 /** Resolve a Steam app id from the scanned library (name or process name). */
@@ -209,6 +245,12 @@ export function lookupSteamAppId(name?: string | null, processName?: string | nu
     if (dynamic) return dynamic;
   }
   return null;
+}
+
+/** True when the URL is Steam store art (wide capsule / header), which must be
+ *  cropped to fill a square tile instead of letterboxed into a thin sliver. */
+export function isSteamArt(url?: string | null): boolean {
+  return !!url && /steamstatic\.com|steamgriddb\.com/.test(url);
 }
 
 /**
