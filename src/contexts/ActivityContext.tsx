@@ -389,7 +389,9 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
     // to avoid the heavy `tasklist` scan competing with WebRTC for CPU/wifi.
     const getInterval = () => {
       const screenSharing = (window as any).__cubblyScreenSharing === true;
-      const suppressing = (window as any).__cubblySuppress === true;
+      const suppressing =
+        (window as any).__cubblySuppress === true &&
+        (window as any).__cubblyGM?.throttleScanning !== false;
       const inCall = (window as any).__cubblyInCall === true;
       // `document.hasFocus()` is false whenever a game (or any other app) has
       // foreground focus — the perfect signal that we should back off hard.

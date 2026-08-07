@@ -732,6 +732,11 @@ html.cubbly-gaming-mode *::after {
   transition-duration: 0.001ms !important;
   scroll-behavior: auto !important;
 }
+/* Gaming Mode: optionally hide Cubbly's own toast pop-ups over the game */
+html.cubbly-gaming-no-toasts [data-sonner-toaster],
+html.cubbly-gaming-no-toasts [data-radix-toast-viewport] {
+  display: none !important;
+}
 /* Keep critical UI feedback (typing dots, call ring) visible but cheap */
 html.cubbly-gaming-mode .typing-bounce { animation: none !important; opacity: 0.7; }
 
